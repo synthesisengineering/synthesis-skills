@@ -481,6 +481,59 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
 - **The Messenger importer reads the filtered chats from before the switch to encryption.** Meta's regular download files them under `e2ee_cutover_filtered`, as `filtered_threads` is to `inbox`; the importer refused such a download with "not a folder this layout holds". The section is now read like `e2ee_cutover`.
+- **A program that loads synthesis another way is judged as one that imports it, and a check a script or the CLI enters
+  reads a recorded transcript only inside a harness's own folders.** Review round 4 of this fix found the guard read an
+  agent's Python program as reaching synthesis only when a line began with `import synthesis` or `from synthesis`, the
+  same before this release: a program that loaded it through `importlib`, `__import__`, `exec` or `eval` of a string it
+  built, or `runpy`, from a clone or the plugin cache, could write the send ledger's lines, open a send window with no
+  code, void a grant, or point the session's recorded transcript at a record it wrote and grant itself what a check a
+  script enters releases, such as a send by the local-messaging sender. A program that hands a loader (`exec`, `eval`,
+  `__import__`, `importlib`'s and `runpy`'s, `pkgutil.resolve_name`, `pydoc.locate` and the like) a name or a text that
+  says synthesis as code does (the package's name alone or leading a dotted name, an import of it, a path to its folder
+  or one of its files), through its arguments, a name it assigns, its own function's parameters or the words it is
+  handed, or that runs a file or loads a module of its own whose code reaches synthesis, now waits for the principal's
+  code as a script file and is refused on the line or its input, as one that imports synthesis and reaches it in a way
+  its reader cannot follow; the modules of its own that a program on the line imports are read as a script file's are.
+  A program whose loaders are handed other code passes, whatever else it says about synthesis. With no transcript in a
+  hook's payload, a check reads the path the prompt hook recorded only inside the folders each harness keeps its
+  records in as the prompt hook's environment named them, recorded beside it; the environment of the command running
+  the check, which an agent sets, never widens them, now that the runners below are read too. A record from an earlier
+  release names none, so a script's check holds until the session's next prompt. Codex's archived rollouts count as its
+  records. Of 73,637 shell commands recorded over 60 days and judged under the hook's 3 s deadline, none newly waits or is
+  refused, while two planted programs that load synthesis through `importlib` do.
+- **A shell script a command runs, the test files pytest runs, and programs run through `ipython`, `uv run` and their
+  like are judged as the programs they hold.** The same review found the guard read a shell script's text only for the
+  protected folders it names, and never read the test files pytest collects, an `ipython -c` program, or what `uv run`,
+  `poetry run` or `pipx run` start: through any of them, a program could import synthesis in plain words and open a send
+  window, void a grant, or record a transcript under folders of its own. A shell script run by a shell, by its path or
+  sourced is now judged as the command lines it holds, three scripts deep, a script the line writes from a heredoc
+  by its text, and `$0` as the script's own path; one the guard cannot open waits. A line of Python in such a script, inline
+  or on its input, that reaches synthesis waits for the principal's code with the script's bytes bound to it, where the
+  same line typed on the command is refused. The release's own scripts are trusted as
+  before, the CLI's launcher among them where install wrote it, in the synthesis home's `bin`: a launcher anywhere else
+  is read as what it runs. A Python script run by its path, `ipython`, and what `uv run`, `poetry run`, `pipx run`,
+  `pdm run`, `uvx` and their like start are read as Python and as the command they run. The test files pytest collects
+  and the conftests it loads are read for one of the writers approvals rest on, or synthesis loaded another way, unless
+  each test file runs with the synthesis home at a temporary path for every test: under a fixture that sets
+  `SYNTHESIS_HOME` (or `HOME`) from the test's `tmp_path` and is autouse, in a conftest above the file or in the file
+  itself, or that every test in the file requests, as synthesis's own conftests do, so the suite runs from its checkout
+  or a worktree with no code. Only a test, and the function-scoped fixtures it uses, run under that fixture; a writer
+  named, a path of synthesis's taken (`STATE = paths.state()`) or synthesis loaded anywhere else leaves the file read:
+  at a test module's or a conftest's top level, in a class body, a decorator or a default, in the file's own functions
+  those call, in xunit setup and teardown (`setup_module`, `setup_class` and their like), in a fixture scoped wider than
+  a function, in pytest's hooks, or in a plugin of its own named with `-p`. A writer is read under any name it is
+  imported by, and through `getattr` with its name written out, and a program that only reads that way passes, also
+  under a `PYTHONPATH` whose folders are there when judged, hold nothing the program imports or that hides a module of
+  Python's own installation (its standard library and site-packages) but a synthesis byte for byte the guard's own, and
+  are neither written into by the line nor beside another of its programs that may fill them unseen. A module the
+  line writes where a program on it starts counts as one that could stand in, as a file already there does. An import
+  after `;` on a program's line counts as one at a line's start. Of 73,936 shell commands recorded over 60 days, 12
+  newly wait: 6 runs of probe and measurement tests with no isolation the guard can read, and 6 programs whose import
+  after a `;` names one of synthesis's writers, as the same program on separate lines already did. One that waited is
+  refused: three `python3 -c` programs typed on its line import synthesis's own code in text Python cannot parse. Four
+  more wait only in the replay, which moves the synthesis home to a temporary folder: the CLI's launcher in the default
+  home, reached by a path the replay does not move, which in use stands in that home's own `bin` and is trusted. A
+  planted shell script and a planted test file wait too.
 
 ## [5.23.2] - 2026-11-15
 

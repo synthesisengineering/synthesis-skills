@@ -22,6 +22,27 @@ Codex and Muse is a hook that uses up their 5 seconds before its deadline is set
 slow to start by more than about a second, under heavy load or on a stalled disk. In every harness
 an unreadable config and an error inside a guard still block, since the guard catches those itself.
 
+**Programs a command runs** (5.24.0). The shell guard reads a shell script a command runs (by a shell, by its path or
+sourced) as the command lines it holds, three scripts deep, and reads a Python script run by its path, `ipython`, and
+what `uv run`, `poetry run`, `pipx run`, `pdm run` and `uvx` start, as the programs they run; a script that exists but
+cannot be opened waits for the principal's code, and so does a line of Python in a script that reaches synthesis, the
+script's bytes bound to the code (typed on the command, the same line is refused). A `PYTHONPATH` on the line counts
+against a program's proof unless its folders are there when judged, hold no module the program imports, no
+`sitecustomize` or `usercustomize`, and nothing that hides a module of Python's own installation (its standard library and
+site-packages; a folder with no `__init__.py` hides nothing) but a `synthesis` package byte for byte the guard's own, and
+are neither written into by the line nor beside another program on
+it that may fill them unseen; a module the line writes where the program starts counts as a file already there does. The release's own scripts are trusted: those in the synthesis home's
+`bin` (the CLI's launcher, reached by any link, among them), `current` and `releases`, and those of the release the
+guard runs from; a launcher anywhere else is read as what it runs. For pytest, the test files it collects and the conftests it loads are read for a
+writer approvals rest on, or synthesis loaded another way, unless each test file runs with the synthesis home at a
+temporary path for every test. That is trusted only from a fixture that sets `SYNTHESIS_HOME` (or `HOME`) from the
+test's `tmp_path` and is autouse, in a conftest above the file or in the file itself, or that every test in the file
+requests. Only a test, and the function-scoped fixtures it uses, run under that fixture: a writer named (under any name
+it is imported by, or through `getattr` with its name written out), a path of synthesis's taken, or synthesis loaded
+anywhere else leaves that file read. That is a test module's or a conftest's top level, its class bodies, decorators and
+defaults, the file's own functions they call, xunit setup and teardown, fixtures scoped wider than a function, pytest's
+hooks, and a plugin of the agent's own named with `-p`.
+
 ## Contents
 
 - [Keys](#keys)

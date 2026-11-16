@@ -189,7 +189,10 @@ spent.
 Inside a counted prompt, text the harness wraps in a tag block (`<system-reminder>`,
 `<task-notification>`, `<bash-stdout>`, pasted content) does not count. A script run
 from a harness's shell (the iMessage sender) has no hook payload, so it finds the
-session's transcript by the session id its shell carries. When there is no
+session's transcript by the session id its shell carries, at the path the prompt hook
+recorded. That path counts only inside the folders each harness keeps its records in as
+the prompt hook's environment named them, recorded beside it: the environment of the
+command running the script, which the agent sets, never names them. When there is no
 transcript, when it cannot be read, or when it does not show the prompt, the grant is
 spent unused, the call is blocked with that reason, and the request is filed again. A
 harness that gives no transcript cannot carry approved sends or deploys until it does.
@@ -416,8 +419,15 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      never writes, handed on.
      Python on the line (`-c`, or a program on its input) is proved only where none of the
      agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
-     package where it runs named like a module it imports, and no `PYTHONPATH`,
-     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. A
+     package where it runs named like a module it imports, none the line writes there, and no
+     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line, nor a
+     `PYTHONPATH` unless each folder it names is there when judged, holds no module the
+     program imports, no `sitecustomize` or `usercustomize`, and nothing that hides a module
+     of Python's own installation (its standard library and site-packages, not the folders
+     the guard's process was started from; a folder with no `__init__.py` hides nothing) but
+     a `synthesis` package byte for byte the guard's own, and is neither written into by the
+     line nor beside another program on it that may fill it unseen (review round 3 of
+     22.21). A
      script file, or a module run with `-m` from the folder that holds it, is judged by what
      its text shows (after the 30-day replay: proving every expression held about 3,700
      commands a month): read whole up to 4 MB, with each module of its own it imports (a file
@@ -752,19 +762,47 @@ stay open, and no hook running as that same user can close them:
   harness's shell snapshot, `~/.zshenv`) that changes folder before a command runs. The agent can start such a process
   or write those files with no code, so a later command's relative path can land in a protected folder the guard did
   not place it in.
-- A program of the agent's that loads synthesis without the plain words `import synthesis`
-  or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
-  copy that is no protected folder) is read as reaching none of synthesis's writers, so it
-  can forge the send ledger's lines, open a send window, delete pending grants and requests,
-  plant a deploy record, or point the transcript that any check a script or the CLI enters
-  itself reads at a file it wrote, and so grant itself what such a check releases: a send a
-  script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
-  approval fix; crafted, the same before that release).
-- The same kind of program can replace what the installer bound when it loaded
-  (`install._approve`, `install._released`) by names it builds at run time, then call
+- A program of the agent's that loads synthesis by a name no piece of which says synthesis
+  as code does (`'synth' + 'esis'`, character codes, a decoded or capitalized string, a
+  name read from a file, its environment or its input), through a way of loading the guard
+  does not list (a pickle, a mock's patch), as one of the package's modules under its bare
+  name from the package's own folder, from a copy of the package under another name, by
+  running a file of its own through a path the reader cannot put together, or, on the line
+  or its input, through a module of its own that reaches synthesis in a way the reader cannot
+  follow without naming one of its writers (a script file's such module waits), is read as
+  reaching none of synthesis's writers: it can forge the send ledger's lines, open a send
+  window, delete pending grants and requests or plant a deploy record. To grant itself what
+  a check a script or the CLI enters itself releases (a send a script makes, a line
+  approval, the CLI's send window), it must also record the session's transcript path under
+  an environment of its own making, since the recorder takes the harness folders it writes
+  beside the path from its own environment, or write a record into a harness's own folders
+  (review rounds 4 and 5 of 5.23.1's approval fix; crafted). A shell script built at run
+  time (`bash -c "$(…)"`, a script assembled from pieces in a variable) or fetched over the
+  network and piped or substituted into a shell (`curl … | sh`, `bash <(curl …)`) is not
+  read (nor is a script or module the line writes, below), nor a test placed under a conftest that
+  isolates the synthesis home and then undoes it (deleting or re-pointing `SYNTHESIS_HOME`,
+  overriding the `tmp_path` fixture), or
+  that reaches a writer outside its tests by a name it builds at run time (`getattr` with a name
+  joined from pieces, a call through a name it assigns), or through a plugin installed rather
+  than its own (plan item 22.21 and its review rounds 1 to 3; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
+  `nox`) are ordinary and their tests are not yet read. One that loads synthesis
+  through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
+  text that says synthesis waits for the principal's code, or is refused on the line.
+- The same kind of program, loading the installer by a name the item above leaves unread
+  (one built from a piece held in a name), can replace what the installer bound when it
+  loaded (`install._approve`, `install._released`) by names it builds at run time, then call
   `install.install` on a folder of its own: the guard passes it, and the runtime becomes
-  the agent's (combined review round 1 of 22.8 with 22.18, C1; crafted). A test holds this
-  as an expected failure (`tests/test_combined_review_1.py`), so it is seen when it closes.
+  the agent's (combined review round 1 of 22.8 with 22.18, C1; crafted). One that hands the
+  loader a name its literals spell is refused since 22.21. A test holds the open case as an
+  expected failure (`tests/test_combined_review_1.py`), so it is seen when it closes.
+- A script or module a line writes and then runs is not read. A Python script the line
+  writes from a heredoc (`cat > s.py <<'EOF'`, `tee`) and then runs, and a module the line
+  writes that a program on it imports (read as it stood before the line, if at all), run
+  with no code even when they name synthesis's writers. A shell script the line writes from
+  a heredoc is read as that heredoc's text (22.21), and a script the line writes with no
+  heredoc (`printf` or `echo` into a file) waits as one the guard cannot read. Reading what
+  each writer puts in a file is parked (review round 4 of 22.21 and round 2 of 22.22;
+  ordinary, and the same on main).
 - A launcher line handed to a bare shell (`bash -lc '<line>'`, as Codex's shell tool hands
   it) passes when the first shell of that name on the harness's PATH is the system's. A
   shell of the agent's put in a folder this user writes, ahead of the system's, after the

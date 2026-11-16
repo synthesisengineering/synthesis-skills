@@ -144,21 +144,44 @@ def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
 
 def transcript(session: dict | None) -> str:
     """The harness's record of this session: the hook payload's transcript_path, else the path the prompt hook recorded
-    for this session's id in the state folder. Never one found through folders the caller's environment names, which an
-    agent's own command sets (review of 5.22.1, finding 13); a session no prompt of the principal's reached has none."""
+    for this session's id in the state folder, where it lies inside the folders recorded beside it. Never one found
+    through folders the caller's environment names, which an agent's own command sets (review of 5.22.1, finding 13;
+    round 4 of 5.23.1's approval fix, finding 1: a program pointed the path at a record it wrote, and a script's own
+    check read the principal's prompt there). A session no prompt of the principal's reached has none."""
     given = str((session or {}).get("transcript_path") or "")
     sid = paths.session_id(session)
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
-    recorded = str(paths.read_json(_dir("transcripts") / f"{sid}.json").get("path") or "")
-    return recorded if os.path.isfile(recorded) else ""
+    record = paths.read_json(_dir("transcripts") / f"{sid}.json")
+    recorded = str(record.get("path") or "")
+    return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, record.get("folders")) else ""
 
 
 def remember(session_id: str, transcript_path: str) -> None:
-    """Record where the harness keeps a session's transcript, as its prompt hook names it, for a command that session runs."""
+    """Record where the harness keeps a session's transcript, as its prompt hook names it, for a command that session
+    runs, with the folders each harness keeps its records in as this process's environment names them. The prompt hook
+    records them: the harness starts it, with the harness's own environment, which no agent's command sets, while a
+    check a script enters runs inside the agent's command, which can name any folder as a harness's for itself. The
+    state folder holds them, which an agent's command, or a program that calls this, writes only on the principal's code."""
     if re.fullmatch(r"[\w.-]+", str(session_id or "")) and transcript_path and os.path.isabs(str(transcript_path)):
-        if paths.read_json(_dir("transcripts") / f"{session_id}.json").get("path") != str(transcript_path):
-            paths.write_json(_dir("transcripts") / f"{session_id}.json", {"path": str(transcript_path)})
+        record = {"path": str(transcript_path), "folders": {**{name: str(root) for name, root in paths.transcript_roots().items()},
+                                                            "codex-archived": str(paths.codex_home() / "archived_sessions"),  # as sessions.natives reads them
+                                                            "desktop": str(paths.desktop_dir() / "local-agent-mode-sessions")}}
+        if paths.read_json(_dir("transcripts") / f"{session_id}.json") != record:
+            paths.write_json(_dir("transcripts") / f"{session_id}.json", record)
+
+
+def _kept_by_a_harness(path: str, folders) -> bool:
+    """Whether a path, where it really leads, lies inside one of the folders the prompt hook recorded: a harness's own,
+    or, under the desktop app's, an agent-mode session's records (`<account>/<org>/local_<session>/.claude/projects`),
+    never another file of that session. A record that names none (written before 5.24.0, or by hand) is no harness's."""
+    real = os.path.realpath(path)
+    for name, root in folders.items() if isinstance(folders, dict) else ():
+        base = os.path.realpath(str(root))
+        below = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) and real != base else []
+        if below and (name != "desktop" or (len(below) > 5 and below[2].startswith("local_") and below[3:5] == [".claude", "projects"])):
+            return True
+    return False
 
 
 def _prompt(record: dict, session_id: str) -> tuple[float, list]:

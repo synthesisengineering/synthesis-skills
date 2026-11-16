@@ -171,8 +171,8 @@ def principal(tmp_path, monkeypatch):
     record.parent.mkdir(parents=True)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-config"))
     monkeypatch.setenv("SYNTHESIS_SESSION", "S-principal")
-    from synthesis import paths
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
+    from synthesis import approvals
+    approvals.remember("S-principal", str(record))  # as the prompt hook records it, with the folders its environment names
 
     def approve(reason: str, prompt: str = "approve {code}", grant: bool = True):
         from synthesis import approvals

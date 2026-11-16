@@ -45,7 +45,7 @@ def world(tmp_path, monkeypatch):
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     (paths.state() / "approvals").mkdir(parents=True)
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
+    approvals.remember("S-principal", str(record))  # as the prompt hook records it, with the folders its environment names
     work = tmp_path / "work"
     work.mkdir()
     (work / "forged.jsonl").write_text("{}\n", encoding="utf-8")
@@ -412,7 +412,8 @@ def test_finding_5_a_launcher_hides_nothing(world, launcher):
 
 
 @pytest.mark.parametrize("line", ["view -es -c 'w! {R}' -c q {F}", "python3.13t -c 'print(1)' {R}", "pythonw -c 'print(1)' {R}",
-                                  "python3-intel64 -c 'print(1)' {R}", "ipython -c 'print(1)' {R}", "R -e 'file.copy(\"{F}\", \"{R}\")'",
+                                  "python3-intel64 -c 'print(1)' {R}", "R -e 'file.copy(\"{F}\", \"{R}\")'",
+                                  "ipython -c 'import shutil, sys; shutil.copy(sys.argv[1], sys.argv[2])' {F} {R}",  # read as Python since 22.21
                                   "zx {W}/x.mjs {R}", "gdb -batch -ex 'python print(1)' {R}", "lldb -o 'script print(1)' {R}"])
 def test_finding_6_a_program_off_every_list_waits(world, line):
     _held_or_refused(world, line.format(**_raw(world)))
@@ -920,3 +921,535 @@ def test_parts_in_two_separate_paths_of_a_program_never_join_but_parts_of_one_ex
                      "print(os.path.join(os.path.expanduser('~'), '.claude',\n    'projects', '-work', 'x.jsonl'))\n" + unread)
     assert HELD in (_verdict(world, f"python3 {joined}") or "")
     _held_or_refused(world, "perl -MFile::Copy -e 'copy($ARGV[0], $ENV{{HOME}} . \"/\" . \".claude\" . \"/\" . \"projects\" . \"/-work/S-principal.jsonl\")' {F}".format(**_raw(world)))
+
+
+# --- a program that loads synthesis without the plain words `import synthesis` or `from synthesis` (review round 4 of
+# 5.23.1's approval fix, finding 1): through importlib, __import__, exec, eval or compile of a string it builds, or runpy,
+# from a copy that is no protected folder, it was read as reaching none of synthesis's writers, so it could forge the
+# send ledger's lines, open a send window, void a grant, or point the transcript a script checks at a record it wrote
+# and grant itself the send. It is read as one that reaches synthesis in a way its reader cannot follow: a script file
+# waits for the principal's code, a program on the line or on stdin is refused, as for one that imports it plainly ------
+
+COPY = repr(str(ROOT))  # a copy of synthesis that is no protected folder, as a clone or a plugin cache is
+LOADS = {  # each loads synthesis another way and writes through it
+    "import_module, a window opened": "import sys, importlib\nsys.path.insert(0, COPY)\ns = importlib.import_module('synthesis.sends')\n"
+                                      "getattr(s, 'open_' + 'window')(2.0, ['all'], '', 9)\n",
+    "exec of a built import, an undone line": "import sys\nsys.path.insert(0, COPY)\nexec('from synthesis ' + 'import sends')\nsends.undo('2026-11-15/0123')\n",
+    "import_module, a grant voided": "import sys, importlib\nsys.path.insert(0, COPY)\na = importlib.import_module('synthesis.approvals')\n"
+                                     "getattr(a, 'vo' + 'id')('send', {})\n",
+    "__import__ of the package": "import sys\nsys.path.insert(0, COPY)\nm = __import__('synthesis', fromlist=['approvals'])\nm.approvals.void('send', {})\n",
+    "compile of a built string": "import sys\nsys.path.insert(0, COPY)\nexec(compile('from synthesis ' + 'import approvals', '<built>', 'exec'))\n"
+                                 "approvals.void('send', {})\n",
+    "eval of a built name": "import sys\nsys.path.insert(0, COPY)\na = eval(\"__import__('synthesis.' + 'approvals', fromlist=['x'])\")\na.void('send', {})\n",
+    "runpy of the package": "import sys, runpy\nsys.path.insert(0, COPY)\nsys.argv = ['x', 'sends', 'open', '--hours', '2']\n"
+                            "runpy.run_module('synthesis', run_name='__main__')\n",
+    "a file of synthesis loaded by its path": "import importlib.util\nspec = importlib.util.spec_from_file_location('s', COPY + '/synthesis/sends.py')\n"
+                                              "s = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(s)\ns.undo('2026-11-15/0123')\n",
+    "a name pkgutil resolves": "import sys, pkgutil\nsys.path.insert(0, COPY)\npkgutil.resolve_name('synthesis.approvals:void')('send', {})\n",
+    "a module name built in an f-string": "import sys, importlib\nsys.path.insert(0, COPY)\nname = 'sends'\n"
+                                          "s = importlib.import_module(f'synthesis.{name}')\ns.undo('2026-11-15/0123')\n",
+    "a loader imported by another name": "import sys\nfrom importlib import import_module as load\nsys.path.insert(0, COPY)\n"
+                                         "load('synthesis.sends').undo('2026-11-15/0123')\n",
+    "a loader inside a function of its own": "import sys, importlib\nsys.path.insert(0, COPY)\n\ndef load(name):\n    return importlib.import_module(name)\n\n"
+                                             "load('synthesis.approvals').void('send', {})\n",
+}
+HANDED = {  # the same, with what it loads in the words it is handed
+    "a module name handed as a word": ("import sys, importlib\nsys.path.insert(0, COPY)\nm = importlib.import_module(sys.argv[1])\n"
+                                       "getattr(m, sys.argv[2])('send', {})\n", " synthesis.approvals void"),
+    "the transcript repointed and a grant written": (  # the first step of the review's chain
+        "import sys, importlib\nsys.path.insert(0, COPY)\na = importlib.import_module('synthesis.approvals')\n"
+        "getattr(a, 'remem' + 'ber')(sys.argv[1], sys.argv[2])\ngetattr(a, 'grant_from' + '_prompt')('approve ' + sys.argv[3])\n",
+        " S-principal /tmp/forged.jsonl 1abc23"),
+}
+INLINE = ("inline -c", "stdin")
+
+
+def _loaded(world, body: str, form: str, words: str = "") -> str:
+    body = body.replace("COPY", COPY)
+    script = _script(world["work"] / "loads", "tool.py", body)
+    return {"script file": f"python3 {script}{words}", "inline -c": f"python3 -c {shlex.quote(body)}{words}",
+            "stdin": f"python3 -{words} <<'EOF'\n{body}EOF", "PYTHONPATH and script": f"PYTHONPATH={ROOT} python3 {script}{words}"}[form]
+
+
+@pytest.mark.parametrize("form", ["script file", "inline -c", "stdin", "PYTHONPATH and script"])
+@pytest.mark.parametrize("name", sorted(LOADS) + sorted(HANDED))
+def test_a_program_that_loads_synthesis_another_way_is_judged_as_one_that_imports_it(world, name, form):
+    body, words = HANDED.get(name, (LOADS.get(name), ""))
+    reason = _verdict(world, _loaded(world, body, form, words)) or ""
+    if form in INLINE:
+        assert reason.startswith("Refused"), (name, form, "held, not refused" if reason else "let through")
+    else:
+        assert HELD in reason, (name, form, "refused, not held" if reason else "let through")
+
+
+@pytest.mark.parametrize("load", ["import importlib.util\nspec = importlib.util.spec_from_file_location('s', COPY + '/synthesis/sends.py')\n"
+                                  "s = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(s)\ns.undo('2026-11-15/0123')\n",
+                                  "import pkgutil\npkgutil.resolve_name('synthesis.approvals:void')('send', {})\n"])
+def test_a_program_that_imports_synthesis_to_read_and_loads_a_writer_another_way_is_judged_so(world, load):
+    body = "from synthesis import yamlish\nprint(yamlish.load('a: 1'))\n" + load
+    assert HELD in (_verdict(world, _loaded(world, body, "script file")) or "")
+    assert (_verdict(world, _loaded(world, body, "inline -c")) or "").startswith("Refused")
+
+
+WRITES_THROUGH = "import sys\nsys.path.insert(0, COPY)\nfrom synthesis import approvals\napprovals.void('send', {})\n"
+
+
+@pytest.mark.parametrize("body", [
+    "import helper\n",                                          # a module of its own, by the plain words
+    "import importlib\nimportlib.import_module('helper')\n",    # by importlib
+    "__import__('helper')\n",                                   # by __import__
+    "import runpy\nrunpy.run_path('helper.py')\n",               # a file of its own, run by runpy
+    "exec(open('helper.py').read())\n",                          # a file of its own, read and run
+])
+def test_a_program_whose_own_module_writes_through_synthesis_is_judged_so_however_it_loads_it(world, body):
+    _script(world["work"], "helper.py", WRITES_THROUGH.replace("COPY", COPY))
+    main = _script(world["work"], "main.py", body)
+    for line in (f"python3 {main}", f"python3 -c {shlex.quote(body)}", f"python3 - <<'EOF'\n{body}EOF"):
+        assert _verdict(world, line), line
+
+
+ORDINARY_LOADS = {  # they load code, and none of it is synthesis's
+    "import_module for a library": "import importlib\nprint(importlib.import_module('json').dumps({'a': 1}))\n",
+    "find_spec for what is installed": "import importlib.util\nprint([n for n in ('yaml', 'requests') if importlib.util.find_spec(n)])\n",
+    "exec of its own code": "ns = {}\nexec('x = 1 + 2', ns)\nprint(ns['x'])\n",
+    "eval of arithmetic": "print(eval('2 * 21'))\n",
+    "compile to check its own syntax": "compile('def f():\\n    return 1\\n', '<check>', 'exec')\nprint('ok')\n",
+    "runpy of a library module": "import runpy, sys\nsys.argv = ['json.tool', '--help']\ntry:\n    runpy.run_module('json.tool', run_name='__main__')\n"
+                                 "except SystemExit:\n    pass\n",
+    "synthesis only in a comment": "# lists what the synthesis skills' plugin cache holds\nimport importlib\nprint(importlib.import_module('os').getcwd())\n",
+    "synthesis only in unrelated strings": "import importlib\nprint('Synthesis Engineering', 'synthesis-skills', 'com.synthesis.sessions-export')\n"
+                                           "print(importlib.import_module('platform').system())\n",
+    "a docstring that names a module of synthesis": '"""Counts the skills, where synthesis.paths names their folder."""\nimport importlib\n'
+                                                    "print(len(importlib.import_module('os').listdir('.')))\n",
+    "a helper of its own loaded by import_module": "import importlib\nprint(importlib.import_module('plain_helper').total([1, 2]))\n",
+    "a pattern that finds synthesis's imports": "import re\nprint(re.compile(r'from synthesis import (\\w+)').findall('from synthesis import paths'))\n",
+    "prose about synthesis beside a library loaded by name": "import importlib\nprint('Notes from Synthesis Engineering; import synthesis notes')\n"
+                                                             "print(importlib.import_module('json').dumps([1]))\n",
+    "a model's own eval beside the word synthesis": "class Model:\n    def eval(self):\n        return 'synthesis'\nprint(Model().eval())\n",
+    # shapes from 60 days of recorded commands that a first version held: a loader's own argument names no synthesis
+    "a library loaded by __import__ beside synthesis's source": "src = open(COPY + '/synthesis/guards.py').read().splitlines()\n"
+                                                                "print(len(src), __import__('pathlib').Path('.').name)\n",
+    "the CLI's path beside a library loaded by __import__": "print(__import__('os').path.expanduser('~/.local/bin/synthesis'))\n",
+    "the budgets test loaded to count lines": "import importlib.util\nfrom pathlib import Path\n"
+                                              "spec = importlib.util.spec_from_file_location('tb', COPY + '/tests/test_budgets.py')\n"
+                                              "m = importlib.util.module_from_spec(spec)\nspec.loader.exec_module(m)\n"
+                                              "print(m._lines((Path(COPY) / 'synthesis').glob('*.py')), m.CORE_BUDGET)\n",
+    "the names a program's imports could stand for": "import importlib.util\nfor n in ('yaml', 'synthesis', '__future__'):\n"
+                                                      "    if n not in ('synthesis', '__future__'):\n        print(n, importlib.util.find_spec(n))\n",
+}
+
+
+@pytest.mark.parametrize("form", ["script file", "inline -c", "stdin"])
+@pytest.mark.parametrize("name", sorted(ORDINARY_LOADS))
+def test_a_program_that_loads_code_without_reaching_synthesis_passes(world, name, form):
+    _script(world["work"], "plain_helper.py", "def total(xs):\n    return sum(xs)\n")
+    _script(world["work"] / "loads", "plain_helper.py", "def total(xs):\n    return sum(xs)\n")  # beside the script file too
+    assert _verdict(world, _loaded(world, ORDINARY_LOADS[name], form)) is None, (name, form)
+
+
+def test_synthesis_s_own_source_compiled_to_check_its_syntax_passes(world):
+    body = "import sys\nfor name in sys.argv[1:]:\n    text = open(name).read()\n    compile(text, name, 'exec')\n    print(text.count('def '))\n"
+    for form in ("script file", "inline -c", "stdin"):  # compiling runs nothing: a test that writes through synthesis is read too
+        assert _verdict(world, _loaded(world, body, form, f" {ROOT}/synthesis/guards.py {ROOT}/tests/test_approval_spend_order.py")) is None, form
+
+
+# --- a shell script file a command runs, by a shell, by its path or sourced, is judged command by command as if those
+# commands were on the line (plan item 22.21, found with 22.19: `bash run.sh` let through a `python3 -c` inside it that
+# imported synthesis and named a writer, since the guard read a shell script's text only for the protected folders it
+# names); a script it cannot read waits ----------------------------------------------------------------------------
+
+SCRIPT_WRITES = {  # one line of a shell script, and how the script is judged (review round 3 of 22.21: a line of Python that
+    # reaches synthesis waits, with the script's bytes bound to the code, where the same line typed on the command is refused)
+    "a program on its line that names a writer": (f"python3 -c 'import sys; sys.path.insert(0, \"{ROOT}\"); from synthesis import approvals; "
+                                                  "approvals.void(\"send\", {})'\n", "held"),
+    "a Python script that names a writer": ("python3 tool.py\n", "held"),
+    "a program that opens a send window": (f"python3 -c 'import sys; sys.path.insert(0, \"{ROOT}\"); import synthesis.sends as s; "
+                                           "s.open_window(2.0, [\"all\"], \"\", 9)'\n", "held"),
+    "a program that loads synthesis by importlib": (f"python3 -c 'import sys, importlib; sys.path.insert(0, \"{ROOT}\"); "
+                                                    "importlib.import_module(\"synthesis.sends\").undo(\"x\")'\n", "held"),
+    "a program on its input that builds a name": (f"python3 - <<'EOF'\nimport sys\nsys.path.insert(0, \"{ROOT}\")\nfrom synthesis import sends\n"
+                                                  "getattr(sends, 'un' + 'do')('x')\nEOF\n", "held"),
+    "the hook run by hand": ("~/.synthesis/v5/bin/synthesis-hook pre-tool-use < payload.json\n", "refused"),
+}
+RUNS_SCRIPT = {  # how a command runs the script file run.sh
+    "bash": "bash run.sh", "sh": "sh run.sh", "zsh": "zsh run.sh", "bash with an option": "bash -e run.sh",
+    "its path": "./run.sh", "source": "source run.sh", "dot": ". run.sh", "another script": "bash outer.sh",
+}
+
+
+def _shell_world(world, line: str) -> Path:
+    folder = world["work"]
+    _script(folder, "tool.py", WRITES_THROUGH.replace("COPY", COPY))
+    run = _script(folder, "run.sh", "#!/bin/sh\nset -e\necho starting\n" + line + "echo done\n")
+    run.chmod(0o755)
+    _script(folder, "outer.sh", "#!/bin/bash\ncd \"$(dirname \"$0\")\"\nbash run.sh\n")
+    return folder
+
+
+@pytest.mark.parametrize("how", sorted(RUNS_SCRIPT))
+@pytest.mark.parametrize("name", sorted(SCRIPT_WRITES))
+def test_a_shell_script_s_commands_are_judged_as_if_they_were_on_the_line(world, name, how):
+    line, typed = SCRIPT_WRITES[name]
+    _shell_world(world, line)
+    reason = _verdict(world, RUNS_SCRIPT[how]) or ""
+    if typed == "refused":
+        assert reason.startswith("Refused"), (name, how, "held, not refused" if reason else "let through")
+    else:
+        assert HELD in reason, (name, how, "refused, not held" if reason else "let through")
+
+
+def test_a_script_with_no_first_line_run_by_its_path_is_read_as_the_shell_reads_it(world):
+    line, _ = SCRIPT_WRITES["a program on its line that names a writer"]
+    plain = _script(world["work"], "plain.sh", line)
+    plain.chmod(0o755)
+    assert HELD in (_verdict(world, "./plain.sh") or "")
+
+
+def test_a_script_the_line_writes_and_then_runs_is_judged_by_what_the_line_writes(world):
+    line, _ = SCRIPT_WRITES["a program on its line that names a writer"]
+    assert HELD in (_verdict(world, f"cat > made.sh <<'EOF'\n{line}EOF\nbash made.sh") or "")
+    assert HELD in (_verdict(world, f"printf '%s\\n' {shlex.quote(line.strip())} > made.sh && sh made.sh") or "")
+
+
+def test_a_python_script_run_by_its_path_is_judged_as_python_runs_it(world):
+    tool = _script(world["work"], "tool", "#!/usr/bin/env python3\n" + WRITES_THROUGH.replace("COPY", COPY))
+    tool.chmod(0o755)
+    assert HELD in (_verdict(world, "./tool") or "")
+    _script(world["work"], "run.sh", "#!/bin/sh\n./tool\n")
+    assert HELD in (_verdict(world, "bash run.sh") or "")
+
+
+def test_a_shell_script_the_guard_cannot_read_waits(world):
+    os.mkfifo(world["work"] / "pipe.sh")
+    assert HELD in (_verdict(world, "bash pipe.sh") or "")
+    _script(world["work"], "large.sh", "echo a line of an ordinary script\n" * 12000)  # past the 256 KB a script is read to
+    assert HELD in (_verdict(world, "bash large.sh") or "")
+
+
+ORDINARY_SCRIPTS = {  # build, test and setup scripts that never name synthesis's code
+    "build": "#!/usr/bin/env bash\nset -euo pipefail\ncd \"$(dirname \"$0\")\"\nnpm ci\nnpm run build\nmkdir -p dist && cp -R public/. dist/\necho built\n",
+    "test": "#!/bin/sh\npython3 -m pytest -q tests/\npython3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[\"name\"])' package.json\n",
+    "setup": "#!/bin/bash\npython3 -m venv .venv\n. .venv/bin/activate\npip install -r requirements.txt\nexport PATH=\"$HOME/.local/bin:$PATH\"\n",
+    "release": "#!/bin/bash\nset -e\ncd ~/workspaces/synthesis-skills && git status --short && python3 -m pytest -q tests/test_yamlish.py\n"
+               "VERSION=$(git describe --tags)\necho \"synthesis skills $VERSION\"\n",
+    "a menu": "#!/bin/bash\nusage() { echo \"usage: $0 build|test\"; }\ncase \"$1\" in\n  build) make all ;;\n  test) make test ;;\n"
+              "  *) usage; exit 1 ;;\nesac\ncat <<EOF\nfinished $1\nEOF\n",
+    "an environment": "export NODE_ENV=production\nalias ll='ls -la'\neval \"$(/opt/homebrew/bin/brew shellenv)\"\n[ -f ~/.secrets ] && . ~/.secrets\n",
+}
+
+
+# Read as the command lines they hold, these wait as the same lines typed on the command do: the rule for a change of
+# folder the guard cannot follow (22.8, round 4 of 5.23.1, Q1) holds the sourced build and release scripts, which change
+# folder, setup's lines and an environment's ~/.secrets, which this home lacks; and on a Mac with Homebrew, an
+# environment's `brew shellenv` runs the brew script, which gives HOME a value the guard does not read and then uses it
+# (22.15, R2-2).
+HELD_AS_ON_THE_LINE = {("build", "source"), ("release", "source"), ("setup", "bash"), ("setup", "its path"), ("setup", "source"),
+                       ("an environment", "bash"), ("an environment", "its path"), ("an environment", "source")}
+
+
+@pytest.mark.parametrize("how", ["bash", "its path", "source"])
+@pytest.mark.parametrize("name", sorted(ORDINARY_SCRIPTS))
+def test_an_ordinary_shell_script_passes_however_it_is_run(world, name, how):
+    run = _script(world["work"], "run.sh", ORDINARY_SCRIPTS[name])
+    run.chmod(0o755)
+    _script(world["work"] / ".venv" / "bin", "activate", "export VIRTUAL_ENV=\"$PWD/.venv\"\nexport PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n")
+    verdict = _verdict(world, RUNS_SCRIPT[how])
+    assert (HELD in (verdict or "")) if (name, how) in HELD_AS_ON_THE_LINE else verdict is None, (name, how, verdict)
+    assert _verdict(world, "bash -n run.sh") is None  # read for its syntax, it runs nothing
+
+
+# --- runners whose program the guard did not read (review round 1 of 22.19, finding 1, folded into 22.21): pytest on a
+# test file, `ipython -c`, and `uv run`, `poetry run`, `pipx run` and their like. A test pytest runs is read as a script
+# file, unless every test runs under a conftest whose code puts the synthesis home at a temporary path for every test --
+
+WRITER_TEST = "from synthesis import approvals\n\n\ndef test_it():\n    approvals.void('send', {})\n"
+ISOLATING = ("import pytest\n\n\n@pytest.fixture(autouse=True)\ndef own_home(tmp_path, monkeypatch):\n"
+             "    home = tmp_path / 'synthesis-home'\n    monkeypatch.setenv('SYNTHESIS_HOME', str(home))\n")
+RUNNERS_HELD = {
+    "pytest by -m": "python3 -m pytest test_mine.py", "pytest": "pytest test_mine.py", "pytest a test by its id": "pytest -q -x test_mine.py::test_it",
+    "pytest on its folder": "pytest", "pytest on a folder named": "python3 -m pytest -q .", "uv run pytest": "uv run pytest test_mine.py",
+    "poetry run python -m pytest": "poetry run python -m pytest test_mine.py",
+    "ipython -c": f"ipython -c 'import sys; sys.path.insert(0, \"{ROOT}\"); from synthesis import approvals; approvals.void(\"send\", {{}})'",
+    "ipython on a script": "ipython3 tool.py", "uv run python -c": f"uv run --with requests python -c 'import sys; sys.path.insert(0, \"{ROOT}\"); "
+                                                                       "from synthesis import approvals; approvals.void(\"send\", {})'",
+    "uv run a script": "uv run tool.py", "poetry run python": "poetry run python tool.py", "pipx run": "pipx run --spec ipython ipython tool.py",
+    "uvx": "uvx --from ipython ipython tool.py", "pdm run": "pdm run python tool.py",
+}
+
+
+@pytest.mark.parametrize("name", sorted(RUNNERS_HELD))
+def test_a_runner_s_program_that_writes_through_synthesis_waits(world, name):
+    _script(world["work"], "test_mine.py", WRITER_TEST)
+    _script(world["work"], "tool.py", WRITES_THROUGH.replace("COPY", COPY))
+    assert HELD in (_verdict(world, RUNNERS_HELD[name]) or ""), name
+
+
+def test_a_conftest_that_writes_through_synthesis_waits_for_the_test_beside_it(world):
+    _script(world["work"], "conftest.py", WRITES_THROUGH.replace("COPY", COPY))
+    _script(world["work"], "test_plain.py", "def test_sum():\n    assert sum([1, 2]) == 3\n")
+    assert HELD in (_verdict(world, "python3 -m pytest test_plain.py") or "")
+
+
+def test_tests_under_a_conftest_that_puts_the_home_at_a_temporary_path_run_with_no_code(world):
+    """What isolates the home is read in the conftest's code, not taken from where it sits: the same tests copied
+    beside a conftest that does not isolate it, or run with conftests turned off, wait."""
+    copied = world["work"] / "tests"
+    _script(copied, "test_sends.py", (ROOT / "tests" / "test_sends.py").read_text(encoding="utf-8"))  # it leaves the home to its conftest
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_sends.py") or "")  # a folder named tests isolates nothing
+    _script(copied, "conftest.py", ISOLATING.replace("autouse=True", "autouse=False"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_sends.py") or "")
+    _script(copied, "conftest.py", ISOLATING.replace("str(home)", "'/tmp/a-fixed-home'"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q tests/test_sends.py") or "")
+    _script(copied, "conftest.py", ISOLATING)
+    assert _verdict(world, "python3 -m pytest -q tests/test_sends.py") is None
+    assert HELD in (_verdict(world, "python3 -m pytest -q --noconftest tests/test_sends.py") or "")
+    _script(world["work"], "test_mine.py", WRITER_TEST)
+    assert HELD in (_verdict(world, "pytest tests test_mine.py") or "")  # one file outside the isolating conftest
+
+
+@pytest.mark.parametrize("line", ["python3 -m pytest -q tests/test_approval_provenance.py", "pytest -q -x tests/test_unproven_programs.py -k transcript",
+                                  "python3 -m pytest -q tests/ skills/", "uv run pytest skills/synthesis-local-messaging/tests/test_imessage_send.py",
+                                  "pytest"])
+def test_synthesis_s_own_suite_runs_from_its_checkout_with_no_code(world, line):
+    assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(ROOT), session=world["session"]) is None, line
+
+
+@pytest.mark.parametrize("line", ["ipython -c 'print(1 + 1)'", "uv run python -c 'import json; print(json.dumps([1]))'",
+                                  "poetry run pytest -q", "uv run --with httpx python tool_plain.py", "pipx run cowsay hello",
+                                  "uvx ruff check .", "pdm run pytest tests"])
+def test_a_runner_s_ordinary_program_passes(world, line):
+    _script(world["work"], "tool_plain.py", "import json\nprint(json.dumps({'ok': True}))\n")
+    _script(world["work"] / "tests", "test_plain.py", "def test_sum():\n    assert sum([1, 2]) == 3\n")
+    _script(world["work"], "test_more.py", "import json\n\n\ndef test_json():\n    assert json.loads('[1]') == [1]\n")
+    assert _verdict(world, line) is None, line
+
+
+# --- review round 1 of 22.21: what a test module runs as pytest collects it is never isolated (finding 1, a and b); a
+# test file isolates itself only through a fixture that is autouse or that every test requests (finding 1, c); the CLI's
+# launcher is trusted only beside the synthesis home's own runtime (finding 2) ------------------------------------------
+
+AT_IMPORT = {
+    "a writer at the module's top level": "from synthesis import approvals\napprovals.void('send', {})\n\n\ndef test_it():\n    pass\n",
+    "a state path taken at load": ("from synthesis import paths\nSTATE = paths.state()\n\n\ndef test_it():\n"
+                                   "    paths.write_json(STATE / 'approvals' / 'x.json', {})\n"),
+    "a writer in a class body": "from synthesis import approvals\n\n\nclass TestIt:\n    approvals.void('send', {})\n\n    def test_it(self):\n        pass\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(AT_IMPORT))
+def test_what_a_test_module_runs_as_pytest_collects_it_is_never_isolated(world, name):
+    _script(world["work"] / "suite", "conftest.py", ISOLATING)  # it puts the home at a temporary path, but only once a test starts
+    _script(world["work"] / "suite", "test_mine.py", AT_IMPORT[name])
+    assert HELD in (_verdict(world, "python3 -m pytest -q suite/test_mine.py") or ""), name
+
+
+OWN_FIXTURE = ("import pytest\nfrom synthesis import approvals\n\n\n@pytest.fixture\ndef own_home(tmp_path, monkeypatch):\n"
+               "    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path / 'home'))\n\n\n")
+OWN_ISOLATION = {  # a test file with no conftest above it, and whether it waits
+    "one test sets the home and another does not": ("from synthesis import approvals\n\n\ndef test_isolated(monkeypatch, tmp_path):\n"
+                                                    "    monkeypatch.setenv('SYNTHESIS_HOME', str(tmp_path))\n\n\n"
+                                                    "def test_other():\n    approvals.void('send', {})\n", True),
+    "a fixture some tests request": (OWN_FIXTURE + "def test_isolated(own_home):\n    approvals.void('send', {})\n\n\n"
+                                     "def test_other():\n    approvals.void('send', {})\n", True),
+    "a fixture every test requests": (OWN_FIXTURE + "def test_one(own_home):\n    approvals.void('send', {})\n\n\n"
+                                      "class TestMore:\n    def test_two(self, tmp_path, own_home):\n        approvals.void('send', {})\n", False),
+    "an autouse fixture": (OWN_FIXTURE.replace("@pytest.fixture\n", "@pytest.fixture(autouse=True)\n")
+                           + "def test_one():\n    approvals.void('send', {})\n", False),
+}
+
+
+@pytest.mark.parametrize("name", sorted(OWN_ISOLATION))
+def test_a_test_file_isolates_itself_only_through_an_autouse_fixture_or_one_every_test_requests(world, name):
+    body, held = OWN_ISOLATION[name]
+    _script(world["work"], "test_mine.py", body)
+    assert (HELD in (_verdict(world, "python3 -m pytest -q test_mine.py") or "")) == held, name
+
+
+def test_the_cli_launcher_is_trusted_only_beside_the_synthesis_home_s_own_runtime(world):
+    """The launcher install writes names the runtime it runs and the pinned interpreter (22.8): the home's own, reached by
+    a link, runs with no code; a copy of it elsewhere names that runtime, a protected folder, and waits as any program
+    the guard cannot prove only reads does; a launcher naming another runtime is read as what it runs."""
+    from synthesis import install
+    home, python = paths.home(), os.path.realpath(sys.executable)
+    _script(home / "bin", "synthesis", install.launcher(home, python, "synthesis")).chmod(0o755)
+    (home / "current" / "synthesis").mkdir(parents=True, exist_ok=True)
+    (world["work"] / "bin").mkdir()
+    (world["work"] / "bin" / "synthesis").symlink_to(home / "bin" / "synthesis")  # as ~/.local/bin/synthesis leads to it
+    assert _verdict(world, "./bin/synthesis who") is None  # handed to bash, its path in a protected folder waits, as before
+    _script(world["work"] / "y", "synthesis", (home / "bin" / "synthesis").read_text(encoding="utf-8"))
+    assert HELD in (_verdict(world, f"bash {world['work'] / 'y' / 'synthesis'} who") or "")  # a copy: it names the runtime
+    copy = world["work"] / "x"
+    _script(copy / "bin", "synthesis", install.launcher(copy, python, "synthesis"))  # it runs copy/current
+    _script(copy / "current" / "synthesis", "__init__.py", "")
+    _script(copy / "current" / "synthesis", "cli.py", "def main():\n    return 0\n")  # a runtime the agent wrote
+    for line in (f"bash {copy / 'bin' / 'synthesis'} sends status", f"sh {copy / 'bin' / 'synthesis'}"):
+        assert HELD in (_verdict(world, line) or ""), line
+
+
+# --- review round 2 of 22.21: only test functions, and the function-scoped fixtures they use, run under the isolating
+# fixture; what runs at load is read with its aliases, the file's own functions it calls, and getattr with a name written
+# out; xunit setup and teardown, fixtures scoped wider than a function, and pytest's hooks never count as isolated -----
+
+OPENS = "(2.0, ['all'], '', 9)"
+NEVER_ISOLATED = {
+    "an alias imported at the top": f"from synthesis.sends import open_window as ow\now{OPENS}\n\n\ndef test_it():\n    pass\n",
+    "a module alias": f"import synthesis.sends as s\ns.open_window{OPENS}\n\n\ndef test_it():\n    pass\n",
+    "getattr with the name written out": f"from synthesis import sends\ngetattr(sends, 'open_window'){OPENS}\n\n\ndef test_it():\n    pass\n",
+    "a helper of its own called at load": f"from synthesis import sends\n\n\ndef _now():\n    sends.open_window{OPENS}\n\n\n_now()\n\n\ndef test_it():\n    pass\n",
+    "setup_module": f"from synthesis import sends\n\n\ndef setup_module(module):\n    sends.open_window{OPENS}\n\n\ndef test_it():\n    pass\n",
+    "setup_class": (f"from synthesis import sends\n\n\nclass TestIt:\n    @classmethod\n    def setup_class(cls):\n        sends.open_window{OPENS}\n\n"
+                    "    def test_it(self):\n        pass\n"),
+    "a module-scoped autouse fixture": (f"import pytest\nfrom synthesis import sends\n\n\n@pytest.fixture(scope='module', autouse=True)\ndef opened():\n"
+                                        f"    sends.open_window{OPENS}\n\n\ndef test_it():\n    pass\n"),
+    "pytest's hook in the test file": f"from synthesis import sends\n\n\ndef pytest_generate_tests(metafunc):\n    sends.open_window{OPENS}\n\n\ndef test_it():\n    pass\n",
+}
+HOOKED = {
+    "pytest_configure in the conftest": f"\nfrom synthesis import sends\n\n\ndef pytest_configure(config):\n    sends.open_window{OPENS}\n",
+    "pytest_sessionstart in the conftest": f"\nfrom synthesis import sends\n\n\ndef pytest_sessionstart(session):\n    sends.open_window{OPENS}\n",
+}
+
+
+@pytest.mark.parametrize("name", sorted(NEVER_ISOLATED) + sorted(HOOKED))
+def test_code_that_runs_outside_the_tests_is_never_isolated(world, name):
+    suite = world["work"] / "suite"
+    _script(suite, "conftest.py", ISOLATING + HOOKED.get(name, ""))
+    _script(suite, "test_mine.py", NEVER_ISOLATED.get(name, "def test_it():\n    pass\n"))
+    assert HELD in (_verdict(world, "python3 -m pytest -q suite/test_mine.py") or ""), name
+
+
+def test_a_plugin_of_its_own_named_with_p_is_read_as_code_outside_the_tests(world):
+    _script(world["work"], "myplugin.py", f"from synthesis import sends\n\n\ndef pytest_configure(config):\n    sends.open_window{OPENS}\n")
+    _script(world["work"] / "suite", "conftest.py", ISOLATING)
+    _script(world["work"] / "suite", "test_mine.py", "def test_it():\n    pass\n")
+    assert HELD in (_verdict(world, "python3 -m pytest -q -p myplugin suite/test_mine.py") or "")
+
+
+STILL_ISOLATED = {
+    "a writer inside a test": f"from synthesis import sends\n\n\ndef test_it():\n    sends.open_window{OPENS}\n",
+    "a function-scoped fixture a test uses": (f"import pytest\nfrom synthesis import sends\n\n\n@pytest.fixture\ndef opened():\n"
+                                              f"    sends.open_window{OPENS}\n\n\ndef test_it(opened):\n    pass\n"),
+    "a helper of its own called inside a test": f"from synthesis import sends\n\n\ndef _now():\n    sends.open_window{OPENS}\n\n\ndef test_it():\n    _now()\n",
+    "a path taken at load and only read": "from synthesis import paths\nHOME = paths.home()\n\n\ndef test_it():\n    assert str(HOME)\n",
+    "unittest's per-test setUp": (f"import unittest\nfrom synthesis import sends\n\n\nclass TestIt(unittest.TestCase):\n    def setUp(self):\n"
+                                  f"        sends.open_window{OPENS}\n\n    def test_it(self):\n        pass\n"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(STILL_ISOLATED))
+def test_code_inside_the_tests_stays_isolated(world, name):
+    _script(world["work"] / "suite", "conftest.py", ISOLATING)
+    _script(world["work"] / "suite", "test_mine.py", STILL_ISOLATED[name])
+    assert _verdict(world, "python3 -m pytest -q suite/test_mine.py") is None, name
+
+
+# --- review round 3 of 22.21: a shell script's line of Python that reaches synthesis waits, the script bound to the code,
+# where the same line typed on the command is refused; and a program that only reads through `getattr` with a name
+# written out, or through a module path that leads to synthesis as the guard runs it, is let through -----------------
+
+PYTHON_LINES = ("a program that opens a send window", "a program that loads synthesis by importlib", "a program on its input that builds a name")
+
+
+@pytest.mark.parametrize("name", PYTHON_LINES)
+def test_the_same_line_of_python_typed_on_the_command_is_refused(world, name):
+    _shell_world(world, "")
+    assert (_verdict(world, SCRIPT_WRITES[name][0].rstrip("\n")) or "").startswith("Refused"), name
+
+
+def test_a_script_s_python_line_waits_bound_to_the_script_and_another_refusal_in_it_stands(world):
+    line = SCRIPT_WRITES["a program that loads synthesis by importlib"][0]
+    _shell_world(world, line)
+    reason = _verdict(world, "bash run.sh") or ""
+    assert HELD in reason
+    world["approve"](reason)
+    assert _verdict(world, "bash run.sh") is None  # the identical command, on the principal's code
+    with (world["work"] / "run.sh").open("a", encoding="utf-8") as script:
+        script.write("echo rewritten\n")
+    assert HELD in (_verdict(world, "bash run.sh") or "")  # a rewritten script is a new command
+    for lines in (line + SCRIPT_WRITES["the hook run by hand"][0], SCRIPT_WRITES["the hook run by hand"][0] + line):
+        _script(world["work"], "run.sh", "#!/bin/sh\n" + lines)
+        assert (_verdict(world, "bash run.sh") or "").startswith("Refused"), "the hook's refusal stands beside a waiting line"
+
+
+READS_ANOTHER_WAY = {
+    "getattr with the name written out": "from synthesis import approvals\nprint(getattr(approvals, 'how')('1abc23'))\n",
+    "a submodule under another name": "import synthesis.paths as p\nprint(p.home())\n",
+}
+WRITES_ANOTHER_WAY = {
+    "getattr with a writer's name written out": "from synthesis import approvals\ngetattr(approvals, 'void')('send', {})\n",
+    "a writer through a submodule under another name": "import synthesis.approvals as a\na.void('send', {})\n",
+}
+
+
+def _another_way(world, body: str, how: str, path: Path = ROOT) -> str:
+    script = _script(world["work"] / "reads", "tool.py", body)
+    line = f"PYTHONPATH={path} python3 {script}" if how == "script file" else f"PYTHONPATH={path} python3 -c {shlex.quote(body)}"
+    return _verdict(world, line) or ""
+
+
+@pytest.mark.parametrize("how", ["script file", "line program"])
+@pytest.mark.parametrize("name", sorted(READS_ANOTHER_WAY) + sorted(WRITES_ANOTHER_WAY))
+def test_a_program_reaching_synthesis_another_way_is_read_for_what_it_does(world, name, how):
+    body = READS_ANOTHER_WAY.get(name) or WRITES_ANOTHER_WAY[name]
+    reason = _another_way(world, body, how)
+    assert (reason == "") == (name in READS_ANOTHER_WAY), (name, how, reason[:80])
+
+
+def test_a_module_path_that_leads_to_another_synthesis_still_waits(world):
+    copy = world["work"] / "copy"
+    (copy / "synthesis").mkdir(parents=True)
+    for source in (ROOT / "synthesis").glob("*.py"):
+        (copy / "synthesis" / source.name).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    with (copy / "synthesis" / "paths.py").open("a", encoding="utf-8") as stood_in:
+        stood_in.write("\n# a copy unlike the guard's own\n")
+    for how in ("script file", "line program"):
+        assert HELD in _another_way(world, READS_ANOTHER_WAY["a submodule under another name"], how, copy), how
+
+
+# Where Python looks first for a program on the line, a module the line itself puts there runs code the reader never saw:
+# a module-path folder not there when judged, or one something on the line writes into or may fill unseen, and a
+# stand-in the line writes beside the program (review round 3 of 22.21: the module-path rule read only what was there).
+FILLED_FIRST = {
+    "a module path not there yet": "PYTHONPATH=nowhere {py}",
+    "a module path the line makes and fills": "mkdir -p made && cp mine.py made/json.py && PYTHONPATH=made {py}",
+    "a module path the line fills by a copy": "cp mine.py empty/json.py && PYTHONPATH=empty {py}",
+    "a module path the line fills by a redirect": "cat mine.py > empty/json.py; PYTHONPATH=empty {py}",
+    "a module path beside another program that may fill it": "make -s && PYTHONPATH=empty {py}",
+    "a stand-in the line copies beside the program": "cp mine.py json.py && {py}",
+    "a stand-in the line writes beside it by a redirect": "cat mine.py > json.py; {py}",
+    "a stand-in package the line makes beside it": "mkdir -p json && cp mine.py json/__init__.py && {py}",
+}
+
+
+def _reads_state(world) -> str:
+    (world["work"] / "mine.py").write_text("print('a module of its own')\n", encoding="utf-8")
+    (world["work"] / "empty").mkdir(exist_ok=True)
+    return "python3 -c " + shlex.quote(f"import json; print(open('{paths.state()}/x.json').read())")
+
+
+@pytest.mark.parametrize("name", sorted(FILLED_FIRST))
+def test_a_module_the_line_puts_where_python_looks_first_still_waits(world, name):
+    assert HELD in (_verdict(world, FILLED_FIRST[name].format(py=_reads_state(world))) or ""), name
+
+
+@pytest.mark.parametrize("line", ["{py}", "PYTHONPATH=empty {py}", "cd {work} && ls && PYTHONPATH=empty {py}"])
+def test_a_module_path_nothing_on_the_line_can_fill_passes(world, line):
+    assert _verdict(world, line.format(py=_reads_state(world), work=world["work"])) is None, line
+
+
+def test_a_module_path_is_judged_against_python_s_own_installation_not_this_process_s_path(world, monkeypatch):
+    """What a module-path folder hides is what the program's own Python would find: built in, in its standard library or
+    in site-packages, not in folders a test runner or a launcher put on this process's path (the suite, run whole, found
+    a checkout's own top-level folders among them). A folder with no `__init__.py` hides no module or package."""
+    runner = world["work"] / "runner-path"
+    for name in ("docs", "hooks", "skills", "tests", "tools"):
+        (runner / name).mkdir(parents=True)
+        (runner / name / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(runner))
+    body = READS_ANOTHER_WAY["a submodule under another name"]
+    for how in ("script file", "line program"):
+        assert _another_way(world, body, how) == "", how
+    (world["work"] / "hides" / "re").mkdir(parents=True)
+    (world["work"] / "hides" / "re" / "__init__.py").write_text("", encoding="utf-8")  # the standard library's re, hidden
+    (world["work"] / "joins" / "re").mkdir(parents=True)  # no __init__.py: it hides nothing
+    assert HELD in _another_way(world, body, "line program", world["work"] / "hides")
+    assert _another_way(world, body, "line program", world["work"] / "joins") == ""

@@ -1811,7 +1811,8 @@ def test_a_ticket_is_taken_only_by_the_process_whose_command_filed_it():
     assert guards.check("Bash", {"command": f"false && python3 -s {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
     runpy = (f"python3 -c \"import runpy, sys; sys.argv = ['m'] + '{' '.join(TO_A)}'.split(); runpy.run_path('{SENDER}', "
              "run_name='__main__')\"")
-    assert guards.check("Bash", {"command": runpy}, CONFIG, cwd=str(FOLDER), session=OTHER) is None  # no sender seen: no ticket
+    said = guards.check("Bash", {"command": runpy}, CONFIG, cwd=str(FOLDER), session=OTHER)  # no sender seen: no ticket
+    assert said and "imports synthesis's own code" in said, said  # 22.21: runpy runs a file that reaches synthesis
     PROCESS["line"] = runpy.replace('\\"', '"')  # the run the guard never saw: its own command line is runpy's
     assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))
     assert not today()

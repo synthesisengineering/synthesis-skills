@@ -171,21 +171,39 @@ def test_c7a_a_fifo_for_the_checkouts_manifest_does_not_stop_the_guard(tmp_path,
 
 
 # --- C1, on the open list: names built at run time aimed at install's bound names -------------------------------------
+# Since 22.21 the guard reads what a program hands a loader, so a name its literals spell (`'synth' + 'esis.install'`) is
+# refused on the line; one built from a piece held in a name still passes, and stays on the open list.
 
-@pytest.mark.xfail(strict=True, reason="C1, open (crafted): a program in the installer's own process that replaces "
-                                       "install's bound names by names built at run time passes the guard")
-@pytest.mark.parametrize("name,value", [("_appr' + 'ove", "lambda *a, **k: None"), ("_rele' + 'ased", "lambda *a, **k: True")],
-                         ids=["_approve replaced", "_released replaced"])
-def test_c1_a_program_replacing_a_bound_name_by_a_built_name_waits_or_installs_nothing(world, name, value):
+C1_LOADS = {"spelled by its literals": "i = m.import_module('synth' + 'esis.install')",
+            "built from a piece held in a name": "p = 'synth'; i = m.import_module(p + 'esis.install')"}
+C1_NAMES = pytest.mark.parametrize("name,value", [("_appr' + 'ove", "lambda *a, **k: None"), ("_rele' + 'ased", "lambda *a, **k: True")],
+                                   ids=["_approve replaced", "_released replaced"])
+
+
+def _c1(world, load: str, name: str, value: str) -> tuple:
+    """(the guard's verdict on the line, whether the runtime is the agent's once the line ran where the guard passed it)."""
     evil = world["tmp"] / "my-plugin"
     shutil.copytree(os.path.realpath(world["v5"] / "current"), evil, ignore=shutil.ignore_patterns("__pycache__", "HASH", "SOURCE"))
     (evil / "synthesis" / "guards.py").write_text(STUB)
-    program = ("import importlib as m, os, sys; sys.path.insert(0, os.environ['T']); i = m.import_module('synth' + 'esis.install'); "
+    program = (f"import importlib as m, os, sys; sys.path.insert(0, os.environ['T']); {load}; "
                f"setattr(i, '{name}', {value}); getattr(i, 'inst' + 'all')(os.environ['F'])")
     line = f"T={ROOT} F={evil} python3 -c \"{program}\""
     said, = world["judge"](line)
     if said is None:
         subprocess.run(["/bin/sh", "-c", line], capture_output=True, text=True, timeout=300,
                        env={**os.environ, "PATH": f"{os.path.dirname(sys.executable)}:/usr/bin:/bin"})
-    replaced = (Path(os.path.realpath(world["v5"] / "current")) / "synthesis" / "guards.py").read_text() == STUB
+    return said, (Path(os.path.realpath(world["v5"] / "current")) / "synthesis" / "guards.py").read_text() == STUB
+
+
+@C1_NAMES
+def test_c1_a_program_that_loads_the_installer_by_a_name_its_literals_spell_is_refused(world, name, value):
+    said, replaced = _c1(world, C1_LOADS["spelled by its literals"], name, value)
+    assert said is not None and not replaced, said
+
+
+@pytest.mark.xfail(strict=True, reason="C1, open (crafted): a program in the installer's own process that replaces "
+                                       "install's bound names by names built at run time passes the guard")
+@C1_NAMES
+def test_c1_a_program_replacing_a_bound_name_by_a_built_name_waits_or_installs_nothing(world, name, value):
+    said, replaced = _c1(world, C1_LOADS["built from a piece held in a name"], name, value)
     assert not (said is None and replaced), "passed with no code, and the runtime is now the agent's"

@@ -48,7 +48,7 @@ def world(tmp_path, monkeypatch):
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     install.install(ROOT)  # a first install: the home holds nothing yet
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook then records it
+    approvals.remember("S-principal", str(record))  # as the prompt hook then records it, with each harness's folders (22.19)
     work = tmp_path / "work"
     work.mkdir()
     folder = tmp_path / "my-plugin"  # an agent's copy of the runtime with its own guard, at the running version number

@@ -45,7 +45,7 @@ def world(tmp_path, monkeypatch):
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     install.install(ROOT)  # a first install: the home holds nothing yet
-    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(record)})  # as the prompt hook then records it
+    approvals.remember(SID, str(record))  # as the prompt hook then records it, with each harness's folders (22.19)
     evil = tmp_path / "my-plugin"
     shutil.copytree(os.path.realpath(paths.home() / "current"), evil, ignore=shutil.ignore_patterns("__pycache__", "HASH", "SOURCE"))
     (evil / "synthesis" / "guards.py").write_text(STUB, encoding="utf-8")

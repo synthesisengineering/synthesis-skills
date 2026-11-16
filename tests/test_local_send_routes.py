@@ -429,8 +429,18 @@ def test_an_ordinary_repositorys_reads_still_pass(tmp_path, config):
         assert shell(command, cwd=str(tmp_path)) == "", (config, command)
 
 
+def opaque(tmp_path) -> Path:
+    """A program the guard cannot read whose text names the synthesis state folder, so it waits for the code. The writer
+    above is refused outright since its lines are read as a shell script's (22.21), and a refusal takes no code."""
+    from synthesis import paths
+    script = tmp_path / "fsmonitor-opaque.rb"
+    script.write_text(f"#!/usr/bin/env ruby\nFile.write('{paths.state()}/marker', 'ran')\nexit 1\n", encoding="utf-8")
+    script.chmod(0o755)
+    return script
+
+
 def test_the_code_releases_that_git_command_once(tmp_path, principal):
-    r = repo(tmp_path, core__fsmonitor=str(writer(tmp_path)))
+    r = repo(tmp_path, core__fsmonitor=str(opaque(tmp_path)))
     command = f"git -C {r} status --porcelain"
     reason = shell(command, cwd=str(tmp_path))
     assert held(reason) and "core.fsmonitor" in reason

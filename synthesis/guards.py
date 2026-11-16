@@ -1482,7 +1482,11 @@ WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "
             "nohup": set(), "time": set(), "nice": {"-n", "--adjustment"},
             "timeout": {"-s", "--signal", "-k", "--kill-after"}, "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "--chdir", "-U"},
             "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"}, "npx": {"-p", "--package"},
-            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}}
+            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}, "uvx": {"--from", "--with", "--python", "-p"}}
+RUNNERS = {"uv": {"--with", "--python", "-p", "--project", "--directory", "--package", "--group", "--extra", "--env-file", "--index"},
+           "poetry": {"-C", "--directory", "-P", "--project"}, "pipx": {"--spec", "--python", "--pip-args", "--index-url"},
+           "pdm": {"-p", "--project"}, "hatch": set(), "rye": set(), "pipenv": set(), "conda": {"-n", "--name", "-p", "--prefix", "--cwd"},
+           "mamba": {"-n", "--name", "-p", "--prefix"}}  # `<tool> run`, with each one's options that take a value
 
 
 def _close(s: str, i: int, opener: str) -> int:
@@ -1751,6 +1755,15 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
         if head == "launchctl" and words[1:2] in (["asuser"], ["bsexec"]):  # the command it runs as a user or in a session
             words = words[3:]
             continue
+        if head in RUNNERS and words[1:2] == ["run"]:  # `uv run`, `poetry run` and their like: the command they run, a .py file as
+            i = 2  # Python runs it (review round 1 of 22.19, finding 1)
+            while i < len(words) and words[i].startswith("-") and words[i] != "--":
+                i += 2 if words[i] in RUNNERS[head] else 1
+            words = words[i + (words[i:i + 1] == ["--"]):]
+            words = ["python3"] + words if words[:1] and words[0].endswith(".py") else words
+            continue
+        if re.fullmatch(r"ipython[\d.]*", head):  # IPython runs `-c` and a file as Python does
+            return ["python3"] + words[1:], scripts
         if head not in WRAPPERS:
             break
         takes, i = WRAPPERS[head], 1
@@ -2371,12 +2384,11 @@ def _script_file(words: list[str], cwd: str) -> str | None:
         path = words[0]
     if not path:
         return None
-    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 2)  # a regular file, opened without waiting (finding 10)
-    if first is None or (head not in SHELLS and first[0] != b"#!"):
-        return None  # a program, not a script: never read past its first bytes
+    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 8192)  # a regular file, opened without waiting (finding 10)
+    if first is None or (head not in SHELLS and (not SHEBANG.match(first[0]) if first[0][:2] == b"#!" else b"\0" in first[0])):
+        return None  # a program, not a script: a binary, or a file whose first line names another interpreter (a text file
+        # with none is run by the shell as its own script, 22.21)
     text = (_regular(os.path.join(cwd, os.path.expanduser(path)), SCRIPT_LIMIT + 1) or (b"",))[0]
-    if head not in SHELLS and not SHEBANG.match(text):
-        return None
     return TOO_LARGE if len(text) > SCRIPT_LIMIT else text.decode("utf-8", "replace")
 
 
@@ -4872,6 +4884,22 @@ SYNTHESIS_IMPORT = re.compile(  # wherever a statement may start: a line, after 
     r"(?:^|[;:])[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*synthesis\b)", re.M)  # synthesis ...` passed)
 SYNTHESIS_LOADED = re.compile(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
                               r"[ \t]*\([^)\n]*?['\"][^'\"\n]*\bsynthesis(?:[./]|['\"])")  # a name or a file of synthesis's handed to a loader
+# What runs code it is handed by a name or a text, and the modules whose loaders may be imported by another name (review
+# round 4 of 5.23.1's approval fix, finding 1); of them, what runs a file; and how a string or a word says synthesis as
+# code does: the package's name alone or leading a dotted name, an import of it where code starts, a path to its folder
+# or one of its files (a Mac's file system ignores case; Python's imports do not). Finding a module runs none of it
+# (`find_spec`, `spec_from_file_location`): what runs the spec is read for what it was made from. `exec`, `eval` and
+# `compile` are the builtins, never another object's method of that name (`model.eval()`, `re.compile`), and `compile`
+# alone runs nothing, so it counts only for a text that imports synthesis: compiling synthesis's own source reads.
+LOADERS = frozenset({"exec", "eval", "__import__", "import_module", "reload", "exec_module", "load_module", "run_module", "run_path",
+                     "load_source", "load_compiled", "resolve_name", "locate", "runsource", "runcode", "interact", "FunctionType",
+                     "dictConfig", "fileConfig"})
+FILE_RUNNERS = frozenset({"exec", "eval", "exec_module", "load_module", "run_path", "load_source", "load_compiled"})
+LOADER_MODULES = frozenset({"importlib", "runpy", "pkgutil", "imp", "pydoc", "zipimport", "code", "codeop"})
+MAY_LOAD = re.compile(r"\b(?:%s|compile)\b|^[ \t]*(?:import|from)[ \t]+(?:%s)\b" % ("|".join(sorted(LOADERS)), "|".join(sorted(LOADER_MODULES))), re.M)
+IMPORTS_IT = re.compile(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+import\b|[ \t]*$)"
+                        r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
+SAYS_SYNTHESIS = re.compile(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
     ("approvals", "_expire _spend alone answered consume grant_from_prompt put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
@@ -4889,6 +4917,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("sends", "_note batch_refusal batch_spend batch_unspend close_batches close_window log open_batch open_window sender_ticket settle ticket undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
+GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
+                                                                    "paths"))  # the writers approvals rest on; the board's grant nothing
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
@@ -5037,14 +5067,46 @@ def _isolated(words: list) -> bool:
 PYTHON_ENV = re.compile(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
 
 
-def _stand_in(code: str, where: str, module: str = "") -> str:
+def _stand_in(code: str, where: str, module: str = "", written: set | frozenset = frozenset()) -> str:
     """A module a Python program imports (or runs with -m) that a file or package in the folder it starts from could
-    stand in for, since an inline, stdin or module run looks there first; '' for none (the coordinator, 2026-11-14)."""
+    stand in for, since an inline, stdin or module run looks there first, or one the line writes there (`written`, review
+    round 3 of 22.21); '' for none (the coordinator, 2026-11-14)."""
     import sys
     names = {m.split(".")[0] for a, b in re.findall(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w., \t]+))", code, re.M)
              for m in ([a] if a else [part.split()[0] for part in b.split(",") if part.strip()])} | {module.split(".")[0]} - {""}
     return next((m for m in sorted(names - set(sys.builtin_module_names)) if os.path.exists(os.path.join(where, m + ".py"))
-                 or os.path.isdir(os.path.join(where, m))), "")
+                 or os.path.isdir(os.path.join(where, m)) or any(w == _real(os.path.join(where, m + ".py")) or paths.inside(
+                     w, _real(os.path.join(where, m))) for w in written)), "")
+
+
+def _module_path_is_synthesis(line: str, where: str, code: str, written: set | frozenset = frozenset()) -> bool:
+    """Whether the only module-path variable a line sets is PYTHONPATH, and each folder it names shadows nothing Python
+    would import from elsewhere, but for a `synthesis` package byte for byte the one this guard runs: a path that changes
+    nothing the reader proved (review round 3 of 22.21: `PYTHONPATH=<a checkout> python3 -c 'import synthesis.paths as p;
+    print(p.home())'` waited). A folder that holds sitecustomize, a module found elsewhere, or a synthesis unlike the
+    guard's, still waits: any of those may run code the program never names. So does one not there when judged, or one
+    the line writes into (`written`): the line may fill it first. The caller holds a line whose other programs may."""
+    found = [(m[1], m[3].strip("'\"")) for m in ASSIGNED.finditer(line) if PYTHON_ENV.search(" " + m[0])]
+    if not found or any(key != "PYTHONPATH" for key, _ in found):
+        return False
+    here, tops = os.path.dirname(os.path.abspath(__file__)), {name.split(".")[0] for dots, name, _ in _imports(code) if not dots and name}
+    ours = sorted(n for n in os.listdir(here) if n.endswith(".py"))
+    for entry in (os.path.join(where, os.path.expanduser(e)) for _, value in found for e in value.split(":") if e):
+        if not os.path.isdir(entry) or any(paths.inside(w, _real(entry)) for w in written):
+            return False
+        for n in os.listdir(entry):
+            top, path = n[:-3] if n.endswith(".py") else n, os.path.join(entry, n)
+            if not (n.endswith(".py") or os.path.isdir(path)) or not top.isidentifier():
+                continue  # nothing Python imports
+            if top == "synthesis" and os.path.isdir(path):
+                theirs = sorted(f for f in os.listdir(path) if f.endswith(".py"))
+                if theirs != ours or any((_regular(os.path.join(path, f), TEXT_LIMIT) or (None,))[0] != (_regular(os.path.join(here, f), TEXT_LIMIT) or (b"",))[0]
+                                         for f in ours):
+                    return False
+            elif top in tops or top in ("sitecustomize", "usercustomize") or _found_elsewhere(top, _real(entry), True, os.path.isdir(path) and not (
+                    os.path.isfile(os.path.join(path, "__init__.py")))):
+                return False  # a module the program imports, or one it hides from Python's own installation
+    return True
 
 
 # --- the release tool, run from the protected runtime with no code (the principal, 2026-11-15) -----------------------
@@ -5413,20 +5475,32 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
 TEXT_LIMIT, OWN_MODULES = 4 << 20, 64
 
 
-def _found_elsewhere(name: str, first: str) -> bool:
-    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with."""
+def _found_elsewhere(name: str, first: str, installed: bool = False, portion: bool = False) -> bool:
+    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with. With
+    `installed`, only in Python's own installation (its standard library and site-packages), as a program the line runs
+    finds it, not in the folders this process was started from or a test runner adds (review round 3 of 22.21: the suite,
+    run whole, found a checkout's top-level folders there); with `portion`, for a folder with no `__init__.py`, which
+    hides no module and only joins a namespace package, only such a package."""
     import importlib.machinery
+    import site
     import sys
+    import sysconfig
+    homes = [os.path.realpath(p) for p in {sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix}] if installed else []
+    places = [p for p in sys.path if p and (not installed or any(paths.inside(os.path.realpath(p), h) for h in homes))] + ([
+        sysconfig.get_paths().get(k, "") for k in ("stdlib", "platstdlib", "purelib", "platlib")] + [site.getusersitepackages()] if installed else [])
     try:
-        return name in sys.builtin_module_names or importlib.machinery.PathFinder.find_spec(name, [
-            p for p in sys.path if p and os.path.realpath(p) != first]) is not None
+        spec = None if name in sys.builtin_module_names else importlib.machinery.PathFinder.find_spec(name, [
+            p for p in places if p and os.path.realpath(p) != first])
+        return name in sys.builtin_module_names or (spec is not None and (not portion or spec.origin in (None, "namespace")))
     except (ImportError, ValueError, OSError):
         return True  # it cannot be told: a file in `first` named so may stand in for it
 
 
 def _imports(text: str) -> list:
     """(dots, module, names) for each import a program's syntax holds: `import a.b` is (0, "a.b", ()), `from .x import
-    y` is (1, "x", ("y",)); none for a program that cannot be parsed, which its reader judges."""
+    y` is (1, "x", ("y",)), and a module loaded by the name it is written with, `importlib.import_module("a")` or
+    `__import__("a")`, as `import a` (review round 4 of 5.23.1's approval fix); none for a program that cannot be
+    parsed, which its reader judges."""
     import ast
     import warnings
     try:
@@ -5441,6 +5515,9 @@ def _imports(text: str) -> list:
             found += [(0, a.name, ()) for a in n.names]
         elif isinstance(n, ast.ImportFrom):
             found.append((n.level, n.module or "", tuple(a.name for a in n.names)))
+        elif isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in ("import_module", "__import__") and n.args and isinstance(
+                n.args[0], ast.Constant) and isinstance(n.args[0].value, str) and n.args[0].value[:1] not in (".", ""):
+            found.append((0, n.args[0].value, ()))
     return found
 
 
@@ -5637,6 +5714,14 @@ def _synthesis_reach(text: str) -> tuple:
             if up.attr in ("__dict__", "__getattribute__", "__getattr__", "__setattr__", "__call__"):
                 return "follows", unfollowed.format(f"its {up.attr}"), None
             continue
+        name = up.args[1].value if isinstance(up, ast.Call) and getattr(up.func, "id", "") == "getattr" and up.args[:1] == [n] and len(up.args) > 1 and isinstance(
+            up.args[1], ast.Constant) and isinstance(up.args[1].value, str) and len(parts) == 2 and module else ""
+        if name:  # getattr with the name written out is that name (review round 3 of 22.21); one built at run time is not followed
+            if f"{parts[1]}.{name}" in SYNTHESIS_WRITES:
+                return "names", f"names synthesis's `{parts[1]}.{name}`, which writes its state, approvals, windows, board or archive", None
+            if not _synthesis_own(parts[1], name):
+                return "follows", unfollowed.format(f"`{parts[1]}.{name}`, a name its module imports"), None
+            continue
         if isinstance(up, ast.Call) and up.func is not n and getattr(up.func, "id", "") in ("getattr", "setattr", "delattr", "vars") and up.args[:1] == [n]:
             return "follows", unfollowed.format(f"{up.func.id}() on it"), None
         shown = isinstance(up, ast.Call) and up.func is not n and (getattr(up.func, "id", "") in ("print", "repr", "str", "type", "id", "hash", "dir") or (
@@ -5664,6 +5749,217 @@ def _synthesis_reach(text: str) -> tuple:
     except (SyntaxError, ValueError):
         return "places", places, None
     return "places", places, data.decode("utf-8")
+
+
+PYTEST_VALUES = frozenset({"-k", "-m", "-p", "-c", "-o", "-n", "-W", "--rootdir", "--confcutdir", "--basetemp", "--deselect", "--ignore",
+                           "--ignore-glob", "--maxfail", "--tb", "--junitxml", "--import-mode", "--durations", "--timeout"})  # options taking a value
+TEMPORARY = frozenset({"tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory"})
+
+
+def _release_script(path: str) -> bool:
+    """A shell script that is the release's own, trusted as before (22.21): inside the synthesis home's bin, current or
+    releases, which only its installer writes (the CLI's launcher, reached by any link, among them), or a script of the
+    release this guard runs from. The launcher names the runtime it runs and the pinned interpreter (22.8), so one
+    anywhere else is read as what it runs (review round 1 of 22.21, finding 2)."""
+    return _shipped(path) or any(paths.inside(path, _real(str(paths.home() / n))) for n in ("bin", "current", "releases"))
+
+
+def _isolates_home(text: str, autouse: bool = True) -> bool:
+    """Whether a conftest puts the synthesis home at a temporary path for every test: an autouse fixture that sets
+    SYNTHESIS_HOME (or HOME, which it falls back on) from the test's own temporary folder, as synthesis's own conftests
+    do; with `autouse` False, a test file's own such fixture, when it is autouse or every test in the file requests it.
+    Read in the code, not taken from where the file sits (a copy isolates the tests beside it the same way). Nothing that
+    runs as the file loads counts: that runs before any fixture (review round 1 of 22.21, finding 1)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    fixtures = {}  # each fixture that sets the home from a temporary folder: whether it is autouse
+    for f in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        marks = [d for d in f.decorator_list if "fixture" in (getattr(getattr(d, "func", d), "attr", "") or getattr(getattr(d, "func", d), "id", ""))]
+        values = {t.id: n.value for n in ast.walk(f) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
+        for c in (n for n in ast.walk(f) if marks and isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "setenv" and n.args[:1]
+                  and getattr(n.args[0], "value", None) in ("SYNTHESIS_HOME", "HOME")):
+            names = {x.id for a in c.args[1:2] for x in ast.walk(a) if isinstance(x, ast.Name)}
+            if (names | {x.id for name in names if name in values for x in ast.walk(values[name]) if isinstance(x, ast.Name)}) & TEMPORARY:
+                fixtures[f.name] = any(k.arg == "autouse" and getattr(k.value, "value", None) is True for d in marks for k in getattr(d, "keywords", []))
+    tests = [f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name.startswith("test")] + [
+        m for c in tree.body if isinstance(c, ast.ClassDef) and c.name.startswith("Test") for m in c.body if isinstance(m, ast.FunctionDef) and m.name.startswith("test")]
+    return any(fixtures.values()) or (not autouse and bool(fixtures) and bool(tests) and all(
+        any(a.arg in fixtures for a in t.args.args + t.args.kwonlyargs) for t in tests))
+
+
+XUNIT = frozenset({"setup_module", "teardown_module", "setUpModule", "tearDownModule", "setup_class", "teardown_class", "setUpClass",
+                   "tearDownClass", "setup_function", "teardown_function", "setup_method", "teardown_method", "setup", "teardown"})
+
+
+def _writers_named(text: str) -> set:
+    """Each of synthesis's writers a program names, under whatever name it imports synthesis's code by (`import
+    synthesis.sends as s`, a function imported under another name), and through `getattr(module, '<name written out>')`,
+    as the reader of a script spells them (review round 2 of 22.21); a name built at run time is not read."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return set()
+    bound = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            bound.update({a.asname or "synthesis": a.name if a.asname else "synthesis" for a in n.names if a.name.split(".")[0] == "synthesis"})
+        elif isinstance(n, ast.ImportFrom) and not n.level and (n.module or "").split(".")[0] == "synthesis":
+            bound.update({a.asname or a.name: f"{n.module}.{a.name}" for a in n.names})
+
+    def spelt(node) -> str:
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "getattr" and len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+            return f"{spelt(node.args[0])}.{node.args[1].value}" if spelt(node.args[0]) else ""
+        return bound.get(node.id, "") if isinstance(node, ast.Name) else (f"{spelt(node.value)}.{node.attr}" if spelt(node.value) else "") if isinstance(
+            node, ast.Attribute) else ""
+    return {w for n in ast.walk(tree) for w in [".".join(spelt(n).split(".")[1:3])] if w in SYNTHESIS_WRITES}
+
+
+def _outside_tests(text: str) -> bool:
+    """Whether what a test module or a conftest runs outside its tests reaches synthesis's code: a writer named, a path
+    of synthesis's taken (`STATE = paths.state()`, written through later), or synthesis loaded another way. That is its
+    top level and its class bodies, decorators and defaults included, with the file's own functions they call; xunit
+    setup and teardown; pytest's hooks; and fixtures scoped wider than a function. Only a test, and the function-scoped
+    fixtures it uses, run under the fixture that isolates the home (review rounds 1 and 2 of 22.21)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    functions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    bodies, own = {id(f): f.body for f in functions}, {f.name for f in tree.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    fixture = {id(f) for f in functions for d in f.decorator_list if "fixture" in (getattr(getattr(d, "func", d), "attr", "") or getattr(getattr(d, "func", d), "id", ""))}
+    keep = {id(f) for f in functions if (f.name in XUNIT and id(f) not in fixture) or f.name.startswith("pytest_") or any(  # a fixture by its scope
+        k.arg == "scope" and getattr(k.value, "value", "") != "function" for d in f.decorator_list for k in getattr(d, "keywords", []))}
+    while True:  # the file's own functions that code outside its tests calls run there too
+        for f in functions:
+            f.body = bodies[id(f)] if id(f) in keep else [ast.Pass()]
+        called = {c.func.id for c in ast.walk(tree) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in own}
+        more = {id(f) for f in functions if f.name in called and f in tree.body} - keep
+        if not more:
+            break
+        keep |= more
+    top = ast.unparse(tree)
+    return bool(_writers_named(top)) or _synthesis_reach(top)[0] in ("names", "places") or bool(_synthesis_loads([top], [], "/"))
+
+
+def _pytest_reach(words: list, where: str) -> str:
+    """'' unless pytest, as this command runs it, collects a test file or loads a conftest whose code reaches synthesis's
+    (names one of its writers, reaches it in a way its reader cannot follow, or hands a loader synthesis) with no conftest
+    above it that isolates the synthesis home (_isolates_home); else which file and how. Review round 1 of 22.19, finding 1:
+    an agent's test file opened a send window in plain words through pytest. Synthesis's own suite, under its conftests,
+    runs with no code; `--noconftest` and `--confcutdir` leave no conftest trusted."""
+    at = next(i for i, w in enumerate(words) if os.path.basename(w) in ("pytest", "py.test"))
+    args, i = [], at + 1
+    while i < len(words):
+        args, i = (args, i + 1 + (words[i] in PYTEST_VALUES)) if words[i].startswith("-") else (args + [words[i].split("::")[0]], i + 1)
+    for plugin in [os.path.join(where, (w[2:] or "".join(words[k + 1:k + 2])) + ".py") for k, w in enumerate(words) if w.startswith("-p")]:
+        code = _code_of(plugin) if os.path.isfile(plugin) else ""  # a plugin of its own, named with -p: all of it runs outside the tests
+        if code and (_writers_named(code) & GRANTING or _synthesis_loads([code], [], where)):
+            return f"{plugin}, a plugin of its own that reaches synthesis's writers outside every test"
+    files = []
+    for root in [os.path.join(where, os.path.expanduser(a)) for a in args] or [where]:
+        for folder, dirs, names in os.walk(root) if os.path.isdir(root) else [(os.path.dirname(root), [], [os.path.basename(root)])] * os.path.isfile(root):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and not d.endswith(".egg") and d not in (
+                "node_modules", "__pycache__", "venv", "site-packages", "build", "dist", "Library")]  # as pytest's norecursedirs
+            files += [os.path.join(folder, n) for n in names if re.fullmatch(r"test_.*\.py|.*_test\.py", n) or not os.path.isdir(root)]
+            if len(files) > 3000 or time.monotonic() > _CALL["until"]:
+                return "more test files than this guard reads in its time"
+    trusted, conftests, isolating, judged = not any(w == "--noconftest" or w.startswith("--confcutdir") for w in words), {}, {}, set()
+    for file in files:
+        folder = os.path.dirname(_real(file))
+        if folder not in conftests:  # the conftests pytest loads for a test there: its folder's and every one above
+            spot, conftests[folder] = folder, []
+            while True:
+                conftests[folder] += [os.path.join(spot, "conftest.py")] * os.path.isfile(os.path.join(spot, "conftest.py"))
+                if spot == os.path.dirname(spot):
+                    break
+                spot = os.path.dirname(spot)
+        for c in conftests[folder]:
+            isolating[c] = isolating[c] if c in isolating else _isolates_home(_code_of(c))
+        if ((trusted and any(isolating[c] for c in conftests[folder])) or _isolates_home(_code_of(file), False)) and not any(
+                _outside_tests(_code_of(p)) for p in [file] + conftests[folder]):
+            continue  # under a home at a temporary path for every test, with nothing reaching synthesis as the files load
+        if time.monotonic() > _CALL["until"]:
+            return "more test files than this guard reads in its time"
+        for path, text in [(p, _code_of(p)) for p in [file] + conftests[folder] if p not in judged]:
+            judged.add(path)  # a writer named, or synthesis loaded another way; a test that patches a module changes only its process
+            reach = _synthesis_reach(text) if "synthesis" in text else ("", "", None)
+            why = ("names one of synthesis's writers that approvals rest on" if _writers_named(text) & GRANTING
+                   else _synthesis_loads([text], [], where) if "synthesis" in text else "")
+            if why:
+                return f"{path}, which {why}, with no conftest that puts the synthesis home at a temporary path for every test"
+    return ""
+
+
+def _joined_text(node) -> str:
+    """The string a sum of string constants makes (`'/a' + '/b.py'`), or ''."""
+    import ast
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    left, right = (_joined_text(node.left), _joined_text(node.right)) if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add) else ("", "")
+    return left + right if left and right else ""
+
+
+def _synthesis_loads(texts: list, words: list, where: str, depth: int = 0) -> str:
+    """'' unless a program's texts (a script and its own modules, or a program on the line or its input) hand a loader
+    (LOADERS: importlib's, runpy's and the builtins exec, eval and __import__; compile only for a text that imports it)
+    a name or a text that says synthesis as code does, code that loads it, or a file whose code reaches it; else what. A
+    call is read for what it is handed: its arguments, a name the program assigns, what the program's own function is
+    called with for a parameter, and the words the program is handed where an argument reads them (its argv, the
+    environment, its input). Review round 4 of 5.23.1's approval fix, finding 1: a program that loaded synthesis through
+    importlib or a built exec string was read as reaching none of its writers, so it could forge the send ledger's lines,
+    open a send window, or point the transcript a script checks at a record it wrote. So `__import__("pathlib")` beside
+    `open("synthesis/guards.py")` reads, as does a test module loaded to call a helper; a name built from pieces none of
+    which says synthesis is not read (docs/runtime-integration.md)."""
+    import ast
+    import warnings
+    for text in texts:
+        if not MAY_LOAD.search(text):
+            continue
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                tree = ast.parse(text)
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            continue
+        values, aliases, params, calls = {}, set(), {}, {}  # what a name is given, a loader imported by another name, parameters
+        for n in ast.walk(tree):
+            for t in n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, ast.AnnAssign) and n.value else []:
+                values.setdefault(getattr(t, "id", ""), []).append(n.value)
+            aliases |= {a.asname or a.name for a in n.names if a.name in LOADERS} if isinstance(n, ast.ImportFrom) and (
+                n.module or "").split(".")[0] in LOADER_MODULES else set()
+            params.update({a.arg: n.name for a in n.args.args + n.args.kwonlyargs} if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else {})
+            name = (getattr(n.func, "id", "") or getattr(n.func, "attr", "")) if isinstance(n, ast.Call) else ""
+            calls.setdefault(name, []).extend(list(n.args) + [k.value for k in n.keywords] if name else [])
+        for n in ast.walk(tree):
+            name = (getattr(n.func, "id", "") or getattr(n.func, "attr", "")) if isinstance(n, ast.Call) else ""
+            if not (name in LOADERS or name in aliases or name == "compile") or not (isinstance(n.func, ast.Name) or name not in (
+                    "exec", "eval", "compile") or getattr(n.func.value, "id", "") in ("builtins", "__builtins__")):
+                continue  # `model.eval()` and `re.compile` are no loaders
+            handed = list(n.args) + [k.value for k in n.keywords] + [getattr(n.func, "value", None)] * isinstance(n.func, ast.Attribute)
+            seen, said, reads = set(), [], False  # with what a method is called on: `spec.loader.exec_module(m)`
+            while handed:
+                for c in ast.walk(handed.pop()):
+                    said += [c.value.decode("latin-1") if isinstance(c.value, bytes) else c.value] if isinstance(c, ast.Constant) and isinstance(c.value, (str, bytes)) else []
+                    said += [_joined_text(c)] if isinstance(c, ast.BinOp) and _joined_text(c) else []  # a path joined from strings
+                    key = getattr(c, "id", "") if isinstance(c, ast.Name) else ""
+                    handed += (values.get(key, []) + calls.get(params.get(key), [])) if key and key not in seen else []
+                    seen.add(key)
+                    reads = reads or (getattr(c, "id", "") or getattr(c, "attr", "")) in ("argv", "environ", "getenv", "stdin", "input")
+            for value in [s.strip() for s in said + (list(words) if reads else [])]:
+                if (name != "compile" and SAYS_SYNTHESIS.search(value)) or IMPORTS_IT.search(value):
+                    return f"it hands {name} a name or a text that says synthesis, {value[:60]!r}"
+                if depth < 2 and re.search(r"(?i)synthesis", value) and _synthesis_loads([value], [], where, depth + 1):
+                    return f"it hands {name} code that loads synthesis, {value[:60]!r}"
+                file = os.path.join(where, os.path.expanduser(value)) if name in FILE_RUNNERS and depth < 2 and value.endswith(".py") else ""
+                code = _code_of(file) if file and os.path.isfile(file) else ""
+                if code and (_synthesis_reach(code)[0] in ("names", "follows") or _synthesis_loads([code], [], where, depth + 1)):
+                    return f"it runs {value}, whose code reaches synthesis"
+    return ""
 
 
 def _spellings(raw: list, env: dict) -> tuple:
@@ -5765,7 +6061,8 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
     return ""
 
 
-def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
+def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True,
+                     depth: int = 0) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
     only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
     given = _release_tool(command, cwd, session) if hold else {}  # never for a command a program starts: it is judged
@@ -5787,7 +6084,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
     for text in readings:  # each command is judged in every folder it may run in (`_commands`)
-        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
+        reason = _self_grant(command, text, cwd, config, depth) if time.monotonic() <= _CALL["until"] else Unproven(
             "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
         if reason and not isinstance(reason, Unproven):
             return reason
@@ -5811,8 +6108,9 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             "tail, grep or jq, or a Python program whose writes the guard can read.")
 
 
-def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
-    """One reading of a command: the reason it is refused, or None."""
+def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: int = 0) -> str | None:
+    """One reading of a command: the reason it is refused, or None. A shell script it runs, by a shell, by its path or
+    sourced, is read as the command lines it holds, three scripts deep (22.21)."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     raw = _protected_roots(config)
 
@@ -5842,8 +6140,14 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
             env[m[1]] = m[3].strip("'\"")
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
         _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
+    fills = [w for w, _ in found if os.path.basename(w[0]) not in (READERS | WRITERS) - PACKERS - {"git", "synthesis"} and not (
+        os.path.basename(w[0]) == "git" and _git_reads(w))]  # a program that may fill a folder where this guard does not look
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
+        others = any(w is not words for w in fills)  # another such program on the line (review round 3 of 22.21)
+        if "/" in words[0] and not SCRIPT.match(os.path.basename(words[0])) and re.match(rb"#![^\n]*\bpython[\d.]*\b", (_regular(
+                os.path.join(where, os.path.expanduser(words[0])), 256) or (b"",))[0]):
+            words = ["python3"] + words  # a Python script run by its path is read as Python runs it (22.21)
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
@@ -5885,7 +6189,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
-            why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+            said = "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+            why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
         unplain = _plainly(words, where, command + "\n" + text, found, given) if ran and (mine_run or python) else "is not run"  # finding 4
         args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
@@ -5902,18 +6207,26 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         copy = _runtime_copy(ran) if python and ran and not mine_run and not unplain and not heard else ""  # a copy of a script the runtime carries
         then = (f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with "
                 "no code" if copy else f", while the line {unplain}" if mine_run and unplain else "")
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not trusted else []
-        uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
-        if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
-            waits = Unproven(f"runs `{head}` on {ran}, a script {'of' if mine_run else 'outside'} the plugin's release that {uses[1]}" + (
-                f" ({uses[0]})" if uses[0] != ran else "") + then)
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
+        start = _program(words)[1]  # what it is handed to load, and the values the line gives variables (review round 4 of 5.23.1's approval fix)
+        loaded = [m[3].strip("'\"") for m in given] + (argv[1:] if source else words[start + 1 + (words[start:start + 1] == ["-m"]):])
+        modules = files or (_python_files(os.path.join(where, "-"), source, "" if _isolated(words) else _real(where))[0][1:] if python and source else [])
+        reaches = [(f, _synthesis_reach(t)) for f, t in modules] if python and modules and not waits and not trusted else []
+        uses = next(((f, r[1]) for f, r in reaches if r[0] == "names" or (r[0] == "follows" and ran)), None)  # a line's: one that writes
+        unfollowed = _synthesis_loads([t for _, t in modules], loaded, where) if reaches and not uses else ""
+        uses = uses or ((modules[0][0], f"reaches synthesis's own code in a way its reader cannot follow ({unfollowed})") if unfollowed else None)
+        if uses:  # finding 17: by what it, or a module of its own (one a program on the line imports too), does with synthesis's code
+            waits = Unproven((f"runs `{head}` on {ran}, a script {'of' if mine_run else 'outside'} the plugin's release that {uses[1]}" + (
+                                 f" ({uses[0]})" if uses[0] != ran else "") + then)
+                             if ran else f"runs `{head}` with a program whose own module {uses[0]} {uses[1]}")
         kit = _kit_loaded(([("", source)] if source else []) + (files if ran and not _shipped(ran) else []), where,
                           _isolated(words), named) if python else ""
         if kit and not waits:  # 5.24.0: the release tool runs as itself, from the runtime, or waits
             waits = Unproven(f"runs `{head}` on a program that imports the release tool's own modules ({kit}), which claim "
                              "the board, install the runtime and publish; the tool itself, run from the installed runtime, needs no code")
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
+        unfollowed = _synthesis_loads([source], loaded, where) if python and source and reach[0] not in ("names", "follows") else ""
+        reach = ("follows", f"reaches synthesis's own code in a way its reader cannot follow ({unfollowed})", None) if unfollowed else reach
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
@@ -5938,11 +6251,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
         if source and ((hit is None and SYNTHESIS_IMPORT.search(source)) or reach[0] == "follows"):  # synthesis's code reached by a name it builds
-            why = why or ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a "
-                          "call handed on), so it may reach the approval or send-window code")
+            said = ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a call handed "
+                    "on), so it may reach the approval or send-window code")  # a line of a shell script waits, the script bound (22.21)
+            why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         waits = waits or (Unproven(f"runs `{head}`, a program that {reach[1]}") if reach[0] == "names" else None)
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
-            text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
+            text) and (others or not _module_path_is_synthesis(text, where, "\n".join([source] + [t for _, t in files]), written)) else f"a file in {where} could stand in for `{_stand_in(source, where, written=written)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where, written=written) else ""
         shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
             "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare
             else f"imports `{stand}`, for which a file beside it could stand in (where no such file is, or with -I, it needs no code)" if stand
@@ -5966,6 +6280,30 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")
+        # A shell script it runs, by a shell, by its path or sourced, is judged as the command lines it holds, three scripts
+        # deep, the one the line writes as the line's own bodies; one this guard cannot read waits (22.21: `bash run.sh`
+        # let a `python3 -c` inside it import synthesis and name a writer). Pytest's test files are read as script files.
+        runs = head in SHELLS or head in (".", "source") or "/" in words[0]
+        target = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS else next(
+            (w for w in words[1:] if not w.startswith(("-", "+"))), "")))) if runs else ""
+        body = ("\n".join(f for f in feeds if f.strip()) or _script_file(words, where) or "") if runs and target in written else (
+            _script_file(words, where) if runs else None)  # one the line writes: its bodies, else the file as it stands; built at run time, unread
+        if body == TOO_LARGE:
+            pass  # held already, as a script whose deploys cannot be read (5.20.1)
+        elif (body and depth >= 3) or (runs and body is None and os.path.exists(target) and not os.path.isdir(target)
+                                                       and not target.startswith("/dev/") and _regular(target, 1) is None):
+            waits = waits or Unproven(f"runs a shell script this guard cannot read ({target}), which may reach synthesis's own code")
+        elif body and not _release_script(target):
+            _code_of(target) if target not in written else ""  # the principal's code binds the script as it stood
+            text_ = body if head in (".", "source") else re.sub(r"\$\{?0\}?(?!\w)", lambda m: target, body)  # $0: the script's own path
+            inner = check_self_grant(text_, where, config, None, False, depth + 1)
+            said = re.sub(r"^Refused: this command |\. Approvals come[\s\S]*$", "", inner) if inner else ""
+            why = why or (f"runs {target}, a shell script that {said}" if inner and not isinstance(inner, Unproven) else "")
+            waits = waits or (Unproven(f"runs {target}, a shell script that {inner}") if isinstance(inner, Unproven) else None)
+            if not inner and re.search(r"\b(?:from|import)\s+synthesis\b|\bsynthesis\.\w", text_) and not _parse(text_, where)[1]:
+                waits = waits or Unproven(f"runs {target}, a shell script this guard cannot read with certainty that names synthesis's code")
+        tested = _pytest_reach(words, where) if head in ("pytest", "py.test") or (python and words[_program(words)[1]:][:2] == ["-m", "pytest"]) else ""
+        waits = waits or (Unproven(f"runs pytest, which loads {tested}") if tested else None)
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
     spelt = "" if why or waits or readable else _spells([text], [], cwd, env, raw, [])  # a line it cannot read with certainty (finding 1)
@@ -7681,7 +8019,7 @@ def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: 
 # path. The principal's sandbox rulings of 2026-11-15: a command that writes what the guard trusts waits for his code of
 # that exact command. A program that calls the installer itself waits in check_self_grant (_synthesis_reach).
 
-RUNNERS = ("uv", "uvx", "poetry", "pdm", "hatch", "pipenv", "pipx", "conda", "mamba")  # run the program they are handed
+RUNNER_PROGRAMS = ("uv", "uvx", "poetry", "pdm", "hatch", "pipenv", "pipx", "conda", "mamba")  # run the program they are handed
 CLI_MODULES = {"synthesis": "cli", "synthesis.cli": "cli", "synthesis.__main__": "cli", "synthesis.install": "install"}
 
 
@@ -7698,7 +8036,7 @@ def _cli_words(words: list, where: str) -> tuple | None:
     install.py run by path, its script read by a shell, behind a runner. install.py hands `install` unless it is told
     `uninstall` (this release's adds --first; a copy of another's may not). A bare `synthesis` that PATH finds anywhere
     but the stable launcher is a program of its own, judged as that (review round 1 of 22.18, H2). None otherwise."""
-    if os.path.basename(words[0]) in RUNNERS:
+    if os.path.basename(words[0]) in RUNNER_PROGRAMS:
         words = next((words[i:] for i, w in enumerate(words) if i and (_named_cli(w, where) or SCRIPT.match(os.path.basename(w)))), [])
     head = os.path.basename(words[0]) if words else ""
     if words and _named_cli(words[0], where):

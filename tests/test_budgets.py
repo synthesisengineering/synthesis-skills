@@ -2105,10 +2105,77 @@ ROOT = Path(__file__).resolve().parents[1]
 # it was. import_messages.py 1: SECTIONS names e2ee_cutover_filtered, on a line of its own, as filtered_threads is to inbox.
 # 5.24.0, that change (17f42796, from main at 218da465) merged into release/next at d035d42e: release/next's ceilings
 # (core 21807, plugin 48429) and its raise just above (plugin 1), measured: core 21807 and plugin 48430.
+# Then each 120 more, from review round 4's finding 1, plan item 22.19 (an agent's program that loaded synthesis through
+# importlib, __import__, exec, eval, compile or runpy was read as reaching none of its writers; a check a script or the CLI
+# entered read the recorded transcript wherever it led): guards.py 97: _synthesis_loads 56 with 2 blank lines (what each
+# loader a program calls is handed, through its arguments, the names it assigns, its own functions' parameters and the
+# words it is handed, read for a name or a text that says synthesis, code that loads it, or a file whose code reaches it;
+# a first version that took any string beside any loader held 24 ordinary commands of the 60-day replay), _joined_text 7
+# with 2 blank lines (a path joined from strings), LOADERS 3, IMPORTS_IT 2, FILE_RUNNERS 1, LOADER_MODULES 1, MAY_LOAD 1
+# and SAYS_SYNTHESIS 1 with their comment 7, _imports 5 more (a module loaded by the name it is written with, read as an
+# import), _self_grant 9 more (the words a program is handed and the values the line gives; a program on the line read
+# with the modules of its own it imports, held for one that writes through synthesis). approvals.py 23:
+# _kept_by_a_harness 11 with 2 blank lines (a recorded path counts only inside the folders recorded beside it), remember 7
+# more (the folders each harness keeps its records in, as the prompt hook's environment names them, recorded beside the
+# path; Codex's archived rollouts among them, as review round 1 of 22.19 found), transcript 3 more.
+# Then each 125 more, all in guards.py, plan item 22.21 and review round 1 of 22.19's finding 1 (a shell script a command
+# ran, pytest's test files, `ipython -c` and `uv run` let a program import synthesis and name a writer unread):
+# _pytest_reach 42 with 2 blank lines (the test files pytest collects and the conftests it loads, read for a writer
+# approvals rest on, or synthesis loaded another way, unless a conftest above, or the test file itself, puts the
+# synthesis home at a temporary path; pytest's walk pruned as pytest prunes it, and bounded by the call's time),
+# _isolates_home 23 with 2 blank lines (that setting, read in the code: an autouse fixture, a test file's own fixture or
+# test, or the environment set from a temporary folder as the file loads), _release_script 6 with 2 blank lines (the
+# release's own scripts and the CLI's launcher, trusted as before: a first version held all 143 recorded runs of the
+# launcher by its path), GRANTING 2 (the writers approvals rest on), _self_grant 28 more (a shell script run by a shell,
+# by its path or sourced, judged as its command lines three scripts deep, the one the line writes as its bodies or as
+# it stands, with $0 its path; one that cannot be opened waits; a Python script run by its path read as Python;
+# pytest's runs), _bare 9 more (`uv run`, `poetry run`, `pipx run` and their like unwrapped, a .py file as Python runs
+# it; ipython as Python), RUNNERS 4, PYTEST_VALUES 2 and TEMPORARY 1 with their 2 blank lines, check_self_grant 1 more
+# (how deep a script it judges), less _script_file 1 (a text file with no first line is the shell's own script).
+# Then each 20 more, all in guards.py, from 22.21's review round 1 (a writer, or a path of synthesis's taken, at a test
+# module's top level ran before any fixture; a test file that isolated one test was trusted for all; the CLI's launcher
+# was trusted beside any runtime): _at_import 14 with 2 blank lines (what a test module or a conftest runs as it loads,
+# its function bodies left out, read for a writer, a path of synthesis's or synthesis loaded another way), _release_script
+# 2 more (the launcher trusted only where the `current` it runs is the synthesis home's own), _isolates_home 1 more (a
+# test file's own fixture counts only when autouse or every test requests it; nothing that runs at import, which a
+# conftest's environment set from mkdtemp was), _pytest_reach 1 more (what runs at import leaves a file read).
+# Then each 44 more, all in guards.py, from 22.21's review round 2 (writers that ran outside the tests were trusted as
+# isolated: at load through an alias, getattr with the name written out or a helper the file calls; in xunit setup, a
+# module-scoped fixture or pytest's hooks): _outside_tests 26 in place of _at_import's 14 (what runs outside a test:
+# the top level and class bodies with the file's own functions they call, xunit setup and teardown, pytest's hooks and
+# fixtures scoped wider than a function), _writers_named 22 (each writer named, under any name it is imported by and
+# through getattr with its name written out, in place of a pattern of the names), _pytest_reach 4 more (a plugin of its
+# own named with -p), XUNIT 2, and their blank lines.
+# Then each 36 more, all in guards.py, from 22.21's review round 3 (a shell script's line of Python that reached synthesis
+# was refused where a script file waits; two programs that only read were held): _module_path_is_synthesis 24 with 2
+# blank lines (a PYTHONPATH whose folders shadow nothing Python imports from elsewhere, and supply none of the program's
+# modules, but a synthesis byte for byte the guard's own, no longer counts against the program's proof),
+# _synthesis_reach 8 more (getattr with the name written out read as that name: a writer is named, a read passes),
+# _self_grant 2 more (on a line of a shell script, the two refusals of a program reaching synthesis wait instead).
+# Then each 8 more, all in guards.py, from the same round (that module-path rule trusted a folder not there when judged,
+# or one the line writes into or another of its programs may fill first, and a stand-in module the line writes beside a
+# program on the line went unseen): _module_path_is_synthesis 3 more (each folder must be there, and the line write
+# nothing inside it), _stand_in 2 more (a module the line writes where the program starts), _self_grant 3 more (the
+# programs on the line that may fill a folder where the guard does not look, which leave a module path untrusted).
+# Then each 11 more, all in guards.py, from the same round (the suite, run whole on a fresh clone, showed that rule judged
+# what a folder hides against the guard process's own path, where a test runner had put a checkout's top-level folders):
+# _found_elsewhere 10 more (with `installed`, only Python's own installation, its standard library and site-packages; with
+# `portion`, a folder with no __init__.py counted only against a namespace package, since it hides no module),
+# _module_path_is_synthesis 1 more (it asks that way, and no longer needs to pass over a conftest).
+# 5.24.0, 22.19 with 22.21 (bb7e4b0f: programs that load synthesis another way, and shell scripts, pytest's test files and
+# runners read as the programs they hold, from main at b8efb5ee) merged into release/next at fa5b19d6: release/next's
+# ceilings (core 21807, plugin 48430), their raises in the seven paragraphs just above, from "Then each 120 more, from
+# review round 4's finding 1, plan item 22.19" (120, 125, 20, 44, 36, 8 and 11, core and plugin alike: 364 each), and 3
+# fewer each that the merge's own lines take away, measured: core 22168 and plugin 48791. guards.py 3 fewer: the line's
+# assignments listed once, release/next's `given`, which 22.21's reading of what a program loads uses too (1), and
+# _release_script 2 fewer (the CLI's launcher, which since 22.8 names the runtime it runs and the pinned interpreter, is
+# trusted where install wrote it, in the home's bin, by the clause that trusts bin; the text comparison with the old
+# launcher, which 22.8 removed, goes). The CLI's runner list, RUNNERS in "the runtime changes only on the principal's
+# code" above, is RUNNER_PROGRAMS now, so 22.21's table of runners keeps its name; the two had shadowed each other.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 21807
-PLUGIN_BUDGET = 48430
+CORE_BUDGET = 22168
+PLUGIN_BUDGET = 48791
 
 
 def _lines(files):
