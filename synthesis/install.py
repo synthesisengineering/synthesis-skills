@@ -20,6 +20,8 @@ recording the value it replaces; uninstall restores that value unless the user
 changed it since, and removes only files install wrote that are still unedited.
 """
 
+from __future__ import annotations
+
 import contextlib
 import fcntl
 import hashlib

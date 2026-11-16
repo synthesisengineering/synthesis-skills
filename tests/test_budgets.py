@@ -1623,10 +1623,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # with only the variables the runtime reads, so without it a turn hook inside the judge's own run would judge again).
 # 21.3's line in package_hash gives way to 22.8's package_digest, which hashes every file of the runtime package, the
 # judge's policies among them; 21.3's install.py 0 stays 0.
+# 5.24.0 on Apple's Python 3.9, the floor CI holds: core 2 more and plugin 2, measured. install.py 2: `from __future__
+# import annotations` with its blank line, so the `dict | None` annotations 22.18 gave approval, install and uninstall
+# are not evaluated as the module loads (under 3.9 importing install.py raised TypeError, and so did doctor.py's import
+# of it; 22.8's branch had no pull request, so CI's 3.9 job never ran on it).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18692
-PLUGIN_BUDGET = 45282
+CORE_BUDGET = 18694
+PLUGIN_BUDGET = 45284
 
 
 def _lines(files):
@@ -1699,9 +1703,18 @@ def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, 
     bytecode compiles the runtime at its first call, which is how CI runs the suite; a session's hooks are told to
     write none, so the budget's own runs are told the same and leave the runtime as they found it (both found by a
     review before 5.8.1 was released)."""
-    from importlib.util import cache_from_source
+    import subprocess
+    import sys
+    from synthesis import install
     monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
-    compiled = [Path(cache_from_source(str(source))) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    # Where the interpreter the launchers pin, run isolated as they run it, looks for compiled code: beside the source
+    # and for its own version, whatever folder this process keeps compiled code in (Apple's Python keeps it under a
+    # prefix, and the pinned interpreter need not be the one running the tests).
+    python = install.pinned(compiled_runtime.parent) or sys.executable
+    sources = [str(source) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    asked = subprocess.run([python, "-I", "-S", "-c", "import importlib.util as u, sys; print('\\n'.join(map(u.cache_from_source, "
+                            "sys.argv[1:])))", *sources], env={}, capture_output=True, text=True, check=True)
+    compiled = [Path(line) for line in asked.stdout.splitlines()]
     for file in compiled:
         file.unlink()
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
