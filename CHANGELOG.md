@@ -60,10 +60,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   run and words the CLI refuses need no code. That holds for every route that starts the CLI, setup.py or the release
   script as a process of its own. Install calls the check it bound when it loaded, so a program in its own process that
   puts its own function in `install.approval`, by name or by a name built at run time, changes nothing (review round 2
-  of 22.18, K1); a program that rewrites those bindings or the runtime's files itself is held only by the guard's
-  reading of it, which holds it where it spells the installer and passes it where it builds the names at run time, the
-  guard's documented residual. setup.py takes `--session` for the session the principal types the code in, from his own
-  terminal, where no harness gives one, and passes it to the install and the uninstall (K2).
+  of 22.18, K1). Not every name built at run time fails closed: a program that replaces those bound names
+  (`install._approve`, `install._released`) or the runtime's files itself is held only by the guard's reading of it,
+  which holds it where it spells the installer and passes it where it builds the names at run time, and then installs
+  its own runtime; that is on the open list (combined review round 1 of 22.8 with 22.18, C1). setup.py takes
+  `--session` for the session the principal types the code in, from his own terminal, where no harness gives one, and
+  passes it to the install and the uninstall (K2).
 - **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
   the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
   hook's check was what got installed. Now `package_digest` is the sha256 of every file an install copies (the whole
@@ -78,9 +80,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `install.approval`. Now, when the guard lets the release launcher's line through, it writes one grant: an install of
   `v<version>` (the tag the line names, or the version its checkout's manifests carry; a dry run is granted nothing)
   into this home. `install.install` spends it once, and only for the release tool's fresh clone in the protected
-  releases folder, at that tag, whose staged copy holds exactly the files of that tag's tree; any other folder, version,
-  home or a second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it,
-  the release script's install stage waits for the code.
+  releases folder whose HEAD is the commit GitHub's tag names (asked of GitHub with `git ls-remote`), its tracked tree
+  clean, and whose staged copy holds exactly the files of that commit's tree; any other folder, version, home or a
+  second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it, the
+  release script's install stage waits for the code. From the combined review of 22.8 with 22.18 (round 1):
+  - **The launcher's shell wrapper is the system's shell or nothing** (C2). `<shell> -c '<line>'` was taken for the
+    launcher's line by the shell's name alone, so a program of the agent's named `bash`, `sh` or `zsh` carried the line,
+    minted the grant and ran with nothing else judged. Now the shell must be a file owned by root with every folder
+    above it and writable by no user, as the interpreter pin requires, both as named and as resolved: named by its
+    path, that file; named bare, the first of that name on the harness's own PATH, so a `bash` of the agent's found
+    first in a folder this user writes is refused, while folders this user writes that hold none may come first, as
+    they do on the principal's Mac and on CI's runners (Codex's shell tool, A7). A link of a user's to the system's
+    shell or to its folder does not count, since it can be pointed elsewhere once the line has passed; the system's
+    own links (`/bin` on Linux) do. Open, crafted: a shell put ahead of the system's on PATH after the line has passed,
+    before the harness looks it up, runs in its place; a strict expected-failure test holds it.
+  - **A harness command the release runs cannot choose the runtime** (C8). The release runs each harness's own command
+    (`claude`, `codex`, `muse`, `gh`), found where this user writes, after its clone exists, and read the install's
+    listing from the clone afterwards: a planted `claude` committed its own runtime in the clone, moved the tag there,
+    and the grant was spent on it. Now the listing is read from the verified commit before any harness command runs, the
+    clone is held to that commit (its HEAD, its tag, a clean tracked tree) after each harness command and before the
+    install, and the spend asks GitHub which commit the tag names. A release pushes its tag before it installs the
+    runtime, so its own install step still needs no code; a clone whose tag GitHub does not serve waits for it.
+  - **The runtime loads on Python 3.9 again** (C10): `install.py` has `from __future__ import annotations`, which its
+    `dict | None` annotations need on Apple's 3.9, the oldest interpreter the runtime pins, and a test imports every
+    runtime module under 3.9 where one is present.
+  - **The checkout's manifest is read as the guard reads a file it may not wait on** (C7a): a FIFO there stopped it.
 - **A release runs from the installed runtime's own release launcher, with no code** (`synthesis-skills-manager`
   3.7.0), by the principal's ruling of 2026-11-15, with review round 1's findings closed. Since 5.22.1 every release
   waited for a code. The runtime now carries the release tool and what it imports (this skill's scripts and

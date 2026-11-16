@@ -1627,10 +1627,29 @@ ROOT = Path(__file__).resolve().parents[1]
 # import annotations` with its blank line, so the `dict | None` annotations 22.18 gave approval, install and uninstall
 # are not evaluated as the module loads (under 3.9 importing install.py raised TypeError, and so did doctor.py's import
 # of it; 22.8's branch had no pull request, so CI's 3.9 job never ran on it).
+# The combined review of 22.8 with 22.18, round 1 (C2, C8, C10, C7a): core 52 more and plugin 79. guards.py 45:
+# _system_shell 20 (the shell a wrapped launcher line names: by its path, or the first of its name on the harness's own
+# PATH with no folder before it a user could write, C2), _sealed 13 (owned by root with every folder above it, writable by
+# no user: the interpreter pin's test for a file or a folder), _grant_release 6 (the manifest read with _regular, C7a),
+# _release_tool 2 (the wrapper's shell checked) and blank lines 4. install.py 7: _spend_release 4 (the remote's tag
+# named as the clone's HEAD, its tracked tree clean, C8), RELEASE_URL 1, and `from __future__ import annotations` 1 with
+# its blank line 1 (C10). release.py 27: clone_problems 10 and held_to 5 (the clone held to the verified commit after each
+# harness command), install_and_verify 3 (the check after each harness), main 5 (the listing read before any harness
+# command runs, the checks after gh and before the install) and blank lines 4.
+# C2 completed in the same round: core 4 more and plugin 4. guards.py 4: _sealed 5 (the path held as named as well as
+# resolved, so a link of a user's on the way does not count while the system's own do, and a path with `.` or `..` in
+# it is none), _system_shell 1 fewer (its docstring 1 more, naming the open race; the 2 lines that refused any PATH with
+# a folder a user writes ahead of the system's shell gone, since that refused Codex's shell tool wherever such folders
+# come first, A7).
+# 5.24.0, 22.8's new head (cd4d906c: round 1 of the combined review, then C2 completed) merged into release/next at
+# 95b875c3: release/next's ceilings (core 18694, plugin 45284) and 22.8's two raises itemized just above (core 52 and 4,
+# plugin 79 and 4), less 2 each: 22.8's install.py 7 counts `from __future__ import annotations` and its blank line
+# (C10), the same two lines the Python 3.9 paragraph above counts, and the merge holds them once. Measured: core 18748
+# and plugin 45365.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18694
-PLUGIN_BUDGET = 45284
+CORE_BUDGET = 18748
+PLUGIN_BUDGET = 45365
 
 
 def _lines(files):

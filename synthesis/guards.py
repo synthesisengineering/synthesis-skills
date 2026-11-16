@@ -5086,6 +5086,8 @@ def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
     except ValueError:
         argv = []
     if len(argv) == 3 and os.path.basename(argv[0]) in ("bash", "zsh", "sh") and argv[1] in ("-lc", "-c"):
+        if not _system_shell(argv[0], cwd):
+            return {}  # a program of the agent's named as a shell would carry the line (combined review round 1, C2)
         command = argv[2]  # Codex's shell tool hands the line to a shell, exactly as written (round 1, A7)
     line, release = command.strip(), os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
     words, home = line.split(), os.path.expanduser("~")
@@ -5127,15 +5129,62 @@ def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
 def _grant_release(given: dict, line: str) -> None:
     """The one install the release launcher's line may make with no code: of `v<version>`, the tag it names or the version
     its checkout's manifests carry, into this home, written for `install` to spend (review round 2 of 22.18, K1). A dry
-    run installs nothing; a version that cannot be read is granted nothing, and that install waits for the code."""
+    run installs nothing; a version that cannot be read is granted nothing, and that install waits for the code. The
+    manifest is read as the guard reads any file it may not wait on (combined review round 1, C7a: a FIFO there)."""
     if "--dry-run" in given:
         return
-    from pathlib import Path
     from synthesis import install
-    version = given["--tag"][1:] if "--install-only" in given else str(paths.read_json(
-        Path(given["--repo-root"]) / ".claude-plugin" / "plugin.json").get("version") or "")
+    version = given["--tag"][1:] if "--install-only" in given else ""
+    if "--install-only" not in given:
+        found = _regular(os.path.join(given["--repo-root"], ".claude-plugin", "plugin.json"), 64 * 1024)
+        try:
+            data = json.loads(found[0]) if found else {}
+        except ValueError:
+            data = {}
+        version = str(data.get("version") or "") if isinstance(data, dict) else ""
     if re.fullmatch(r"\d+\.\d+\.\d+", version):
         install.grant_release(version, line)
+
+
+def _sealed(path: str) -> bool:
+    """No user can change what `path` names: as named and as resolved, it and every folder above it are owned by root and
+    writable by neither this user nor its groups. The interpreter pin's test (install.interpreter_problems) without its
+    rule that a path be its own real path, so a link the system put there counts (`/bin` on Linux) and a link of a
+    user's, which can lead elsewhere once the line has passed, does not."""
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        return False  # past a link, `..` is not where the system goes
+    for spot in (path, os.path.realpath(path)):
+        while True:
+            try:
+                if os.lstat(spot).st_uid or os.access(spot, os.W_OK):
+                    return False
+            except OSError:
+                return False
+            if spot == os.path.dirname(spot):
+                break
+            spot = os.path.dirname(spot)
+    return True
+
+
+def _system_shell(word: str, cwd: str) -> bool:
+    """Whether the shell a wrapped launcher line names is one no user can write (combined review round 1, C2): named by a
+    path, that file; named bare, the first of that name on the harness's own PATH (the hook's, less what the hook's
+    launcher put first). One put ahead of it after the line has passed is open (crafted), as the guard does not see
+    the harness look it up."""
+    if "/" in word:
+        found = os.path.join(cwd, os.path.expanduser(word))
+        return os.path.isfile(found) and os.access(found, os.X_OK) and _sealed(found)
+    from synthesis import install
+    searched, git = os.environ.get("PATH", ""), install.pinned_git()
+    for put in ([f"{os.path.dirname(git)}:{install.SAFE_PATH}"] if git else []) + [install.SAFE_PATH]:
+        if searched == put or searched.startswith(put + ":"):
+            searched = searched[len(put) + 1:]
+            break
+    for folder in (os.path.join(cwd, entry) for entry in searched.split(os.pathsep)):  # an empty entry is the command's own folder
+        found = os.path.join(folder, word)
+        if os.path.isfile(found) and os.access(found, os.X_OK):
+            return _sealed(found)
+    return False
 
 
 def _shipped(path: str) -> bool:

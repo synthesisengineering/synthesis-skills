@@ -43,6 +43,11 @@ def world(tmp_path, monkeypatch):
         monkeypatch.setenv(key, str(value))
     for key in ("SYNTHESIS_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "MUSE_SESSION_ID", "CDPATH", "OLDPWD"):
         monkeypatch.delenv(key, raising=False)
+    github = tmp_path / "github.git"  # GitHub's stand-in: the canonical URL leads here by git's own command-line config
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(github)], check=True)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", f"url.{github.as_uri()}.insteadOf")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "https://github.com/synthesisengineering/synthesis-skills.git")
     install.install(ROOT)
     work = tmp_path / "work"
     work.mkdir()
@@ -52,7 +57,7 @@ def world(tmp_path, monkeypatch):
                                str(work)], capture_output=True, text=True, timeout=300, env=dict(os.environ))
         assert done.returncode == 0, done.stderr[-2000:]
         return [json.loads(line) for line in done.stdout.splitlines()]
-    return {"v5": paths.home(), "work": work, "judge": judge, "tmp": tmp_path}
+    return {"v5": paths.home(), "work": work, "judge": judge, "tmp": tmp_path, "github": github}
 
 
 def _launcher(world, options: str) -> str:
@@ -69,9 +74,9 @@ def _requests(world) -> list:
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 
-def _clone(world, version: str, name: str = ".clone-1", tag: bool = True, note: str = "") -> Path:
+def _clone(world, version: str, name: str = ".clone-1", tag: bool = True, note: str = "", served: bool = True) -> Path:
     """What the release tool's fresh clone holds for a tag: the files the runtime takes, committed, the tag on that
-    commit, in the protected releases folder."""
+    commit, in the protected releases folder; with `served`, GitHub's stand-in serves that tag at that commit."""
     clone = world["v5"] / "releases" / name
     for rel, path in install._files(ROOT):
         (clone / rel).parent.mkdir(parents=True, exist_ok=True)
@@ -85,6 +90,8 @@ def _clone(world, version: str, name: str = ".clone-1", tag: bool = True, note: 
     git("commit", "-qm", f"v{version}")
     if tag:
         git("tag", "-a", f"v{version}", "-m", f"Release v{version}")
+        if served:
+            git("push", "-q", "--force", str(world["github"]), f"refs/tags/v{version}")
     return clone
 
 
@@ -123,12 +130,32 @@ def test_a_rollback_still_needs_the_principals_code_with_a_grant(world):
     assert install.version(world["v5"] / "current") == install.version(ROOT) and len(_grants(world)) == 1  # not spent
 
 
+def test_the_grant_is_spent_only_on_a_clone_the_remote_vouches_for(world):
+    """Combined review round 1, C8: a program the release runs may commit in its clone and move the tag there. The
+    grant is spent only where the remote's tag names the clone's HEAD and the clone's tracked tree is clean."""
+    world["judge"](_launcher(world, "--install-only --tag v99.0.0"))
+    before = install.current_hash()
+    moved = _clone(world, "99.0.0", ".clone-moved")
+    (moved / "synthesis" / "guards.py").write_text(STUB)
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(moved), "-c", "user.name=x", "-c", "user.email=x@example.com", *args], check=True,
+                       capture_output=True)
+    git("commit", "-qam", "the agent's guard")
+    git("tag", "-f", "-a", "v99.0.0", "-m", "moved")  # the clone's tag moved; GitHub's still names the release's commit
+    unserved = _clone(world, "99.0.0", ".clone-unserved", note="# a commit GitHub's tag does not name\n", served=False)
+    for source in (moved, unserved):
+        with pytest.raises(install.Unapproved):
+            install.install(source)
+    assert install.current_hash() == before and len(_grants(world)) == 1  # nothing spent it
+
+
 def test_the_grant_binds_its_home_its_version_its_tags_clone_and_its_bytes(world):
     world["judge"](_launcher(world, "--install-only --tag v99.0.0"))
     before = install.current_hash()
     elsewhere = world["tmp"] / "an-agents-folder"  # the same bytes, outside the protected releases folder
     shutil.copytree(_clone(world, "99.0.0", ".clone-source"), elsewhere)
-    untagged = _clone(world, "99.0.0", ".clone-untagged", tag=False)  # no tag v99.0.0 on its commit
+    untagged = _clone(world, "99.0.0", ".clone-untagged", tag=False, note="# a commit no tag names\n")  # not the tag's commit
     changed = _clone(world, "99.0.0", ".clone-changed")
     with open(changed / "synthesis" / "guards.py", "a", encoding="utf-8") as handle:  # not the tag's bytes
         handle.write("\n# written after the clone was made\n")

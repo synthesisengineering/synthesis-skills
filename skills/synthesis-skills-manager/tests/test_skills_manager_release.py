@@ -484,6 +484,7 @@ def test_the_release_is_complete_only_once_homebrew_serves_the_tag(tmp_path, mon
     monkeypatch.setattr(release, "github_release", lambda repo, version, dry_run: ["github"])
     monkeypatch.setattr(release, "homebrew_formula", lambda repo, version, dry_run: (["tap pull request"], formula))
     monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"claude": tmp_path}, ["claude"]))
+    monkeypatch.setattr(release, "clone_problems", lambda *a: [])  # every stage is stood in for; the clone is held elsewhere
     monkeypatch.setattr(release.install, "install", lambda source, **k: "runtime")
     monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("ok", "runtime", "current")])
     monkeypatch.setattr(release, "homebrew_merged", homebrew_merged)
@@ -515,6 +516,7 @@ def test_an_approval_only_the_person_can_give_does_not_hold_the_release(tmp_path
     monkeypatch.setattr(release, "github_release", lambda repo, version, dry_run: ["github"])
     monkeypatch.setattr(release, "homebrew_formula", lambda repo, version, dry_run: (["tap: nothing to move"], None))
     monkeypatch.setattr(release, "install_and_verify", lambda *a: (["installed"], {"codex": tmp_path}, ["codex"]))
+    monkeypatch.setattr(release, "clone_problems", lambda *a: [])  # every stage is stood in for; the clone is held elsewhere
     monkeypatch.setattr(release.install, "install", lambda source, **k: "runtime")
     monkeypatch.setattr(release.doctor, "run_checks", lambda: [release.doctor.Check("fail", failing, detail)])
     assert release.main(["--repo-root", str(tmp_path), "--session", "s1"]) == (0 if complete else 1)

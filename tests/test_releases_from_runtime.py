@@ -247,7 +247,10 @@ def test_a_pending_approval_code_on_the_line_is_never_let_through(world):
 
 # --- review round 1 of 5.23.1: A5, A6, A7, A8 ----------------------------------------------------------------------------
 
-def test_a7_the_launcher_line_from_codexs_shell_tool_passes_as_it_does_from_the_other_shells(world):
+def test_a7_the_launcher_line_from_codexs_shell_tool_passes_as_it_does_from_the_other_shells(world, monkeypatch, tmp_path):
+    mine = tmp_path / "mine"  # the harness's PATH as on the principal's Mac and CI's runners: folders this user writes
+    mine.mkdir()  # first, and the first shell of each name the system's own (combined review round 1, C2)
+    monkeypatch.setenv("PATH", f"{mine}:/usr/bin:/bin:/usr/sbin:/sbin")
     line = f"{world['launcher']} --repo-root {world['canon']} --dry-run"
     calls = [("shell", {"command": [shell, flag, line], "workdir": str(world["work"])}, str(world["work"]))
              for shell, flag in (("bash", "-lc"), ("zsh", "-c"), ("/bin/sh", "-c"))]

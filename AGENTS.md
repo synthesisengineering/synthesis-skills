@@ -105,7 +105,8 @@ Codex's settings and catalog, instruction adapters and durable storage.
   named environment variables. Run so, the guard asks no code: it lets exactly that launcher run, with only the options
   the tool documents, `--session` only as the asking session's own id, on the canonical checkout (origin and every
   remote the synthesis-skills repository on GitHub, on `main`, its own git config running no program), and grants it
-  one install of that tag, which the runtime's install spends for the tool's fresh clone of the tag alone. A release
+  one install of that tag, which the runtime's install spends for the tool's fresh clone of the tag alone, its HEAD the
+  commit GitHub's tag names; a wrapped `<shell> -c '<line>'` counts only for the system's own shell. A release
   from a checkout's copy, or the tool run any other way, waits for the principal's code. The checkout only says what is
   released: the tool refuses unless the tree is clean, the manifests and CHANGELOG agree, HEAD is the tip of GitHub's
   `main` (read with git's own config left out; a tag of the version GitHub already has must name HEAD), the version is
