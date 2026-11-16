@@ -4,6 +4,51 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **An autopilot run stops when its own work outruns the principal's** (`synthesis-autopilot` 4.2.0, plan item
+  22.37(d), the principal's rulings of 2026-11-16). A review of a run's own fixes can always find one more way around
+  them, and each finding can become an item, so a plan could keep growing while the principal's own work waited. Each
+  checklist item now carries its origin: `origin: principal` when it delivers the principal's request, their backlog
+  or a build their ruling ordered (another session's request counts), `origin: self` when it only fixes, reviews or
+  re-reviews what the run produced. An item added after engagement carries `added <time>`, and a checked item
+  `closed <time>`; the template marks the items a plan starts with as principal. At every wake `cycle` counts, over
+  the last 24 hours, the principal items closed and the self-generated items added, prints both and writes them on the
+  wake's ledger line, and at each day's first wake writes the open principal items under a new `## Backlog count`
+  section. When the second outnumbers the first, or the open principal items rose two days running, and no
+  `Principal answer:` of continue or narrow is dated inside the window, `cycle --advanced` refuses the advance and
+  prints the one line to bring the principal, ending "Continue, narrow, or stop?"; a cycle that only names a wait is
+  recorded and prints the line too. The turn-end check asks for that line instead of the next open item, from the plan
+  it already reads: on a 201-item plan with 2,000 ledger lines and 60 days of counts, the whole check took 1.0 ms
+  under Python 3.12 and 1.4 ms under Apple's 3.9, and it imports nothing new. A plan written before origins counts
+  nothing and never stops; `cycle` says so once, and again only when more such items appear. Binding rule 14 carries
+  the rule; `references/plan-file.md` the convention and the template; `references/turn-end-check.md`, the re-entry
+  protocol and runaway control the rest. To make room for rule 14, the Procedure's six numbered steps (1,313 bytes)
+  moved word for word from SKILL.md to a new `references/procedure.md`, which also says what each answer asks for;
+  SKILL.md keeps the helper path and a pointer, and is 7,344 bytes.
+- **A review has caps, and the coordinator holds them** (`synthesis-adversarial-review` 2.1.0). Two review rounds per
+  item; after the second, a finding blocks only if an honest agent would hit it in ordinary work or it appears in the
+  principal's records, and anything else goes on the open list. The coordinator bounds the review, not the reviewer.
+  At most three agents run at once, and a release ships what has passed review and never waits for another round.
+  Binding rules 15 and 16, in full in the new `references/review-caps.md`.
+- **One ordered backlog per project, and it must shrink** (`synthesis-project-management` 3.6.0). The plan CONTEXT.md
+  names holds it, each item marked with its origin as autopilot marks it. Its open principal items are written at each
+  day's first session; two rises running mean stop and re-plan with the principal. At every checkpoint, principal
+  items closed are counted against self-generated items added since the last; when, over a day, the second outnumbers
+  the first, new work stops for the principal's one line. Work goes top-down: finish, ship and install before anything
+  new, and a side quest only when it serves the principal's goals. Binding rules 14 to 16, in full in the new
+  `references/backlog.md`.
+- **Decide what the goals already decide** (`synthesis-thinking-framework` 3.1.0). When a recommendation follows from
+  the principal's goals, guidelines and wish for the best-quality work, the agent decides it, acts, and reports it in
+  one line; the principal gets only what needs their own authority (money, sends, deploys, their accounts and
+  settings, their voice, an approval only they can give), or a real conflict between their goals that their rulings
+  don't settle. The ruling names that last item "an approval code", the runtime's typed approval; this skill ships in
+  the hook-free directory package, which has none and whose check refuses the phrase, so the skill says what the item
+  means anywhere. Binding rule 10, in full in `references/decision-ownership.md`. To make room, the last paragraph of "Decision
+  ownership and execution" (492 bytes, on the decisive-uncertainty method) moved word for word to the head of
+  `references/decisive-uncertainty.md`, its link now naming that file; SKILL.md keeps a one-line pointer and is 7,768
+  bytes.
+
 ## [5.23.2] - 2026-11-15
 
 - **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
