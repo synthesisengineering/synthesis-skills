@@ -12,8 +12,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
   waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
   not define, a move by the address or another part of it, set or added to, and a fetch or Request whose init has a
-  method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by a method or a
-  body in an object the script passes to a call, or one a variable it passes holds; an XHR's method too); a read passes,
+  method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by such a method
+  anywhere in the script, or a body in an object it passes to a call or one a variable it passes holds; an XHR's method
+  too); a read passes,
   `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
   or a method of an object or class the script defines, included. Its
   first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused

@@ -568,10 +568,11 @@ call of X where X is a dotted name or an empty array's method (`Array.prototype.
   what is set on that variable) carries a body or a method, in any form (a quoted key, the shorthand, an assignment),
   that is not one literal GET or HEAD, or keyed by a name built as it runs (a computed key, a member named by a
   variable); an init the reader cannot follow otherwise (spread into, the variable set again or handed to other code, a
-  parameter, any other expression) when the script puts a body, or such a method, in an object it passes to a call, or
-  in one a variable it passes to a call or spreads into one holds or is given, so a read through a fetch wrapper passes,
-  a `body` in what its own callback returns included (review rounds 3 and 4 of 5.23.1, T1 and U1); and an XHR opened
-  with a method that is not GET or HEAD. A `body` read from a response is no write (review round 2 of 5.23.1, #2).
+  parameter, any other expression) when the script names such a method anywhere (an init its own helper returns
+  included; review round 5, W4), or puts a body in an object it passes to a call, or in one a variable it passes to a
+  call or spreads into one holds or is given, so a read through a fetch wrapper passes, a `body` in what its own callback
+  returns included (review rounds 3 and 4 of 5.23.1, T1 and U1); and an XHR opened with a method that is not GET or
+  HEAD. A `body` read from a response is no write (review round 2 of 5.23.1, #2).
 - **Passes:** a read, and the extractors the plugin ships.
 
 Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of

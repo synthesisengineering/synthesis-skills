@@ -1415,10 +1415,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # script's own returns) and 2 blank lines.
 # Merged with main's 5.23.1 (2026-11-15): main's ceilings above, plus this branch's notes since: core 101, 30, 60,
 # 69, 83 and 22 more, plugin the same (the path note's 10 was main's already).
+# Review round 5 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (W4: an init
+# the reader cannot follow is read by a method named anywhere in the script again, as before round 4).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17246
-PLUGIN_BUDGET = 43318
+CORE_BUDGET = 17251
+PLUGIN_BUDGET = 43323
 
 
 def _lines(files):
