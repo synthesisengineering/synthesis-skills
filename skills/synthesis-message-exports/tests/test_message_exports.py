@@ -69,7 +69,8 @@ def test_each_layout_of_the_regular_export_is_read_from_every_section(im, capsys
         assert text.splitlines()[2] == f"# Conversation: dyi-{folder} ({section})"
         assert f"From: `{section}/{folder}`" in text.splitlines()
         assert split_fences(text)[1] == [f"note from {section}"]
-    assert "conversations: 5 found; 5 new transcripts, 0 extended, 0 with nothing new, 0 with no messages, 0 skipped" in printed
+    n = len(SECTIONS)
+    assert f"conversations: {n} found; {n} new transcripts, 0 extended, 0 with nothing new, 0 with no messages, 0 skipped" in printed
 
 
 def test_a_folder_around_the_export_and_the_messages_folder_itself_read_the_same(im, capsys, tmp_path):
