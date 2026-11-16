@@ -1591,10 +1591,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # Review round 6 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
 # _writes_by_fetch 5 (a method read only as an object key, a shorthand by its const's one literal, or a member
 # assignment: a parameter or a property read named method held a read through a wrapper).
+# Review round 7 of the page rule, merged into the batch (2026-11-15): core and plugin 1 more, as on main: ASSIGN 1
+# (every assignment operator, for each assignment the rule reads: Y3's `o.method ??= 'POST'` passed as a read).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18230
-PLUGIN_BUDGET = 44307
+CORE_BUDGET = 18231
+PLUGIN_BUDGET = 44308
 
 
 def _lines(files):
