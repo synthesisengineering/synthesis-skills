@@ -25,6 +25,7 @@ an unreadable config and an error inside a guard still block, since the guard ca
 ## Contents
 
 - [Keys](#keys)
+- [Commands judged by name](#commands-judged-by-name)
 - [An example](#an-example)
 - [From the 1.x config files](#from-the-1x-config-files)
 
@@ -52,6 +53,40 @@ an unreadable config and an error inside a guard still block, since the guard ca
 | `wait_phrases` | none | Extra phrases with which a reply announces a wait of the session's own; the reply check sends such a reply back once when nothing is armed to end the wait. |
 | `reply_watch` | none (no check) | `{}` turns on the reply check's question after a message to a person: a turn in which one went out ends with a watch for its answer or with `synthesis wait none "<why>"`, or the reply is sent back once. It takes no key: what a message to a person is, the send guard says (`send_tools`, `not_send_tools`). Any other shape is said in a reply sent back once. What it reads: [reply-and-provenance.md](reply-and-provenance.md#a-message-to-a-person). |
 | `reply_file_links` | false | True: a reply that names a file without a clickable absolute-path markdown link is sent back once. |
+
+## Commands judged by name
+
+No key turns this on or off; it depends on what is installed where. The shell guard judges some commands by their
+name: the shells, the interpreters, the usual readers, the file utilities, the wrappers (`env`, `nohup`, `timeout`,
+`xargs`, `npx` and their like), the editors and the unpackers. Since 22.32 a command word of one of those names that
+leads to a script (a text file, with a `#!` line or none) rather than a compiled program is also judged as that
+script, under the rules for scripts, beside its judgment by name: a script of the agent's named `bash` or `ls` waits
+for the code where it, or its command, names a protected folder, as a script with a name of its own does. The guard
+finds the file as the shell would: by the word's own path, or on PATH as the hook's process has it and on any PATH the
+line gives itself. A builtin the shell runs itself (`echo`, `cd`, `test`, `printf` and their like) is not looked up;
+the same name started by `env`, `nohup`, `xargs` or `find -exec` is. A word written as a pattern is the file it
+expands to, and a file the line writes before it runs it is read as the line.
+
+The real commands are compiled programs or links to them, wherever they lie: the system's, Homebrew's `python3` and
+`node`, a venv's `python`. These commands really are scripts, and pass by their name where their installer puts them.
+Where no program of the agent's writes, any of these names passes under its own name (or that name with a version or
+a suffix after it); in a folder the user writes, only the names that installer provides there:
+
+| Where the file lies | Which names |
+|---|---|
+| Installed by root: the file and every folder above it owned by root and writable by neither this user nor its groups | Any, by its own name: macOS's `/usr/bin/cd`, `read`, `wait` and `command`, `shasum`, `irb`, `wish`; Linux's `which`, `egrep`, `fgrep`, `zcat`, `gunzip`, `uncompress` |
+| The runtime's own `bin/` (protected), also through a link elsewhere on PATH | Any, by its own name: `synthesis` |
+| An npm package's bin: `<prefix>/bin/<name>` linked into `<prefix>/lib/node_modules/` (or Debian's `<prefix>/share/nodejs/`), or a project's `node_modules/.bin/<name>` | `npx`, `pnpx`, `tsx`, `ts-node` (from Homebrew, nvm, fnm, a distribution or a project) |
+| A version manager's shim, `<root>/shims/<name>`: pyenv, rbenv, nodenv, asdf, jenv, plenv, goenv, luaenv or phpenv, or the root its variable names (`PYENV_ROOT` and the like) | The interpreters (`python3`, `node`, `ruby`, `perl` and their like) and the npm bins above |
+| Homebrew's own Cellar (`HOMEBREW_CELLAR`, or `Cellar` under `HOMEBREW_PREFIX`, which `brew shellenv` sets, `/opt/homebrew` or `/usr/local`) | `groovy`, `scala`, `elixir`, `jruby`, `7z`, `7za`, `irb`, `shasum`, `gunzip`, `zcat`, `uncompress`, `egrep`, `fgrep`, `synthesis` and the npm bins above |
+
+pip3, pytest, npm and a venv's `activate` are scripts too, but the guard judges them by none of these names, so they
+are untouched. A script another installer puts in a folder the user writes under one of these names (a JVM tool
+from sdkman, say) is read as the script it is, which waits only where it or its command names a protected folder.
+Measured on 60 days of records (2026-09-16 to 2026-11-15, 252,649 distinct commands), every command word of these
+names led to a compiled program, a builtin, nothing, or a script of this table. A compiled program under such a
+name, an installed script rewritten where its installer put it in a folder the user writes, and a look-alike set
+where such an installer puts its scripts are judged by the name (the open list, in `docs/runtime-integration.md`).
 
 ## An example
 

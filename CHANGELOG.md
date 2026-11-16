@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **A program under the name of a command the guard judges by name is read as what it is** (22.32). The guard read a
+  program the agent runs by its path when it had a name of its own, but one named like a command it judges by name (a
+  shell, an interpreter, `ls`, `git` and their like) was judged as that command and its file never read: by its
+  absolute path, by a relative one, or found first on PATH in a folder the user can write. A review (2026-11-15, C9)
+  replaced the runtime's guard that way in nine forms of nine. Now a command word the guard judges by name that
+  leads, by its path or through PATH as the shell looks it up, to a script (a text file, with a `#!` line or none)
+  rather than a compiled program is also judged as that script, under the rules for scripts: the command its `#!`
+  line starts, or a shell for a file with none, goes into what the line runs, and its judgment by name still applies
+  (a look-alike `npx` still has the deploy it is handed held). That holds for each wrapper's word (`env`, `nohup`,
+  `xargs` and their like), for the command a wrapper or `find -exec` starts from PATH (a builtin's name included:
+  `env echo` runs whatever `echo` stands first on PATH), for a PATH the line gives itself, for a word written as a
+  pattern, and for a look-alike the line writes before it runs it. A builtin the shell runs itself is not looked up.
+  The commands that really are scripts pass by their name where their installer puts them: under its own name where no
+  program of the agent's writes (root's own, as macOS's `/usr/bin/cd`, `shasum` and `irb` and Linux's `which`, `egrep`
+  and `zcat`; the runtime's launcher in its protected `bin/`), and in a folder the user writes only under a name that
+  installer provides there (an npm package's bin such as `npx`, an interpreter's version manager shim, a Homebrew
+  formula's script in Homebrew's Cellar), the list in the guardrails' config reference, "Commands judged by name". Measured first, read only, on 60 days of records (2026-09-16 to 2026-11-15: 265,897 shell runs, 252,649
+  distinct commands): no such word led to any other script; 6,211 led to the synthesis launcher, 2,050 to npm's `npx`
+  and 535 to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled
+  look-alike (a program built, copied or linked under such a name) is judged by its name, on the open list as crafted
+  (`docs/runtime-integration.md`).
+
 ## [5.23.1] - 2026-11-15
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
