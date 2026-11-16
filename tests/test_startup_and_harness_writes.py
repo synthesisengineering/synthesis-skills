@@ -291,6 +291,19 @@ def test_a_name_that_only_begins_with_a_harness_program_s_path_names_no_harness_
     assert _held(_shell(world, line), "harness program")
 
 
+COPIES_ENV = ("python3 -c \"import os, subprocess; env = {k: v for k, v in os.environ.items()}; "
+              "subprocess.run(['true'], env=env); open('out.txt', 'w').write('x')\"")
+
+
+def test_a_program_that_hands_its_child_the_harness_s_own_variables_is_not_held_for_them(world, monkeypatch, tmp_path):
+    """A program that copies its environment whole for a child hands on CLAUDE_CODE_EXECPATH too: the reader does not
+    take that as a protected path the program may write. A variable naming the state folder still holds it."""
+    monkeypatch.setenv("CLAUDE_CODE_EXECPATH", str(world["desktop"] / "claude"))
+    assert _shell(world, COPIES_ENV) is None
+    monkeypatch.setenv("HELD_HERE", str(paths.state() / "approvals" / "x.json"))
+    assert _shell(world, COPIES_ENV) is not None
+
+
 def test_a_variable_that_names_the_state_folder_still_holds_a_program_that_reads_the_environment(world, monkeypatch):
     monkeypatch.setenv("HELD_HERE", str(paths.state() / "approvals" / "x.json"))
     assert _shell(world, UNFOLLOWED) is not None
