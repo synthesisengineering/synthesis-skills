@@ -1405,6 +1405,17 @@ def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
                 input=payload, cwd=str(tmp_path))
 
 
+FILE_HOOK_NEEDS = tuple(name for name in HOOK_NEEDS if name != "urllib.parse")  # no send to read
+
+
+def test_file_write_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
+    """What a session pays on every file write (22.20): the guard reads where the file really leads and whether it is the
+    guard's own settings or a git hook, beside the protected folders and the board's claims, within the same budget."""
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(tmp_path / "notes.md"), "content": "x\n"}})
+    hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], FILE_HOOK_NEEDS,
+                input=payload, cwd=str(tmp_path))
+
+
 def test_the_hook_budget_fails_an_unnamed_import_a_name_nothing_imports_and_a_slow_call(compiled_runtime, tmp_path, hook_budget):
     """The budget is a test's only word on a hook's cost, so each way it can refuse is shown to refuse."""
     hook = [str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"]

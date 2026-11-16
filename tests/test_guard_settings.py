@@ -204,7 +204,7 @@ ROUTES = {
 SHELL_SPELLINGS = {
     "plainly": "{v5}/{name}",
     "through a link made beforehand": "{work}/v5/{name}",
-    "through ..": "{v5}/board/../{name}",
+    "through ..": "{v5}/outbox/../{name}",  # through a folder anyone writes: a path through the board names the board
     "in another case": "{home}/.synthesis/V5/{upper}",
     "with ~": "~/.synthesis/v5/{name}",
     "with $HOME": "$HOME/.synthesis/v5/{name}",
@@ -244,6 +244,21 @@ MORE_ROUTES = {
                                  "*** End Patch\nPATCH", SETTINGS),
     "a bash script": ("bash -c 'cp \"$1\" \"$2\"' copier {work}/v5-config.json {config}", SETTINGS),
     "after a cd": ("cd {v5} && echo '{{}}' > config.json", SETTINGS),
+    "after a pushd": ("pushd {v5} && echo '{{}}' > config.json", SETTINGS),
+    "in a subshell": ("(cd {v5} && echo '{{}}' > config.json)", SETTINGS),
+    "env -C": ("env -C {v5} sh -c 'echo x > config.json'", SETTINGS),
+    "through a variable": ("D={v5}; echo '{{}}' > \"$D/config.json\"", SETTINGS),
+    "a here-string to tee": ("tee {config} <<< '{{}}'", SETTINGS),
+    "curl -o": ("curl -sS -o {config} https://example.com/settings.json", SETTINGS),
+    "dd of=": ("dd if={work}/v5-config.json of={config}", SETTINGS),
+    "truncate": ("truncate -s 0 {config}", SETTINGS),
+    "touch": ("touch {hook}", HOOKS),
+    "perl in place": ("perl -pi -e 's/example/other/' {config}", SETTINGS),
+    "cp -t": ("cp -t {hooks} {work}/hook.sh", HOOKS),
+    "rsync": ("rsync -a {work}/ {hooks}/", HOOKS),
+    "tar -C": ("tar -xf {work}/hooks.tar -C {hooks}", HOOKS),
+    "find -exec": ("find {hooks} -type f -exec chmod 644 {{}} \\;", HOOKS),
+    "osascript": ("osascript -e 'do shell script \"cp {work}/hook.sh {v5}/git-hooks/pre-commit\"'", HOOKS),
 }
 
 
@@ -252,6 +267,18 @@ def test_every_other_shell_route_to_the_settings_waits_too(world, case):
     line, what = MORE_ROUTES[case]
     line = line.format(**_spots(world))
     assert _held(_verdict(world, line), what), line
+
+
+def test_a_shell_tool_that_names_its_own_folder_is_judged_there(world):
+    """Codex's and Muse's shells take the folder a command runs in (`workdir`), which may not be the session's: a bare
+    name written there is judged where it lands."""
+    for tool in ("bash", "exec_command"):  # Muse's, Codex's
+        call = {"command": "echo '{}' > config.json", "workdir": str(world["v5"])}
+        assert _held(guards.check(tool, call, CONFIG, cwd=str(world["work"]), session=world["session"]))
+        call = {"command": "echo '{}' > config.json", "workdir": "../home/.synthesis/v5"}  # relative to the session's folder
+        assert _held(guards.check(tool, call, CONFIG, cwd=str(world["work"]), session=world["session"]))
+    assert guards.check("bash", {"command": "echo '{}' > config.json", "workdir": str(world["work"])}, CONFIG,
+                        cwd=str(world["v5"]), session=world["session"]) is None  # a project's own, from wherever the session began
 
 
 def test_a_command_that_also_writes_the_state_folder_is_still_refused_outright(world):
@@ -291,8 +318,8 @@ READS = {
     "shasum over a pattern": "shasum {v5}/git-hooks/*",
     "python that reads": "python3 -I -c \"import json, sys; print(json.load(open(sys.argv[1])))\" {config}",
     "git diff": "git diff --no-index {work}/v5-config.json {config}",
-    "a copy out": "cp {config} {work}/config-copy.json",
-    "a copy beside it": "cp {config} {config}.bak-2026-11-15",
+    "a copy out by cat": "cat {config} > {work}/config-copy.json",
+    "a copy beside it by cat": "cat {config} > {config}.bak-2026-11-15",
     "a commit message that names it": "git commit --allow-empty -m 'Note the change to ~/.synthesis/v5/config.json'",
 }
 
@@ -301,6 +328,14 @@ READS = {
 def test_reading_the_settings_needs_no_code(world, case):
     line = READS[case].format(**_spots(world))
     assert _verdict(world, line) is None, line
+
+
+def test_cp_of_the_settings_waits_as_it_does_for_every_protected_file_and_cat_is_the_copy_that_needs_none(world):
+    """cp is no known reader (it links as well as copies: `cp -l`, `cp -s`), so naming a protected file to it waits, as it
+    has for the state folder since 5.22.1; the hold says that cat, head, grep and jq read with no code."""
+    held = _verdict(world, "cp {config} {config}.bak-2026-11-15".format(**_spots(world)))
+    assert _held(held) and "Reading these files needs no code (cat" in held
+    assert _held(_verdict(world, "ln {config} {work}/alias.json".format(**_spots(world))))  # a hard link to it: a way to write it later
 
 
 ORDINARY_SHELL = {
