@@ -224,6 +224,19 @@ def test_a_footer_that_shows_a_persona_domain_as_text_is_still_refused(tool, cal
     assert LINK_RULE in reason and "approve" not in reason, reason
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="open list (docs/runtime-integration.md, What remains open): a "
+                   "footer written as an object nested under an addressing key, which no connector does, is skipped with that "
+                   "key (review round 1 of 22.31; crafted)")
+@pytest.mark.parametrize("tool,call", [
+    (CONNECTOR_SEND, {**REPORTED, "reply_to": {"address": "desk@other.example", "note": SHOWN_FOOTER}}),
+    ("mcp__workspace-mcp__manage_event", {"action": "create", "user_google_email": "me@personal.example", "summary": "Planning",
+                                          "attendees": [{"email": "reader@other.example", "comment": SHOWN_FOOTER}],
+                                          "description": "<p>The agenda is attached.</p>"}),
+])
+def test_a_footer_nested_under_an_addressing_key_is_refused(tool, call):
+    assert _link_rule(tool, call)
+
+
 def test_session_to_session_messages_are_not_correspondence():
     assert guards.check("mcp__ccd_session_mgmt__send_message", {"session_id": "local_1", "message": "Line one\nline two"}, CONFIG) is None
 

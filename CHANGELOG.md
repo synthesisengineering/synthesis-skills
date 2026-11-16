@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [5.23.2] - 2026-11-15
 
 - **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
   was refused before it went: the check that a persona signature makes the persona's name the link read every field of
