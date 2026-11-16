@@ -44,7 +44,7 @@ For each channel in the preflight's resolved-target list:
 slack_read_channel(resolved_channel_id, oldest=WINDOW_OLDEST, limit=30, detail="detailed")
 ```
 
-- **`WINDOW_OLDEST` is the `oldest=` epoch printed by** `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py window --workspace <W> --surface slack --target <resolved id>` — never hand-computed, never copied from a transcript header, never midnight. Quote the human-readable bounds the command prints in the sync report, so the window is checkable by eye (v3.8.0; a hand-typed `oldest` of 07:50 *today* once reported five channels empty that were not).
+- **`WINDOW_OLDEST` is the `oldest=` epoch printed by** `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" window --workspace <W> --surface slack --target <resolved id>` — never hand-computed, never copied from a transcript header, never midnight. Quote the human-readable bounds the command prints in the sync report, so the window is checkable by eye (v3.8.0; a hand-typed `oldest` of 07:50 *today* once reported five channels empty that were not).
 - A **bootstrap window** (no watermark yet for that target or surface) reads to the workspace's backfill bound and states that bound in the report.
 - **Every declared target is read every sync**, including targets read earlier the same day — the window simply starts where the last read stopped.
 - Note the **reply count** on every message that has threads. These will be re-read in Step 2.
@@ -125,7 +125,7 @@ For each file:
 - Record the sync time (e.g., `## Mid-day sync (~14:30 EDT)`).
 - If the file doesn't exist, create it with the standard header and create directories as needed.
 - If no messages of that type were found, skip that file (do not create empty files).
-- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `python3 <synthesis-daily-rituals-root>/scripts/sync_watermark.py advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set written by `preflight.py --json --out` this run and never a stored copy) lists exactly the targets this sync did not re-read. An incomplete or unknown target is not advanced.
+- **Record the read once it is saved (v3.8.0):** for each target whose window was read and whose messages (or confirmed absence) are now on disk, run `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" advance --workspace <W> --surface slack --target <resolved id> --through <the window's latest>`. The watermark advances only after the write, so a read that failed to save cannot claim coverage — and the gate at the end of the sync (`sync_watermark.py status --workspace <W> --surface slack --since run --targets-from <declared.json>`, the declared set written by `preflight.py --json --out` this run and never a stored copy) lists exactly the targets this sync did not re-read. An incomplete or unknown target is not advanced.
 - **The sync report names its denominator (v4.0.0):** how many declared targets preflight resolved, how many were read in full this run, and every target not read, incomplete or unknown, by name (lesson 2026-09-17: a coverage claim must name its denominator).
 
 Meeting transcripts are NOT part of Slack sync — they are handled by the daily-rituals skill and placed in `{transcripts_repo}/{transcripts_path}/meetings/YYYY-MM-DD-<slug>.md`.
@@ -172,3 +172,10 @@ The per-channel, `_dms.md`, and `_group-dms.md` file shapes, the permalink const
 
 - **Always record the TS** for every significant message — embedded in a Slack permalink (`https://{slack_workspace_domain}/archives/{channel_id}/p{ts_no_dot}`) whose visible text is the human-readable time. When `slack_workspace_domain` is absent, warn once per session and fall back to the legacy `(TS: 1234567890.123456)` text; never invent a domain.
 - **Note reply counts** so the next sync can detect new replies; **separate sync sessions** with a horizontal rule and a timestamped `## … sync (~HH:MM TZ)` header; **each file is scoped to its subject** — mid-day syncs append to the same file and never fan out to new ones.
+
+## When This Skill Runs
+
+This skill is invoked:
+- **By the user** typing `/synthesis-slack-sync` or "sync from Slack" or similar
+- **By `synthesis-daily-rituals`** during Day-Start (Step 3: Sync), Mid-Day Sync, and Day-End (Step 1: Transcript Sync)
+- **Before drafting any Slack reply** — the daily-rituals skill requires re-reading the actual thread before drafting, to avoid stale-information replies

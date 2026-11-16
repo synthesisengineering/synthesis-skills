@@ -546,21 +546,21 @@ def test_the_plugins_scanners_wait_when_a_repository_they_reach_names_a_program(
     corpus = repo(tmp_path, "corpus")
     (corpus / "projects" / "p").mkdir(parents=True)
     (corpus / "projects" / "p" / "CONTEXT.md").write_text("# P\n", encoding="utf-8")
-    doctor = f"python3 {CONTEXT_DOCTOR} --project {corpus / 'projects' / 'p'}"
+    doctor = f"python3 -s {CONTEXT_DOCTOR} --project {corpus / 'projects' / 'p'}"  # as the plugin runs its scripts (22.15)
     assert guards.check_outgoing(doctor, CONFIG, str(tmp_path), SESSION) is None and shell(doctor, cwd=str(tmp_path)) == ""
     import subprocess
     subprocess.run(["git", "-C", str(corpus), "config", "core.fsmonitor", "/usr/bin/true"], check=True)  # an ordinary-looking line
     assert held(shell(doctor, cwd=str(tmp_path)))
-    assert held(shell(f"python3 {CONTEXT_DOCTOR} --root {corpus}", cwd=str(tmp_path)))
+    assert held(shell(f"python3 -s {CONTEXT_DOCTOR} --root {corpus}", cwd=str(tmp_path)))
     space = tmp_path / "space"
     (space / ".agents").mkdir(parents=True)
     plain = repo(tmp_path, "plain")
     (space / ".agents" / "repos.yaml").write_text(f"repos:\n  - name: plain\n    path: {plain}\n    ritual_sync: true\n", encoding="utf-8")
-    scan = f"python3 {REPO_STATE} --workspace-root {space} --fetch --json"
+    scan = f"python3 -s {REPO_STATE} --workspace-root {space} --fetch --json"
     assert shell(scan, cwd=str(tmp_path)) == ""
     subprocess.run(["git", "-C", str(plain), "config", "filter.x.clean", "cat"], check=True)
     assert held(shell(scan, cwd=str(tmp_path)))
-    assert held(shell(f"python3 {REPO_STATE} --discover {tmp_path} --json", cwd=str(tmp_path)))
+    assert held(shell(f"python3 -s {REPO_STATE} --discover {tmp_path} --json", cwd=str(tmp_path)))
 
 
 @pytest.mark.parametrize("where", [".git/hooks/pre-commit", ".git/hooks/post-checkout", ".githooks/pre-commit", "hooks-folder/pre-commit"])
@@ -935,12 +935,12 @@ KIT_SCRIPTS = [(script, rest) for script in ("skills/synthesis-onboarding/script
 
 @pytest.mark.parametrize("script,rest", OWN_SCRIPTS)
 def test_the_plugins_own_scripts_that_open_files_or_post_to_a_host_they_spell_run_without_a_code(tmp_path, script, rest):
-    assert shell(f"python3 {shlex.quote(str(ROOT / script))} {rest}".strip(), cwd=str(tmp_path)) == "", (script, rest)
+    assert shell(f"python3 -s {shlex.quote(str(ROOT / script))} {rest}".strip(), cwd=str(tmp_path)) == "", (script, rest)
 
 
 @pytest.mark.parametrize("script,rest", KIT_SCRIPTS)
 def test_the_release_kits_own_scripts_wait_as_the_kit_and_never_as_a_send_route(tmp_path, script, rest):
-    reason = shell(f"python3 {shlex.quote(str(ROOT / script))} {rest}".strip(), cwd=str(tmp_path))
+    reason = shell(f"python3 -s {shlex.quote(str(ROOT / script))} {rest}".strip(), cwd=str(tmp_path))  # run plainly, still the kit
     assert "a script outside the plugin's release" in reason, (script, rest, reason[:300])
 
 

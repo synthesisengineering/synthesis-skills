@@ -203,8 +203,6 @@ def test_the_shipped_readers_run_on_messenger_pages(tmp_path, reader, page):
     assert guards.check(SCRIPT, _script(_printed(*reader)), CONFIG, session=session) is None
 
 
-@pytest.mark.xfail(strict=True, reason="round 4, #4: the release carries chat_page.py once the installer's own change, which "
-                                       "adds synthesis-message-exports to STABLE_SKILL_SCRIPTS, is on main; then drop this mark")
 def test_the_installed_runtime_carries_both_readers_and_runs_them(tmp_path):
     """Round 4, #4: install.py copied only its listed skills' scripts into the release, and chat_page.py was not among
     them, so its extractor was refused on every Messenger tab in the runtime the hook runs from. The installer's own

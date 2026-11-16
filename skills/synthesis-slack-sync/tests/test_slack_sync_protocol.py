@@ -43,7 +43,7 @@ def test_e06_reads_are_detailed():
 
 def test_e07_every_declared_target_is_read_every_sync_from_its_window():
     assert "**Every declared target is read every sync**" in STEP1
-    assert "sync_watermark.py window" in STEP1 and "never hand-computed" in STEP1
+    assert re.search(r'sync_watermark\.py"? window', STEP1) and "never hand-computed" in STEP1
 
 
 def test_e08_a_message_from_another_conversation_is_not_filed_here():
@@ -54,7 +54,7 @@ def test_e08_a_message_from_another_conversation_is_not_filed_here():
 def test_e09_a_saved_connector_read_advances_without_token_or_receipt():
     assert "The connector read is the read." in STEP1 and "No token, receipt or replay is required" in STEP1
     assert "--acquisition-evidence" not in PROTOCOL + BRIEF
-    assert "sync_watermark.py advance" in STEP4
+    assert re.search(r'sync_watermark\.py"? advance', STEP4)
 
 
 def test_e11_slack_connect_messages_are_saved_like_any_other():
@@ -74,5 +74,5 @@ def test_every_command_the_skill_names_exists():
     named |= set(re.findall(r"`(scripts/[\w.]+\.py)", BRIEF))
     assert named and all((SKILL / path).is_file() for path in named), named
     rituals = SKILL.parent / "synthesis-daily-rituals" / "scripts" / "sync_watermark.py"
-    assert "<synthesis-daily-rituals-root>/scripts/sync_watermark.py" in PROTOCOL and rituals.is_file()
+    assert '"$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py"' in PROTOCOL and rituals.is_file()
     assert "exec-public" not in PROTOCOL + BRIEF

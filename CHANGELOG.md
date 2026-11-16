@@ -378,6 +378,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   program its line writes while naming the server. The review's probes for the three now hold, the meeting fetcher's
   reads, ordinary osascript and 1,284 git reads in 321 repositories need nothing new, and a program with 3,000 tool
   calls is read in 0.2 s (its calls in 0.07 s, its bodies in 0.12 s).
+- **Every skill runs the runtime's copy of its scripts, and the guard trusts only the release it runs from.** Two seats'
+  day-ends ran skill scripts from the plugin cache, and the guard held them for the principal's code. The first version
+  of this fix carried those skills' scripts in the runtime and vouched for a plugin copy with the runtime's bytes. Its
+  review found that a copy's bytes say nothing about the code it loads from other folders, all of them writable: a
+  byte-identical `messages_send.py` beside a `synthesis/` the agent wrote reached its send call with no code, and an
+  unmodified importer wrote into the session archive when an argument named it. Now:
+  - The guard trusts only what lies inside the release it runs from (`releases/<hash>/`, a protected folder). A
+    plugin-cache copy is judged like any other script; when one of the runtime's scripts waits from a copy, the hold
+    names the runtime's own copy. A module of a script's own that the same line writes makes the script wait. A write by
+    a file tool or the shell to a file that is also one in a protected folder (a hard link) waits for the principal's
+    code, and a protected folder written as a pattern (`sta*`, `s?ate`, `[s]tate`) counts as that folder for any script.
+  - A script of the release keeps its exemption only while its line names no protected folder (its arguments, its input,
+    a value the line gives, the folder it runs in, or a configuration file it follows from there, such as the meeting
+    fetcher's `.agents/meeting-transcripts.yaml`) and the plain word of its interpreter runs it: no path to the
+    interpreter, wrapper, function, alias, `autoload` or file read into the shell; no builtin that gives a variable a
+    value (`export`, `read`, `printf -v`, `print -v`, `mapfile`, a parameter expansion that assigns and their like); no
+    assignment to a variable in the environment, to one that moves where a program loads from, or to zsh's tied arrays,
+    in any case of the name and by a subscript too (zsh's `PATH[1,-1]=`);
+    no HOME given a value the guard does not read (such a line, when it then uses HOME, waits); and Python run with
+    `-s`, `-S` or `-I`, so nothing in the user's own site folder loads into it, with no other option but those that only
+    take away what it loads. A file planted in the interpreter's own site-packages (a `.pth` file, a site customization)
+    or in a standard library the user can write still runs inside such a run: that is on the open list until trusted runs
+    use the sealed interpreter the guard's sandbox plans. What its own text names stays exempt. Otherwise it is judged like any other script. The
+    workspace-mcp kit's scripts that write or load a LaunchAgent or a systemd unit wait from the runtime too, and the
+    messages reader opens its lock without following a link.
+  - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
+    `synthesis-message-exports`, `synthesis-local-messaging`, `synthesis-context-lifecycle` and the Bitbucket helper
+    that `pr_queue_scan.py` loads: 59 files instead of 40. Never the installer and release kit (`setup.py`,
+    `workspace.py`, `release.py`), which write the trust base itself.
+  - Every skill text and script that runs one of those scripts names `$HOME/.synthesis/v5/current/skills/...`, a Python
+    one with `-s`
+    (checkpoint 2.0.3, chief-of-staff 2.3.1, context-lifecycle 2.8.2, daily-rituals 3.19.0, inbox-cleanup 2.0.2,
+    kb-edit 2.1.1, local-messaging 1.5.3, mac-sync 3.1.1, machine-sync 2.0.1, meeting-transcripts 1.2.1,
+    message-exports 1.0.1, promotion-gate 2.0.1, slack-sync 4.0.4). Two passages moved word for word to make room:
+    slack-sync's "When This Skill Runs" to `references/sync-protocol.md`, which also lets its SKILL.md take its
+    `category` line, and local-messaging's account of what the reader skips to `references/adapter-contract.md`.
+  - The runtime holds these files once this release's own installer installs it, as `release.py` and
+    `release.py --install-only` do.
+  - On a Mac that runs the workspace-mcp server under launchd or systemd, its doctor now runs from the runtime and
+    reports a unit installed from anywhere else; running the runtime's `install-autostart.sh` once points the unit at
+    the runtime's stable path, which plugin upgrades no longer move.
 
 ## [5.23.2] - 2026-11-15
 

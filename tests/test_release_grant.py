@@ -210,3 +210,18 @@ def test_k1_no_program_in_the_installers_process_replaces_the_runtime_without_a_
                           text=True, timeout=300, env=dict(os.environ))
     assert "Unapproved" in done.stderr, (done.stdout[-500:], done.stderr[-1500:])
     assert (Path(os.path.realpath(world["v5"] / "current")) / "synthesis" / "guards.py").read_text() != STUB
+
+
+def test_the_tags_files_a_release_takes_are_the_files_its_install_copies():
+    """The grant is spent, and a release installs, only when the staged copy holds exactly the tag's files that `takes`
+    names, and the staged copy is what `_stable_skill_files` walks: 22.15 carries each skill's scripts/ folder and its
+    Python and shell scripts anywhere else, so `takes` names those too, or a release from the launcher would find the
+    meeting skill's fetcher extra and install nothing (the integration of 22.8 and 22.15)."""
+    tracked = set(subprocess.run(["git", "-C", str(ROOT), "ls-files", "skills"], capture_output=True, text=True,
+                                 check=True).stdout.split())
+    copied = {rel for rel, _ in install._stable_skill_files(ROOT)} & tracked  # a fresh clone holds only what git tracks
+    taken = {rel for rel in tracked if install.takes(rel)}
+    assert copied == taken, (sorted(copied - taken)[:5], sorted(taken - copied)[:5])
+    assert {"skills/synthesis-meeting-transcripts/extract_commitments.py", "skills/synthesis-message-exports/scripts/chat_page.py",
+            "skills/synthesis-meeting-transcripts/optional-workspace-mcp/start.sh"} <= taken
+    assert not [rel for rel in taken if "/tests/" in rel or rel.rsplit("/", 1)[-1].startswith("test_")]

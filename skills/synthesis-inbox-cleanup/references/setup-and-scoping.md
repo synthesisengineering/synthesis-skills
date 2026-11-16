@@ -80,7 +80,7 @@ claude plugin marketplace add synthesisengineering/synthesis-skills
 claude plugin install synthesis-skills@synthesis-engineering
 
 # 2. Run the installer — creates ~/.synthesis/inbox-cleanup/ with seed config + rules
-<synthesis-inbox-cleanup-root>/scripts/install.sh
+"$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/install.sh"
 
 # 3. Edit ~/.synthesis/inbox-cleanup/config.yaml — add your account(s)
 # 4. Edit ~/.synthesis/inbox-cleanup/rules.yaml — start with the never_touch list
@@ -91,10 +91,10 @@ security add-generic-password -s inbox-cleanup-imap -a "$USER" -w
 
 # 6. Declare the principal for the impersonation scan, then validate it (no mail is read)
 cp <synthesis-inbox-cleanup-root>/templates/impersonation.example.yaml ~/.synthesis/inbox-cleanup/impersonation.yaml
-python3 <synthesis-inbox-cleanup-root>/scripts/scan_impersonation.py --check-config
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/scan_impersonation.py" --check-config
 
 # 7. Sanity-check from the stable runtime
-python3 ~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/icloud_census.py
+python3 -s ~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/icloud_census.py
 ```
 
 The installer prints one line for each thing still missing: certifi, the Keychain password, the engine's stable path, or an engine copy left by version 1.x under `~/.synthesis/inbox-cleanup/engine/` (anything still reading that copy runs old code; point it at the stable path and remove the folder). It never overwrites `config.yaml` or `rules.yaml`, and refuses a runtime root that is `/`, your home folder, a symlink or a file.

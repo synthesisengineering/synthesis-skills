@@ -1836,6 +1836,14 @@ class Quoted(str):
     held for a path it is merely handed, since the word may be a message that mentions one."""
 
 
+class Run(list):
+    """A command's words; `wrapped` when an assignment or a wrapper (env, timeout, xargs and the rest of WRAPPERS) stood
+    in front of its program, which may give it an environment, a folder or words of its own."""
+    def __init__(self, words, wrapped: bool = False):
+        super().__init__(words)
+        self.wrapped = wrapped
+
+
 PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
 DEEP = "/**"  # after a folder a command runs in: that folder or any under it (`find -execdir` runs in the folder of what it found)
 OPAQUE = frozenset({"php", "lua", "luajit", "Rscript", "julia", "swift", "tclsh", "groovy", "scala", "elixir", "pwsh", "jshell"})
@@ -1929,7 +1937,8 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
         moved: list = []
-        words, inner = _bare(words, moved)
+        before, (words, inner) = words, _bare(words, moved)
+        wrapped = len(words) > len(before) or any(w not in KEYWORDS for w in before[:len(before) - len(words)])
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
@@ -1966,7 +1975,7 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
         if not taken:
             continue
         if words:
-            found.append((words, here))
+            found.append((Run(words, wrapped), here))
             if runs is not None:
                 runs.append((chain, needed))
             if feeds is not None:
@@ -3349,18 +3358,28 @@ def check_claimed(targets: list[str], cwd: str, session: dict | None) -> str | N
     return None
 
 
-def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str | None:
+def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict, session: dict | None = None) -> str | None:
     """An agent's own file tools (Write, Edit, apply_patch) may not write where approvals and send windows live
-    (2026-10-14: those tools never reached the guard, so a window could be written by hand)."""
+    (2026-10-14: those tools never reached the guard, so a window could be written by hand), nor, without the
+    principal's code, a file that is also one in such a folder (a hard link: review round 2 of 5.23.1, R2-4)."""
     targets = _file_targets(tool, tool_input)
     roots = [os.path.realpath(r) for r in _protected_roots(config)]
     real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
     hits = [t for t in targets if any(paths.inside(real[t], r) for r in roots) and not _own(real[t])]
     if hits and _cli_owned(real[hits[0]]):
         return f"Refused: {tool} would write {hits[0]}, {_cli_owned(real[hits[0]])}"
-    return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
-            "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
-            "show them what needs approving.") if hits else None
+    if hits:
+        return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
+                "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
+                "show them what needs approving.")
+    for t, shared in ((t, _shared(real[t], roots)) for t in targets):
+        subject = {"tool": tool, "file": real[t], "same_as": shared}
+        if shared and not approvals.consume("shared-file", subject, session):
+            code = approvals.request("shared-file", subject, f"a {tool} to a file that is also {shared}")
+            return (f"This {tool} writes {t}, which is also {shared} in a protected folder (a hard link), so it would change that "
+                    f"file. If the change is meant, show the principal this exact call and ask them to type {approvals.how(code)}; "
+                    "then make the identical call again.")
+    return None
 
 
 def _python_source(words: list, fed: str) -> tuple[str, list]:
@@ -5193,28 +5212,122 @@ def _system_shell(word: str, cwd: str) -> bool:
     return False
 
 
+def _release() -> str:
+    """The release this guard runs from: `releases/<hash>/` under the synthesis home, a protected folder."""
+    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+
 def _shipped(path: str) -> bool:
-    """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
-    synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
-    as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
-    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14).
-    The release tool and what it imports are the release's alone (2026-11-15): each is judged as any other script."""
-    release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    """A script of the plugin as it shipped: inside the release this guard runs from, whose every import resolves
+    inside it. A copy anywhere else is never the plugin's own, whatever its bytes, since what lies around it is
+    writable: the plugin's synthesis/ two folders up, the skill's root, a module planted beside it (the review of
+    5.23.1, finding 1). Every skill runs the runtime's copy instead (`_runtime_copy`; the coordinator, 2026-11-15).
+    The release tool and what it imports are the release's alone (2026-11-15): each is judged as any other script,
+    inside the release too."""
+    release = _release()
+    return paths.inside(path, release) and not paths.spelled(os.path.relpath(paths.spelled(path), paths.spelled(release))).replace(
+        os.sep, "/").startswith(tuple(map(paths.spelled, RELEASE_KIT)))
+
+
+PLAIN_OPTIONS = re.compile(r"-[BEIPSsqu]+")  # Python's options that only take away what it loads, or change no code it runs
+SETTERS = frozenset({"export", "declare", "typeset", "local", "alias", "hash", "enable", "builtin", "source", ".", "function", "read",
+                     "mapfile", "readarray", "autoload", "getopts", "unset", "let", "vared", "zparseopts", "select"})  # each sets one
+STARTUP = re.compile(r"PYTHON\w*|DYLD_\w*|LD_\w*|PATH|HOME|BASH_ENV|ENV|TMPDIR|path|fpath|manpath|cdpath|module_path")  # zsh ties the last five
+DEFINES = re.compile(r"(?:^|[\s;&|({])(?:function[ \t]+[^\s;&|()]|(?:functions|aliases|commands|builtins|path|fpath|manpath|cdpath|module_path)\["
+                     r"|[^\s;&|()<>'\"=$]+[ \t]*\([ \t]*\)[ \t\n]*[{(])|\$\{\w+:{0,2}=")  # and a parameter expansion that assigns
+MOVES_HOME = re.compile(r"(?<![\w${])HOME\b(?!=)|\$\{HOME:{0,2}=")  # HOME given a value by anything but a HOME= the guard reads
+USES_HOME = re.compile(r"\$\{?HOME\b|(?<![\w$~./-])~(?=/|\s|$|[\"'])|(?:^|[;&|(]\s*)cd\s*(?:$|[;&|)])")
+SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-workspace-mcp/{name}" for name in (
+    "install-autostart.sh", "uninstall-autostart.sh"))  # they write or load a LaunchAgent or a systemd unit (review round 2, R2-8)
+
+
+SUBSCRIPTED = re.compile(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
+
+
+def _globbed(path: str) -> list:
+    """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
+    copy and redirect checks read one, else the path as written (review round 2, R2-3)."""
+    import glob
+    return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) else [path]
+
+
+def _shared(path: str, roots: list) -> str:
+    """The file in a protected folder that `path` is too (a hard link), else ''; a search past its second is taken to have
+    found one (review round 2, R2-4: a Write through a link rewrote the release in place)."""
+    try:
+        st = os.stat(path)
+    except (OSError, ValueError):
+        return ""
+    if st.st_nlink < 2 or st.st_mode & 0o170000 != 0o100000:
+        return ""
+    until = time.monotonic() + 1.0
+    for root in roots:
+        for top, _, names in os.walk(root):
+            for name in names:
+                try:
+                    if (lambda o: (o.st_ino, o.st_dev) == (st.st_ino, st.st_dev))(os.lstat(os.path.join(top, name))):
+                        return os.path.join(top, name)
+                except OSError:
+                    continue
+            if time.monotonic() > until:
+                return f"a file under {root} (the search for this file's other names ran out of time)"
+    return ""
+
+
+def _follows(code: str, where: str, args: list, env: dict, raw: list, linked: list) -> str:
+    """A protected folder that a configuration file a script's text names (`.agents/<name>`, `.claude/<name>`) names, in
+    the folder it runs in or one above it, or above a folder or workspace its words name: a script of the release writes
+    where such a file says (the meeting fetcher's archive), so the guard reads it as it reads the line; else ''."""
+    names = set(re.findall(r"\.(?:agents|claude)/([\w.-]+\.(?:ya?ml|json|toml))", code))
+    root = os.environ.get("SYNTHESIS_WORKSPACES") or os.path.join(os.path.expanduser("~"), "workspaces")
+    starts = [where] + [p for a, b in zip(args, args[1:] + [""]) for p in (
+        os.path.join(where, os.path.expanduser(a)), os.path.join(root, b) if a == "--workspace" else "") if p and os.path.isdir(p)]
+    seen, found = set(), []
+    for at in (os.path.realpath(s) for s in starts) if names else ():
+        while at not in seen and len(seen) < 64:
+            seen.add(at)
+            found += [p for n in sorted(names) for p in (os.path.join(at, ".agents", n), os.path.join(at, ".claude", n)) if os.path.isfile(p)]
+            at = os.path.dirname(at)
+    for path in found:
+        text = (_regular(path, 1 << 16) or (b"",))[0].decode("utf-8", "replace")
+        named = _spells([text], ["", *re.findall(r"(?:~|\$HOME|/)[^\s\"',\]#]*", text)], where, env, raw, linked)
+        if named:
+            return f"{path}, which names {named}"
+    return ""
+
+
+def _plainly(words: list, where: str, text: str, found: list, given: list) -> str:
+    """'' when a script runs as the plain word of its interpreter runs it: that word with no path, no wrapper or
+    assignment in front of it, handed on by no other program, with no option but Python's that only take away what it
+    loads; on a line that defines no function or alias, reads no file into the shell, exports nothing and gives no value
+    to a variable in the environment or one that moves where a program loads from. Else what the line does instead,
+    which may run or load something other than the release's own code (the review of 5.23.1, finding 4)."""
+    head = os.path.basename(words[0])
+    interpreter = bool(SCRIPT.match(head) or UNREAD.match(head)) or head in SHELLS
+    kind, at, _ = _program(words) if interpreter else ("file", 0, "")
+    python = head.startswith(("python", "pypy"))
+    if getattr(words, "wrapped", True) or isinstance(where, Quoted) or (interpreter and "/" in words[0]) or kind != "file" or words[at:at + 1] == ["-m"] or (
+            words[1:at] and not (python and all(PLAIN_OPTIONS.fullmatch(w) for w in words[1:at]))):
+        return "runs it through more than its interpreter's plain word (a path to it, a wrapper, an option or another program)"
+    if python and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
+        return "runs Python without -s, -S or -I, so a usercustomize.py or a .pth file in the user's own site folder loads into it"
+    upper = {name.upper() for name in os.environ}
+    if DEFINES.search(text) or any(n.upper() in upper or STARTUP.fullmatch(n.upper()) or STARTUP.fullmatch(n.lower()) for n in (
+            m[1] for m in [*given, *LOOPED.finditer(text), *SUBSCRIPTED.finditer(text)])) or any(
+            os.path.basename(w[0]) in SETTERS or (w[0] == "set" and any(re.fullmatch(r"-\w*a\w*|allexport", x) for x in w[1:])) or (
+                w[0] in ("printf", "print") and any(x[:2] == "-v" for x in w[1:])) for w, _ in found):
+        return "gives it an environment of its own (a value for a variable it may read, a function, an alias or a file read into the shell)"
+    return ""
+
+
+def _runtime_copy(path: str) -> str:
+    """The runtime's own copy of the script a copy outside the release stands for: the file at the same place under
+    its last `skills/` folder, spelled through the synthesis home's `current` where that leads to this release; ''
+    when the runtime carries none."""
     parts = path.split(os.sep)
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
-    inside = paths.inside(path, release)
-    if paths.spelled(os.path.relpath(paths.spelled(path), paths.spelled(release)) if inside else rel).replace(
-            os.sep, "/").startswith(tuple(map(paths.spelled, RELEASE_KIT))):
-        return False
-    if inside:
-        return True
-    here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
-    mine = _regular(path, SCRIPT_LIMIT + 1)
-    names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
-             for m in ([a] if a else [x.split()[0] for x in b.split(",") if x.strip()])}
-    return bool(rel) and all(os.path.isfile(os.path.join(there, name)) and (_regular(os.path.join(here, name), SCRIPT_LIMIT + 1) or (b"",))[0] == (
-        _regular(os.path.join(there, name), SCRIPT_LIMIT + 1) or (None,))[0] for name in [os.path.basename(path)] + sorted(
-        n + ".py" for n in names if os.path.exists(os.path.join(here, n + ".py")) or os.path.isdir(os.path.join(here, n))))
+    stable, release = str(paths.home() / "current"), _release()
+    return os.path.join(stable if _real(stable) == release else release, rel) if rel and os.path.isfile(os.path.join(release, rel)) else ""
 
 
 def _unread(words: list, where: str, written: set, line: str) -> tuple:
@@ -5612,12 +5725,12 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
     for pick, handed in (picks + [(a or b or c, False) for t in texts if t for a, b, c in CANDIDATE.findall(t)][:100])[:200]:
         pick = re.sub(r"\$\{(\w+)\}|\$(\w+)", lambda m: env[m[1] or m[2]] if isinstance(env.get(m[1] or m[2]), str) else m[0], pick)  # as the shell expands it
         if "/" in pick or pick[:1] == "~" or (handed and os.path.lexists(os.path.join(where, pick))):  # a bare name: a file that is there
-            full = os.path.join(where, os.path.expanduser(pick))
-            forms = {os.path.normpath(full), os.path.realpath(full)}
-            for form in forms | {aim + f[len(link):] for f in forms for link, aim in linked if paths.inside(f, link)}:
-                low = paths.spelled(form)
-                if not (_own(form) or _own(form, True) or _material(form)) and ((handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled)):
-                    return form
+            for full in _globbed(os.path.join(where, os.path.expanduser(pick))) if handed else [os.path.join(where, os.path.expanduser(pick))]:
+                forms = {os.path.normpath(full), os.path.realpath(full)}
+                for form in forms | {aim + f[len(link):] for f in forms for link, aim in linked if paths.inside(f, link)}:
+                    low = paths.spelled(form)
+                    if not (_own(form) or _own(form, True) or _material(form)) and ((handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled)):
+                        return form
     return ""
 
 
@@ -5631,13 +5744,17 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             _grant_release(given, command)  # the one install this line's run may make with no code (22.18, K1)
             return None
     home = os.path.expanduser("~")
-    if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
+    homeless = MOVES_HOME.search(command) and USES_HOME.search(command)  # HOME given a value the guard does not read, then used
+    if homeless:  # $HOME and ~ stay as written: what they lead to is not known (review round 2, R2-2)
+        readings = [command]
+    elif re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
-    waits = None
+    waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
+                     "and then uses it, so what the line names and runs is not known") if homeless else None
     for text in readings:  # each command is judged in every folder it may run in (`_commands`)
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
             "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
@@ -5687,9 +5804,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
-    feeds, env = [], dict(os.environ)
+    feeds, env, given = [], dict(os.environ), list(ASSIGNED.finditer(_own_text(text)))
     found = _parse(text, cwd, feeds=feeds)[0]
-    for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
+    for m in given:  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
@@ -5719,9 +5836,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         within = any(paths.inside(_real(where), _real(r)) for r in raw)
         quoted = isinstance(where, Quoted)  # read out of a word handed to another program: judged for what it writes, runs and starts
         for word in _named(words) if readable and (not quoted or head in OPAQUE) else ():  # words the parser could not read name no program
-            led = _real(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))
-            if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
-                handed.append((head, word, led))
+            for led in {_real(m) for m in _globbed(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))}:
+                if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
+                    handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
         label, code, program, mine = _unread(words, where, written, text) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
         python = head.startswith("python") and bool(SCRIPT.match(head))
@@ -5729,6 +5846,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                                                                             else _program(words)[2]))) if code and code != text else ""  # the script file it runs
         files, stand, missed = _python_files(ran, code, "" if _isolated(words) else _real(where) if mine else os.path.dirname(ran),
                                              _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
+        missed = missed or next((f"imports {f}, which the same line writes" for f, _ in files[1:] if _real(f) in written), "")  # finding 3
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(_real(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
@@ -5737,10 +5855,27 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
             why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not _shipped(ran) else []
+        mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
+        unplain = _plainly(words, where, command + "\n" + text, found, given) if ran and (mine_run or python) else "is not run"  # finding 4
+        args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
+        values = [v for v in (m[3].strip("'\"") for m in given) if not paths.inside(ran, _real(os.path.join(where, os.path.expanduser(v))))]
+        heard = (_spells([fed, *args, *values], [head, *args], where, env, raw, linked) or (where if within else "") or (  # what its line names,
+            "the files xargs hands it" if HANDED in words and names else "")) if ran and not unplain else ""  # past where the script lies
+        heard = heard or (_follows(code, where, args, env, raw, linked) if mine_run and not unplain else "")  # and the config it follows
+        trusted = mine_run and not unplain  # the release's own code, run as the release holds it
+        if trusted and os.path.relpath(ran, _release()) in SERVICE_WRITERS:
+            waits = waits or Unproven(f"runs {ran}, which writes or loads a LaunchAgent or a systemd unit, a service that runs later "
+                                      "with no one asking")
+        shipped = trusted and not heard  # the plugin's own: what its own text names is exempt, never what its line names (finding 2)
+        named = (heard or named) if trusted else named
+        copy = _runtime_copy(ran) if python and ran and not mine_run and not unplain and not heard else ""  # a copy of a script the runtime carries
+        then = (f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with "
+                "no code" if copy else f", while the line {unplain}" if mine_run and unplain else "")
+        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not trusted else []
         uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
-            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
+            waits = Unproven(f"runs `{head}` on {ran}, a script {'of' if mine_run else 'outside'} the plugin's release that {uses[1]}" + (
+                f" ({uses[0]})" if uses[0] != ran else "") + then)
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         kit = _kit_loaded(([("", source)] if source else []) + (files if ran and not _shipped(ran) else []), where,
                           _isolated(words), named) if python else ""
@@ -5777,15 +5912,15 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         waits = waits or (Unproven(f"runs `{head}`, a program that {reach[1]}") if reach[0] == "names" else None)
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
             text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
-        shipped = bool(ran) and _shipped(ran)  # the plugin's own
         shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
             "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare
             else f"imports `{stand}`, for which a file beside it could stand in (where no such file is, or with -I, it needs no code)" if stand
-            else missed or _shows(files, words, where, names, raw, env, config))
+            else missed or _shows(files, [m for w in words for m in (_globbed(os.path.join(where, os.path.expanduser(w))) if re.search(
+                r"[*?\[]", w) else [w])], where, names, raw, env, config))  # its words as the shell expands a pattern (R2-3)
         proven = shipped or (not shows if python and ran and not source else python and not bare and bool(source) and hit is False and not (
             reach[0] == "places" and not reach[2] and wrote))  # a write to where synthesis's own paths lead, unspelled, cannot be placed
         if named and not waits and not proven:
-            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}" if shows else
+            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}{then}" if shows else
                              f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
                              f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
@@ -5834,6 +5969,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
                "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in, or "
                "copy it out with `cat <file> > <copy>` and work on the copy)")
+    shared = "" if why else next((s for t in real for s in [_shared(t, [_real(r) for r in raw])] if s), "")
+    waits = waits or (Unproven(f"writes a file that is also {shared}, in a protected folder (a hard link)") if shared else None)
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else waits
 
@@ -8853,7 +8990,7 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                 or check_hook_writes(tool, tool_input, cwd, session)
                 or check_git_programs(command, config, cwd, session))  # last: it judges each program as a call of its own
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session) or check_hook_writes(tool, tool_input, cwd, session)
+        return check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session) or check_hook_writes(tool, tool_input, cwd, session)
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)

@@ -1860,10 +1860,60 @@ ROOT = Path(__file__).resolve().parents[1]
 # over main at 218da465) and main's 5.23.2 raise just above (core 5, plugin 5), and 1 more each that the merge's own line
 # adds, measured: core 20687 and plugin 47304. install.py 1: SYNTHESIS_WORKSPACES and WORKSPACE_MCP_PORT, which 22.17's
 # send routes read, in the launchers' kept variables. 22.17's first two labels are 5.24.0, the release that carries them.
+# Then core and plugin each 10 more, all in install.py: _stable_skill_files 4 (its docstring 2, and a carried skill's
+# Python outside scripts/ beside its scripts/ folder, never its tests: the meeting fetcher lives in a folder of its own),
+# STABLE_SKILL_SCRIPTS 4 (the meeting-transcripts, message-exports, local-messaging and context-lifecycle skills, whose
+# scripts a seat's day-end runs from a plugin copy: of the plugin's 89 skill scripts, the installed guard held the four a
+# day-end runs, since the runtime it compares a copy with did not carry them) and the comment that the installer and
+# release kit is never carried 2.
+# Then, that change's second version, core and plugin each 7 more. guards.py 6: _shipped 11 fewer (only the release the
+# guard runs from: a plugin copy's bytes said nothing about the code it loads from other folders, its review's finding
+# 1), _release 3 and _runtime_copy 8 with their 4 blank lines (the runtime's own copy of a script a plugin copy stands
+# for), _self_grant 2 (a hold on such a copy names it). install.py 1: synthesis-bitbucket carried, whose pr_queue.py the
+# rituals' pr_queue_scan.py loads from beside its own skill.
+# Then core and plugin each 5 more, all in guards.py's _self_grant: what a script's line names, read apart from what its
+# own text names (finding 2: a protected folder named as an argument let an unmodified copy write there with no code).
+# The words after the script 1, the protected folder they, its input, the values the line gives variables, the folder
+# it runs in or the files xargs hands it name 2, the hold names that folder 1, and the release's own script is told
+# apart from the plugin's own (inside the release, its line naming none) 1.
+# Then core and plugin each 38 more, all in guards.py: a script inside the release is the plugin's own only when it runs
+# as the release holds it (finding 4: a module path set on the line was read and then ignored for a shipped script).
+# _plainly 16 and its 2 blank lines (its interpreter's plain word with no path, wrapper, or option but Python's that
+# take away what it loads, on a line that defines no function or alias, reads no file into the shell, exports nothing
+# and gives no value to a variable in the environment or one that moves where a program loads from), PLAIN_OPTIONS,
+# SETTERS, STARTUP and DEFINES 4 and their 2 blank lines, Run 6 and its 2 blank lines (the parser marks a command that
+# an assignment or a wrapper stood in front of, which it otherwise reads past), _commands 1, and _self_grant 5 (the
+# plain run, the values on the line that only say where the script lies, and a hold that says why the release's own
+# copy waits).
+# Then core and plugin each 1 more, in install.py: _stable_skill_files' docstring 1 (a carried skill's shell scripts
+# outside scripts/, the meeting skill's server kit, which its doctor checks the service against, and its Python below
+# scripts/: finding 6). Its test changes in place, and so does the fetcher's line naming the runtime's start.sh.
+# Then core and plugin each 1 more, in guards.py's _self_grant: a module of a script's own that the same line writes
+# is code the guard cannot read (finding 3: it was judged as it stood before the line rewrote it).
+# Then that change's review round 2, core and plugin each 83 more, all in guards.py. The tables and helpers 58: _shared
+# (a file that is also one in a protected folder, by a hard link: R2-4), _follows (the configuration file a release
+# script follows, read as its line is: open-list item 1), _globbed (a pattern as the shell expands it: R2-3),
+# MOVES_HOME and USES_HOME (a HOME the guard does not read, then used: R2-2), SERVICE_WRITERS (the kit's unit writers:
+# R2-8), and SETTERS, STARTUP and DEFINES one line longer each where they grew (every builtin that gives a value, zsh's
+# tied arrays, a parameter expansion that assigns), with their blank lines. check_file_write 10 (such a write waits for
+# the principal's code), _plainly 4 (Python only with -s, -S or -I: R2-6; printf -v and print -v), check_self_grant 4,
+# and _self_grant 7 (the config 1, the unit writers 3, a shell write to a hard link 2, a pattern expanded for the
+# script it judges 1).
+# Then its review round 3, core and plugin each 5 more, all in guards.py: SUBSCRIPTED 3 with its blank lines (a
+# subscript assignment to an environment or startup variable, zsh's PATH[1,-1]=: N1) and _plainly 2 (asked in any case
+# of the name). The interpreter check that round first added (N2, 30 lines) came out again when the ruling changed: it
+# held ordinary work on Macs with Homebrew's Python first, so the interpreter's own folders are on the open list.
+# 5.24.0, 22.15 (6e766635: the runtime's carried scripts, from main at 82412084) merged into release/next at 6e5057d5:
+# release/next's ceilings (core 20687, plugin 47304), 22.15's raises in the eight paragraphs just above, from "Then core
+# and plugin each 10 more, all in install.py" (10, 7, 5, 38, 1, 1, 83 and 5, core and plugin alike: 150 each), and 1
+# more each that the merge's own lines add, measured: core 20838 and plugin 47455. install.py 2: takes 1 (a carried
+# skill's files by the rule _stable_skill_files walks them with, so a release's staged copy and its tag's listing
+# agree) and the carried list's comment 1 (the release tool rides along for the launcher, never the plugin's own).
+# guards.py 1 fewer: one _shipped holds both rules, the release it runs from (22.15) and never its kit (22.8).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 20687
-PLUGIN_BUDGET = 47304
+CORE_BUDGET = 20838
+PLUGIN_BUDGET = 47455
 
 
 def _lines(files):

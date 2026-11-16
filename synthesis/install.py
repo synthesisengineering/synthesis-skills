@@ -47,7 +47,15 @@ DAY_END = ("day-end", "day-end-nudge.sh")  # the rituals' launcher and nudge rid
 STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synthesis-promotion-gate", "synthesis-daily-rituals",
                         "synthesis-chief-of-staff",  # the holds ledger's reader, which the same-day guard asks
                         "synthesis-kb-edit",  # the phrase scan a knowledge base's own git hooks run (sharing-standard.md)
+                        "synthesis-meeting-transcripts",  # the fetcher a day-end runs from a plugin copy (2026-11-15)
+                        "synthesis-message-exports",  # the importer and the one-chat page reader, run the same way
+                        "synthesis-local-messaging",  # the day-end's messages read, which moves its watermark
+                        "synthesis-context-lifecycle",  # the day-end's records gate (context_doctor.py)
+                        "synthesis-bitbucket",  # pr_queue.py, which the rituals' pr_queue_scan.py loads from beside its skill
                         "synthesis-skills-manager", "synthesis-onboarding")  # the release tool and its imports, run from here
+# Every skill runs the runtime's copy, the only one the guard trusts (guards._shipped). The release tool and what it
+# imports ride along for the release launcher and are never the plugin's own: release.py, setup.py and workspace.py
+# write the trust base itself, so they wait for the code.
 # Every entry point runs one interpreter, pinned at install (review round 1 of 5.23.1, P1, P3 and A4). `python3` from
 # PATH let one file named python3 in a folder this user writes, earlier on PATH, replace the guard, and the interpreter's
 # own start-up (a .pth file, usercustomize, PYTHONPATH, Apple's compiled-code folder, DEVELOPER_DIR, DYLD_*) ran code
@@ -331,11 +339,16 @@ _approve, _released = approval, _spend_release
 
 
 def _stable_skill_files(plugin_root: Path):
+    """Each carried skill's scripts/ folder, and its Python and shell scripts anywhere else (a skill may keep code beside
+    SKILL.md or in a folder of its own, as the meeting skill keeps its fetcher and server kit), never its tests: the
+    copies a skill runs, inside the release the guard trusts (guards._shipped)."""
     for name in STABLE_SKILL_SCRIPTS:
-        folder = Path(plugin_root) / "skills" / name / "scripts"
-        for path in sorted(folder.iterdir()) if folder.is_dir() else []:
-            if path.is_file() and not path.name.startswith("test_"):
-                yield f"skills/{name}/scripts/{path.name}", path
+        skill = Path(plugin_root) / "skills" / name
+        for path in sorted(skill.rglob("*")) if skill.is_dir() else []:
+            parts = path.relative_to(skill).parts
+            if (path.is_file() and not path.name.startswith("test_") and not {"tests", "__pycache__"} & set(parts)
+                    and (parts[0] == "scripts" or path.suffix in (".py", ".sh"))):
+                yield f"skills/{name}/{'/'.join(parts)}", path
 
 
 def version_tuple(text: str) -> tuple:
@@ -409,11 +422,12 @@ class Refused(RuntimeError):
 
 
 def takes(rel: str) -> bool:
-    """Whether the runtime takes this file of a plugin (by its path in the plugin) when it installs: what `_files` copies."""
-    parts = rel.split("/")
+    """Whether the runtime takes this file of a plugin (by its path in the plugin) when it installs: what `_files` copies,
+    a carried skill's files by the rule `_stable_skill_files` walks them with."""
+    parts, inner = rel.split("/"), rel.split("/")[2:]
     return (parts[0] == "synthesis" and len(parts) > 1 and not any(p == "__pycache__" or p.startswith(".") for p in parts[1:])) or (
-        rel == "CHANGELOG.md") or (len(parts) == 4 and parts[0] == "skills" and parts[1] in STABLE_SKILL_SCRIPTS and parts[2] == "scripts"
-                                   and not parts[3].startswith("test_"))
+        rel == "CHANGELOG.md") or (bool(inner) and parts[0] == "skills" and parts[1] in STABLE_SKILL_SCRIPTS and not inner[-1].startswith(
+            "test_") and not {"tests", "__pycache__"} & set(inner) and (inner[0] == "scripts" or Path(inner[-1]).suffix in (".py", ".sh")))
 
 
 def _blob(path: Path) -> str:

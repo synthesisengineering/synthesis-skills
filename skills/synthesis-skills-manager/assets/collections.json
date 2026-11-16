@@ -77,7 +77,6 @@
     "synthesis-git-hooks": "engineering",
     "synthesis-kb-distribution": "project-management",
     "synthesis-message-guard": "chief-of-staff",
-    "synthesis-slack-sync": "chief-of-staff",
     "synthesis-waiting": "project-management"
   }
 }

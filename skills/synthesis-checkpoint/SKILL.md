@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.2"
+  version: "2.0.3"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -50,7 +50,7 @@ next claim or change needs; a new contradiction triggers full recovery.
 0. **Board.** `synthesis who` and `synthesis inbox`: is the claim still right, is there a message, is anyone else here?
 1. **Clock.** `date "+%Y-%m-%d %H:%M:%S %Z (%A)"`; note any drift from what you believed.
 2. **Project.** `synthesis brief` (directive, current state, plan), then read CONTEXT.md, the plan, the newest session entry and REFERENCE.md. In a fresh session use `synthesis resume <id>`; a CONFLICT warning stops project writes.
-3. **Evidence.** `git log -10 --pretty=format:"%h %ai %ci %s" -- <project>` and `git status --short -- <project>`; compare dated session entries with the header and index. Optionally `python3 <synthesis-context-lifecycle>/scripts/context_doctor.py --project <path>`.
+3. **Evidence.** `git log -10 --pretty=format:"%h %ai %ci %s" -- <project>` and `git status --short -- <project>`; compare dated session entries with the header and index. Optionally `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <path>`.
 4. **Decisions.** Re-read the plan and the in-session task list; check that the facts, reasons and conditions the next step depends on are in the record.
 5. **Report** one short paragraph:
 

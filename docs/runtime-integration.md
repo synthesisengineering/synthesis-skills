@@ -680,6 +680,28 @@ stay open, and no hook running as that same user can close them:
   the program builds, and finds a tool call only where the program's text spells the method whole, so it reads a body
   that is no tool call. The strict expected failure `test_a_tool_call_whose_method_is_split_across_literals_waits`
   names it (review round 4 of 22.17; crafted).
+- Crafted: outside the release, a program named like a Python interpreter and given by its
+  path is taken to be Python, so a shell script named `python3` runs under the proof the
+  guard made for the reader script it is handed.
+- Crafted: for a script outside the release, nothing on the line that makes the word
+  `python3` run something else (a function, an alias, `hash`, `autoload`, a value given by
+  any builtin, `PATH` or zsh's `path`) is looked for, so the proof made from its text holds
+  while something else runs; in front of a script of the release, each of them, and a HOME
+  given a value the guard does not read, makes it wait or be judged like any other.
+- Crafted: a script outside the release, or any Python run without `-s`, `-S` or `-I`, is
+  proven by its own text and modules alone, so a module named like a standard one planted
+  beside it (one the standard library imports, as `argparse` imports `gettext`), compiled
+  code made for one of its own modules, or a `usercustomize.py` or `.pth` file in the user's
+  own site folder runs unseen; a run of the release passes `-s`, which leaves out the user's
+  own site folder.
+- Crafted: a file planted in the interpreter's own site-packages (a `.pth` file, a site
+  customization) or in a standard library the user can write (a Homebrew Python's) runs
+  inside a trusted run of the release; it closes when trusted runs use the sealed
+  interpreter the guard's sandbox plans (plan item 22.14).
+- Crafted: an inline Python program that writes through a hard link the agent made earlier
+  to a release file (`open(<link>, 'w')`) is not seen as a write to that file: the shell
+  and the file tools ask whether a file they write shares its inode with a protected one,
+  and the Python reader does not.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one

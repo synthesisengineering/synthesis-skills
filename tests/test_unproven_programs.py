@@ -319,7 +319,7 @@ SHIPPED_READERS = [
 @pytest.mark.parametrize("call", SHIPPED_READERS)
 def test_the_shipped_scripts_that_read_the_records_run_without_a_code(world, call):
     script, _, rest = call.partition(" ")
-    assert _verdict(world, f"python3 {shlex.quote(str(SKILLS / script))} {rest}".strip()) is None, call
+    assert _verdict(world, f"python3 -s {shlex.quote(str(SKILLS / script))} {rest}".strip()) is None, call
 
 
 # --- the send window: the principal's setting, from any terminal ------------------------------------------------------
@@ -579,18 +579,30 @@ def test_the_runtime_is_a_protected_folder(world, target):
 
 
 def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world, monkeypatch):
+    """The guard trusts only the release it runs from, so here it runs from the installed runtime, as the hook runs it.
+    A plugin-cache copy with the runtime's bytes is not the plugin's own (the review of 5.23.1, finding 1): it waits,
+    and the hold names the runtime's copy."""
     from synthesis import install
     monkeypatch.setattr(install, "_approve", lambda *args, **kwargs: None)  # the principal's code, given: an install into this home is no subject here
     install.install(ROOT)
     script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
     assert script.is_file()
-    assert _verdict(world, f"python3 {script} --direction start") is None
+
+    def verdict(line):
+        program = ("import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import guards; print(json.dumps(guards.check("
+                   "'Bash', {'command': sys.argv[2]}, {}, cwd=sys.argv[3], session={'session_id': 'S-principal'})))")
+        done = subprocess.run([sys.executable, "-I", "-c", program, str(paths.home() / "current"), line, str(world["work"])],
+                              capture_output=True, text=True, env=dict(os.environ), timeout=120)
+        assert done.returncode == 0, done.stderr[-600:]
+        return json.loads(done.stdout)
+    assert verdict(f"python3 -s {script} --direction start") is None
     cache = world["home"] / ".claude" / "plugins" / "cache" / "m" / "synthesis-skills" / "9.9.9" / "skills" / "synthesis-daily-rituals" / "scripts"
     cache.mkdir(parents=True)
     (cache / "ritual_state.py").write_bytes(script.read_bytes())  # the same bytes as the protected runtime's copy
     for sibling in script.parent.glob("*.py"):
         (cache / sibling.name).write_bytes(sibling.read_bytes())
-    assert _verdict(world, f"python3 {cache / 'ritual_state.py'} --direction start") is None
+    reason = verdict(f"python3 -s {cache / 'ritual_state.py'} --direction start")
+    assert reason and str(script) in reason, reason
 
 
 # --- what the 30-day replay of recorded commands showed the round-1 code misread (2026-11-14) -----------------------

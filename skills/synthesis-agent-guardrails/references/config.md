@@ -105,3 +105,11 @@ an unreadable config and an error inside a guard still block, since the guard ca
 | `~/.synthesis/agent-guardrails/hooks.json` per-hook enable flags | gone: the plugin's `hooks/hooks.json` decides what runs |
 | `~/.synthesis/anti-shortcut-catalog.yaml` | its phrases go to `shortcut_phrases` and the anti-shortcuts skill |
 | `schemas/workspaces.schema.json`, `schemas/sites.schema.json` | this table |
+
+## A configuration file a script of the release follows
+
+When the runtime's copy of a script runs, the guard reads each `.agents/<name>` or `.claude/<name>` file the script's
+text names, from the folder it runs in upward and above a folder or workspace its words name, as it reads the line.
+A path in that file that is a protected folder, lies inside one or holds one makes the run wait for the principal's
+code. The home folder itself holds the synthesis home, so a configuration that names it, such as the meeting
+fetcher's archive folder set to `~`, waits as well; one that names the project's own folders does not.

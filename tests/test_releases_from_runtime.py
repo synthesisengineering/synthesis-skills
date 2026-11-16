@@ -230,7 +230,8 @@ def test_the_release_kit_is_never_trusted_as_one_of_the_plugins_own_scripts(worl
     the release alone and are judged like any other script, even in the guard's own tree."""
     for rel in [TOOL, "skills/synthesis-onboarding/scripts/setup.py", "skills/synthesis-skills-manager/scripts/build_collections.py"]:
         assert not guards._shipped(str(ROOT / rel)) and not guards._shipped(str(world["release"] / rel)), rel
-    assert guards._shipped(str(world["release"] / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"))
+    # the guard trusts only the release it runs from (22.15), here this tree: one of its own scripts, outside the kit, is
+    assert guards._shipped(str(ROOT / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"))
     said = guards.check("Bash", {"command": f"python3 {ROOT / 'skills/synthesis-onboarding/scripts/setup.py'} --dry-run"}, {},
                         cwd=str(world["work"]), session={"session_id": "S-principal"})
     assert said and HELD in said, said

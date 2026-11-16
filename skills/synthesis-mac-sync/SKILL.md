@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-daily-rituals"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.1.0"
+  version: "3.1.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -52,7 +52,7 @@ from one Mac to another uses `synthesis handoff` and the steps in
 2. **Config file sync,** bidirectional by modification time, in one bash call ([icloud-config-sync.md](references/icloud-config-sync.md)).
 3. **Post-push iCloud upload check:** `brctl monitor --wait-uploaded -t 300 "$ICLOUD_BASE"`; do not report completion before it returns.
 4. **Workspace config symlinks:** the idempotent reconciliation against each workspace-private repo's `.agents/` ([machines-and-symlinks.md](references/machines-and-symlinks.md)).
-5. **Git repo sync:** fetch everything, pull what is behind and clean, push what is ahead and clean under `push_policy`, reconcile remotes from `repos.yaml`, and report the rest ([repo-sync.md](references/repo-sync.md)). The read-only view of every repo is `python3 <synthesis-daily-rituals>/scripts/repo_state.py --discover ~/workspaces --fetch` (one state per repo, uncommitted files listed, exit 2 for BLIND or UNREACHABLE, 1 for DIRTY or DECISION).
+5. **Git repo sync:** fetch everything, pull what is behind and clean, push what is ahead and clean under `push_policy`, reconcile remotes from `repos.yaml`, and report the rest ([repo-sync.md](references/repo-sync.md)). The read-only view of every repo is `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/repo_state.py" --discover ~/workspaces --fetch` (one state per repo, uncommitted files listed, exit 2 for BLIND or UNREACHABLE, 1 for DIRTY or DECISION).
 6. **One-time actions:** run the ones targeted at this Mac (`scutil --get LocalHostName`), mark them `[COMPLETED date]`.
 
 **Config only:** "sync my Mac config files from iCloud" (pull) or "push my Mac config files to iCloud" (push), each with its propagation check.
