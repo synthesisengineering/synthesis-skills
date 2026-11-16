@@ -1372,10 +1372,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # kept where it is the bare name or a dotted path to it, an f-string for its expressions, comments out, every string
 # kept for a program that runs one as code) with its 2 blank lines, GRANT_NAME 1 and RUNS_STRINGS 1, less nothing; the
 # rule's own line changes in place.
+# 22.22's review round 1: core 9 more and plugin 9, measured, all in guards.py. RUNS_STRINGS 2 (a program that starts a
+# program keeps every string: node's child_process family, Python's subprocess, os.system, os.exec, os.spawn, pty.spawn),
+# WINDOW_CLI 1 (`synthesis sends open` started by a program), _granting_text's docstring 2, _commands 2 (a `cat`
+# heredoc's body kept for the file it writes, and its parameter), _unread 1 (that body read as the script it is) and
+# _self_grant 1 (the bodies it reads, the window started by a program).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16902
-PLUGIN_BUDGET = 42974
+CORE_BUDGET = 16911
+PLUGIN_BUDGET = 42983
 
 
 def _lines(files):

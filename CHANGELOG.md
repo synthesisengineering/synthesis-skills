@@ -11,12 +11,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   matched the names of the approval and send-window functions anywhere in a program's text, and strings it wrote to a
   file quoted them. Now the rule reads the program's code: a string counts only where it is the bare name or a dotted
   path to it (as getattr, a subscript or attrgetter takes it), an f-string only for its expressions, and comments not
-  at all; a program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function) keeps every string.
-  A call, an import, an attribute reach, a getattr or subscript by the name, and a program it starts that reaches
-  them are refused as before. Replayed over 60 days of this Mac's records, each guard from its installed runtime: of
-  254 commands the rule could fire on, 152 were refused for this reason before and 32 after; 118 now pass and 2 wait on
-  another rule. Read by Python's own syntax tree (100) or its tokenizer (18), none of the 118 reaches the functions in
-  code, and four planted self-grant programs are refused before and after.
+  at all. A program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function), or starts a program
+  (node's child_process family, Python's subprocess, os.system, os.exec and os.spawn), keeps every string: a string it
+  hands that program, or writes to a file it then starts, is code, and one that starts `synthesis sends open` is refused
+  as one that opens the window (review round 1). A call, an import, an attribute reach, a getattr or subscript by the
+  name, and a program it starts that reaches them are refused as before. A script the same line writes by a heredoc
+  (`cat > s.py <<'EOF'`) and then runs is judged by the heredoc's body, as the script it is: one that calls the approval
+  or send-window code waits as a script file's would (an older gap, the same on 5.23.1). Replayed over 60 days of this
+  Mac's records, each guard from its installed runtime: of 257 commands the rule could fire on, 155 were refused for this
+  reason before and 66 after; 88 now pass, 1 waits on another rule, and 5 that passed now wait, each a heredoc script read
+  as its body. Of the 119 that review round 1's head let pass, 88 still do and 31 are refused again, programs that start
+  a program. Read by Python's own syntax tree (78) or its tokenizer (10), none of the 88 reaches the functions in code,
+  and four planted self-grant programs are refused before and after.
 
 ## [5.23.1] - 2026-11-15
 

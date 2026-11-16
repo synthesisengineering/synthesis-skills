@@ -4,6 +4,8 @@ refused as running the approval implementation because strings it wrote to a fil
 import, an attribute reach, a getattr or a subscript of them, an f-string's expression, and any string a program runs
 as code still count, in every spelling the guard held before."""
 
+import shlex
+
 import pytest
 
 from synthesis import guards
@@ -47,7 +49,7 @@ CODE = [
     # a program it starts runs it: judged as the command the program starts
     "python3 -c \"import subprocess; subprocess.run(['python3', '-c', 'from synthesis import approvals; approvals.consume(1, 2)'])\"",
     # review round 1 of 22.22: a program that starts a program keeps every string, as one that runs a string as code does
-    "node -e \"require('child_process').execSync('python3 -c \\\\\"from synthesis import approvals; approvals.consume(1, 2)\\\\\"')\"",
+    "node -e " + shlex.quote("require('child_process').execSync(\"python3 -c \\\"from synthesis import approvals; approvals.consume(1, 2)\\\"\")"),
     "node -e \"require('child_process').execFileSync('python3', ['-c', 'from synthesis import approvals; approvals.consume(1, 2)'])\"",
     "python3 -c \"import subprocess; open('s.py', 'w').write('from synthesis import approvals; approvals.consume(1, 2)'); "
     "subprocess.run(['python3', 's.py'])\"",
