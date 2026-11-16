@@ -199,7 +199,7 @@ def test_written_contents_cannot_tell_what_a_program_writes(tmp_path, line):
 
 @pytest.mark.parametrize("line", [
     "python3 -c \"import os; open(os.environ['P'], 'w').write('x')\" && python3 s.py",          # a name it builds
-    "python3 -c \"import subprocess; subprocess.run(['cp', 't.txt', 's.py'])\" && python3 s.py",  # a program it starts
+    "python3 -c \"import subprocess, sys; subprocess.run(sys.argv[1:])\" x && python3 s.py",  # a program it starts that cannot be read
     "node -e \"require('fs').writeFileSync(process.argv[1], 'x')\" s.py && python3 s.py",
 ])
 def test_written_contents_holds_every_other_script_where_a_program_may_write_any_file(tmp_path, line):
@@ -232,3 +232,52 @@ def test_written_contents_reads_a_sourced_script_and_holds_scripts_past_what_it_
     assert deep[guards.ANY_FILE] == guards.UNKNOWN_CONTENT and deep[_at(tmp_path, "s.py")] == guards.UNKNOWN_CONTENT
     unknown = guards.written_contents("python3 -c \"open('gen.py', 'w').write('x')\" && python3 gen.py && python3 s.py", str(tmp_path))
     assert unknown[_at(tmp_path, "s.py")] == guards.UNKNOWN_CONTENT  # what gen.py now holds, and so writes, cannot be told
+
+
+# Review round 2's rulings. A program a line starts writes only what the command it starts writes, read the same way, and
+# only scripts run after a program that may write any file are held. A copy from a file that already exists and is
+# readable carries that file's text; an edit in place, a script written twice and a program's redirected output cannot
+# be told.
+@pytest.mark.parametrize("line, held", [
+    ("python3 -c \"import subprocess; subprocess.run(['git', 'status'])\" && python3 s.py", False),  # starts one that writes nothing
+    ("python3 -c \"import os; os.system('ls -la')\" && python3 s.py", False),
+    ("node -e \"require('child_process').execSync('git status')\" && python3 s.py", False),
+    ("python3 s.py && python3 -c \"import os; open(os.environ['P'], 'w').write('x')\"", False),      # it runs after the script
+    ("python3 -c \"import subprocess, sys; subprocess.run(sys.argv[1:])\" x && python3 s.py", True),  # what it starts cannot be read
+    ("node -e \"require('child_process').execSync(process.argv[1])\" x && python3 s.py", True),
+    ("python3 -m tool && python3 s.py", True),                                                         # a module it cannot read
+])
+def test_only_what_a_started_program_writes_and_only_scripts_after_it_count(tmp_path, line, held):
+    assert (guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) == guards.UNKNOWN_CONTENT) is held, line
+
+
+def test_what_a_started_program_writes_is_read_the_same_way(tmp_path):
+    (tmp_path / "t.txt").write_text("print(2)\n")
+    shelled = "python3 -c " + shlex.quote("import subprocess; subprocess.run(\"echo 'print(1)' > s.py\", shell=True)") + " && python3 s.py"
+    assert guards.written_contents(shelled, str(tmp_path))[_at(tmp_path, "s.py")] == "print(1)"
+    copied = "python3 -c " + shlex.quote("import subprocess; subprocess.run(['cp', 't.txt', 's.py'])") + " && python3 s.py"
+    assert guards.written_contents(copied, str(tmp_path))[_at(tmp_path, "s.py")] == "print(2)\n"
+
+
+def test_a_copy_of_a_file_that_exists_carries_its_text_and_an_edit_in_place_cannot_be_told(tmp_path):
+    (tmp_path / "a.py").write_text("print(3)\n")
+    (tmp_path / "sub").mkdir()
+    def got(line, name):
+        return guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, name))
+    assert got("cp a.py b.py && python3 b.py", "b.py") == "print(3)\n"
+    assert got("cp -f a.py sub/ && python3 sub/a.py", "sub/a.py") == "print(3)\n"
+    assert got("cp missing.py b.py && python3 b.py", "b.py") == guards.UNKNOWN_CONTENT
+    assert got("cat > a.py <<'EOF'\nprint(4)\nEOF\ncp a.py b.py && python3 b.py", "b.py") == guards.UNKNOWN_CONTENT  # a source the line writes
+    assert got("python3 -c \"import os; open(os.environ['P'], 'w')\" && cp a.py b.py", "b.py") == guards.UNKNOWN_CONTENT  # changed before it
+    assert got("sed -i '' 's/3/4/' a.py && python3 a.py", "a.py") == guards.UNKNOWN_CONTENT
+
+
+def test_a_copied_script_and_one_after_a_program_that_starts_git_are_judged_as_written(tmp_path):
+    (tmp_path / "a.py").write_text(CALL + "\n")
+    assert APPROVAL_CODE in _said("cp a.py b.py && python3 b.py", tmp_path)
+    (tmp_path / "ok.py").write_text("print(1)\n")
+    assert _said("cp ok.py b2.py && python3 b2.py", tmp_path) == ""
+    after = "cat > s.py <<'EOF'\nprint(1)\nEOF\npython3 -c \"import subprocess; subprocess.run(['git', 'status'])\" && python3 s.py"
+    assert "this same line writes with a program" not in _said(after, tmp_path)
+    two = "cat > a2.py <<'EOF'\nimport subprocess\nsubprocess.run(['ls'])\nEOF\ncat > b3.py <<'EOF'\nprint(1)\nEOF\npython3 a2.py && python3 b3.py"
+    assert "this same line writes with a program" not in _said(two, tmp_path)
