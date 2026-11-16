@@ -75,10 +75,10 @@ MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-p
 LOADABLE = ("skills/", "synthesis/", "hooks/", ".claude-plugin/", ".codex-plugin/", ".muse-plugin/")
 IGNORED = ("__pycache__", ".DS_Store")
 GITHUB = guards.GITHUB_REMOTE
-# The repository a release publishes, which preflight requires (5.23.1), and the tap whose formula follows its tags.
+# The repository a release publishes, which preflight requires (5.24.0), and the tap whose formula follows its tags.
 CANONICAL, TAP = guards.RELEASE_REPOSITORY, "synthesisengineering/homebrew-tap"
 # What git reads and runs for a release is the repository's own objects and nothing its config adds: replace refs
-# ignored, hooks and a file monitor off (5.23.1). Run as a script, every git it starts ignores replace refs too.
+# ignored, hooks and a file monitor off (5.24.0). Run as a script, every git it starts ignores replace refs too.
 GIT = ("git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 CANONICAL_URL = f"https://github.com/{CANONICAL}.git"
 TAG = re.compile(r"v\d+\.\d+\.\d+")

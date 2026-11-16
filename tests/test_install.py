@@ -65,7 +65,7 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
 
 def test_a_session_start_never_switches_the_runtime_either_way(tmp_path, isolated_home):
     """2026-10-06: a session that loaded the 5.0.2 plugin started or compacted after 5.0.3 shipped, and its
-    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.23.1 a session start does
+    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.24.0 a session start does
     not move it forward either: the folder a harness passes is its own plugin cache, which the guard does not protect
     (the principal's sandbox rulings of 2026-11-15). Only an explicit install may, and that waits for his code; an older
     release is a rollback, which brings back the holes later releases closed and needs his code on every route (A1)."""

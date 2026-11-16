@@ -1,4 +1,4 @@
-"""5.23.1: the release tool runs from the protected runtime, and publishes and installs only what GitHub serves on the
+"""5.24.0: the release tool runs from the protected runtime, and publishes and installs only what GitHub serves on the
 default branch with CI passed (the principal, 2026-11-15; review round 1 of 5.23.1).
 
 The guard lets the runtime's release launcher run with no code, so the tool itself must refuse every way an agent

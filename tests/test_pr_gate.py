@@ -96,7 +96,7 @@ def test_a_branch_carrying_the_same_commits_to_the_default_branch_is_refused(rep
 @pytest.mark.parametrize("command", ["git push origin notes-1", "git push origin refs/tags/notes-1",
                                      "git push --dry-run origin main", "git push -n", "git push fork main"])
 def test_tags_dry_runs_and_another_repository_pass(repo, command):
-    """A tag other than a version tag; since 5.23.1 a version tag, or every tag at once, waits (test_review_round_3)."""
+    """A tag other than a version tag; since 5.24.0 a version tag, or every tag at once, waits (test_review_round_3)."""
     commit(repo, "second")
     git(repo, "tag", "notes-1")
     assert push(repo, command) is None
@@ -281,7 +281,7 @@ def test_a_tag_pushed_onto_the_default_branch_is_held_and_a_tag_named_like_it_is
     assert "pull request" in push(repo, "git push origin v1:main")
     git(repo, "switch", "-q", "-c", "feature")
     assert push(repo, "git push origin tag main-2026") is None
-    assert "version tag" in push(repo, "git push origin refs/tags/v1")  # since 5.23.1 a version tag waits (round 3, M5)
+    assert "version tag" in push(repo, "git push origin refs/tags/v1")  # since 5.24.0 a version tag waits (round 3, M5)
 
 
 def test_a_remote_configured_as_a_mirror_sends_every_branch(repo):

@@ -1,4 +1,4 @@
-"""5.23.1: a release runs from the protected runtime with no code, and nothing else does (the principal, 2026-11-15).
+"""5.24.0: a release runs from the protected runtime with no code, and nothing else does (the principal, 2026-11-15).
 
 Since 5.22.1 the guard holds a program that names synthesis's writers or runs from the protected runtime until the
 principal types a code, so every release waited for one: from a checkout the release tool names `board.claim`, and the

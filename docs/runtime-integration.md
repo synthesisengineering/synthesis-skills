@@ -40,7 +40,7 @@ release script names the approval as waiting on the person. The script runs
 at install, by its real path, owned by root with every folder above it and
 writable by neither this user nor its groups, with `-I -S` under `env -i` and
 only the variables the runtime reads, its own synthesis home, and the real git's
-folder and then the system's first on PATH (5.23.1; the CLI, the git hooks and
+folder and then the system's first on PATH (5.24.0; the CLI, the git hooks and
 the release launcher run the same way). Every session start rewrites a launcher
 that differs from what the running runtime writes. `current` is a symlink
 switched atomically, so a running hook sees the old release or the new one,
@@ -49,7 +49,7 @@ never neither.
 The SessionStart registration also passes the plugin folder the harness loaded
 (Claude Code's `${CLAUDE_PLUGIN_ROOT}`; Muse's `MUSE_PLUGIN_ROOT`, or the
 script's own location). That folder is the harness's own plugin cache, which the
-guard does not protect, so since 5.23.1 a session start installs from it only into
+guard does not protect, so since 5.24.0 a session start installs from it only into
 a synthesis home that no runtime has been in: the first install. The bootstrap that
 runs while the stable hook is missing (`install.py`, which passes `synthesis install
 --first`) and the session start itself install nothing where the home holds any of
@@ -498,8 +498,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    - The hook is run when it is the script an interpreter or a shell runs: its first
      operand past its options, or the module after `-m`. A program handed the hook's file
      (a line counter, a compiler, another script) is not running it.
-   - **The runtime itself** (5.23.1; review round 2, N5 and N6; review round 1 of 22.18, H1
-     and H2; review round 4 of 5.23.1, Q4). Replacing or removing an installed runtime waits
+   - **The runtime itself** (5.24.0; review round 2 of 5.23.1, N5 and N6; review round 1 of
+     22.18, H1 and H2; review round 4 of 5.23.1, Q4). Replacing or removing an installed runtime waits
      for the principal's code for exactly that change, and `install.install` and
      `install.uninstall` themselves spend it, so every route that starts the CLI, setup.py or
      the release script as a process of its own ends at that check. The release launcher's
@@ -637,7 +637,7 @@ stay open, and no hook running as that same user can close them:
   start from installing again. But the bootstrap
   runs the plugin folder's own code, and the registration itself (`hooks.json`) is in that folder: an agent that
   rewrites the harness's plugin cache changes what the next session start runs, with or without a runtime, which no
-  check in the runtime can stop. A harness still on a plugin from before 5.23.1 runs that release's bootstrap, which
+  check in the runtime can stop. A harness still on a plugin from before 5.24.0 runs that release's bootstrap, which
   installs whatever its folder holds whenever the stable hook is missing. Sealing the plugin caches is part of the
   sandbox the principal ruled for on 2026-11-15.
 - The guard refuses the shell's and the file tools' ways of removing or changing

@@ -313,7 +313,7 @@ SHIPPED_READERS = [
     "synthesis-daily-rituals/scripts/relied_on.py --json", "synthesis-daily-rituals/scripts/lapse_review.py --json",
     "synthesis-daily-rituals/scripts/ritual_state.py --direction start", "synthesis-daily-rituals/scripts/stop_reprompts.py",
     "synthesis-autopilot/scripts/autopilot_cli.py status", "synthesis-local-messaging/scripts/messages_send.py --help",
-]  # not onboarding's setup.py: the release tool and what it imports are never trusted as shipped (5.23.1)
+]  # not onboarding's setup.py: the release tool and what it imports are never trusted as shipped (5.24.0)
 
 
 @pytest.mark.parametrize("call", SHIPPED_READERS)

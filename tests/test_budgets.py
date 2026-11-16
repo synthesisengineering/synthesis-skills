@@ -1300,7 +1300,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
-# 5.23.1, releases from the protected runtime with no code (the principal's decision packet of 2026-11-15, row
+# 5.24.0, releases from the protected runtime with no code (the principal's decision packet of 2026-11-15, row
 # "releases"), as review round 1 left it: core 280 more and plugin 400. guards.py 147: _release_tool 47 (the release
 # launcher install wrote, for an interpreter it would still pin, by its absolute path, plain words alone, each
 # documented option once with --repo-root or --install-only --tag, a named session only the asking one, the line
@@ -1334,13 +1334,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # fresh clone, the stages renumbered); preflight 4 (GitHub's state and the floor); CANONICAL_URL, TAG and GIT's
 # comment 3 and the CANONICAL comment 2. PLUGIN for REPO, ci_state, git, collections_head and publish's read-back
 # change lines in place.
-# 5.23.1, a session start never replaces an installed runtime from its harness's folder (the principal's sandbox
+# 5.24.0, a session start never replaces an installed runtime from its harness's folder (the principal's sandbox
 # rulings of 2026-11-15; review round 1's open item 1): core 29 more and plugin 29. hook.py 20: _newer_plugin_note 18
 # with its blank lines (once per version: both versions and the release launcher's install line), _emit 1 (a system
 # message beside the context) and session_start 1. doctor.py 6: check_package's warning for a newer plugin 5 and its
 # fail message's second line 1. install.py 2: install's docstring (first_only, the first install only, in place of
 # forward_only). cli.py 1: `install --first`, which the bootstrap passes.
-# 5.23.1, review round 2 of releases from the protected runtime: core 42 more and plugin 63. install.py 39:
+# 5.24.0, review round 2 of releases from the protected runtime: core 42 more and plugin 63. install.py 39:
 # refresh_launchers 18 with its blank lines (every launcher that differs from what the runtime writes rewritten, for the
 # interpreter it pins, re-pinned when that one may no longer run the guard: N4), pinned_git 10 with its blank lines and
 # GITS 2 with its comment 3 (git by its real path, checked as the interpreter is, never Apple's /usr/bin shim, which finds
@@ -1357,7 +1357,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # and STALE_CLONE 1 (another run's clone is removed only when that run is gone and the clone is hours old, N8);
 # build_collections.py's tree, now written from memory with fast-import, its index in the repository's own git folder
 # and the tree held to the files' ids (N3), changes lines in place.
-# 5.23.1, review round 3 of releases from the protected runtime: core 81 more and plugin 81. guards.py 30:
+# 5.24.0, review round 3 of releases from the protected runtime: core 81 more and plugin 81. guards.py 30:
 # check_self_grant 8 (a line whose cd lands elsewhere physically is judged again with every cd placed by its real path,
 # M1), _commands 3 (each cd's textual and real places, and the mark that they differ), _CD_REAL 1 with its comment 4,
 # _gated_push 9 (in a gated repository a push that creates, moves or deletes a version tag, or carries tags with
@@ -1372,7 +1372,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # (install's own lock removed, and passed over in the sweep of releases), pinned_python 2 (Apple's /usr/bin shim refused,
 # and its docstring) and the contextlib and fcntl imports 2. release.py: a clone folder named by the run's pid and a
 # random part (M4) changes lines in place.
-# 5.23.1, review round 4 of releases from the protected runtime: core 204 more and plugin 204, all in guards.py.
+# 5.24.0, review round 4 of releases from the protected runtime: core 204 more and plugin 204, all in guards.py.
 # _commands and _walk 64 (101 lines become 42 and 123: a line is read from every starting point its changes of folder
 # give it, each kept on a list with the folder, the one before it, pushd's stack, the subshells open, what was piped,
 # whether a command before may have changed a folder and the folders the reading found there or missing; a cd that may
@@ -1457,8 +1457,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
-# 5.23.1, the runtime changes only on the principal's code (review round 2, N5 and N6; his sandbox rulings of
-# 2026-11-15): core 156 more and plugin 156, measured. guards.py 120: check_runtime 26 (the hold, bound to the command,
+# 5.24.0, the runtime changes only on the principal's code (review round 2 of 5.23.1, N5 and N6; his sandbox rulings
+# of 2026-11-15): core 156 more and plugin 156, measured. guards.py 120: check_runtime 26 (the hold, bound to the command,
 # the folder it runs in and each folder's runtime hash; the line read as written too where it uses a variable it does
 # not set; with its blank lines), _cli_words 24 (the CLI's words by every spelling: its name, a link, -m, its module or
 # install.py by path, a shell, a runner), _runtime_change 25 (what it does to the runtime, said for the principal; a

@@ -119,7 +119,7 @@ def hook_budget(compiled_runtime):
     test, where a reviewer sees it. A module named that nothing of the call's own imports is refused too, since the
     allowance is measured from what is named."""
     from synthesis import install
-    python = install.pinned(compiled_runtime.parent) or sys.executable  # as the launchers run it: pinned, -I -S (5.23.1)
+    python = install.pinned(compiled_runtime.parent) or sys.executable  # as the launchers run it: pinned, -I -S (5.24.0)
 
     def hold(call: list, needs: tuple, rounds: int = 15, **run) -> str:
         quiet = {**run, "env": {**run.get("env", os.environ), "PYTHONDONTWRITEBYTECODE": "1"}}

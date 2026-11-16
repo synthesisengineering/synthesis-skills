@@ -4,47 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-
-- **A model judges the turn-end shortcut check's list hits** (M38, plan item 21.3; the principal's rulings of
-  2026-11-14 and 2026-11-15). With a `judge` section in the config, a reply the shortcut list flags is read by a model
-  before it goes back, by `synthesis/policies/shortcut-phrasing.md` (does what the reply holds back need the
-  principal's code or consent, or does it sit inside the agent's delegated authority?) and a second, narrow question
-  (`shortcut-asks.md`). A hit clears only when both pass surely; a hold is sent back with the words the judge read; with
-  no judge, or none that answers in time, the list decides exactly as before. The principal's last message is read as
-  data beside the reply, and content that addresses the judge is held. The judge runs on a local model through
-  Ollama's loopback address, on the plan of the harness the reply came from (`subscription`: Claude Code's `claude -p`
-  or Codex's `codex exec`, with no tools, every hook off, no session kept, the credentials that outrank the plan taken
-  out, and a marker that quiets synthesis's own hooks inside the run, so no one buys API credits for it), or on a cloud
-  model with the key of the reply's workspace and a monthly cap. On 33 labeled list hits, Haiku 5.5 on the plan cleared
-  no real shortcut or unsure item and 7 of 25 legitimate hits, a flagged reply's 95th percentile 7.2 seconds; Codex's
-  models did not pass. Verdicts are cached, and logged with counts and digests only; `scripts/judge_replay.py` replays a
-  model or a policy on recorded list hits, by label, before it ships.
-- **The judge binds every setting it takes from the config** (review round 1 of the judge, 2026-11-15: a session can
-  write the config with no code, and a written setting made the Stop hook run any program or post to any host). A
-  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program: `claude` or
-  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
-  `/usr/local/bin` and the apps' own folders). Anything else runs nothing, the word list decides, and the doctor names
-  the setting instead of running it. A program planted in one of those folders that the person can write, or in a
-  folder earlier on PATH, counts as the harness's own: that crafted route is on the open list in
-  `docs/runtime-integration.md`, with the older class of a program planted ahead of the real one on PATH. `judge.cloud.url` is only the provider's own host over https
-  (`api.anthropic.com`), so the reply, the principal's last message and the workspace's key go nowhere else. A
-  subscription `model` is a plain name and its `effort` letters, values on the harness's command line and never options
-  of their own; each `cloud.keys` path ends in the provider's name; `local.url` stays on this Mac's loopback address and
-  `deadline_seconds` at most 8. A section outside these bounds is said in the reply sent back and by the doctor, and
-  the list decides until it is fixed.
-- **The Stop hook gives the judge 8 seconds inside 10**, by the principal's approval of 2026-11-15: the hook is
-  registered with 10 seconds in Claude Code, Codex and Muse (every other hook keeps its time), the reply check gives the
-  judge 8 from its own start, and `deadline_seconds` may be up to 8. A reply the list does not flag never waits on a
-  judge: the Stop hook on such a reply took 76 ms at the median before the change and after it.
-- **`synthesis doctor` says when the plan's judge would not answer**: for each harness `judge.subscription` names, it
-  reads the sign-in from the command line's own status command and asks the judge one invented sentence the way a
-  reply is asked, in the background and at most 20 seconds a harness. No sign-in, an API account (which the judge would
-  bill), a command line missing or too old, print mode not using the sign-in (as when `-p` runs bare), a model the plan
-  does not offer, no verdict, or a time that would pass the judge's deadline is a warn with its fix, so the fall back to
-  the word list is never silent.
-
-## [5.23.1] - 2026-11-15
+## [5.24.0] - 2026-11-15
 
 - **The runtime the guard runs changes only on the principal's code** (review round 2 of 5.23.1, N5 and N6, both live
   in 5.23.0; his sandbox rulings of 2026-11-15). `synthesis install <folder>` made any folder the runtime with no code,
@@ -121,14 +81,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   releases folder, at that tag, whose staged copy holds exactly the files of that tag's tree; any other folder, version,
   home or a second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it,
   the release script's install stage waits for the code.
-
-- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
-  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
-  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
-  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
-  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
-  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
-  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **A release runs from the installed runtime's own release launcher, with no code** (`synthesis-skills-manager`
   3.7.0), by the principal's ruling of 2026-11-15, with review round 1's findings closed. Since 5.22.1 every release
   waited for a code. The runtime now carries the release tool and what it imports (this skill's scripts and
@@ -201,6 +153,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   versions and `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, which verifies the tag on
   GitHub's main and that it is newer), and the doctor warns while the two differ. `docs/runtime-integration.md` lists
   the first install from a harness folder among what stays open, and why it is acceptable.
+- **A model judges the turn-end shortcut check's list hits** (M38, plan item 21.3; the principal's rulings of
+  2026-11-14 and 2026-11-15). With a `judge` section in the config, a reply the shortcut list flags is read by a model
+  before it goes back, by `synthesis/policies/shortcut-phrasing.md` (does what the reply holds back need the
+  principal's code or consent, or does it sit inside the agent's delegated authority?) and a second, narrow question
+  (`shortcut-asks.md`). A hit clears only when both pass surely; a hold is sent back with the words the judge read; with
+  no judge, or none that answers in time, the list decides exactly as before. The principal's last message is read as
+  data beside the reply, and content that addresses the judge is held. The judge runs on a local model through
+  Ollama's loopback address, on the plan of the harness the reply came from (`subscription`: Claude Code's `claude -p`
+  or Codex's `codex exec`, with no tools, every hook off, no session kept, the credentials that outrank the plan taken
+  out, and a marker that quiets synthesis's own hooks inside the run, so no one buys API credits for it), or on a cloud
+  model with the key of the reply's workspace and a monthly cap. On 33 labeled list hits, Haiku 5.5 on the plan cleared
+  no real shortcut or unsure item and 7 of 25 legitimate hits, a flagged reply's 95th percentile 7.2 seconds; Codex's
+  models did not pass. Verdicts are cached, and logged with counts and digests only; `scripts/judge_replay.py` replays a
+  model or a policy on recorded list hits, by label, before it ships.
+- **The judge binds every setting it takes from the config** (review round 1 of the judge, 2026-11-15: a session can
+  write the config with no code, and a written setting made the Stop hook run any program or post to any host). A
+  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program: `claude` or
+  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/usr/local/bin` and the apps' own folders). Anything else runs nothing, the word list decides, and the doctor names
+  the setting instead of running it. A program planted in one of those folders that the person can write, or in a
+  folder earlier on PATH, counts as the harness's own: that crafted route is on the open list in
+  `docs/runtime-integration.md`, with the older class of a program planted ahead of the real one on PATH. `judge.cloud.url` is only the provider's own host over https
+  (`api.anthropic.com`), so the reply, the principal's last message and the workspace's key go nowhere else. A
+  subscription `model` is a plain name and its `effort` letters, values on the harness's command line and never options
+  of their own; each `cloud.keys` path ends in the provider's name; `local.url` stays on this Mac's loopback address and
+  `deadline_seconds` at most 8. A section outside these bounds is said in the reply sent back and by the doctor, and
+  the list decides until it is fixed.
+- **The Stop hook gives the judge 8 seconds inside 10**, by the principal's approval of 2026-11-15: the hook is
+  registered with 10 seconds in Claude Code, Codex and Muse (every other hook keeps its time), the reply check gives the
+  judge 8 from its own start, and `deadline_seconds` may be up to 8. A reply the list does not flag never waits on a
+  judge: the Stop hook on such a reply took 76 ms at the median before the change and after it.
+- **`synthesis doctor` says when the plan's judge would not answer**: for each harness `judge.subscription` names, it
+  reads the sign-in from the command line's own status command and asks the judge one invented sentence the way a
+  reply is asked, in the background and at most 20 seconds a harness. No sign-in, an API account (which the judge would
+  bill), a command line missing or too old, print mode not using the sign-in (as when `-p` runs bare), a model the plan
+  does not offer, no verdict, or a time that would pass the judge's deadline is a warn with its fix, so the fall back to
+  the word list is never silent.
+
+## [5.23.1] - 2026-11-15
+
+- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
+  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
+  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
+  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
+  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
+  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
+  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
 - **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
   same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and

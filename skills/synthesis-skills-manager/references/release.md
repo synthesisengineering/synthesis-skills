@@ -253,7 +253,7 @@ task when a Codex update deleted that folder (2026-09-02, CHANGELOG 4.90.2).
 v5 has two stable paths, both outside the harnesses' caches:
 
 - `~/.synthesis/v5/bin/synthesis-hook` is what every hook calls. Its path never changes
-  between releases, so a deleted plugin folder never breaks a running task; since 5.23.1
+  between releases, so a deleted plugin folder never breaks a running task; since 5.24.0
   its text names the interpreter pinned at install. A hook approval is another matter:
   Muse has kept its approval across every release so far, and Codex asks again after
   each one, because it ties the approval to a fingerprint of the installed plugin. Until
@@ -262,7 +262,7 @@ v5 has two stable paths, both outside the harnesses' caches:
 - `~/.synthesis/v5/current` is the runtime. At each session start the hook passes the
   plugin folder the harness loaded, which installs the runtime only where none exists
   (the first install), and rewrites any launcher that differs from what the runtime writes.
-  Since 5.23.1 a session start never replaces an installed runtime from a harness's folder,
+  Since 5.24.0 a session start never replaces an installed runtime from a harness's folder,
   which the guard does not protect (the release launcher installs from a clone of GitHub it
   verified; the CLI's `synthesis install <folder>` is open until it waits for a code): a session start on a newer plugin says so once and names
   `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, and the

@@ -5688,7 +5688,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         kit = _kit_loaded(([("", source)] if source else []) + (files if ran and not _shipped(ran) else []), where,
                           _isolated(words), named) if python else ""
-        if kit and not waits:  # 5.23.1: the release tool runs as itself, from the runtime, or waits
+        if kit and not waits:  # 5.24.0: the release tool runs as itself, from the runtime, or waits
             waits = Unproven(f"runs `{head}` on a program that imports the release tool's own modules ({kit}), which claim "
                              "the board, install the runtime and publish; the tool itself, run from the installed runtime, needs no code")
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
@@ -6710,7 +6710,7 @@ def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: 
     return check_desktop("browser_batch", tool, {"actions": steps, "call": {"tool": tool, "input": tool_input}}, config, session) if steps else None
 
 
-# --- the runtime the guard runs (5.23.1) ------------------------------------------------------------
+# --- the runtime the guard runs (5.24.0) ------------------------------------------------------------
 # Review round 2 of 5.23.1: `synthesis install <folder>` made any folder the runtime (N5), and `synthesis uninstall`
 # removed it so that the next session start took the harness's folder (N6), both with no code, by PATH and by the stable
 # path. The principal's sandbox rulings of 2026-11-15: a command that writes what the guard trusts waits for his code of

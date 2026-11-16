@@ -75,7 +75,7 @@ def served(repo):
 
 
 def canonical_source(tmp_path, **kwargs):
-    """A source repository whose origin is the synthesis-skills repository on GitHub, as preflight requires (5.23.1)."""
+    """A source repository whose origin is the synthesis-skills repository on GitHub, as preflight requires (5.24.0)."""
     repo = source_repo(tmp_path, **kwargs)
     git(repo, "remote", "set-url", "origin", "https://github.com/synthesisengineering/synthesis-skills.git")
     return repo
@@ -130,7 +130,7 @@ def test_ci_state_reads_github_runs():
 
 
 def test_install_only_needs_a_tag_github_serves():
-    """Since 5.23.1 an install names its tag and comes from a fresh clone of it (test_skills_manager_release_runtime)."""
+    """Since 5.24.0 an install names its tag and comes from a fresh clone of it (test_skills_manager_release_runtime)."""
     assert release.install_preflight("v5.1.0", ci=green, github=lambda v: {"main": "a" * 40, "tag": ""},
                                      floor=no_floor)[2] == ["synthesisengineering/synthesis-skills serves no v5.1.0"]
     assert release.install_preflight("v5.1.0", ci=green, github=lambda v: {"main": "a" * 40, "tag": "b" * 40},

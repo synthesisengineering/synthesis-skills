@@ -1,4 +1,4 @@
-"""5.23.1: a session start never replaces an installed runtime from the folder its harness passes.
+"""5.24.0: a session start never replaces an installed runtime from the folder its harness passes.
 
 The session-start hook installed the runtime from the plugin folder the harness loaded whenever that folder carried a
 newer release. That folder is the harness's own plugin cache, which the guard does not protect, so an agent that wrote
