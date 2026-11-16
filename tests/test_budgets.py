@@ -1417,10 +1417,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # 69, 83 and 22 more, plugin the same (the path note's 10 was main's already).
 # Review round 5 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (W4: an init
 # the reader cannot follow is read by a method named anywhere in the script again, as before round 4).
+# Review round 6 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (a method
+# read only as an object key, a shorthand by its const's one literal, or a member assignment: a parameter or a property
+# read named method held a read through a wrapper).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17251
-PLUGIN_BUDGET = 43323
+CORE_BUDGET = 17256
+PLUGIN_BUDGET = 43328
 
 
 def _lines(files):
