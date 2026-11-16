@@ -2055,3 +2055,10 @@ def test_under_the_hook_a_held_answer_gives_the_entry_back_and_no_answer_keeps_i
     finally:
         guards.answered(True)
     assert ((data["digest"], 0) in sends._spends(net=True)) is (answer == "none"), answer
+
+
+def test_a_script_that_gives_an_entry_back_is_refused():
+    """Giving an entry back makes it spendable again, so only the guard's own held call does it (review round 7, #3)."""
+    command = "python3 -c \"from synthesis import sends; sends.batch_unspend('0' * 64, 0, 'm')\""
+    reason = guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER), session={**SESSION, "transcript_path": str(RECORD)})
+    assert reason and not held(reason), reason
