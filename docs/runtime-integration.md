@@ -505,20 +505,28 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the release script as a process of its own ends at that check. The release launcher's
      install needs no code because the hook grants it: when the guard lets the launcher's
      line through, it writes one grant, an install of `v<version>` (the tag the line names,
-     or the version its checkout's manifests carry) into this home. `install.install` spends
-     it once, and only for the release tool's fresh clone in the protected releases folder,
-     at that tag, whose staged copy holds exactly the tag's files; it trusts no main
-     program, interpreter flag or module's `__file__`, so a program that poses as the
-     release tool (a forged `__main__` under `-I -S`) is asked for the code like any other
-     (review round 2 of 22.18, K1). A release older than the running one is a subject of its
-     own (`rollback`), named to the principal as a downgrade with both versions, and needs
-     his code on every route, the launcher's too. Install calls the check it bound when it
-     loaded, so a program in the installer's own process that puts its own function in
-     `install.approval`, by name or by a name built at run time, changes nothing. Such a
-     program can still rewrite those bindings, or the runtime's files themselves: it is held
-     only by the guard's reading of it, which holds it where it spells synthesis's installer
-     and passes it where it builds the names at run time, the documented residual below.
-     Run from a checkout, the release script's install stage waits for the code.
+     or the version its checkout's manifests carry) into this home. The line counts as the
+     launcher's only as written, or handed to the system's own shell (`<shell> -c '<line>'`,
+     the shell a file owned by root with every folder above it and writable by no user,
+     first of its name on the harness's PATH with no folder before it a user could write:
+     combined review round 1 of 22.8 with 22.18, C2). `install.install` spends the grant
+     once, and only for the release tool's fresh clone in the protected releases folder
+     whose HEAD is the commit GitHub's tag names (`git ls-remote`), its tracked tree clean,
+     and whose staged copy holds exactly that commit's files (C8: the harness commands a
+     release runs are found where this user writes; the release also holds its clone to the
+     verified commit after each of them). It trusts no main program, interpreter flag or
+     module's `__file__`, so a program that poses as the release tool (a forged `__main__`
+     under `-I -S`) is asked for the code like any other (review round 2 of 22.18, K1). A
+     release older than the running one is a subject of its own (`rollback`), named to the
+     principal as a downgrade with both versions, and needs his code on every route, the
+     launcher's too. Install calls the check it bound when it loaded, so a program in the
+     installer's own process that puts its own function in `install.approval`, by name or by
+     a name built at run time, changes nothing. Not every name built at run time fails
+     closed: a program that replaces those bound names (`install._approve`,
+     `install._released`), or the runtime's files themselves, is held only by the guard's
+     reading of it, which holds it where it spells synthesis's installer and passes it where
+     it builds the names at run time (C1, open: below). Run from a checkout, the release
+     script's install stage waits for the code.
      `synthesis install` (with or without
      a folder, and `--git-hooks`, which also points git's global hooks at the commit check)
      and `synthesis uninstall` refuse wherever the home shows a runtime (`install.traces`)
@@ -662,6 +670,11 @@ stay open, and no hook running as that same user can close them:
   itself reads at a file it wrote, and so grant itself what such a check releases: a send a
   script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
   approval fix; crafted, the same before that release).
+- The same kind of program can replace what the installer bound when it loaded
+  (`install._approve`, `install._released`) by names it builds at run time, then call
+  `install.install` on a folder of its own: the guard passes it, and the runtime becomes
+  the agent's (combined review round 1 of 22.8 with 22.18, C1; crafted). A test holds this
+  as an expected failure (`tests/test_combined_review_1.py`), so it is seen when it closes.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

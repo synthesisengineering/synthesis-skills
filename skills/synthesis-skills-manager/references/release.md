@@ -89,8 +89,12 @@ listing before `current` moves, and the release refuses a version older than the
 or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
 `install.install` replaces an installed runtime only on the principal's code for exactly the
 staged copy, or with the one grant the hook writes when it lets the release launcher's line
-through: an install of that tag, spent once, only for the tool's fresh clone at the tag whose
-staged copy holds the tag's files (it trusts no main program or interpreter flag). A release
+through: an install of that tag, spent once, only for the tool's fresh clone whose HEAD is the
+commit GitHub's tag names, its tracked tree clean and its staged copy that commit's files (it
+trusts no main program or interpreter flag). The harness commands a release runs (`claude`,
+`codex`, `muse`, `gh`) are found where this user writes, so the release reads the install's
+listing from the verified commit before any of them runs and holds its clone to that commit
+after each one, stopping where one changed it. A release
 older than the running one is a rollback, which needs his code on every route, and no keyword
 passes that. One install runs
 at a time in a synthesis home, under a lock (its file is one this user may only write, so no

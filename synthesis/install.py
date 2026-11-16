@@ -20,6 +20,8 @@ recording the value it replaces; uninstall restores that value unless the user
 changed it since, and removes only files install wrote that are still unedited.
 """
 
+from __future__ import annotations  # Apple's Python 3.9, the oldest interpreter it pins, reads `dict | None` no other way
+
 import contextlib
 import fcntl
 import hashlib
@@ -246,6 +248,7 @@ def change(home, staged: Path, source, digest: str, git_hooks: bool = False) -> 
 
 
 RELEASE_GRANT_SECONDS = 2 * 3600  # a release installs after it builds, pushes, publishes its notes and opens the tap's PR
+RELEASE_URL = "https://github.com/synthesisengineering/synthesis-skills.git"  # the remote that vouches for a release's tag
 
 
 def _grant_file(home: Path, version: str) -> Path:
@@ -267,22 +270,26 @@ def grant_release(version: str, line: str = "") -> Path:
 def _spend_release(home: Path, version: str, plugin_root: Path, staging: Path) -> bool:
     """Spend the hook's grant of installing `v<version>` into `home`, once, and only from the release tool's fresh clone
     in the protected releases folder, at its tag `v<version>`, whose staged copy holds exactly the files of that tag's
-    tree: the bytes the grant names are the tag's. False, spending nothing, where any of that does not hold."""
+    tree: the bytes the grant names are the tag's. The clone is held to its remote, not to itself (combined review round
+    1 of 22.8 with 22.18, C8: a harness command the release ran committed in it and moved its tag): HEAD must be the
+    commit `RELEASE_URL`'s tag names, and its tracked tree clean. False, spending nothing, where any of that does not hold."""
     path, clone = _grant_file(home, version), os.path.realpath(plugin_root)
     data = paths.read_json(path)
     if (data.get("home") != os.path.realpath(home) or data.get("version") != version or time.time() - float(data.get("at") or 0) >
             RELEASE_GRANT_SECONDS or not os.path.basename(clone).startswith(".clone-") or os.path.dirname(clone) != os.path.realpath(home / "releases")):
         return False
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
 
-    def git(*args) -> str:
+    def git(*args) -> str | None:  # its output, None where it failed
         done = subprocess.run(["git", "--no-replace-objects", "-C", clone, "-c", "core.hooksPath=/dev/null", *args],
                               capture_output=True, text=True, env=env, timeout=120)
-        return done.stdout if done.returncode == 0 else ""
-    head = git("rev-parse", "--verify", "HEAD^{commit}").strip()
-    if not head or git("rev-parse", "--verify", f"refs/tags/v{version}^{{commit}}").strip() != head:
+        return done.stdout if done.returncode == 0 else None
+    tag = f"refs/tags/v{version}"
+    head, served = (git("rev-parse", "--verify", "HEAD^{commit}") or "").strip(), git("ls-remote", RELEASE_URL, tag, tag + "^{}") or ""
+    named = {ref: oid for oid, _, ref in (row.partition("\t") for row in served.splitlines())}
+    if not head or (named.get(tag + "^{}") or named.get(tag)) != head or git("status", "--porcelain", "--untracked-files=no") != "":
         return False
-    tree = {rel: meta.split()[2] for meta, _, rel in (entry.partition("\t") for entry in git("ls-tree", "-r", "-z", head).split("\0"))
+    tree = {rel: meta.split()[2] for meta, _, rel in (entry.partition("\t") for entry in (git("ls-tree", "-r", "-z", head) or "").split("\0"))
             if rel and meta.split()[1:2] == ["blob"] and takes(rel)}
     if not tree or _differences(staging, tree):
         return False

@@ -43,7 +43,7 @@ def world(tmp_path, monkeypatch):
         monkeypatch.setenv(key, str(value))
     for key in ("SYNTHESIS_SESSION", "CLAUDE_CODE_SESSION_ID", "CODEX_THREAD_ID", "MUSE_SESSION_ID", "CDPATH", "OLDPWD"):
         monkeypatch.delenv(key, raising=False)
-    monkeypatch.setenv("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")  # the harness's own (the hook's launcher would put its folders first)
     install.install(ROOT)
     work = tmp_path / "work"
     work.mkdir()
@@ -109,7 +109,7 @@ OLDEST = next((p for p in (sys.executable, "/Library/Developer/CommandLineTools/
 
 @pytest.mark.skipif(not OLDEST, reason="no Python 3.9 here (CI's 3.9 job runs this file under it)")
 def test_c10_every_runtime_module_loads_on_the_oldest_python_the_runtime_pins(tmp_path):
-    modules = sorted(p.stem for p in (ROOT / "synthesis").glob("*.py"))
+    modules = sorted(p.stem for p in (ROOT / "synthesis").glob("*.py") if p.stem != "__main__")  # that one runs the CLI
     code = "import importlib, sys; sys.path.insert(0, sys.argv[1]); [importlib.import_module('synthesis.' + m) for m in sys.argv[2:]]"
     done = subprocess.run([OLDEST, "-I", "-S", "-c", code, str(ROOT), *modules], capture_output=True, text=True, timeout=300,
                           env={"HOME": str(tmp_path), "SYNTHESIS_HOME": str(tmp_path / "v5")})

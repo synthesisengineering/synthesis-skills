@@ -81,6 +81,7 @@ def test_every_variable_the_runtime_reads_is_one_the_launchers_keep():
         asked |= set(re.findall(r"(?:environ\.get\(|environ\[|getenv\()\s*[\"']([A-Z][A-Z0-9_]+)[\"']", text))
         asked |= set(re.findall(r"\"(SYNTHESIS_[A-Z_]+_BIN)\"", text))
     asked -= {"OUT"}  # guards.py's comment on reading a program's own `os.environ["OUT"]`, not a read of its own
+    asked -= {"PATH"}  # each launcher sets it itself: its own folders first, then the caller's (the harness's own, C2)
     assert asked <= set(install.KEPT) | set(install.GIT_KEPT), sorted(asked - set(install.KEPT) - set(install.GIT_KEPT))
 
 

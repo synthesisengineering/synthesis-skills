@@ -1505,10 +1505,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # guards.py 16: _grant_release 12 (the version of the tag the line names or its checkout's manifests carry; a dry run
 # granted nothing), check_self_grant 2 (the grant written where the launcher's line passes) and blank lines 2;
 # _release_tool hands on the options it read in place of a yes.
+# The combined review of 22.8 with 22.18, round 1 (C2, C8, C10, C7a): core 52 more and plugin 79. guards.py 45:
+# _system_shell 20 (the shell a wrapped launcher line names: by its path, or the first of its name on the harness's own
+# PATH with no folder before it a user could write, C2), _sealed 13 (owned by root with every folder above it, writable by
+# no user: the interpreter pin's test for a file or a folder), _grant_release 6 (the manifest read with _regular, C7a),
+# _release_tool 2 (the wrapper's shell checked) and blank lines 4. install.py 7: _spend_release 4 (the remote's tag
+# named as the clone's HEAD, its tracked tree clean, C8), RELEASE_URL 1, and `from __future__ import annotations` 1 with
+# its blank line 1 (C10). release.py 27: clone_problems 10 and held_to 5 (the clone held to the verified commit after each
+# harness command), install_and_verify 3 (the check after each harness), main 5 (the listing read before any harness
+# command runs, the checks after gh and before the install) and blank lines 4.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17887
-PLUGIN_BUDGET = 44120
+CORE_BUDGET = 17939
+PLUGIN_BUDGET = 44199
 
 
 def _lines(files):

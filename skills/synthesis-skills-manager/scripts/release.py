@@ -555,8 +555,28 @@ def installed_root(client: str, binary: str):
     return (Path(path) if path else None), str(entry.get("version", ""))
 
 
-def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = False) -> tuple:
-    """(lines, verified roots, harnesses found). A harness not on this Mac is skipped, not failed."""
+def clone_problems(clone: Path, sha: str, version: str) -> list:
+    """Why the release's clone may no longer be the commit the release verified (combined review round 1 of 22.8 with
+    22.18, C8: each harness command a release runs is found where this user writes, and may be the agent's): its HEAD
+    elsewhere, its tag moved, or a tracked file changed."""
+    head = git(clone, "rev-parse", "--verify", "HEAD^{commit}", clean=True)
+    tag = git(clone, "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}", clean=True)
+    status = git(clone, "status", "--porcelain", "--untracked-files=no", clean=True)
+    return ([f"its HEAD is not {sha[:12]}"] * (head.returncode != 0 or head.stdout.strip() != sha)
+            + [f"its v{version} names another commit"] * (tag.returncode == 0 and tag.stdout.strip() != sha)
+            + ["a tracked file in it changed"] * (status.returncode != 0 or bool(status.stdout.strip())))
+
+
+def held_to(clone: Path, sha: str, version: str, after: str) -> None:
+    """Stop the release where a command it ran changed its clone: nothing from that clone is installed."""
+    problems = clone_problems(clone, sha, version)
+    if problems:
+        raise setup.SetupError(f"{after} changed the release's clone ({'; '.join(problems)}), so nothing from it is installed")
+
+
+def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = False, check=None) -> tuple:
+    """(lines, verified roots, harnesses found). A harness not on this Mac is skipped, not failed. `check(client)` runs
+    after each harness's own commands (`held_to`)."""
     lines, verified, found = [], {}, []
     for client in clients:
         binary = doctor.find_client(client)
@@ -576,6 +596,8 @@ def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = 
                 lines += setup.codex_user_hooks(None, root)                         # the folder just verified (5.21.0)
         except setup.SetupError as exc:
             problems = [str(exc)]
+        if check:
+            check(client)
         if problems:
             lines.append(f"{client}: NOT verified: " + "; ".join(problems[:6]))
         else:
@@ -618,6 +640,7 @@ def main(argv=None) -> int:
             raise setup.SetupError(f"{args.tag} is not on {CANONICAL} main; install only a release of what is merged there")
         if manifest_version(clone)[0] != version:
             raise setup.SetupError(f"GitHub's {sha[:12]} does not hold v{version}")
+        listing = runtime_listing(clone, sha)  # read before any harness command runs, from the commit verified (C8)
         if not args.install_only:
             session = args.session or paths.session_id()
             if not session:
@@ -628,12 +651,16 @@ def main(argv=None) -> int:
             train = "" if args.dry_run else hold_train(repo, session, version)
             lines += retrying(publish, clone, version, args.dry_run)
             lines += retrying(github_release, clone, version, args.dry_run)
+            held_to(clone, sha, version, "gh")
             opened, formula = retrying(homebrew_formula, clone, version, args.dry_run)
+            held_to(clone, sha, version, "gh")
             lines += opened
-        installed, verified, found = install_and_verify(clone, version, clients, args.dry_run)
+        installed, verified, found = install_and_verify(clone, version, clients, args.dry_run,
+                                                        lambda client: held_to(clone, sha, version, f"{client}'s own command"))
         lines += installed
-        if not args.dry_run:  # the stable runtime from the clone, its staged copy checked against the tag's listing
-            lines.append(install.install(clone, expected=runtime_listing(clone, f"v{version}")))
+        if not args.dry_run:  # the stable runtime from the clone, its staged copy checked against the verified commit's listing
+            held_to(clone, sha, version, "a command the release ran")
+            lines.append(install.install(clone, expected=listing))
     except install.Unapproved as exc:  # the runtime waits for the principal's code: a rollback, or no grant from the hook
         print("\n".join(lines + [f"runtime: {exc}"] + ([f"the release train ({train}) stays claimed by this session"] if train else [])),
               flush=True)

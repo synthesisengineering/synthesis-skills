@@ -143,7 +143,7 @@ def test_the_grant_is_spent_only_on_a_clone_the_remote_vouches_for(world):
                        capture_output=True)
     git("commit", "-qam", "the agent's guard")
     git("tag", "-f", "-a", "v99.0.0", "-m", "moved")  # the clone's tag moved; GitHub's still names the release's commit
-    unserved = _clone(world, "99.0.0", ".clone-unserved", served=False)  # GitHub serves no such tag at that commit
+    unserved = _clone(world, "99.0.0", ".clone-unserved", note="# a commit GitHub's tag does not name\n", served=False)
     for source in (moved, unserved):
         with pytest.raises(install.Unapproved):
             install.install(source)
@@ -155,7 +155,7 @@ def test_the_grant_binds_its_home_its_version_its_tags_clone_and_its_bytes(world
     before = install.current_hash()
     elsewhere = world["tmp"] / "an-agents-folder"  # the same bytes, outside the protected releases folder
     shutil.copytree(_clone(world, "99.0.0", ".clone-source"), elsewhere)
-    untagged = _clone(world, "99.0.0", ".clone-untagged", tag=False)  # no tag v99.0.0 on its commit
+    untagged = _clone(world, "99.0.0", ".clone-untagged", tag=False, note="# a commit no tag names\n")  # not the tag's commit
     changed = _clone(world, "99.0.0", ".clone-changed")
     with open(changed / "synthesis" / "guards.py", "a", encoding="utf-8") as handle:  # not the tag's bytes
         handle.write("\n# written after the clone was made\n")
