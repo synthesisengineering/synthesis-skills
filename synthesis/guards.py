@@ -2099,7 +2099,8 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
 
 def _deploys(words: list[str], patterns: list[str]) -> bool:
     """A deploy pattern matches from the start of the command, or of the script an interpreter runs
-    (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match, and a
+    (`python3 -m twine upload`, `node release.mjs deploy`), read also by the names a CLI's own entry script answers to
+    (`node node_modules/wrangler/bin/wrangler.js pages deploy`). Words passed as arguments never match, and a
     `--dry-run` (a site's build checks its deploy that way) or `--help` publishes nothing; `-h` can mean
     something else, such as rsync's human-readable sizes."""
     if "--dry-run" in words or "--help" in words:
@@ -2107,8 +2108,27 @@ def _deploys(words: list[str], patterns: list[str]) -> bool:
     forms = [[os.path.basename(words[0])] + words[1:]]
     if INTERPRETER.match(forms[0][0]):  # the script it runs, or the module after -m, past its options and their values
         kind, at, name = _program(words)
-        forms.append([name] + words[at + 1 + (words[at:at + 2] == [words[at], name] and words[at] != name):] if kind == "file" else [])
+        rest = words[at + 1 + (words[at:at + 2] == [words[at], name] and words[at] != name):] if kind == "file" else None
+        forms += [[cli] + rest for cli in [name] + _cli_names(name)] if rest is not None else []
     return any(form and re.match(p, " ".join(form)) for form in forms for p in patterns)
+
+
+CLI_BINS = {"netlify-cli": "netlify", "firebase-tools": "firebase", "npm-cli": "npm"}  # a bin unlike its package's name
+
+
+def _cli_names(script: str) -> list[str]:
+    """The names a CLI's own entry script answers to when an interpreter runs it by path (2026-11-16: `node
+    node_modules/wrangler/bin/wrangler.js pages deploy` published with no approval asked): the script's basename
+    without a .js, .mjs, .cjs or .ts extension (a .bin shim's name too), and the package it sits in under the last
+    node_modules, by the name after its scope, each read as the bin its package installs. A copy under another name
+    is not read as the CLI (the open list in docs/runtime-integration.md)."""
+    parts = script.split("/")
+    names = [re.sub(r"\.(?:[cm]?js|ts)$", "", parts[-1])]
+    places = [i for i, part in enumerate(parts[:-1]) if part == "node_modules"]
+    package = parts[places[-1] + 1:places[-1] + 3] if places else []
+    if package and package[0] != ".bin":
+        names.append(package[1] if package[0].startswith("@") and len(package) > 1 else package[0])
+    return [CLI_BINS.get(name, name) for name in names]
 
 
 def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:

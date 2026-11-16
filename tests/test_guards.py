@@ -149,7 +149,8 @@ def test_an_interpreter_running_a_clis_script_for_anything_but_a_deploy_stays_fr
 def test_a_renamed_copy_of_a_deploy_cli_is_on_the_open_list():
     """The guard knows a CLI's script by its package, a .bin shim and its basename; a copy under another name is not
     read as the CLI, and the open list says so."""
-    found = (ROOT / "docs" / "runtime-integration.md").read_text(encoding="utf-8").split("\n### What remains open\n")[1]
+    found = (Path(__file__).resolve().parents[1] / "docs" / "runtime-integration.md").read_text(encoding="utf-8")
+    found = found.split("\n### What remains open\n")[1]
     found = " ".join(found.split("\n### ")[0].split())
     for words in ("A deploy CLI copied or linked under another name", "node_modules/wrangler/bin/wrangler.js"):
         assert words in found, words

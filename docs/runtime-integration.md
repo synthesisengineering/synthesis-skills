@@ -567,6 +567,12 @@ stay open, and no hook running as that same user can close them:
   connector puts a message's text there; the strict expected failure
   `test_a_footer_nested_under_an_addressing_key_is_refused` names it (review round 1 of
   22.31; crafted).
+- A deploy CLI copied or linked under another name is not read as that CLI. The guard knows
+  a CLI's own entry script, run by an interpreter, by the package it sits in under
+  `node_modules` (`node_modules/wrangler/bin/wrangler.js`), a `.bin` shim's name and the
+  script's own basename, so wrangler's script copied to `w.js` and run as
+  `node w.js pages deploy` goes unheld (crafted; the ordinary path to the same script ran a
+  production deploy unheld on 2026-11-16, and is held since).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

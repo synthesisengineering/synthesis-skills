@@ -1372,10 +1372,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
 # sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
 # `_strings` taking the fields to leave out, and the check reading through it, change in place.
+# Then each 20 more, all in guards.py, after a production deploy ran on 2026-11-16 with no approval asked, as `node
+# node_modules/wrangler/bin/wrangler.js pages deploy dist ...`: the guard read an interpreter's script from the start of
+# its path, so no deploy pattern matched it. _cli_names 13 (the names a CLI's own entry script answers to: its basename
+# without its extension, a .bin shim's too, and the package it sits in under node_modules, by the name after its
+# scope), CLI_BINS 1 (netlify-cli runs netlify, firebase-tools runs firebase, npm's npm-cli.js runs npm), _deploys 2
+# more (the script read by those names, and its docstring), and the 4 blank lines between them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16886
-PLUGIN_BUDGET = 42958
+CORE_BUDGET = 16906
+PLUGIN_BUDGET = 42978
 
 
 def _lines(files):
