@@ -303,3 +303,15 @@ def test_a_built_word_is_read_where_it_lands(tmp_path, program, held):
 def test_a_node_template_s_built_part_is_read_where_it_lands(tmp_path):
     line = "node -e " + shlex.quote("const r = process.argv[1]; require('child_process').execSync(`git -C ${r} status`)") + " x && python3 s.py"
     assert guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) is None
+
+
+@pytest.mark.parametrize("program, held", [  # what stops the reading of the commands a program starts, and what does not
+    ("import os, subprocess; os.environ['X'] = '1'; subprocess.run(['git', 'status'])", False),  # the environment: its strings only
+    ("import subprocess; subprocess.run(['git', 'status'], stdin=subprocess.DEVNULL)", False),
+    ("import platform; print(platform.system())", False),                                         # no program started
+    ("import subprocess; subprocess.run('$CMD', shell=True)", True),                              # a program the line leaves unexpanded
+    ("import importlib, subprocess; importlib.import_module('x'); subprocess.run(['git', 'status'])", True),  # a run-time lookup
+])
+def test_what_stops_reading_the_commands_a_program_starts(tmp_path, program, held):
+    line = "python3 -c " + shlex.quote(program) + " && python3 s.py"
+    assert (guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) == guards.UNKNOWN_CONTENT) is held, program
