@@ -529,7 +529,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   parsed from a string (`fetch(url, JSON.parse('{"method":"POST",...}'))`), whose method and body the reader sees only
   as a string; and a page's send under a method name the script defines, by `this` at the script's top level (where it
   is the page's window) or by a receiver the script sets to the page's object (`let o = {sendMessage() {}}; o =
-  window.app; o.sendMessage(...)`), the member-call form of the item above on scopes.
+  window.app; o.sendMessage(...)`), the member-call form of the item above on scopes. Review round 5 adds W5, a case of
+  `test_open_an_iife_that_writes_a_decoy_object_and_returns_the_pages`: an IIFE that writes any object literal (a
+  `=> ({i})` callback inside it) and returns the page's object counts as the script's own, so a page's send through it,
+  under a method name the script defines elsewhere, passes.
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:

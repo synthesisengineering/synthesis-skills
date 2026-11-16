@@ -1582,10 +1582,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # tab only when it can navigate; a location alias and Object.assign(location, ...) do), _local 3 again (a navigate or a
 # click on a local app moves nothing, as ruled), NAVIGATES 2 and its comment 2, 6 blank lines; _moves keeps its count.
 # sends.py 1: _own_line 1 (the system's /bin/ps with a clean environment); _table and _harness keep theirs.
+# Review round 5 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
+# _writes_by_fetch 5 (W4: an init the reader cannot follow is read by a method named anywhere in the script again).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18191
-PLUGIN_BUDGET = 44268
+CORE_BUDGET = 18196
+PLUGIN_BUDGET = 44273
 
 
 def _lines(files):
