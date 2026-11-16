@@ -61,7 +61,7 @@ carry guidance.
 | `Waiting on:` | The external event and when it is due | Required while `Status: waiting` |
 | `Silent after:` | Minutes (default 480, the board's eight-hour stale rule) | How long the plan may sit unchanged before another session may take it over |
 | `Harness:` | `claude-code`, `codex` or `muse` | Information for whoever resumes the run |
-| `Principal answer:` | After the count stops the run: `continue`, `narrow` or `stop`, then the time the principal gave it; one line, updated in place | `cycle` and the turn-end check: `continue` or `narrow` dated inside the last 24 hours lets the run go on (see [Origins and the count](#origins-and-the-count)) |
+| `Principal answer:` | After the count stops the run: the principal's reply in quotes, word for word, then where they gave it and when; one line, updated in place, never written from the agent's own judgement | `cycle` and the turn-end check: a quote whose first word is `continue` or `narrow`, dated after the count blocker's alert and inside the last 24 hours, lets the run go on (see [Origins and the count](#origins-and-the-count)) |
 
 ## Status values
 
@@ -159,24 +159,48 @@ one line a day; that count must fall day by day.
 
 **When it stops the run.** When the run added more self-generated items than it
 closed principal ones in the last 24 hours, or the open principal items rose two
-days running (each of the last three days higher than the day before), and no
-`Principal answer:` of `continue` or `narrow` is dated inside those 24 hours,
-`cycle --advanced` refuses to record the advance and prints the one line to bring
-the principal, which ends "Continue, narrow, or stop?". The day's count is still
-written. A cycle that only names a wait is recorded, and prints the line too. The
-turn-end check asks for that line instead of the next item, and the session-start
-brief, after compaction too, says the run waits for the principal's answer and
-gives the line instead of naming the next item. Start nothing new:
-[procedure.md](procedure.md#when-the-count-stops-the-run) says how to ask and what
-each answer means. The answer goes on the one `Principal answer:` header line,
-updated in place, with the time the principal gave it, and holds for 24 hours from
-then; `stop`, or an answer with no time, holds nothing.
+days running (the counts of the day before yesterday, yesterday and today, each
+higher than the one before, with no day missing), the count stops the run until
+the principal answers. `cycle --advanced`
+refuses to record the advance and prints the one line to bring the principal,
+which ends "Continue, narrow, or stop?"; the day's count is still written. A cycle
+that only names a wait is recorded, and its first line says to start nothing new
+until the principal answers. The turn-end check asks for the line instead of the
+next item, and the session-start brief, after compaction too, says the run waits
+for the principal's answer and gives the line. The stop holds the whole run, the
+one exception to never blocking a run on one question: once the count's blocker is
+alerted, the turn-end check names any item added or closed after that alert, in
+any open status but paused, until the principal is told what was done and alerted
+again. [procedure.md](procedure.md#when-the-count-stops-the-run) says how to ask
+and what each answer means.
+
+**The principal's answer.** It goes on the one `Principal answer:` header line,
+updated in place: their reply in quotes, word for word, then where they gave it and
+when, as `Principal answer: "Continue, but drop the re-reviews." — chat,
+2026-11-16T10:40-05:00`. The count reads only the first word of the quote: continue
+or narrow lets the run go on, stop holds it. It counts only when dated after the
+count blocker's alert, inside the last 24 hours and not in the future, and then
+holds for 24 hours from when it was given. The line is never written from the
+agent's own judgement: the count's question is a checkpoint the principal reserved,
+and only their own reply answers it.
+
+**Times the count rejects.** A time more than five minutes ahead of the clock (UTC
+written without its `Z` is read as local time, so it can land there), or one that
+cannot be read (a date that does not exist, or a year such as 9999 that cannot be
+converted), is rejected and named. An item of the run's own whose added time was
+rejected counts as added now; one of the principal's whose close time was rejected
+does not count as closed. Neither check is switched off by such a time.
 
 **Items the count cannot place.** An item with no origin is unknown, and so is a
-checked principal item with no close time or a self item with no added time. The
-count leaves them out. A plan with no origins at all, such as one written before
-this convention, counts nothing and never stops; `cycle` says so once, in its
-output and on its ledger line, and again only when more such items appear.
+checked principal item with no close time, a self item with no added time, and an
+item whose time was rejected. The count leaves them out, except as just said, and
+the stop line names them. A plan with no origins at all, such as one written before
+this convention, counts nothing and never stops; `cycle` says so once, in its output
+and on its ledger line. In a plan that counts, `cycle` names each item it could not
+read once, on the wake that first finds it. A run that adopts origins mid-run tags
+every item, open and checked, and stamps `closed <time>` on each item closed in the
+last 24 hours and `added <time>` on each of its own added in that time, so the count
+starts true.
 
 ## Default standing checklist
 
@@ -219,7 +243,7 @@ First wake: not yet
 Backstop: none (horizon is this sitting) <!-- overnight or days: scheduler job id — stop: <how to stop it> -->
 Waiting on: <only while Status is waiting: the external event and when it is due>
 Silent after: 480 <!-- minutes unchanged before another session may take the run over -->
-Principal answer: <only after the count stops the run: continue, narrow or stop, and when the principal said it>
+Principal answer: <only after the count stops the run: "their reply, word for word" — where they gave it, when>
 
 ## Mission
 What "done" means, in the user's terms.

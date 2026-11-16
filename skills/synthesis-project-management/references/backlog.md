@@ -78,7 +78,8 @@ record. Done on a branch, or waiting on another review round, is not finished.
 
 A side quest is anything other than the current item: a tool to build, a cleanup
 noticed in passing, a second problem. It is fine only when it serves the
-principal's goals: it unblocks the current item, or the principal asked for it.
-Name the goal it serves before starting it. If none can be named, it is an item:
+principal's goals: it unblocks the current item, it is an important issue that
+serves those goals, or the principal asked for it. Name the goal it serves before
+starting it. If none can be named, it is an item:
 it goes on the list at its place, `origin: self` when it only fixes or reviews
 the work's own output, and waits its turn.

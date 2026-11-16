@@ -17,7 +17,9 @@ ruling of 2026-11-16). When a recommendation follows from the principal's goals,
 guidelines and wish for the best-quality work, decide it, act, and report it in
 one line. Bring the principal only what needs their own authority (money, sends,
 deploys, their accounts and settings, their voice, an approval only they can
-give), or a real conflict between their goals that their rulings don't settle.
+give, a checkpoint they reserved, whose answer is never written from the agent's
+own judgement), or a real conflict between their goals that their rulings don't
+settle.
 
 - A recommendation follows when an honest reading of what the principal has said,
   written or ruled leaves one best answer. A close call between good options

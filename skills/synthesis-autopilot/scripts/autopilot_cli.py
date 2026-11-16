@@ -37,7 +37,8 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
     sys.exit(2)
 
 SILENT_DEFAULT_MINUTES = 8 * 60
-NOTED = re.compile(r"the count leaves out (\d+) item")  # said once in the ledger, and again only when more appear
+TOLD = re.compile(r"count could not read: ([#\d, ]+)")  # the items a ledger line named: each is told once
+NO_ORIGINS = "no origins: the count counts nothing"  # a plan with no origins at all is told once
 DEFAULT_STANDING = (
     ("end-to-end", "Complete the work end to end: every item closed or the run closed honestly incomplete."),
     ("framework-decisions", "Open important decisions go through the thinking framework, recorded with rationale."),
@@ -210,35 +211,42 @@ def cmd_cycle(args) -> int:
     counted, text = tally(plan), plan.text
     if counted["tracked"] and counted["today"] not in counted["recorded"]:  # each day's first wake writes the day's count
         text = append_to_section(text, "Backlog count", [f"- {counted['today']}: {counted['open']} open principal item(s)"])
-    if counted["stop"] and advanced:
+    line = stop_line(plan, counted) if counted["stop"] else ""
+    if line and advanced:
         if text != plan.text:
             _write(path, text)
         since = datetime.fromtimestamp(time.time() - WINDOW).astimezone().isoformat(timespec="minutes")
-        return _fail(f"refused: the count stops this run, and no principal answer of continue or narrow is dated after "
-                     f"{since}. Start nothing new: bring the principal this one line, record it under ## Blockers with "
-                     f"its alert, and set Status: blocked. Write their answer on the Principal answer: line with the time "
-                     f"they gave it.\n{stop_line(plan, counted)}")
-    said = max([int(m.group(1)) for m in map(NOTED.search, plan.sections.get("cycle ledger", [])) if m] or [0])
-    left = counted["left_out"] if counted["left_out"] > said else 0
+        return _fail(f"refused: the count stops this run. Start nothing new until the principal answers: bring them this "
+                     f"one line, record it under ## Blockers with its alert, and set Status: blocked. Only their own "
+                     f"reply lets the run go on: quoted on the Principal answer: line with where and when they gave it, "
+                     f"its first word continue or narrow, dated after the blocker's alert and after {since}.\n{line}")
+    ledger = plan.sections.get("cycle ledger", [])
+    if counted["tracked"]:
+        told = {label for found in map(TOLD.search, ledger) if found for label in found.group(1).split(", ")}
+        new = [label for label in counted["unplaced"] if label not in told]
+    else:
+        new = [] if any(NO_ORIGINS in entry for entry in ledger) else [NO_ORIGINS]
+    tell = new and (f"count could not read: {', '.join(new)}" if counted["tracked"] else NO_ORIGINS)
     entry = "; ".join(p for p in (advanced and f"advanced: {advanced}", waiting and f"waiting on: {waiting}",
                                   counted["tracked"] and f"last 24 h: {counted['principal']} principal closed, "
-                                                         f"{counted['self']} self added",
-                                  left and f"the count leaves out {left} item(s)") if p)
+                                                         f"{counted['self']} self added", tell) if p)
     text = append_to_section(text, "Cycle ledger", [f"- {_now()} {entry}"])
     _write(path, text)
-    count = sum(1 for line in Plan(path, text).sections.get("cycle ledger", []) if LIST.match(line))
+    if line:
+        print(f"the count stops this run: start nothing new until the principal answers. The one line:\n{line}")
+    count = sum(1 for found in Plan(path, text).sections.get("cycle ledger", []) if LIST.match(found))
     print(f"cycle recorded ({count} in the ledger)")
     if counted["tracked"]:
         print(f"last 24 hours: {counted['principal']} principal item(s) closed, {counted['self']} self-generated "
               f"item(s) added; {counted['open']} principal item(s) open")
-    if left:
-        print(f"note: the count leaves out {left} checklist item(s) with no origin, or without the added or closed "
-              f"time it reads (references/plan-file.md, Origins and the count)")
-    if counted["stop"]:
-        print(f"the count stops this run: before any new work, bring the principal this one line:\n"
-              f"{stop_line(plan, counted)}")
+    if new and counted["tracked"]:
+        print(f"note: the count could not read the origin or time of item(s) {', '.join(new)}: it leaves them out, and "
+              f"counts one of the run's own whose written time it rejected as added now (references/plan-file.md, "
+              f"Origins and the count)")
+    elif new:
+        print("note: no checklist item carries an origin, so the count counts nothing (references/plan-file.md, "
+              "Origins and the count)")
     return 0
-
 
 def cmd_close(args) -> int:
     path = Path(args.plan).expanduser().resolve()
@@ -318,7 +326,8 @@ def wake_prompt(path) -> str:
             f"another session owns it, run `autopilot_cli.py status --all`; take it over only when the plan has been "
             f"silent longer than its Silent after: line allows, otherwise message the owner and stop. Otherwise "
             f"verify the plan's state against git and the files on disk, record this wake in the cycle ledger, and "
-            f"continue the next open checklist item.")
+            f"continue the next open checklist item, unless `cycle` says the count stops the run: then start "
+            f"nothing new until the principal answers.")
 
 
 def cmd_wake_prompt(args) -> int:

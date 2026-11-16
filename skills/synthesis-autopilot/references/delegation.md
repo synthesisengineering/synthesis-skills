@@ -81,6 +81,8 @@ Every decision in an autonomous run falls into one of three classes:
 
 **Never block the whole run on one question.** Re-sequence around it. Halt early only when *every* remaining path depends on an unanswered user-only question — that is a blocked state, reported per the alerts section.
 
+The one exception is the count's stop (the principal's rulings of 2026-11-16; [plan-file.md](plan-file.md#origins-and-the-count)). When the run's own items outran the principal's, or the principal's open items rose two days running, the whole run holds until the principal answers its one line: start nothing new, whatever else is ready, since re-sequencing around the question is how a run keeps itself busy.
+
 ## Cross-Agent Orchestration
 
 When an autonomous plan calls for adversarial or independent review, autopilot owns the

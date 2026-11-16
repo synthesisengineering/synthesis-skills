@@ -6,7 +6,8 @@ plan is running and the turn ended without the next step, it asks for one of
 three things: continue the next open checklist item, record a blocker and
 alert the principal, or close honestly (R6.4). When the count (`tally`) says
 the run's own items outran the principal's, it asks instead for the one line
-to bring the principal. It asks at most three times in a row for a plan, and
+to bring the principal, and holds the run in any open status but paused until
+the principal answers. It asks at most three times in a row for a plan, and
 returns None on any error, because a turn-end check that fails closed asks for
 another turn forever.
 
@@ -21,7 +22,7 @@ import hashlib
 import os
 import re
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from synthesis import paths
@@ -41,11 +42,15 @@ ABSENCE = re.compile(r"\b(not (?:available|supported|installed|possible)|unavail
                      r"cannot (?:run|reach|access|schedule|call|connect|install|use|find|wake))\b", re.I)
 WHEN = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
 WINDOW = 24 * 3600  # the count's day
+AHEAD = 300  # a time more than this past the clock is in the future: rejected, never read as the past
 ORIGIN = re.compile(r"\borigin:\s*(principal|self)\b", re.I)
 ADDED_AT = re.compile(r"\badded:?\s+(" + WHEN.pattern + ")", re.I)
 CLOSED_AT = re.compile(r"\bclosed:?\s+(" + WHEN.pattern + ")", re.I)
+MOVED_AT = re.compile(r"\b(?:added|closed):?\s+(" + WHEN.pattern + ")", re.I)
+ALERTED = re.compile(r"\balerted\s+(" + WHEN.pattern + ")", re.I)
 DAY_COUNT = re.compile(r"^\s*[-*+]\s+(\d{4}-\d{2}-\d{2}):\s*(\d+)\b")
-ANSWER = re.compile(r"\b(continue|narrow|stop)\b", re.I)
+QUOTED = re.compile("[\"“]([^\"”]*)[\"”]")
+ASKS = "Continue, narrow, or stop?"  # how the count's one line ends, and so how its blocker is known
 
 
 # ---- the plan file ----------------------------------------------------------
@@ -71,6 +76,7 @@ class Plan:
         self.path, self.text = Path(path), text
         self.fields: dict[str, str] = {}
         self.sections: dict[str, list[str]] = {}
+        self._items: dict[str, list[tuple[bool, str]]] = {}
         current = None
         for line in _visible_lines(text):
             if line.startswith("## "):
@@ -102,7 +108,10 @@ class Plan:
         return re.sub(r"^#\s*(Autopilot plan:\s*)?", "", heading).strip() or self.path.stem
 
     def items(self, section: str) -> list[tuple[bool, str]]:
-        return [(m.group(1) != " ", m.group(2)) for m in map(ITEM.match, self.sections.get(section, [])) if m]
+        """A section's checkbox items, read once per loaded plan: the count and the check read them several times."""
+        if section not in self._items:
+            self._items[section] = [(m.group(1) != " ", m.group(2)) for m in map(ITEM.match, self.sections.get(section, [])) if m]
+        return self._items[section]
 
     def open_items(self) -> list[str]:
         return [text for done, text in self.items("checklist") if not done]
@@ -119,14 +128,22 @@ def load(path) -> Plan:
         return Plan(path, handle.read(MAX_PLAN_BYTES).decode("utf-8", "replace"))
 
 
-def _age_seconds(value: str) -> float | None:
+def _moment(value: str) -> float | None:
+    """The time a value carries, in seconds since the epoch; None when it carries none, or one that cannot be read
+    (a date that does not exist, or one too far out to convert), so a crafted stamp never switches a check off."""
     found = WHEN.search(value or "")
     if not found:
         return None
-    stamp = found.group(0).replace(" ", "T").replace("Z", "+00:00")
-    stamp = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", stamp)
-    moment = datetime.fromisoformat(stamp)
-    return time.time() - moment.astimezone(timezone.utc).timestamp()
+    stamp = re.sub(r"([+-]\d{2})(\d{2})$", r"\1:\2", found.group(0).replace(" ", "T").replace("Z", "+00:00"))
+    try:
+        return datetime.fromisoformat(stamp).astimezone(timezone.utc).timestamp()
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
+def _age_seconds(value: str) -> float | None:
+    moment = _moment(value)
+    return None if moment is None else time.time() - moment
 
 
 def project_root(plan_path: Path) -> Path | None:
@@ -215,22 +232,45 @@ def close_problems(plan: Plan, status: str) -> list[str]:
 
 # ---- the count: the run's own work against the principal's ------------------
 
-def _recent(value: str) -> bool:
-    """A time the count reads falls in the last 24 hours; one that cannot be read counts nothing."""
-    try:
-        age = _age_seconds(value)
-    except ValueError:
-        return False
-    return age is not None and 0 <= age <= WINDOW
+def _label(text: str, position: int) -> str:
+    """How an item is named to the principal: its own number, or its place in the checklist."""
+    number = re.match(r"(\d+)\.", text)
+    return number.group(1) if number else f"#{position}"
+
+
+def _names(labels: list) -> str:
+    return ", ".join(labels[:10]) + (f" and {len(labels) - 10} more" if len(labels) > 10 else "")
+
+
+def _asked(plan: Plan, now: float, waiting: bool = False) -> float | None:
+    """The latest alert time on a blocker that carries the count's line; with `waiting`, on an open one only."""
+    times = [_moment(found.group(1)) for done, text in plan.items("blockers") if ASKS in text and not (waiting and done)
+             for found in ALERTED.finditer(text)]
+    return max((moment for moment in times if moment is not None and moment <= now + AHEAD), default=None)
+
+
+def _answered(plan: Plan, now: float) -> bool:
+    """Whether the principal's own answer lets the run go on: their reply quoted on the Principal answer: line, then
+    where they gave it and when; the quote's first word continue or narrow; dated after the count blocker's alert,
+    inside the last 24 hours, and not in the future. The agent never writes it from its own judgement."""
+    line = plan.field("principal answer")
+    quote = QUOTED.search(line)
+    word = re.match(r"\W*(\w+)", quote.group(1)) if quote else None
+    after = line[quote.end():] if quote else ""
+    when, said, asked = WHEN.search(after), _moment(after), _asked(plan, now)
+    return (bool(word) and word.group(1).lower() in ("continue", "narrow") and bool(when)
+            and bool(re.search(r"[^\W\d_]", after[:when.start()])) and said is not None and asked is not None
+            and asked < said <= now + AHEAD and now - said <= WINDOW)
 
 
 def tally(plan: Plan) -> dict:
-    """Principal items closed and self-generated items added in the last 24 hours, the open principal items day by
-    day, and whether the count stops the run: the first outnumbered, or the last three days each higher than the day
-    before, with no principal answer of continue or narrow dated inside the window. An item with no origin, or
-    without the time the count reads, is left out; a plan with no origins at all counts nothing."""
-    counted = {"principal": 0, "self": 0, "open": 0, "left_out": 0, "tracked": False}
-    for done, text in plan.items("checklist"):
+    """Principal items closed and self-generated items added in the last 24 hours, the open principal items on the day
+    before yesterday, yesterday and today, and whether the count stops the run: the first outnumbered, or each of
+    those days higher than the one before, and no principal answer counts. An item with no origin, or no time the
+    count can read (one more than five minutes ahead is rejected), is named in `unplaced` and left out, except that
+    one of the run's own whose time was written but rejected counts as added now. A plan with no origins counts nothing."""
+    now, counted = time.time(), {"principal": 0, "self": 0, "open": 0, "unplaced": [], "tracked": False}
+    for position, (done, text) in enumerate(plan.items("checklist"), 1):
         origin = ORIGIN.search(text)
         kind = origin.group(1).lower() if origin else ""
         counted["tracked"] = counted["tracked"] or bool(kind)
@@ -238,22 +278,22 @@ def tally(plan: Plan) -> dict:
             counted["open"] += 1
             continue
         stamp = (ADDED_AT if kind == "self" else CLOSED_AT).search(text) if kind else None
-        if stamp is None:
-            counted["left_out"] += 1
-        elif _recent(stamp.group(1)):
+        moment = _moment(stamp.group(1)) if stamp else None
+        if moment is None or moment > now + AHEAD:
+            counted["unplaced"].append(_label(text, position))
+            counted["self"] += kind == "self" and stamp is not None  # a written time it cannot trust: added now
+        elif now - moment <= WINDOW:
             counted[kind] += 1
-    today, recorded = datetime.now().date().isoformat(), {}
+    day, recorded = datetime.fromtimestamp(now).date(), {}
+    run = [(day - timedelta(days=back)).isoformat() for back in (2, 1, 0)]
     for found in map(DAY_COUNT.match, plan.sections.get("backlog count", [])):
         if found:
             recorded.setdefault(found.group(1), int(found.group(2)))
-    days = {**recorded, today: recorded.get(today, counted["open"])} if counted["tracked"] else {}
-    series = [days[day] for day in sorted(days)][-3:]
-    answer = plan.field("principal answer")
-    word = ANSWER.search(answer)
-    answered = bool(word) and word.group(1).lower() != "stop" and _recent(answer)
+    days = {**recorded, run[2]: recorded.get(run[2], counted["open"])} if counted["tracked"] else {}
+    series = [days[when] for when in run if when in days]
     over, rising = counted["self"] > counted["principal"], len(series) == 3 and series[0] < series[1] < series[2]
-    counted.update(today=today, recorded=recorded, series=series, over=over, rising=rising,
-                   stop=(over or rising) and not answered)
+    counted.update(today=run[2], recorded=recorded, series=series, over=over, rising=rising,
+                   stop=(over or rising) and not _answered(plan, now))
     return counted
 
 
@@ -263,7 +303,35 @@ def stop_line(plan: Plan, counted: dict) -> str:
            f"{counted['principal']} of yours"] if counted["over"] else []
     if counted["rising"]:
         why.append(f"your open items in this run rose two days running ({', '.join(map(str, counted['series']))})")
-    return f"{plan.title}: {', and '.join(why)}. Continue, narrow, or stop?"
+    if counted["unplaced"]:
+        why.append(f"it could not read the origin or time of item(s) {_names(counted['unplaced'])}")
+    return f"{plan.title}: {', and '.join(why)}. {ASKS}"
+
+
+def _held(plan: Plan) -> str | None:
+    """What the turn-end check asks of a run its count has stopped, in any open status but paused: to ask the
+    principal, to name what was added or closed after the count blocker's alert, or to set blocked; None when the count
+    has not stopped it, or it is held as it should be."""
+    counted = tally(plan) if plan.open_items() else {}
+    if not counted.get("stop"):
+        return None
+    now, where = time.time(), plan.path
+    asked = _asked(plan, now, waiting=True)
+    if asked is None:
+        return (f"Your autopilot plan {where} stops for its count: start nothing new until the principal answers. Bring "
+                f"them this one line: {stop_line(plan, counted)} Record it under ## Blockers, alert them "
+                f"(autopilot_cli.py alert --kind blocked) and set Status: blocked; their answer goes on the Principal "
+                f"answer: line, their reply quoted, with where and when they gave it.")
+    moved = [_label(text, position) for position, (done, text) in enumerate(plan.items("checklist"), 1)
+             if any((_moment(found.group(1)) or 0) > asked for found in MOVED_AT.finditer(text))]
+    if moved:
+        at = datetime.fromtimestamp(asked).astimezone().isoformat(timespec="minutes")
+        return (f"Your autopilot plan {where} stops for its count: start nothing new until the principal answers. Yet "
+                f"{len(moved)} item(s) were added or closed after its alert at {at}: item(s) {_names(moved)}. Tell them "
+                f"what was done after the alert, alert them again (autopilot_cli.py alert --kind blocked), and add "
+                f"the new 'alerted <time> (<outcome>)' to the blocker.")
+    return (f"Your autopilot plan {where} stops for its count and has asked the principal: set Status: blocked, and "
+            f"start nothing new until the principal answers.") if plan.status == "running" else None
 
 
 # ---- the turn-end check -----------------------------------------------------
@@ -302,6 +370,9 @@ def turn_end_reason(plan: Plan, payload: dict, settings: dict) -> str | None:
         problems = close_problems(plan, status)
         return (f"Your autopilot plan {where} says {status}, but " + "; ".join(problems)
                 + ". Fix these, or close it as incomplete with the reason.") if problems else None
+    held = _held(plan) if status in ("running", "waiting", "blocked") else None
+    if held:
+        return held  # the count's stop holds the whole run, whatever its status (rule 8's one exception)
     if status == "blocked":
         blockers = [text for done, text in plan.items("blockers") if not done]
         if not blockers:
@@ -321,12 +392,6 @@ def turn_end_reason(plan: Plan, payload: dict, settings: dict) -> str | None:
     if status != "running" or payload.get("background_tasks"):
         return None  # paused by the principal, unknown, or a running task will wake this session
     items = plan.open_items()
-    counted = tally(plan) if items else {}
-    if counted.get("stop"):
-        return (f"Your autopilot plan {where} stops for its count: start nothing new. Bring the principal this one "
-                f"line: {stop_line(plan, counted)} Record it under ## Blockers, alert them (autopilot_cli.py alert "
-                f"--kind blocked) and set Status: blocked; write their answer on the Principal answer: line with the "
-                f"time they gave it.")
     if items:
         more = f" ({len(items) - 1} more open after it)" if len(items) > 1 else ""
         message = (f"Your autopilot plan {where} still has open items. Continue with the next one now: {items[0]}"
@@ -402,9 +467,9 @@ def brief(payload: dict) -> str:
         counted = tally(plan) if items else {}
         if counted.get("stop"):
             return (f"Autopilot run stopped by its count, waiting for the principal's answer: {plan.path} (Status: "
-                    f"{plan.status}). Read the plan before anything else and start nothing new. The one line: "
-                    f"{stop_line(plan, counted)} Their answer goes on the Principal answer: line with the time they "
-                    f"gave it.")
+                    f"{plan.status}). Read the plan before anything else and start nothing new until the principal "
+                    f"answers. The one line: {stop_line(plan, counted)} Their answer goes on the Principal answer: "
+                    f"line, their reply quoted, with where and when they gave it.")
         return (f"Autopilot run in progress: {plan.path} (Status: {plan.status}). Read the plan before anything "
                 f"else. Next open item: {items[0] if items else 'none; verify and close'}.")
     except Exception:

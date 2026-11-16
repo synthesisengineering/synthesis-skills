@@ -167,6 +167,7 @@ its history:
 
 - Principal outcome: <outcome>
 - Round-trip budget: <count>; principal courier crossings so far: <count>
+- Rounds: <item>: <n> of 2 (one line per item; references/review-caps.md)
 - Proportionality: AGENT HEURISTIC: <bounded rationale>
 
 | ID | Finding | State | Class | Authority (provenance) | Enforcement outcome | Evidence | Follow-up project |

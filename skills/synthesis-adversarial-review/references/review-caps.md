@@ -9,9 +9,11 @@ them in full.
 
 ## Two rounds per item
 
-An item is one piece of work the review judges: a backlog item, a fix, a change
-set. It gets at most two review rounds. Round one judges the work; round two
-judges the repairs round one asked for.
+An item is one piece of work the review judges: a backlog item or a change set the
+principal's work asked for. It gets at most two review rounds. Round one judges the
+work; round two judges the repairs round one asked for. A fix belongs to the item it
+repairs: it is judged inside that item's rounds, and a fix, or a fix to a fix, never
+starts the item's rounds again.
 
 After the second round, a finding, whether still open or new, blocks the item
 only when it passes the materiality test:
@@ -35,12 +37,14 @@ decision, like generation N+2 of a control (binding rule 11).
 
 The coordinator is the agent that dispatches the review and owns the delivery:
 an autopilot run's owner, or the integrator. It sets the bounds and holds them.
-It records each item's round count in the findings file's header
+It records each item's round count on the findings file's `Rounds:` line
 (`- Rounds: <item>: 2 of 2`), refuses a third round without the principal's
 decision, and applies the materiality test to every finding after the second
-round. A reviewer reports findings; it does not extend the review, add a round,
-or rule its own finding blocking. A reviewer's request for another round is a
-finding like any other, and the coordinator judges it by the same test.
+round; the adjudicator records each result as the finding's transition, since only
+the adjudicator changes a finding's state (binding rule 10). A reviewer reports
+findings; it does not extend the review, add a round, or rule its own finding
+blocking. A reviewer's request for another round is a finding like any other, and
+the coordinator judges it by the same test.
 
 ## At most three agents at once
 

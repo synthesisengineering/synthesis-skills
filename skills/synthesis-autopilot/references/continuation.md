@@ -200,9 +200,10 @@ In v5 terms: read the plan; if it is closed, delete this job and stop; run
 `synthesis inbox` and `synthesis who`; if another session owns the plan, take it
 over only past its `Silent after:` limit, otherwise message the owner and stop;
 check git and the files the plan cites; `cycle --advanced` or `--waiting-on`;
-then the next open item. When `cycle` refuses for the count, the wake starts
-nothing new and brings the principal the line it printed
-([procedure.md](procedure.md#when-the-count-stops-the-run)).
+then the next open item. When `cycle` says the count stops the run, whether it
+refuses an advance or records a wait, the wake does no work: start nothing new
+until the principal answers, and bring them the line it printed if they have not
+been asked yet ([procedure.md](procedure.md#when-the-count-stops-the-run)).
 
 Before the next open item, every wake checks what other people rely on:
 
@@ -249,7 +250,9 @@ fix finds something new, and each finding becomes an item. The count bounds that
 added more self-generated items than it closed principal ones, or the principal's
 open items rose two days running, `cycle --advanced` refuses until the principal
 answers continue or narrow, and the turn-end check asks for the one line to bring
-them instead of the next item.
+them instead of the next item. The stop holds the whole run: once its blocker is
+alerted, the check names anything added or closed after the alert, whatever the
+run's status.
 
 ## Capability probe, volatile state, compaction
 

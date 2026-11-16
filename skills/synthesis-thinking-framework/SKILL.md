@@ -27,7 +27,7 @@ A five-mode thinking methodology with a pre-response protocol. Use it to choose 
 7. **Judge every promised outcome in its own terms,** and define the observation that separates a useful result from a plausible wrong one before implementing.
 8. **When a missing fact could change the next decision,** use the decisive-uncertainty method: the cheapest credible discriminating observation, refuted predictions kept, stop when the decision is supported.
 9. **Revisit a decision only when new evidence changes its assumptions or consequences,** not merely because another skill loads.
-10. **Decide what the goals already decide.** When a recommendation follows from the principal's goals, guidelines and wish for the best-quality work, decide it, act, and report it in one line. Bring the principal only what needs their own authority (money, sends, deploys, their accounts and settings, their voice, an approval only they can give), or a real conflict between their goals that their rulings don't settle.
+10. **Decide what the goals already decide.** When a recommendation follows from the principal's goals, guidelines and wish for the best-quality work, decide it, act, and report it in one line. Bring the principal only what needs their own authority (money, sends, deploys, their accounts and settings, their voice, an approval only they can give, a checkpoint they reserved, whose answer is never written from the agent's own judgement), or a real conflict between their goals that their rulings don't settle.
 
 ## Contents
 

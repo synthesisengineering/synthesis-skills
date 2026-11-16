@@ -16,11 +16,18 @@ in 4.2.0, to make room there for binding rule 14. Helpers run as
 `cycle --advanced` refuses to record an advance when the run's own items outran
 the principal's ([plan-file.md](plan-file.md#origins-and-the-count)), and the
 turn-end check asks for the same thing instead of the next item. Start nothing
-new. Bring the principal the one line `cycle` printed, as it printed it, and
-record it under `## Blockers` with its alert (`alert --kind blocked --count 1`);
-set `Status: blocked`. When the principal answers, write the answer on the
-`Principal answer:` line with the time they gave it, check the blocker with their
-words, and set `Status: running`:
+new until the principal answers: the stop holds the whole run, the one exception
+to rule 8, and a wake that finds it does no work. Bring the principal the one line
+`cycle` printed, as it printed it, and record it under `## Blockers` with its
+alert (`alert --kind blocked --count 1`); set `Status: blocked`. If anything was
+added or closed after that alert, the turn-end check names it: tell the principal
+what was done, alert them again, and add the new alert to the blocker.
+
+When the principal answers, write their reply on the `Principal answer:` line, in
+quotes and word for word, then where they gave it and when; check the blocker
+with their words, and set `Status: running`. Never write the line from your own
+judgement: the count's question is a checkpoint the principal reserved. The count
+reads the quote's first word:
 
 - **continue**: go on with the next open item.
 - **narrow**: first narrow the plan as they said: take the items they dropped off

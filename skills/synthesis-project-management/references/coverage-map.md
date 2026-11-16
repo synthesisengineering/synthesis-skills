@@ -224,3 +224,4 @@ synthesis-project-resume's; R2 cases belong to the board in `synthesis/`.
   [backlog.md](backlog.md) holds them in full and is listed in Contents. The item
   convention is synthesis-autopilot's plan-file convention, so one marking serves both.
   No earlier sentence changed or moved; SKILL.md had room (6,628 bytes before).
+- Review round 1 of plan item 22.37: [backlog.md](backlog.md)'s side-quest test allows an important issue that serves the principal's goals, beside unblocking the current item and the principal's own request, as rule 16 does; it had named only the other two.

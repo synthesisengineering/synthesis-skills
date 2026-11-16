@@ -567,6 +567,13 @@ stay open, and no hook running as that same user can close them:
   connector puts a message's text there; the strict expected failure
   `test_a_footer_nested_under_an_addressing_key_is_refused` names it (review round 1 of
   22.31; crafted).
+- The autopilot count reads only the plan file, which the run writes itself. A run that
+  means to slip the count can mark an item of its own `origin: principal`, stamp a
+  principal item's close again at a later time, or split one of the principal's items
+  into several so that each close counts. A time stamped in an extreme year, such as the
+  year 9999, cannot be converted: the count rejects it and names the item, and the check
+  stays on (before this, such a stamp ended `cycle` with a traceback and switched the
+  turn-end check off). Review round 1 of 22.37; crafted.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

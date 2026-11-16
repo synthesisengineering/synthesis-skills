@@ -41,7 +41,7 @@ The rules follow the protocol's sections in order, Purpose through Completion Re
 12. **After publication, a second agent derives the live universe from destination state** and records a per-artifact matrix. A correction beyond the current grant needs fresh approval.
 13. **Surface a known-false claim once,** in the principal's terms. A proposed loosening nominates the loosener for review. Approval fatigue is a failure mode.
 14. **Report the principal outcome first** and name the unverified remainder. "The reviewer is satisfied" is never a completion signal.
-15. **Two review rounds per item.** After the second, a finding blocks only if an honest agent would hit it in ordinary work or it appears in the principal's records; anything else goes on the open list. The coordinator bounds the review, not the reviewer ([references/review-caps.md](references/review-caps.md)).
+15. **Two review rounds per item.** After the second, the coordinator applies the test: a finding blocks only if an honest agent would hit it in ordinary work or it appears in the principal's records, and anything else goes on the open list, as the adjudicator records. The coordinator bounds the review, not the reviewer ([references/review-caps.md](references/review-caps.md)).
 16. **At most three agents at once.** A release ships what has passed review and never waits for another round.
 
 ## Contents

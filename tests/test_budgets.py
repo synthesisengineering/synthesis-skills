@@ -1385,10 +1385,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 7 more, all in autopilot.py's brief, so a run its count stopped comes back at session start and after
 # compaction as waiting for the principal's answer, with the one line, and names no next item: its count read 1, the
 # test 1, that paragraph 4, and its docstring 1 more.
+# Then the core 65 more and the plugin 74, from review round 1 of 22.37 (a stopped run that set itself blocked was held
+# by nothing; a plan adopting origins mid-run was stopped with a false line; any dated "continue" released the run, read
+# anywhere on the line; a stamp near the year 9999 ended cycle with a traceback and switched the turn-end check off).
+# autopilot.py 65: _held 24 (the hold in any open status but paused: ask, name what moved after the count blocker's
+# alert, or set blocked), _answered 12 (the principal's reply quoted, where and when, its first word, after the alert),
+# _moment 11 (a time read once, None when it cannot be read or converted) less _age_seconds 5 (it reads through
+# _moment), _asked 5 (the count blocker's latest alert), _label 4 and _names 2 (items named by number or place, at most
+# ten), Plan 4 (each section's items read once per loaded plan: 3 in items, 1 in __init__; on a 630 KB plan the check
+# took 17.3 ms without it and 9.7 with it), stop_line 2 more (the items it could not read), tally 1 more (rejected
+# stamps, consecutive days), AHEAD, ALERTED, ASKS, MOVED_AT and QUOTED 5 less ANSWER 1, the module docstring 1, and
+# the new functions' 12 blank lines less _recent's 2 and _recent 7; turn_end_reason 3 fewer (its stop request moved
+# into _held). autopilot_cli.py 9: cmd_cycle 8 more (the stop said first on a wait, the refusal's terms, each item told
+# once and a plan with no origins once), wake_prompt 1 more (start nothing new until the principal answers), TOLD and
+# NO_ORIGINS 2 less NOTED 1, and 1 blank line fewer.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16960
-PLUGIN_BUDGET = 43058
+CORE_BUDGET = 17025
+PLUGIN_BUDGET = 43132
 
 
 def _lines(files):

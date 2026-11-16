@@ -267,3 +267,22 @@ and gives the line, instead of naming the next item; and the
 four 2.4.0 rules, which stay verbatim: at most three agents at once, the cap the
 principal set for every fan-out. Binding rule 11 gains the same as one sentence after
 its existing text, and SKILL.md is 7,378 bytes.
+
+**2026-11-16 (4.2.0), review round 1 of the count.** The stop holds the whole run: binding
+rule 8 gains one sentence after its existing text naming the count's stop as the one
+exception to never blocking a run on one question, and
+[delegation.md](delegation.md#decision-protocol) gains a paragraph after its 2.4.0 text,
+which stays verbatim, saying the same. A wait recorded while the count stops the run
+opens with "start nothing new until the principal answers", and so do the wake prompt
+and the [re-entry protocol](continuation.md#re-entry-protocol); the turn-end check holds
+a stopped run in any open status but paused, and names every item added or closed after
+the count blocker's alert. The `Principal answer:` line is the principal's reply in
+quotes, with where and when they gave it, read by its first word and counted only when
+dated after the count blocker's alert; it is never written from the agent's own
+judgement. Two days running means three days in a row; a time more than five minutes
+ahead, or one that cannot be read, is rejected and named, so a crafted stamp no longer
+ends `cycle` with a traceback or switches the check off; the stop line names every item
+the count could not read, and `cycle` names each such item once. A plan with no origins
+is told once. [plan-file.md](plan-file.md#origins-and-the-count) and
+[procedure.md](procedure.md#when-the-count-stops-the-run) say all of this, including how
+a run adopting origins mid-run tags every item. SKILL.md is 7,479 bytes.
