@@ -61,10 +61,11 @@ def codex(tmp_path, monkeypatch):
         ident = f"call_{time.time_ns()}"
         if code_mode:
             fields = ", ".join(f"{k}: {json.dumps(v)}" for k, v in args.items())
+            result = json.dumps({"chunk_id": "a1", "wall_time_seconds": 0.2, "session_id": session_id, "output": ""})
             add({"type": "response_item", "payload": {"type": "custom_tool_call", "name": "exec", "call_id": ident,
                                                       "input": f"const r = await tools.exec_command({{{fields}}});\ntext(JSON.stringify(r));"}},
-                {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": ident, "output": json.dumps(
-                    {"chunk_id": "a1", "wall_time_seconds": 0.2, "session_id": session_id, "output": ""})}})
+                {"type": "response_item", "payload": {"type": "custom_tool_call_output", "call_id": ident,  # as Codex keeps it:
+                                                      "output": json.dumps([{"type": "input_text", "text": result}])}})  # JSON in JSON
         else:
             add({"type": "response_item", "payload": {"type": "function_call", "name": "exec_command", "call_id": ident,
                                                       "arguments": json.dumps(args)}},
@@ -138,10 +139,29 @@ def test_what_an_interpreter_was_typed_before_is_part_of_its_program(codex):
     assert _held(_typed(codex, "open(p, 'w').write('{}')\n"))
 
 
-def test_a_line_typed_into_another_program_is_its_input(codex):
-    codex["started"]("ssh build-host", workdir=codex["work"])
-    assert _held(_typed(codex, "echo x > ~/.synthesis/v5/config.json\n"))  # what a program the guard cannot read is fed
+def test_a_line_typed_into_another_program_is_a_command_line_where_it_stands(codex):
+    codex["started"]("ssh build-host", workdir=codex["work"])  # another machine's shell: every shell guard still reads it
+    assert _held(_typed(codex, "echo x > ~/.synthesis/v5/config.json\n"))
     assert _typed(codex, "uptime\n") is None
+    codex["started"]("python3 -u console.py", workdir=codex["work"], session_id=9)  # a program's own prompt
+    assert _typed(codex, "status\n", session_id=9) is None
+    assert _held(_typed(codex, "~/.synthesis/v5/config.json\n", session_id=9))  # a protected path fed to it
+
+
+@pytest.mark.parametrize("start", ["ssh localhost", "ssh -p 2222 me@127.0.0.1", "docker exec -it box bash", "kubectl exec -it pod -- sh"])
+def test_a_shell_in_a_container_or_on_this_machine_by_ssh_is_judged_conservatively(codex, start):
+    """Its folder is not the one it started in: ssh to this machine logs in at the home folder, and a container's folders
+    may be this machine's, mounted."""
+    codex["started"](start, workdir=codex["work"])
+    assert _held(_typed(codex, "echo '{}' > .synthesis/v5/config.json\n"))
+    assert _held(_typed(codex, "uptime\n"))
+    assert _typed(codex, "ls -la\n") is None
+
+
+def test_an_interpreter_started_after_a_cd_is_judged_where_the_cd_leads(codex):
+    codex["started"](f"cd {codex['v5']} && python3", workdir=codex["work"])
+    assert _held(_typed(codex, "open('config.json', 'w').write('{}')\n"), SETTINGS)
+    assert _typed(codex, "print('ready')\n") is None
 
 
 def test_a_poll_and_keys_that_start_nothing_need_no_code(codex):
