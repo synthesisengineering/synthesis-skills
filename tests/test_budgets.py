@@ -1376,10 +1376,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # check_codex_nested_hooks 34 and _nested_proof 21, each with 2 blank lines, and its bounds 1 and refusal pattern 1 with
 # a 2-line note and 2 blank lines (the proof, from Codex's own rollouts, that hooks still run on nested calls; records
 # that cannot be listed warn).
+# Then each 37 more, all in sessions.py, for the session index of code-mode work (22.33's follow-up): _Session.nested 19
+# and _tag 12, each with 1 blank line (the files a script's nested patches and commands wrote, read from Codex's
+# item_completed events; the tagging moved out of wrote), _codex 5 more (a script's call marked; the events read),
+# __init__ 1 more (this reading's call and script ids), wrote 2 fewer (its loop moved into _tag; a script never read).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17003
-PLUGIN_BUDGET = 43075
+CORE_BUDGET = 17040
+PLUGIN_BUDGET = 43112
 
 
 def _lines(files):

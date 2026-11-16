@@ -22,6 +22,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   made inside a script judged its page as unknown. It now reads those events, under the name Codex's hook gives the tool
   (`workspace-mcp` and `github.fetch` make `mcp__workspace_mcp__github__fetch`), and counts a direct call recorded both
   ways once.
+- **The session archive's index of the files a call wrote reads a code-mode script's nested work, never its JavaScript.**
+  The index, which names the projects a session wrote into, read each `exec` script as a shell line: a comparison such
+  as `items.length > limit` became a file written into the session's folder and could tag its project, while the files
+  the script's nested patches and commands wrote were never seen, since Codex records those calls only as
+  `item_completed` events. A script now yields no files of itself, and the index reads its `FileChange` events (each
+  patched path, and where a file moves) and its `CommandExecution` events (what the command line writes, in the folder it
+  ran in). A direct call's event carries the call's own id and is read once, with its call.
 - **`synthesis doctor` proves that Codex still runs hooks on nested calls** (`codex nested hooks`), the only way the
   guard sees code-mode work: from the newest rollouts, read only (each one's first line and its last 16 MB, at most 120
   files and 128 MB from 30 days, newest first; one record had passed 1.8 GB), a hook's refusal in an `exec` script's
