@@ -1161,7 +1161,9 @@ def test_an_ordinary_shell_script_passes_however_it_is_run(world, name, how):
 # Homebrew's own `brew` is a bash script, read since 22.21 when a command runs it by its full path. 22.15's HOME rule read
 # it as giving HOME a value: a comment names HOME, and an array lists HOME among the variables brew keeps from the
 # environment; neither writes HOME (the coordinator, 2026-11-16: `/opt/homebrew/bin/brew ...` and `eval "$(... shellenv)"`
-# are ordinary). This script has the same lines.
+# are ordinary). And 22.8's rule for a folder it cannot follow read its `quiet_cd` function, which changes folder, as
+# moving brew's own folder, though brew calls it only in command substitutions, which run in a subshell. This script has
+# the same lines.
 BREW_SHAPED = """#!/bin/bash
 # Fail fast with concise message when HOME is unset
 if [[ -z "${HOME:-}" ]]
@@ -1169,6 +1171,18 @@ then
   echo "Error: \\$HOME must be set to run brew." >&2
   exit 1
 fi
+quiet_cd() {
+  CDPATH='' cd -- "$@" &>/dev/null || return
+}
+symlink_target_directory() {
+  local target target_dirname
+  target="$(readlink "$1")"
+  target_dirname="${target%/*}"
+  local directory="$2"
+  quiet_cd "${directory}" && quiet_cd "${target_dirname}" && pwd -P
+}
+BREW_FILE_DIRECTORY="$(quiet_cd "${0%/*}/" && pwd -P)"
+USR_LOCAL_BREW_FILE_DIRECTORY="$(symlink_target_directory "/usr/local/bin/brew" "/usr/local/bin")"
 HOMEBREW_PREFIX="${0%/bin/brew}"
 FILTERED_ENV=()
 ENV_VAR_NAMES=(
@@ -1213,16 +1227,18 @@ def test_this_macs_own_homebrew_run_by_its_full_path_passes(world, how):
     assert _verdict(world, BREW_RUNS[how].format(brew="/opt/homebrew/bin/brew")) is None, how
 
 
-BREW_WRITES = {  # the positive controls: the same script, with a line that really gives HOME a value or writes
+BREW_WRITES = {  # the positive controls: the same script, with a line that really gives HOME a value or moves its folder
     "HOME read": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nread HOME <<< /tmp/brew-home\nls ~/.ssh\n"),
     "HOME as the loop's variable": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nfor HOME in /tmp/brew-home; do ls ~; done\n"),
     "HOME by printf -v": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nprintf -v HOME %s /tmp/brew-home\nls ~\n"),
+    "its folder function called in the script itself": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nquiet_cd /tmp\necho made > made.txt\n"),
+    "a function named cd": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\ncd() { builtin cd /tmp; }\ncd x\necho made > made.txt\n"),
 }
 
 
 @pytest.mark.parametrize("name", sorted(BREW_WRITES))
 @pytest.mark.parametrize("how", ["by its path", "from a program's list"])
-def test_a_script_that_really_gives_home_a_value_still_waits(world, name, how):
+def test_a_script_that_really_changes_home_or_its_folder_still_waits(world, name, how):
     assert HELD in (_verdict(world, BREW_RUNS[how].format(brew=_brew(world, BREW_WRITES[name]))) or ""), (name, how)
 
 
