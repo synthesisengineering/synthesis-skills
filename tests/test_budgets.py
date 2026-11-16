@@ -1519,10 +1519,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # it is none), _system_shell 1 fewer (its docstring 1 more, naming the open race; the 2 lines that refused any PATH with
 # a folder a user writes ahead of the system's shell gone, since that refused Codex's shell tool wherever such folders
 # come first, A7).
+# Round 2 of the combined review, R2-1: core 3 more and plugin 3. install.py 3: _spend_release's docstring 2 (the tag
+# asked of the release URL from the root folder, so no config of the clone's sends the question elsewhere) and its git
+# environment 1 (no GIT_DIR or GIT_COMMON_DIR naming a repository other than the one each call names).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17943
-PLUGIN_BUDGET = 44203
+CORE_BUDGET = 17946
+PLUGIN_BUDGET = 44206
 
 
 def _lines(files):

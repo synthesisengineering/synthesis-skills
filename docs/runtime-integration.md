@@ -512,10 +512,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      its name on the harness's PATH: combined review round 1 of 22.8 with 22.18, C2; one put
      ahead of it after the line has passed is open, below). `install.install` spends the grant
      once, and only for the release tool's fresh clone in the protected releases folder
-     whose HEAD is the commit GitHub's tag names (`git ls-remote`), its tracked tree clean,
-     and whose staged copy holds exactly that commit's files (C8: the harness commands a
-     release runs are found where this user writes; the release also holds its clone to the
-     verified commit after each of them). It trusts no main program, interpreter flag or
+     whose HEAD is the commit GitHub's tag names (`git ls-remote`, asked from a folder
+     outside the clone so no config of the clone's sends it elsewhere: round 2, R2-1), its
+     tracked tree clean, and whose staged copy holds exactly that commit's files (C8: the
+     harness commands a release runs are found where this user writes; the release also
+     holds its clone to the verified commit after each of them). It trusts no main
+     program, interpreter flag or
      module's `__file__`, so a program that poses as the release tool (a forged `__main__`
      under `-I -S`) is asked for the code like any other (review round 2 of 22.18, K1). A
      release older than the running one is a subject of its own (`rollback`), named to the

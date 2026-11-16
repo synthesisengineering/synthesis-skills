@@ -80,10 +80,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `install.approval`. Now, when the guard lets the release launcher's line through, it writes one grant: an install of
   `v<version>` (the tag the line names, or the version its checkout's manifests carry; a dry run is granted nothing)
   into this home. `install.install` spends it once, and only for the release tool's fresh clone in the protected
-  releases folder whose HEAD is the commit GitHub's tag names (asked of GitHub with `git ls-remote`), its tracked tree
-  clean, and whose staged copy holds exactly the files of that commit's tree; any other folder, version, home or a
-  second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it, the
-  release script's install stage waits for the code. From the combined review of 22.8 with 22.18 (round 1):
+  releases folder whose HEAD is the commit GitHub's tag names (asked of GitHub with `git ls-remote`, from a folder
+  outside the clone, so no config of the clone's can send the question elsewhere: combined review round 2, R2-1), its
+  tracked tree clean, and whose staged copy holds exactly the files of that commit's tree; any other folder, version,
+  home or a second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it,
+  the release script's install stage waits for the code. From the combined review of 22.8 with 22.18 (round 1):
   - **The launcher's shell wrapper is the system's shell or nothing** (C2). `<shell> -c '<line>'` was taken for the
     launcher's line by the shell's name alone, so a program of the agent's named `bash`, `sh` or `zsh` carried the line,
     minted the grant and ran with nothing else judged. Now the shell must be a file owned by root with every folder
