@@ -1575,6 +1575,26 @@ def test_a_call_a_hook_refused_does_not_void_the_send_step():
     assert sent(step()) is None
 
 
+@pytest.mark.parametrize("result", ["Command blocked by PreToolUse hook: ", "Tool call blocked by PreToolUse hook: ", "Done"])
+def test_a_call_codexs_hook_refused_does_not_void_the_send_step_and_one_it_ran_does(result):
+    """Codex records a hook's refusal as the call's result in its own words, which are left out as Claude Code's are
+    (the coordinator, 2026-11-16); the same call, run, voids the step."""
+    granted([CHAT])
+    other = FOLDER / "S-other.jsonl"
+    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    opened()
+    at = datetime.now(timezone.utc).isoformat()
+    given = {"action": "left_click", "coordinate": [5, 5], "tabId": 7, "action_summary": "Clicks the chat"}
+    with other.open("a", encoding="utf-8") as handle:
+        for line in ({"timestamp": at, "type": "response_item", "payload": {"type": "function_call", "name": KEYS,
+                                                                            "arguments": json.dumps(given), "call_id": "call_9"}},
+                     {"timestamp": at, "type": "response_item", "payload": {"type": "function_call_output", "call_id": "call_9",
+                                                                            "output": result + ("Refused: a messaging site's tab." if result != "Done" else "")}}):
+            handle.write(json.dumps(line) + "\n")
+    reason = sent(step())
+    assert (reason is None) if result != "Done" else "Another session's record" in (reason or ""), (result, reason)
+
+
 def test_only_a_created_tab_result_makes_the_tab_this_sessions():
     """The extension's own words, read over 60 days of records: `Created new tab. Tab ID: N`, and every such result's
     `Executed on tabId` names that tab. A result without them (an error) made no tab."""

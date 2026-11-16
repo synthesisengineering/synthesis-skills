@@ -200,6 +200,53 @@ def test_a_direct_call_recorded_twice_counts_once():
     assert len(calls) == 1, calls
 
 
+# A call a hook refused did nothing, so the page tracker leaves it out. Codex records the refusal as the call's result in
+# its own words (codex-rs hook_runtime.rs: "Command blocked by PreToolUse hook: " for a shell call, "Tool call blocked
+# by PreToolUse hook: " for any other tool), where Claude Code's begins "PreToolUse:" (the coordinator, 2026-11-16).
+CODEX_REFUSALS = {"command": "Command blocked by PreToolUse hook: ", "tool call": "Tool call blocked by PreToolUse hook: "}
+CHAT_PAGE = "https://www.facebook.com/messages/t/1000000001/"
+KEY = "mcp__playwright__browser_press_key"
+
+
+def _refused_page(path) -> str:
+    """The page the record shows, and that Enter there needs no code: the refused navigate to a chat moved nothing."""
+    assert guards._driver_page(guards._driver_events(str(path), "mcp__playwright")) == LOCAL
+    reason = guards.check(KEY, {"key": "Enter"}, CONFIG, session={"session_id": "S-code", "transcript_path": str(path)}) or ""
+    assert "approve" not in reason, reason
+    return LOCAL
+
+
+@pytest.mark.parametrize("words", sorted(CODEX_REFUSALS))
+def test_a_direct_call_codexs_hook_refused_is_left_out_of_the_page(words):
+    rows = [row("response_item", {"type": "function_call", "name": "mcp__playwright__browser_navigate",
+                                  "arguments": json.dumps({"url": LOCAL}), "call_id": "call_1"}),
+            row("response_item", {"type": "function_call_output", "call_id": "call_1", "output": page(LOCAL)}),
+            row("response_item", {"type": "function_call", "name": "mcp__playwright__browser_navigate",
+                                  "arguments": json.dumps({"url": CHAT_PAGE}), "call_id": "call_2"}, at="2026-11-15T10:00:05Z"),
+            row("response_item", {"type": "function_call_output", "call_id": "call_2",
+                                  "output": CODEX_REFUSALS[words] + "Refused: a messaging site's page."}, at="2026-11-15T10:00:06Z")]
+    assert _refused_page(rollout(meta(), *rows)) == LOCAL
+
+
+@pytest.mark.parametrize("shape", ["its result", "its error"])
+@pytest.mark.parametrize("words", sorted(CODEX_REFUSALS))
+def test_a_call_codexs_hook_refused_inside_a_code_mode_script_is_left_out_of_the_page(words, shape):
+    said = CODEX_REFUSALS[words] + "Refused: a messaging site's page."
+    refused = nested("mcp_2", "playwright", "browser_navigate", {"url": CHAT_PAGE}, said, at="2026-11-15T10:00:05Z")
+    if shape == "its error":
+        refused["payload"]["item"].update(result=None, error=said, status="failed")
+    path = rollout(meta(), exec_call("call_E", f"await tools.mcp__playwright__browser_navigate({{url: '{LOCAL}'}});"),
+                   nested("mcp_1", "playwright", "browser_navigate", {"url": LOCAL}, page(LOCAL)), refused, output("call_E", "done"))
+    assert _refused_page(path) == LOCAL
+
+
+def test_a_call_codex_ran_still_places_the_page():
+    """The control: the same navigate, run, is the page."""
+    rows = [nested("mcp_1", "playwright", "browser_navigate", {"url": LOCAL}, page(LOCAL)),
+            nested("mcp_2", "playwright", "browser_navigate", {"url": CHAT_PAGE}, "navigated", at="2026-11-15T10:00:05Z")]
+    assert guards._driver_page(guards._driver_events(str(rollout(meta(), *rows)), "mcp__playwright")) == CHAT_PAGE
+
+
 # --- the doctor's proof that nested calls reach the hook ------------------------------------------------------------
 
 def test_no_codex_record_is_no_line():
