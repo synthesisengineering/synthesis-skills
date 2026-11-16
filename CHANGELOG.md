@@ -89,6 +89,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   failed). Replayed: the round's first run held 26 more programs, through the line's readings, which now count only an
   HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts whose URL comes from
   the environment with a body the guard cannot read.
+- **Review round 3 of the three.** A program's posts are read by what they hand over, not by how they are spelled. A
+  Python or node program whose text names this machine's MCP endpoint (two of a local host, port 8765 and an `/mcp`
+  path, written together or apart), or whose line hands it one, and makes any HTTP write (a call given a body by keyword
+  or by position, a request's `.write()`, `.end()` or `.send()`, a write method, a client it starts from a list or a
+  shell line) is judged by every body it hands over that the guard can read: what it spells, a request it builds (by its
+  method, its tools by name), a file it reads, its input and its arguments, followed through its names, its own
+  functions and each call of a helper. It waits when any body cannot be read: a value from the environment, the network
+  or a call the guard does not know, a name changed in place, a method or tool name it builds, a file it lacks. A
+  program that only reads (a GET, a liveness check) hands over no body, and a reading tool's call passes as that tool's.
+  HTTPie's and xh's `--raw` carry a body. An HTTP client's body in a variable the line does not set waits, and a
+  variable the line sets is put into the words that use it, so its value is read whole (put into the line's text, a JSON
+  value's quotes had split a reading call, which then waited). `--config-env` includes are followed as `-c`'s, with the
+  variable the line sets or the guard's own environment gives, and one whose variable neither gives waits. Tests first
+  (12 failed). Replayed against main at the merged head: the first run held 15 reading runs of the client given as
+  `"$C"`, now read, whose JSON argument a substitution fills had counted as a possible tool name; a word the shell fills
+  in now names a tool only when it can make a name. At its end 15 wait that main's guard passed: round 2's 16 less two
+  that now read right (a program whose tool call gives its method through a constant, and a liveness read whose `body =`
+  had read as a post), and one program of the day that holds a `send_gmail_message` request in its own text.
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
@@ -100,7 +118,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   fixed, tests first; 7 still wait, 6 of them programs naming a script file that is no longer on disk and one that runs a
   program its line writes while naming the server. The review's probes for the three now hold, the meeting fetcher's
   reads, ordinary osascript and 1,284 git reads in 321 repositories need nothing new, and a program with 3,000 tool
-  calls is read in 0.08 s.
+  calls is read in 0.2 s (its calls in 0.07 s, its bodies in 0.12 s).
 
 ## [5.23.0] - 2026-11-15
 

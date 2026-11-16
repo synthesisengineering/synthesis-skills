@@ -655,22 +655,44 @@ not send), with the server named `workspace-mcp`:
 - **An HTTP client to an address on this machine** (`localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, in any case and
   with a trailing dot, HTTPie's and xh's `:port` shorthand, and a URL in a variable the line sets or exports; `curl`, with
   its `-K` config file read, `wget`, HTTPie, `xh`): its body read from its data words, a redirect's file, an
-  `@file`, a file option, its heredoc or input, a `$(cat file)`, or HTTPie's fields. Each `tools/call` request it holds,
-  a batch's included, is that tool's call. A body it cannot read (a file it lacks, one the same line writes, input another
-  program writes, another substitution) waits when the address is a local MCP server's endpoint: port 8765 or the one
-  `WORKSPACE_MCP_PORT` names, or a path ending `/mcp`, `/sse` or `/messages`. A liveness read, `initialize`, `tools/list`
-  and any other local app's API pass.
+  `@file`, a file option, its heredoc or input, a `$(cat file)`, HTTPie's fields or its `--raw`. A variable the line sets
+  (an assignment or a `for` list) is put into the words that use it, so a body it holds is read whole. Each `tools/call`
+  request it holds, a batch's included, is that tool's call. A body it cannot read (a file it lacks, one the same line
+  writes, input another program writes, another substitution, a variable or parameter the line does not set, outside
+  single quotes) waits when the address is a local MCP server's endpoint: port 8765 or the one `WORKSPACE_MCP_PORT`
+  names, or a path ending `/mcp`, `/sse` or `/messages`. A liveness read, `initialize`, `tools/list` and any other local
+  app's API pass.
 - **A program that posts the JSON-RPC or calls a client's `call_tool`**, given inline, on its input, in a file or as a
-  module (in Python with the modules of its own it imports, which count only their literal names): its tool name read as a
-  literal, an item of a literal list, tuple or dict a loop walks (a part it unpacks or a key it takes included), a
+  module (in Python with the modules of its own it imports, which count only their literal names): its tool name read as
+  a literal, an item of a literal list, tuple or dict a loop walks (a part it unpacks or a key it takes included), a
   function's, a method's or a lambda's parameter followed to the calls that pass it, a JSON-RPC helper called with the
-  method, or a name it takes from its arguments, which are then read (the client's own form: its first argument names the
-  tool and a JSON argument gives its arguments). A program whose strings only mention the method makes no call, and a
-  program the line writes is read as the line's heredocs. Another language is read by the names its text gives.
-- **A program that posts a body it reads** (review round 1) to such an endpoint, with no tool call in its own text, is
-  judged by that body, from its input or from a file it names or takes from its arguments, as curl's `-d @file` is (the
-  endpoint named whole or as a host and a port apart, the body by keyword, by position or by `.end()`); a
-  body built from parts the guard cannot read waits, and a request with no body (a liveness read) passes.
+  method (as a literal or a name only that literal is given), or a name it takes from its arguments, which are then read
+  (the client's own form: its first argument names the tool and a JSON argument gives its arguments). An argument the
+  shell fills in names the tool only when the rest of it is a name's, and a JSON argument holding one is arguments the
+  guard cannot read. The line's own variables reach the program's path and its arguments. A program whose strings only
+  mention the method makes no call, and a program the line writes is read as the line's heredocs. Another language is
+  read by the names its text gives.
+- **Every body a program hands over** (review rounds 1 and 3). A Python or node program whose text, with its own
+  modules, names this machine's MCP endpoint (an address that reads as one, `WORKSPACE_MCP_URL` or `WORKSPACE_MCP_PORT`,
+  or two of a local host, port 8765 and an `/mcp` path, written together or apart), or whose line hands it one (the line
+  names port 8765 or an `/mcp` path, or one of the program's arguments reads as the endpoint), and makes any HTTP write
+  is judged by each body it hands over. A write, in Python, is a call given a body by keyword (`data`, `json`, `body`,
+  `content`, `files`) or by position (`urlopen`, `Request`, an opener's `open`, a library's `post`, `put` and `patch`,
+  `http.client`'s `request` after its method; `send`, `sendall` and `endheaders` in a program that opens a connection or
+  a socket by hand), a call handed a write method, and a `.data` (or `.body`, `.json`) it sets; in node, a `body`,
+  `data` or `json` property, what `.write()`, `.end()` or `.send()` hands anything but `process.stdout`,
+  `process.stderr` or a file stream, the body of a `.post()`, `.put()` or `.patch()`, and what it pipes into a request.
+  A client it starts (a list such as `['curl', …]`, a line handed to a shell, node's `exec` and `spawn`) is judged as on
+  the line. The body is read through what the program spells (strings joined from literals and names that hold them), a
+  JSON-RPC request it builds (its method read through the names and the parameters that give it, its `tools/call` read
+  as above), a file it reads (`open`, `Path`, `json.load`, `readFileSync`, `createReadStream`) by a name it spells or
+  takes from its arguments (argparse's included), its input, and its own arguments; in Python through what its own
+  functions return, and in node through each call of the helper that builds it. A body it cannot read waits: a value
+  from the environment, the network or a call the guard does not know, a name the program changes in place (an item or
+  attribute it sets, an `append` or `update`), a method or tool name it builds, a file it lacks or the line writes, a
+  write method handed to a call the guard does not know as a request or set where no write takes it, and, in another
+  language or in a program that does not parse, a write method or a body word in its text. A program that only reads (a
+  GET, a liveness check) hands over no body and passes.
 - **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
   the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
   program runs, and a call whose tool name the guard cannot read (one the shell fills in, one built or read while it
@@ -679,7 +701,9 @@ not send), with the server named `workspace-mcp`:
 
 Sixty days of Claude Code and Codex records (2026-11-15) held 251 client runs, 48 liveness reads of the server and 113
 programs posting its JSON-RPC, none naming a sending tool and none whose result read as a message, draft or event made.
-A command a program builds while it runs, such as a curl it starts, is not read.
+A command line a program builds from values the guard cannot read is read only for the client it starts, and waits then;
+a raw socket client on the line (`nc`, `socat`), a Python program's asyncio stream, and a program that takes the server's
+address from an environment variable no word of its line shows are not read (on the open list).
 
 ## A git command and the programs its configuration names (5.23.1)
 
@@ -702,8 +726,9 @@ sends waits as a send.
   path, an alias when it is the command run, and the programs the line's environment gives git (`GIT_SSH_COMMAND`,
   `GIT_SSH`, `GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`, `GIT_PAGER`, `GIT_EXTERNAL_DIFF`, `GIT_ASKPASS`, `SSH_ASKPASS`,
   `GIT_PROXY_COMMAND`) or its `--exec-path`.
-- **What waits:** a value the guard cannot read (`--config-env` naming a variable it is not shown) and programs nested
-  past two levels wait for the protected-folder code. A repository whose configuration names no program reads as before;
+- **What waits:** a value the guard cannot read (`--config-env` naming a variable that neither the line nor the guard's
+  own environment gives, or one holding a substitution), an include `--config-env` names through such a variable, and
+  programs nested past two levels wait for the protected-folder code. A repository whose configuration names no program reads as before;
   none of the 350 repositories the records' git commands ran in, nor the 320 under the workspaces, names one.
 - **Other scopes (review round 1):** the user's and the system's config are read too (the global and XDG files or the
   one `GIT_CONFIG_GLOBAL` names, the system file unless `GIT_CONFIG_NOSYSTEM`, with what each includes), and each
@@ -723,8 +748,9 @@ sends waits as a send.
   and a `git config` that sets any key naming a program git runs (`core.hooksPath` other than synthesis's folder or
   `/dev/null`, `core.fsmonitor` other than a boolean, an alias only to a shell or options), wait for the principal's code
   for that exact call. A push to a repository on this disk counts that repository's receiving hooks (pre-receive,
-  update, post-receive, post-update, proc-receive) unless its hooks folder is synthesis's own; includes named on the
-  command line are followed as in a file.
+  update, post-receive, post-update, proc-receive, push-to-checkout, reference-transaction) unless its hooks folder is
+  synthesis's own; includes named on the command line (`-c`, `--config-env` with the variable the line sets or the
+  guard's own environment gives, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`) are followed as in a file.
 
 ## Calibration
 
