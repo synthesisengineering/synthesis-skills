@@ -4,9 +4,11 @@ A run is one markdown plan file in the project (R6.1). `engage` records which
 plan this session owns; at turn end `evaluate()` reads only that plan. When the
 plan is running and the turn ended without the next step, it asks for one of
 three things: continue the next open checklist item, record a blocker and
-alert the principal, or close honestly (R6.4). It asks at most three times in a
-row for a plan, and returns None on any error, because a turn-end check that
-fails closed asks for another turn forever.
+alert the principal, or close honestly (R6.4). When the count (`tally`) says
+the run's own items outran the principal's, it asks instead for the one line
+to bring the principal. It asks at most three times in a row for a plan, and
+returns None on any error, because a turn-end check that fails closed asks for
+another turn forever.
 
 The commands an agent runs by hand (engage, status, cycle, close, alert,
 wake-prompt, takeover) live in the skill: python3 -S
@@ -38,6 +40,12 @@ STOPPED = re.compile(r"\b(deleted|stopped|ended|cancelled|canceled|removed)\b", 
 ABSENCE = re.compile(r"\b(not (?:available|supported|installed|possible)|unavailable|unsupported|no way to|"
                      r"cannot (?:run|reach|access|schedule|call|connect|install|use|find|wake))\b", re.I)
 WHEN = re.compile(r"\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?")
+WINDOW = 24 * 3600  # the count's day
+ORIGIN = re.compile(r"\borigin:\s*(principal|self)\b", re.I)
+ADDED_AT = re.compile(r"\badded:?\s+(" + WHEN.pattern + ")", re.I)
+CLOSED_AT = re.compile(r"\bclosed:?\s+(" + WHEN.pattern + ")", re.I)
+DAY_COUNT = re.compile(r"^\s*[-*+]\s+(\d{4}-\d{2}-\d{2}):\s*(\d+)\b")
+ANSWER = re.compile(r"\b(continue|narrow|stop)\b", re.I)
 
 
 # ---- the plan file ----------------------------------------------------------
@@ -205,6 +213,59 @@ def close_problems(plan: Plan, status: str) -> list[str]:
     return problems
 
 
+# ---- the count: the run's own work against the principal's ------------------
+
+def _recent(value: str) -> bool:
+    """A time the count reads falls in the last 24 hours; one that cannot be read counts nothing."""
+    try:
+        age = _age_seconds(value)
+    except ValueError:
+        return False
+    return age is not None and 0 <= age <= WINDOW
+
+
+def tally(plan: Plan) -> dict:
+    """Principal items closed and self-generated items added in the last 24 hours, the open principal items day by
+    day, and whether the count stops the run: the first outnumbered, or the last three days each higher than the day
+    before, with no principal answer of continue or narrow dated inside the window. An item with no origin, or
+    without the time the count reads, is left out; a plan with no origins at all counts nothing."""
+    counted = {"principal": 0, "self": 0, "open": 0, "left_out": 0, "tracked": False}
+    for done, text in plan.items("checklist"):
+        origin = ORIGIN.search(text)
+        kind = origin.group(1).lower() if origin else ""
+        counted["tracked"] = counted["tracked"] or bool(kind)
+        if kind == "principal" and not done:
+            counted["open"] += 1
+            continue
+        stamp = (ADDED_AT if kind == "self" else CLOSED_AT).search(text) if kind else None
+        if stamp is None:
+            counted["left_out"] += 1
+        elif _recent(stamp.group(1)):
+            counted[kind] += 1
+    today, recorded = datetime.now().date().isoformat(), {}
+    for found in map(DAY_COUNT.match, plan.sections.get("backlog count", [])):
+        if found:
+            recorded.setdefault(found.group(1), int(found.group(2)))
+    days = {**recorded, today: recorded.get(today, counted["open"])} if counted["tracked"] else {}
+    series = [days[day] for day in sorted(days)][-3:]
+    answer = plan.field("principal answer")
+    word = ANSWER.search(answer)
+    answered = bool(word) and word.group(1).lower() != "stop" and _recent(answer)
+    over, rising = counted["self"] > counted["principal"], len(series) == 3 and series[0] < series[1] < series[2]
+    counted.update(today=today, recorded=recorded, series=series, over=over, rising=rising,
+                   stop=(over or rising) and not answered)
+    return counted
+
+
+def stop_line(plan: Plan, counted: dict) -> str:
+    """The one line to bring the principal when the count stops the run."""
+    why = [f"in the last 24 hours this run added {counted['self']} item(s) of its own and closed "
+           f"{counted['principal']} of yours"] if counted["over"] else []
+    if counted["rising"]:
+        why.append(f"your open items in this run rose two days running ({', '.join(map(str, counted['series']))})")
+    return f"{plan.title}: {', and '.join(why)}. Continue, narrow, or stop?"
+
+
 # ---- the turn-end check -----------------------------------------------------
 
 def _backstop_problems(plan: Plan) -> list[str]:
@@ -260,6 +321,12 @@ def turn_end_reason(plan: Plan, payload: dict, settings: dict) -> str | None:
     if status != "running" or payload.get("background_tasks"):
         return None  # paused by the principal, unknown, or a running task will wake this session
     items = plan.open_items()
+    counted = tally(plan) if items else {}
+    if counted.get("stop"):
+        return (f"Your autopilot plan {where} stops for its count: start nothing new. Bring the principal this one "
+                f"line: {stop_line(plan, counted)} Record it under ## Blockers, alert them (autopilot_cli.py alert "
+                f"--kind blocked) and set Status: blocked; write their answer on the Principal answer: line with the "
+                f"time they gave it.")
     if items:
         more = f" ({len(items) - 1} more open after it)" if len(items) > 1 else ""
         message = (f"Your autopilot plan {where} still has open items. Continue with the next one now: {items[0]}"

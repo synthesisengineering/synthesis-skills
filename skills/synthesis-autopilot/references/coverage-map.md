@@ -239,3 +239,25 @@ check-ins ran without looking at it. No rule was removed. Three tests in
 `tests/test_autopilot.py` cover the item, its evidence at close and the documents, and
 `test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs` now checks both
 documented runtime paths and runs the check from there.
+
+**2026-11-16 (4.2.0): the run's own work is counted against the principal's.** Each
+checklist item carries its origin, `principal` or `self`; an item added after
+engagement carries the time it was added, and a checked item the time it closed
+([plan-file.md](plan-file.md#origins-and-the-count), the template and the header
+table, with the new `Principal answer:` line and `## Backlog count` section).
+`cycle` counts, over the last 24 hours, principal items closed and self-generated
+items added, writes the open principal items at each day's first wake, and refuses
+an advance when the second outnumbers the first or the open principal items rose two
+days running, unless a principal answer of continue or narrow is dated inside the
+window; it prints the one line to bring the principal. The turn-end check asks for
+that line instead of the next item ([turn-end-check.md](turn-end-check.md#when-it-asks)),
+from the plan it already reads. A plan without origins counts nothing, and `cycle`
+says so once. Binding rule 14 in [SKILL.md](../SKILL.md) carries it; the
+[re-entry protocol](continuation.md#re-entry-protocol) and
+[runaway control](continuation.md#budget-and-runaway-control) name it. No rule was
+removed. To make room for rule 14 under 8,000 bytes, the Procedure's six numbered
+steps (1,313 bytes, six lines) moved word for word from SKILL.md to
+[procedure.md](procedure.md), which also says what to do when the count stops the
+run; SKILL.md keeps the helper path and a one-line pointer, and Contents lists the
+page. SKILL.md went from 7,922 to 7,344 bytes. The principal's rulings of 2026-11-16
+set the two kinds of item, the count, its day and the one line.

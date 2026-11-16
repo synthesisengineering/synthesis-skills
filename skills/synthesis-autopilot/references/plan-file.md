@@ -14,6 +14,7 @@ spellings, described here.
 - [Header lines](#header-lines): the lines before the first `##` heading, which the check reads
 - [Status values](#status-values): what each status asks of the agent
 - [Sections](#sections): the checklists and how evidence is written
+- [Origins and the count](#origins-and-the-count): each item's origin and times, what `cycle` counts, when it stops the run, and the principal's answer
 - [Default standing checklist](#default-standing-checklist)
 - [Template](#template): copy this to start a run
 - [Cadence](#cadence)
@@ -60,6 +61,7 @@ carry guidance.
 | `Waiting on:` | The external event and when it is due | Required while `Status: waiting` |
 | `Silent after:` | Minutes (default 480, the board's eight-hour stale rule) | How long the plan may sit unchanged before another session may take it over |
 | `Harness:` | `claude-code`, `codex` or `muse` | Information for whoever resumes the run |
+| `Principal answer:` | After the count stops the run: `continue`, `narrow` or `stop`, then the time the principal gave it; one line, updated in place | `cycle` and the turn-end check: `continue` or `narrow` dated inside the last 24 hours lets the run go on (see [Origins and the count](#origins-and-the-count)) |
 
 ## Status values
 
@@ -92,7 +94,9 @@ Checklists use `- [ ]` (open) and `- [x]` (done). Evidence or a waiver follows
 ` — ` (an em or en dash, or `--`) after the item text.
 
 - **Checklist**: the deliverables in order, numbered. The check names the first
-  open one in its continuation request, so write each as the next action.
+  open one in its continuation request, so write each as the next action. Each
+  item carries its origin and, when the count needs them, its times (see
+  [Origins and the count](#origins-and-the-count)).
 - **Completion criteria**: what "done" means, each checked as
   `- [x] <criterion> — <command or observation and its result>`. A criterion
   checked without evidence is not met: missing evidence stays unknown, never a pass.
@@ -113,10 +117,64 @@ Checklists use `- [ ]` (open) and `- [x]` (done). Evidence or a waiver follows
   `status --all` shows the open ones, so the principal sees them even when a
   harness pane is blank.
 - **Cycle ledger**: one line per wake, appended with the `cycle` helper.
+- **Backlog count**: the open principal items, one line a day
+  (`- 2026-11-16: 7 open principal item(s)`), which `cycle` writes at each day's
+  first wake (see [Origins and the count](#origins-and-the-count)).
 - **Mission, Principal outcome, Standing instructions, Constraints and decisions
   already made, Coordination, Proportionality, Cross-agent orchestration and
   round-trip budget, Budget, Decisions log, Sufficiency checkpoint**: as in the
   template; nothing reads them mechanically.
+
+## Origins and the count
+
+A run can keep itself busy: each review of its own fix finds something, each
+finding becomes an item, and the plan grows while the principal's own work waits.
+The count stops that, and it reads only the plan file.
+
+**Each checklist item carries its origin.**
+
+- `origin: principal`: the item delivers the principal's request, their backlog,
+  or a build their ruling ordered. A request from another session counts, since
+  the principal added that scope. The items a plan starts with are the delegated
+  task, so the template marks them principal.
+- `origin: self`: the item only fixes, reviews or re-reviews what the run itself
+  produced: a review round's findings, a fix to a fix, another look at its own
+  change.
+
+An item added after engagement also carries `added <time>`, and checking any
+item adds `closed <time>`: ISO times with the offset, in the same parentheses,
+before the evidence dash.
+
+```text
+- [x] 1. Migrate /users (origin: principal, closed 2026-11-16T11:02-05:00) — 42 tests pass
+- [ ] 2. Migrate /orders (origin: principal)
+- [ ] 3. Close the gap the second review found (origin: self, added 2026-11-16T09:30-05:00)
+```
+
+**What `cycle` counts.** At every wake, over the last 24 hours: principal items
+closed, by their `closed <time>`, and self-generated items added, by their
+`added <time>`. It prints both and writes them on the wake's ledger line. At each
+day's first wake it also writes the open principal items under `## Backlog count`,
+one line a day; that count must fall day by day.
+
+**When it stops the run.** When the run added more self-generated items than it
+closed principal ones in the last 24 hours, or the open principal items rose two
+days running (each of the last three days higher than the day before), and no
+`Principal answer:` of `continue` or `narrow` is dated inside those 24 hours,
+`cycle --advanced` refuses to record the advance and prints the one line to bring
+the principal, which ends "Continue, narrow, or stop?". The day's count is still
+written. A cycle that only names a wait is recorded, and prints the line too. The
+turn-end check asks for that line instead of the next item. Start nothing new:
+[procedure.md](procedure.md#when-the-count-stops-the-run) says how to ask and what
+each answer means. The answer goes on the one `Principal answer:` header line,
+updated in place, with the time the principal gave it, and holds for 24 hours from
+then; `stop`, or an answer with no time, holds nothing.
+
+**Items the count cannot place.** An item with no origin is unknown, and so is a
+checked principal item with no close time or a self item with no added time. The
+count leaves them out. A plan with no origins at all, such as one written before
+this convention, counts nothing and never stops; `cycle` says so once, in its
+output and on its ledger line, and again only when more such items appear.
 
 ## Default standing checklist
 
@@ -159,6 +217,7 @@ First wake: not yet
 Backstop: none (horizon is this sitting) <!-- overnight or days: scheduler job id — stop: <how to stop it> -->
 Waiting on: <only while Status is waiting: the external event and when it is due>
 Silent after: 480 <!-- minutes unchanged before another session may take the run over -->
+Principal answer: <only after the count stops the run: continue, narrow or stop, and when the principal said it>
 
 ## Mission
 What "done" means, in the user's terms.
@@ -175,8 +234,11 @@ post-compaction re-read restores the mode, not just the task.
 Everything the user has decided; never re-litigate these.
 
 ## Checklist
-- [ ] 1. <first deliverable, written as the next action>
-- [ ] 2. <next deliverable>
+<!-- each item's origin: principal (the principal's request, their backlog, or a build their ruling ordered; another
+session's request counts) or self (it only fixes, reviews or re-reviews what this run produced). An item added after
+engagement also carries "added <time>", and a checked one "closed <time>": see Origins and the count. -->
+- [ ] 1. <first deliverable, written as the next action> (origin: principal)
+- [ ] 2. <next deliverable> (origin: principal)
 
 ## Completion criteria
 - [ ] <criterion> <!-- when checked: — <command or observation and its result> -->
@@ -211,6 +273,9 @@ updated each cycle. Stop conditions: goals met · blocker + alert ·
 budget exhausted + alert.
 
 ## Cycle ledger
+
+## Backlog count
+<!-- cycle writes the open principal items at each day's first wake: - YYYY-MM-DD: N open principal item(s) -->
 
 ## Decisions log
 Dated entries: decision, thinking-framework mode used, rationale.

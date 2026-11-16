@@ -540,6 +540,27 @@ def test_an_item_the_count_cannot_place_is_left_out_and_said(tmp_path, capsys):
     assert "the count leaves out 2 checklist item(s)" in capsys.readouterr().out
 
 
+def test_the_documented_cycle_output_is_what_cycle_prints(tmp_path, capsys):
+    """The helper page says its output is real: its three cycle examples are run here, times aside."""
+    doc = (SKILL / "references" / "turn-end-check.md").read_text(encoding="utf-8").split("**Cycle**")[1].split("**Close**")[0]
+    blocks = [[line for line in block.splitlines() if not line.startswith("$ ")]
+              for block in re.findall(r"```text\n(.*?)\n```", doc, re.S)]
+    older = write_plan(tmp_path / "older", checklist=("- [ ] 1. Migrate /orders and its tests", "- [ ] 2. Retire the v1 route"))
+    engage("S1", older)
+    capsys.readouterr()
+    assert advance(older, "migrated /orders; 12 tests pass") == 0
+    assert capsys.readouterr().out.splitlines() == blocks[0][:2]
+    path = tagged(tmp_path / "counted", closed=(90,), added=(60, 30))
+    engage("S1", path)
+    capsys.readouterr()
+    assert advance(path, "re-reviewed the guard fix") == 1
+    stamp = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}")
+    assert stamp.sub("<time>", capsys.readouterr().err).splitlines() == [stamp.sub("<time>", line) for line in blocks[1]]
+    edit(path, "Status: running", f"Status: running\nPrincipal answer: continue {ago(1)}")
+    assert advance(path, "re-reviewed the guard fix") == 0
+    assert capsys.readouterr().out.splitlines() == blocks[2]
+
+
 def test_the_turn_end_check_asks_the_run_to_stop_and_bring_the_one_line_rather_than_the_next_item(tmp_path):
     path = tagged(tmp_path, closed=(90,), added=(60, 30))
     engage("S1", path)

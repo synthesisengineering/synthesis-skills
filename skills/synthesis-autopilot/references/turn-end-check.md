@@ -33,6 +33,19 @@ The request is written as a short user message naming the open work, because a
 model that ends a turn with a summary responds best to being told exactly what
 remains and that a real blocker is an acceptable answer.
 
+**The count comes first.** While a running plan has open items, the check reads
+the count from the same plan ([plan-file.md](plan-file.md#origins-and-the-count)).
+When the run added more of its own items than it closed of the principal's in the
+last 24 hours, or the principal's open items rose two days running, and no
+principal answer of continue or narrow is dated inside that window, it asks for
+the one line to bring the principal instead of the next item: "Your autopilot
+plan <plan> stops for its count: start nothing new. Bring the principal this one
+line: <the line> Record it under ## Blockers, alert them (autopilot_cli.py alert
+--kind blocked) and set Status: blocked; write their answer on the Principal
+answer: line with the time they gave it." Once the blocker carries its alert and
+the status is blocked, the turn may end as for any blocked run. It reads nothing
+the plan does not hold, so the bounds below are unchanged.
+
 ## What bounds it
 
 - **At most three continuations in a row per plan.** A stop that arrives with
@@ -115,9 +128,34 @@ first_wake, backstop, blockers, questions) for tools such as the Console.
 ```text
 $ python3 -S "$AP" cycle --plan <plan> --advanced "migrated /orders; 12 tests pass"
 cycle recorded (1 in the ledger)
+note: the count leaves out 2 checklist item(s) with no origin, or without the added or closed time it reads (references/plan-file.md, Origins and the count)
 $ python3 -S "$AP" cycle --plan <plan>
 refused: a cycle that advanced nothing must name the external wait it is on (--waiting-on). There is no way to record a bare spin: if nothing advanced and nothing external is awaited, the run is spinning, so record a blocker and alert, or close.
 ```
+
+That plan's two items carry no origin, so the count leaves them out and says so
+once. A plan written from the template is counted. Here the run has closed one of
+the principal's items and added two of its own in the last 24 hours, so `cycle`
+refuses the advance, writes the day's count of open principal items, and prints
+the one line to bring the principal (exit 1):
+
+```text
+$ python3 -S "$AP" cycle --plan <plan> --advanced "re-reviewed the guard fix"
+refused: the count stops this run, and no principal answer of continue or narrow is dated after 2026-11-15T09:40-05:00. Start nothing new: bring the principal this one line, record it under ## Blockers with its alert, and set Status: blocked. Write their answer on the Principal answer: line with the time they gave it.
+migrate endpoints: in the last 24 hours this run added 2 item(s) of its own and closed 1 of yours. Continue, narrow, or stop?
+```
+
+With `Principal answer: continue 2026-11-16T09:52-05:00` written in the plan, the
+same advance is recorded, with the count on the wake's ledger line:
+
+```text
+$ python3 -S "$AP" cycle --plan <plan> --advanced "re-reviewed the guard fix"
+cycle recorded (1 in the ledger)
+last 24 hours: 1 principal item(s) closed, 2 self-generated item(s) added; 1 principal item(s) open
+```
+
+A cycle with only `--waiting-on` is recorded while the count stops the run, and
+prints the same line after its own.
 
 **Close** with `--done`, `--incomplete "<reason>"` or `--cancelled "<reason>"`.
 It refuses (exit 1, plan unchanged) with every problem listed, then on success

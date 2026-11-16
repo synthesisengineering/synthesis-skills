@@ -29,14 +29,15 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
     sys.exit(2)
 try:
     from synthesis.autopilot import (  # noqa: E402
-        FIELD, FIRST_WAKE_GRACE, LIST, OPEN, Plan, _continuation_problems, _pointer_file, _read_pointer,
-        _write_pointer, close_problems, load)
+        FIELD, FIRST_WAKE_GRACE, LIST, OPEN, WINDOW, Plan, _continuation_problems, _pointer_file, _read_pointer,
+        _write_pointer, close_problems, load, stop_line, tally)
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
     print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
     sys.exit(2)
 
 SILENT_DEFAULT_MINUTES = 8 * 60
+NOTED = re.compile(r"the count leaves out (\d+) item")  # said once in the ledger, and again only when more appear
 DEFAULT_STANDING = (
     ("end-to-end", "Complete the work end to end: every item closed or the run closed honestly incomplete."),
     ("framework-decisions", "Open important decisions go through the thinking framework, recorded with rationale."),
@@ -206,11 +207,36 @@ def cmd_cycle(args) -> int:
     plan = load(path)
     if not _owned(args, plan):
         return 1
-    entry = "; ".join(p for p in (advanced and f"advanced: {advanced}", waiting and f"waiting on: {waiting}") if p)
-    text = append_to_section(plan.text, "Cycle ledger", [f"- {_now()} {entry}"])
+    counted, text = tally(plan), plan.text
+    if counted["tracked"] and counted["today"] not in counted["recorded"]:  # each day's first wake writes the day's count
+        text = append_to_section(text, "Backlog count", [f"- {counted['today']}: {counted['open']} open principal item(s)"])
+    if counted["stop"] and advanced:
+        if text != plan.text:
+            _write(path, text)
+        since = datetime.fromtimestamp(time.time() - WINDOW).astimezone().isoformat(timespec="minutes")
+        return _fail(f"refused: the count stops this run, and no principal answer of continue or narrow is dated after "
+                     f"{since}. Start nothing new: bring the principal this one line, record it under ## Blockers with "
+                     f"its alert, and set Status: blocked. Write their answer on the Principal answer: line with the time "
+                     f"they gave it.\n{stop_line(plan, counted)}")
+    said = max([int(m.group(1)) for m in map(NOTED.search, plan.sections.get("cycle ledger", [])) if m] or [0])
+    left = counted["left_out"] if counted["left_out"] > said else 0
+    entry = "; ".join(p for p in (advanced and f"advanced: {advanced}", waiting and f"waiting on: {waiting}",
+                                  counted["tracked"] and f"last 24 h: {counted['principal']} principal closed, "
+                                                         f"{counted['self']} self added",
+                                  left and f"the count leaves out {left} item(s)") if p)
+    text = append_to_section(text, "Cycle ledger", [f"- {_now()} {entry}"])
     _write(path, text)
     count = sum(1 for line in Plan(path, text).sections.get("cycle ledger", []) if LIST.match(line))
     print(f"cycle recorded ({count} in the ledger)")
+    if counted["tracked"]:
+        print(f"last 24 hours: {counted['principal']} principal item(s) closed, {counted['self']} self-generated "
+              f"item(s) added; {counted['open']} principal item(s) open")
+    if left:
+        print(f"note: the count leaves out {left} checklist item(s) with no origin, or without the added or closed "
+              f"time it reads (references/plan-file.md, Origins and the count)")
+    if counted["stop"]:
+        print(f"the count stops this run: before any new work, bring the principal this one line:\n"
+              f"{stop_line(plan, counted)}")
     return 0
 
 

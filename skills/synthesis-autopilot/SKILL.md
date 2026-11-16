@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-agent-conformance"]
 metadata:
   author: "Rajiv Pant"
-  version: "4.1.1"
+  version: "4.2.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -34,10 +34,12 @@ skills that already exist rather than restating them.
 11. **Delegate with discipline.** At most five deliverables per brief, no minimizing words, each brief's share of shared budgets stated, and every non-clean return audited against its brief and diff.
 12. **Alerts carry counts and a pointer only,** honor the mute flag, record posted or suppressed, and fire again for each new question. The written report always exists.
 13. **At every wake, check what other people rely on before the next item:** `python3 -S "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/relied_on.py" --all`. Lead the reply with any `DOWN` line. So does a check that never started, exited 2 or printed none of the lines it documents: not checked, never read as healthy. It is an incident: the principal is told first, the people affected only on the principal's approval. A test two colleagues relied on once stopped, unseen through two scheduled check-ins.
+14. **Stop when the run's own work outruns the principal's.** Every checklist item carries its origin (`principal` or `self`), one added after engagement its added time, a checked one its close time. When, over 24 hours, the run added more self-generated items than it closed principal ones, or open principal items rose two days running, `cycle` refuses: start nothing new and bring the principal its one line, continue, narrow or stop.
 
 ## Contents
 
 - **Procedure** (below): engagement to close. Read at engagement.
+- [references/procedure.md](references/procedure.md): the six steps from engagement to close, and what to do when the count stops the run. Read at engagement, and when `cycle` refuses for the count.
 - [references/plan-file.md](references/plan-file.md): the plan-file convention, the template, and the lines the check reads. Read when writing or editing a plan.
 - [references/continuation.md](references/continuation.md): continuation and backstop per harness (Claude Code, Codex, Muse), re-entry, runaway control. Read before the first turn of any run longer than one turn.
 - [references/turn-end-check.md](references/turn-end-check.md): when the check asks and what bounds it, and every helper command with its output. Read when the check fires or before a helper.
@@ -54,9 +56,4 @@ skills that already exist rather than restating them.
 Helpers run as `python3 -S "$AP" <command>`, with
 `AP="$HOME/.synthesis/v5/current/skills/synthesis-autopilot/scripts/autopilot_cli.py"`, the copy of this skill's script the install keeps in the runtime.
 
-1. **Engage.** Tell the user in one line: mode plus plan path. Anchor with synthesis-checkpoint, read the board and inbox, and claim what the run will write.
-2. **Plan.** Write the plan in the project from the template, then `engage --plan <path>`. If the horizon passes this turn, set up and record the continuation and backstop now, and put the plan path and next item in CONTEXT.md's current-state block so compaction brings them back.
-3. **Phase loop.** Re-read the plan and board; work with anti-shortcut discipline; decide by class; dispatch by the fan-out rules; record the wake with `cycle --advanced` or `--waiting-on`; update the plan; move cited scratch into the project; refresh CONTEXT.md and the session log.
-4. **Wait or block honestly.** Nothing ready: `Status: waiting` with `Waiting on:`. Only the principal can unblock: record the blocker (with a probe for any missing capability), run `alert --kind blocked --count N`, note the outcome on the blocker, set `Status: blocked`, and keep the report in the plan.
-5. **Verify.** Run synthesis-implementation-integrity or the domain's equivalent and fix what it finds.
-6. **Close.** Delete every scheduled job and read the deletion back; `close --done`, or `--incomplete "<reason>"`; release claims; write the completion report; `alert --kind done`.
+The six steps from engagement to close are in [references/procedure.md](references/procedure.md).

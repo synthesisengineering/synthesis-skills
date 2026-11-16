@@ -1372,10 +1372,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
 # sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
 # `_strings` taking the fields to leave out, and the check reading through it, change in place.
+# Then the core 67 more and the plugin 93, so an autopilot run counts its own work against the principal's (plan item
+# 22.37(d), the principal's rulings of 2026-11-16: when, over a day, the run adds more self-generated items than it
+# closes principal ones, or the principal's open items rise two days running, it starts nothing new and asks the
+# principal one line). autopilot.py 67: tally 31 (each item's origin and times read, the days' counts, the principal's
+# answer, and whether the count stops the run), _recent 7 (a time inside the day; one that cannot be read counts
+# nothing), stop_line 7 (the one line), turn_end_reason 6 more (the check asks for that line before the next item),
+# WINDOW, ORIGIN, ADDED_AT, CLOSED_AT, DAY_COUNT and ANSWER 6, the module docstring 2 more, and the new section's
+# heading 1 and its 7 blank lines. The plugin's 26 more are autopilot_cli.py's: cmd_cycle 25 more (the day's count
+# written at its first wake, the refused advance with the one line, the note of items the count leaves out, said once,
+# and the count on the ledger line and in the output) and NOTED 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16886
-PLUGIN_BUDGET = 42958
+CORE_BUDGET = 16953
+PLUGIN_BUDGET = 43051
 
 
 def _lines(files):
