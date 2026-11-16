@@ -150,6 +150,25 @@ def test_the_grant_is_spent_only_on_a_clone_the_remote_vouches_for(world):
     assert install.current_hash() == before and len(_grants(world)) == 1  # nothing spent it
 
 
+def test_the_spend_asks_the_release_url_itself_from_outside_the_clone(world, monkeypatch):
+    """Combined review round 2 of 22.8 with 22.18, R2-1 (defense in depth): the spend asked for the tag through the
+    clone's own git config, so a clone whose config sent the release URL to a repository of its own vouched for itself
+    when the spend ran with no release around it. It asks from a folder outside the clone, naming the release URL."""
+    world["judge"](_launcher(world, "--install-only --tag v99.0.0"))
+    clone = _clone(world, "99.0.0", ".clone-own-remote", served=False)
+    own = world["tmp"] / "own.git"
+    subprocess.run(["git", "init", "-q", "--bare", str(own)], check=True)
+    subprocess.run(["git", "-C", str(clone), "push", "-q", str(own), "refs/tags/v99.0.0"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", str(clone), "config", f"url.{own.as_uri()}.insteadOf", install.RELEASE_URL], check=True)
+    for key in ("GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"):
+        monkeypatch.delenv(key)  # no redirect but the clone's own,
+    monkeypatch.setenv("GIT_ALLOW_PROTOCOL", "file")  # and no network: git reaches local repositories only
+    before = install.current_hash()
+    with pytest.raises(install.Unapproved):
+        install.install(clone)
+    assert install.current_hash() == before and len(_grants(world)) == 1  # nothing spent it
+
+
 def test_the_grant_binds_its_home_its_version_its_tags_clone_and_its_bytes(world):
     world["judge"](_launcher(world, "--install-only --tag v99.0.0"))
     before = install.current_hash()

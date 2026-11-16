@@ -273,20 +273,23 @@ def _spend_release(home: Path, version: str, plugin_root: Path, staging: Path) -
     in the protected releases folder, at its tag `v<version>`, whose staged copy holds exactly the files of that tag's
     tree: the bytes the grant names are the tag's. The clone is held to its remote, not to itself (combined review round
     1 of 22.8 with 22.18, C8: a harness command the release ran committed in it and moved its tag): HEAD must be the
-    commit `RELEASE_URL`'s tag names, and its tracked tree clean. False, spending nothing, where any of that does not hold."""
+    commit `RELEASE_URL`'s tag names, and its tracked tree clean. The tag is asked of `RELEASE_URL` itself from the root
+    folder, which no user can make a repository of, so no config of the clone's sends it elsewhere (round 2, R2-1).
+    False, spending nothing, where any of that does not hold."""
     path, clone = _grant_file(home, version), os.path.realpath(plugin_root)
     data = paths.read_json(path)
     if (data.get("home") != os.path.realpath(home) or data.get("version") != version or time.time() - float(data.get("at") or 0) >
             RELEASE_GRANT_SECONDS or not os.path.basename(clone).startswith(".clone-") or os.path.dirname(clone) != os.path.realpath(home / "releases")):
         return False
-    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
+    env = {**{k: v for k, v in os.environ.items() if k not in ("GIT_DIR", "GIT_COMMON_DIR")},  # no repository but the one named
+           "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "GIT_TERMINAL_PROMPT": "0"}
 
-    def git(*args) -> str | None:  # its output, None where it failed
-        done = subprocess.run(["git", "--no-replace-objects", "-C", clone, "-c", "core.hooksPath=/dev/null", *args],
+    def git(*args, where: str = clone) -> str | None:  # its output, None where it failed
+        done = subprocess.run(["git", "--no-replace-objects", "-C", where, "-c", "core.hooksPath=/dev/null", *args],
                               capture_output=True, text=True, env=env, timeout=120)
         return done.stdout if done.returncode == 0 else None
     tag = f"refs/tags/v{version}"
-    head, served = (git("rev-parse", "--verify", "HEAD^{commit}") or "").strip(), git("ls-remote", RELEASE_URL, tag, tag + "^{}") or ""
+    head, served = (git("rev-parse", "--verify", "HEAD^{commit}") or "").strip(), git("ls-remote", RELEASE_URL, tag, tag + "^{}", where="/") or ""
     named = {ref: oid for oid, _, ref in (row.partition("\t") for row in served.splitlines())}
     if not head or (named.get(tag + "^{}") or named.get(tag)) != head or git("status", "--porcelain", "--untracked-files=no") != "":
         return False

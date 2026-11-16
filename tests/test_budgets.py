@@ -1725,10 +1725,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.24.0, 22.33 (3ec6c350: Codex code mode, from main at b8efb5ee) merged into release/next at 877fbabf: release/next's
 # ceilings (core 19124, plugin 45741) and 22.33's raises itemized just above (122, 37 and 16, core and plugin alike: 175
 # each), measured: core 19299 and plugin 45916.
+# Round 2 of the combined review, R2-1: core 3 more and plugin 3. install.py 3: _spend_release's docstring 2 (the tag
+# asked of the release URL from the root folder, so no config of the clone's sends the question elsewhere) and its git
+# environment 1 (no GIT_DIR or GIT_COMMON_DIR naming a repository other than the one each call names).
+# 5.24.0, 22.8's final head (42d21552: round 2 of the combined review, R2-1) merged into release/next at ad371ceb:
+# release/next's ceilings (core 19299, plugin 45916) and R2-1's raise itemized just above (core 3, plugin 3), measured:
+# core 19302 and plugin 45919.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 19299
-PLUGIN_BUDGET = 45916
+CORE_BUDGET = 19302
+PLUGIN_BUDGET = 45919
 
 
 def _lines(files):
