@@ -59,16 +59,60 @@ CODE = [
 ]
 
 
+CALL = "from synthesis import approvals; approvals.consume('probe', {})"
+WRITERS = {  # review round 2 of 22.22: a script the line writes and then runs is judged by what is written, whatever the writer
+    "tee": "tee s.py > /dev/null <<'EOF'\n" + CALL + "\nEOF\npython3 s.py",
+    "cat >>": "cat >> s.py <<'EOF'\n" + CALL + "\nEOF\npython3 s.py",
+    "echo": "echo " + shlex.quote(CALL) + " > s.py && python3 s.py",
+    "printf": "printf '%s\\n' " + shlex.quote(CALL) + " > s.py && python3 s.py",
+    "dd of=": "dd of=s.py status=none <<'EOF'\n" + CALL + "\nEOF\npython3 s.py",
+}
+
+
+@pytest.mark.parametrize("writer", list(WRITERS))
+def test_a_script_the_line_writes_and_runs_is_judged_by_what_is_written(tmp_path, writer):
+    said = _said(WRITERS[writer], tmp_path)
+    assert said.startswith("Refused") or "approve followed by the code" in said, (writer, said)
+
+
+def test_a_script_a_program_writes_and_the_line_runs_waits(tmp_path):
+    line = "python3 -c \"open('gen.py', 'w').write('print(1)')\" && python3 gen.py"
+    assert "approve followed by the code" in _said(line, tmp_path)  # what is written cannot be told: the run waits
+    assert _said("cat > ok.py <<'EOF'\nprint(1)\nEOF\npython3 ok.py", tmp_path) == ""  # what is written is read: it runs
+
+
+@pytest.mark.parametrize("line", [
+    "python3 -c \"import subprocess; print('synthesis approvals.consume is the guard\\'s'); subprocess.run(['npm', 'test'])\"",
+    "node -e " + shlex.quote("console.log('synthesis open_window belongs to the guard'); require('child_process').execSync('npm test')"),
+    "python3 -c \"import subprocess; open('n.md', 'w').write('synthesis: consume'); subprocess.run(['git', 'status'])\"",
+])
+def test_prose_beside_an_unrelated_started_program_is_prose(tmp_path, line):
+    """A program that starts a program keeps only the strings that reach it: the started call's arguments, the names
+    they are built from, and a file it writes and then starts."""
+    assert APPROVAL_CODE not in _said(line, tmp_path), line
+
+
+def test_the_strings_that_reach_a_started_program_still_count(tmp_path):
+    for line in ("python3 -c \"import subprocess; cmd = 'from synthesis import approvals; approvals.consume(1, 2)'; "
+                 "subprocess.run(['python3', '-c', cmd])\"",
+                 "node -e " + shlex.quote("const fs = require('fs'); fs.writeFileSync('t.py', 'from synthesis import approvals; "
+                                          "approvals.consume(1, 2)'); require('child_process').execFileSync('python3', ['t.py'])")):
+        said = _said(line, tmp_path)
+        assert said.startswith("Refused") or "approve followed by the code" in said, (line, said)
+
+
 def test_a_heredoc_script_that_opens_a_send_window_waits_like_any_other(tmp_path):
     line = "cat > w.py <<'EOF'\nfrom synthesis import sends\nsends.open_window(1, ['slack'], '', 1)\nEOF\npython3 w.py"
     said = _said(line, tmp_path)
     assert said.startswith("Refused") or "approve followed by the code" in said, said
 
 
-def test_prose_in_a_program_that_starts_nothing_stays_prose_and_one_that_starts_a_program_keeps_its_strings(tmp_path):
+def test_prose_stays_prose_and_only_a_file_the_program_writes_and_starts_counts(tmp_path):
     prose = "python3 -c \"open('n.md', 'w').write('synthesis: consume is the guard\\'s')\""
     assert APPROVAL_CODE not in _said(prose, tmp_path)
-    started = "python3 -c \"import subprocess; open('n.md', 'w').write('synthesis: consume'); subprocess.run(['true'])\""
+    beside = "python3 -c \"import subprocess; open('n.md', 'w').write('synthesis: consume'); subprocess.run(['true'])\""
+    assert APPROVAL_CODE not in _said(beside, tmp_path)  # round 2's ruling: the file it starts is not the one it wrote
+    started = "python3 -c \"import subprocess; open('n.py', 'w').write('synthesis: consume'); subprocess.run(['python3', 'n.py'])\""
     assert APPROVAL_CODE in _said(started, tmp_path)
 
 
