@@ -1459,10 +1459,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # as "$C" with a JSON argument a substitution fills were read, and that argument counted as a possible tool name; and
 # a program whose text names no endpoint is handed it by its line): _mcp_calls 2 (a word the shell fills in names a
 # tool only when it can make a name; the line's port, path or arguments naming the endpoint) and _posted_bodies 1.
+# Round 3's ruling (a program posting to an address an earlier command exported waits, as curl does): core 75 more and
+# plugin 75, all in guards.py. A Python write's address 27 (_py_bodies: where a value comes from, each environment variable
+# it reads or its arguments, through its names 11; a write's URL, host or base URL, or the connection it is made on 7; a
+# line it hands a shell, with what it cannot read standing as a word the shell fills in 8; each such write's bodies 1).
+# A node write's address 31 (_js_sources 11, _js_enclosing 10, _js_bodies 10: the call its options go to, their url,
+# host or baseURL, the request a write or a pipe goes to). _posted_bodies 8 (those bodies judged when the address comes
+# from a variable the line does not set, or an argument the shell fills in). curl's address only 4 (ADDRESSLESS 2 and
+# _mcp_calls 2: a body, a header or an HTTPie field the shell fills in is no address). _line_values 1 (the environment a
+# line gives a program, read with no $ in the line). The blank lines between the two new functions 4.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18089
-PLUGIN_BUDGET = 44161
+CORE_BUDGET = 18164
+PLUGIN_BUDGET = 44236
 
 
 def _lines(files):
