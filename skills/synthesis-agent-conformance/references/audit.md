@@ -203,6 +203,18 @@ there with no item here fails:
   guard writes down what each session's page reads showed; the check holds the newest against the
   config as it now is, warns with the site, the profile, the account seen and when, and clears when
   a session next reads the site and it shows the workspace's account;
+- `<harness> plan judge`, `judge`: when the config's `judge.subscription` names a harness's
+  plan, whether that plan's judge answers, so its fall back to the word list is never silent. The
+  harness's own status command says whether it is signed in with a plan; a missing sign-in, an API
+  account (which the judge would bill) or a missing command is a warn and is not probed; a `command`
+  that is not the harness's own program is named in the warn and never run. Otherwise one
+  invented sentence goes the way a flagged reply goes (`judge.probe`: the shortcut policy, the
+  judge's own command line with hooks off and the credentials that outrank the plan taken out), in
+  the background, at most 20 seconds a harness; no reply's text goes anywhere and nothing is logged.
+  A command line too old for a flag, print mode not using the sign-in (as when `-p` runs bare), a
+  model the plan does not offer, no verdict, or an answer past the judge's deadline each warns with
+  its fix; a judge section that cannot be used, a cloud address off its provider's host among them, is
+  one `judge` warn;
 - `latest release`: only with `--latest`, whether an installed harness is behind the
   published release;
 - `git hooks`: the global `core.hooksPath` (report only).

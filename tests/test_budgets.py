@@ -1505,10 +1505,128 @@ ROOT = Path(__file__).resolve().parents[1]
 # guards.py 16: _grant_release 12 (the version of the tag the line names or its checkout's manifests carry; a dry run
 # granted nothing), check_self_grant 2 (the grant written where the launcher's line passes) and blank lines 2;
 # _release_tool hands on the options it read in place of a yes.
+# The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 428 to the core and 709 to the plugin: a
+# model that reads each reply the shortcut list flags before it goes back, after 44 of 54 replies revised after a
+# shortcut sendback were found at least 85% the same with only the phrase gone, and blind labels of 70 recorded list
+# hits found 7 real shortcuts. judge.py 367: the docstring 14; the imports and their blank lines 19; the constants 31
+# (the policies' folder, the rule for content that addresses the judge, the two addresses, the deadline with its limit
+# and the cloud's least time, the cap and the cache, log and token limits, the loopback names, the config's keys, the
+# verdict's fields and the quote marks 10; the pattern for content that addresses the judge, with its comment, 8; the
+# instruction to the model 13); _second 34 (the cloud's second opinion: its key and the time left, the month's cap
+# reserved at its most before the request and settled from the answer's usage, the notice once a month); settings 33
+# (every key checked, so a section that cannot be used is said); _post 23 (a request given up at its deadline whatever
+# the server does, never through a proxy on loopback); _judged 23 (the cache, the local verdict, the second opinion
+# only where it is unsure, content that addresses the judge held, and nothing asked once no time is left); ask 19
+# (never raises; logs each verdict asked for; the caller's limit beside the config's deadline); _verdict 18 (one object
+# of exactly five fields, a rule the policy names on the side it decides, a span that is in the content); _ask_local 16
+# (the first installed model answers, at temperature 0 and in the verdict's schema, its token counts logged); _log 12
+# (fixed words, counts and digests, kept to about 4 MB); Policy 11 with its digest; Verdict 10; parse_policy 10;
+# _spend 9; _url 8 (loopback for the local judge, https for the cloud); _locked 6; _recall 6; _remember 6 (the newest
+# 2,000 verdicts); _prompt 5 (the block whose markers carry the content's digest); ConfigError, load_policy, _sha,
+# _plain and _folder 2 each; and 44 blank lines between them. reply_check.py 61: shortcut_problem 26 (only a reply the
+# list flags is asked about; a sure pass clears the hit, a pass the judge is not sure of clears nothing, a hold is sent
+# back with what it read, the list decides when no judge answers, a section that cannot be used is said),
+# shortcut_verdict 16 (a hit the first reading clears is asked a second, narrow question, and cleared only when both
+# pass surely; a second question with no answer clears nothing), _judged 9 (fenced code set aside, a long reply cut to
+# the paragraphs that hold a hit and its last three), FENCED, JUDGED and ROOM 3 (the judge's room inside the Stop hook),
+# WHERE and SECOND 1, blank lines 8, and 2 fewer in check(), which now runs the shortcut check last so the
+# judge's time never pushes the hook past its limit. install.py 0: the runtime's hash covers the judge's policies, in
+# the line that hashed its modules. The plugin's 281 more are judge_replay.py, the replay each model and policy runs on
+# recorded list hits before it ships: the shebang and docstring 26; imports, the runtime's path and its one line when
+# the runtime is missing 21; the hook's two marks 2; _text 4; the three harnesses' readers 62 (Claude Code's 29,
+# each entry once across records; Codex's 15; Muse's 17; their table 1); turn_ends 14; split 8 (each label's larger half
+# to dev, with the seed); labeled 15 (each labeled list hit found by its record's path and line, judged only while its
+# digest matches); _ollama 5; percentile 3; main 71 (the records and their turn ends, the list hits, each model's
+# verdicts asked as the hook asks them, the first reading alone, latency, the cleared items' file, the unload); report
+# 22 (the matrix by label for each half, the first question alone, and the gate); the entry point 2; and 26 blank
+# lines between them.
+# Giving that judge the principal's last message adds 37 to the core and 53 to the plugin (2026-11-15: the three test-half
+# shortcuts both candidates cleared were asks the principal's earlier words had settled). reply_check.py 27: last_message
+# 25 with its two blank lines (the newest user entry in a Claude Code record that no harness marked as not the
+# principal's, what a harness wrapped into it left out). guards.py 1: the judge's writers, with the reply check's two new ones in its own
+# entry, in the set of the runtime's writers a script that names one is held for (a test from 5.23.0 reads it from the source). judge.py 9: ASKED 1 (its last 3,000 characters), the instruction's
+# sentence on it 1, _prompt 1 (a block of its own, with a code of its own), _judged 1, ask 5 (passed through to both
+# questions, cut from its end, its length and digest logged). judge_replay.py 8: the principal's words with each Claude Code
+# prompt and their import 2, turn_ends 2 (each turn end's last message), main 1 (the first question timed alone) and
+# report 3 (both configurations' gates and latencies), and judged 8 (the models' loop in a function of its own, so the
+# deadline a run raises to count slow verdicts is put back for the next run in the same process).
+# The cloud judge (the principal's ruling of 2026-11-15: measure a cloud model as the judge on the labels, and ship it only
+# if it passes the gate) adds 79 to the core and 119 to the plugin. judge.py 71: _cloud 39 in place of _second's 34 (the
+# cloud model as the judge, or a second opinion: the key of the reply's workspace, the month's cap reserved and settled,
+# adaptive thinking and the verdict's strict schema, a refusal or an unfinished answer no verdict, its tokens logged),
+# notice 17 (the cap's word to the principal once a month, with or without a verdict), _key 15 (the key read from the
+# keys file at call time for the workspace, the default for the rest, none for a workspace mapped to null, the file
+# never quoted), _judged 8 (the cloud model alone as the judge), _tls 7 (the system's certificate bundle where the
+# interpreter has none), _schema 5 (the verdict's shape held to both judges), settings 5 (a judge of either kind or
+# both; the keys file and each workspace's path), SYSTEM_CA_FILES 1, _post 1, ask 1, the ssl import 1, blank lines 8,
+# less 2 in _ask_local and 1 in Verdict (its notice field gone). reply_check.py 8: workspace_of 5 and its two blank lines
+# (a folder's workspace under ~/workspaces, read past links), shortcut_problem 1 (the workspace and the cap's notice
+# passed through). judge_replay.py 40: judged 15 (cloud models with each item's workspace key, an item whose workspace
+# has none left out and counted, tokens and dollars from the judge's own log), record_workspace 13 and its two blank
+# lines (the workspace a record ran in), main 9 (the cloud model's arguments and each record's workspace), report 1 (the
+# gate's limit, and no pass where nothing answered).
+# The judge on the harness's own plan (the principal, 2026-11-15: synthesis must not depend on people buying API credits;
+# the cloud stays an option) adds 107 to the core and 127 to the plugin. judge.py 93: _subscription 42, primary 8 and
+# _first 3 with their six blank lines (Claude Code's print mode or Codex's exec on the person's plan, with no tools,
+# every hook off, no user settings, plugins or memory and no session kept, in a room of the judge's own with its marker
+# set, stopped at the deadline, a refusal, an error or an answer that is not a verdict no verdict; which judge reads a
+# reply first: local, else the plan of the reply's harness where its workspace is not left out, else the cloud),
+# settings 9 (an entry per harness with its model, command and effort, and the workspaces left out), _judged 10 (the
+# plan's judge first, none for a harness without one, the cloud's second opinion after either), ANSWER and BY_TOOL with
+# their comment 4 (the verdict through Claude Code's structured-output tool as the model's first act: an answer written
+# as text first cost two to three seconds more), NOT_THE_PLAN with its comment 4 (the credentials that outrank the plan's sign-in kept out of the judge's run: in
+# print mode an API key in the environment is used before the plan, which would bill past the cloud's cap), HARNESSES,
+# ENTRY_KEYS and MARKER 2, the docstring 2, the subprocess
+# import 1, notice 1 (which judge decides alone past the cap), ask 1. reply_check.py 12: shortcut_verdict 11 (where the
+# judge is a service both questions are asked at once, so a flagged reply waits about one answer's time),
+# shortcut_problem 1 (the reply's harness passed through). hook.py 2: inside the judge's own run the session-start,
+# prompt and Stop hooks return at once, so a verdict is never judged, and the guard still guards. guards.py 0:
+# _subscription among the judge's writers, in its line. judge_replay.py 20: the usage 1 (the plan's, the cloud's and the left-out options, the cloud's missing until now), main 4 (the plan's model, its harness and
+# command, the workspaces left out), judged 15 (runs on the plan, items of a left-out workspace counted and left out,
+# both questions timed at once as the hook asks them, the first question's own time from the judge's log).
+# The doctor's look at the plan's judge (2026-11-15: the fall back to the word list is never silent) adds 108 to the
+# core and 109 to the plugin. doctor.py 76: check_plan_judge 27 (a line for each harness whose plan judges replies: ok
+# where its model answers inside the judge's deadline, saying it timed an invented sentence and a flagged reply takes
+# longer, else a warn with the fix; a judge section that cannot be used one warn), plan_status 18 (the sign-in read from the command line's own status command, asked as the judge's run asks: a
+# plan, an API account, none, no command, or unknown), _plan_fix 16 (each failure's fix in plain words), PLAN_NAMES 1,
+# the section's heading 1, run_checks 4 (the probe in the background beside the other checks, only where a judge is
+# configured, and its lines or why it could not tell), and nine blank lines. judge.py 32: probe 12 (one invented
+# sentence the way a flagged reply goes, nothing logged or kept), _why 7 (a failed run's cause in fixed words: a flag the
+# command line does not know, no sign-in it could use, a model the plan does not offer, else a refusal; the judge's log
+# names it too), plan_env 4 (the run's environment less the credentials that outrank the plan, shared by the judge and
+# the doctor), _subscription 2 (a command that is not there named so), PROBE and PROBE_SECONDS 1, and six blank lines.
+# judge_replay.py 1: every item judged on the plan --harness names, whichever harness recorded it (all 33 personal
+# items were recorded in Claude Code, and Codex's plan was measured on them).
+# Merging main at 5.23.1 into the judge branch sums both sides' growth from their common base (core 15,886, plugin
+# 41,958): the judge branch's 759 core and 1,117 plugin, itemized above, and main's 995 and 995, itemized above.
+# The Stop hook's time for the plan's judge (the principal's approval, 2026-11-15: a flagged reply's two questions took
+# up to 7.2 s at the 95th on his plan) adds 5 to the core and the plugin, all in doctor.py: check_plan_judge 4 (below
+# the judge's ceiling the fix for a slow plan judge is the config's deadline, at the ceiling a faster model, and a probe
+# whose flagged reply would take longer than the deadline warns too), FLAGGED 1 (a flagged reply's time against the
+# probe's sentence, measured). judge.py, reply_check.py, hooks/hooks.json and Muse's manifest 0: the judge's ceiling and
+# the reply check's room at 8 s and the Stop hook at 10 s in every harness, each in its own line.
+# Review round 1 of the judge (2026-11-15, H1 and H2: a written setting made the Stop hook run any program and post to
+# any host) adds 40 to the core and 39 to the plugin. judge.py 28: _program 13 with its two blank lines (a `command` is
+# used only where it resolves to the file the harness's own name does on PATH or in its install locations, else nothing
+# runs), _url 6 (the cloud's address only its provider's own host over https, on port 443, with no user in it),
+# _subscription 3 (the harness's own program or no run), PROVIDER_HOSTS, NAME and LEVEL 2 (a model is a plain name and
+# an effort letters: values on the command line, never options), settings 1 (each key path ends in the provider's
+# name), the shutil import 1. paths.py 21: INSTALLS with its comment 7 and expand_install 10, with their blank lines,
+# moved from doctor.py so the judge and the doctor share the harnesses' own install locations. doctor.py less 9: the 15
+# lines moved out for 1 that names them, its glob import gone, and check_plan_judge 6 more (a `command` that is not the
+# harness's own program is named in a warn, and its status command and probe never run). judge_replay.py less 1:
+# --cloud-url, which the binding leaves nothing to choose.
+# 5.24.0, the judge (21.3, from main at b8efb5ee) merged into releases from the runtime (22.8, which carries 22.18 and
+# main at b8efb5ee): main's ceilings (core 16881, plugin 42953), 22.8's itemized raises above from main (core 1006,
+# plugin 1167) and 21.3's (core 804, plugin 1161), and 1 more each that the merge's own line adds, measured: core 18692
+# and plugin 45282. install.py 1: SYNTHESIS_JUDGE_RUN in the launchers' kept variables (they run the hook under env -i
+# with only the variables the runtime reads, so without it a turn hook inside the judge's own run would judge again).
+# 21.3's line in package_hash gives way to 22.8's package_digest, which hashes every file of the runtime package, the
+# judge's policies among them; 21.3's install.py 0 stays 0.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17887
-PLUGIN_BUDGET = 44120
+CORE_BUDGET = 18692
+PLUGIN_BUDGET = 45282
 
 
 def _lines(files):

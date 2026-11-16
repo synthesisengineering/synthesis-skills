@@ -4832,7 +4832,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("install", "_install_lock _install_locked _merge _spend_release _stage _write_exec approval grant_release install move_board "
                 "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
-    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
+    ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
+    ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports

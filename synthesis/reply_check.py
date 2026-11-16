@@ -273,6 +273,116 @@ def shortcut_hits(reply: str, extra: list[str]) -> list[str]:
     return sorted({p for p in DEFAULT_PHRASES + [e.lower() for e in extra] if re.search(rf"\b{re.escape(p)}\b", plain)})
 
 
+FENCED = re.compile(r"(?:(`{3,})|^[ \t]*(~{3,})).*?(?:\1|\2)", re.S | re.M)
+JUDGED = 6000  # characters of a reply the judge reads: its prompt stays inside the model's window and the deadline
+ROOM = 8.0  # seconds from the check's start by which the judge has answered: the Stop hook has 10, Python's start before it
+WHERE, SECOND = "the final reply an AI agent gives its principal at the end of a turn", "shortcut-asks"
+
+
+def _judged(reply: str, hits: list) -> str:
+    """The reply as the judge reads it: fenced code set aside, and a long reply cut to its paragraphs that hold a list
+    hit and its last three, where its next steps and its asks usually stand."""
+    text = FENCED.sub("[code]", reply).strip()
+    if len(text) <= JUDGED:
+        return text
+    parts = re.split(r"\n\s*\n", text)
+    kept = [p for at, p in enumerate(parts) if at >= len(parts) - 3 or any(h in p.lower() for h in hits)]
+    return "\n\n[...]\n\n".join(kept)[-JUDGED:]
+
+
+def last_message(transcript_path, tail: int = 4_000_000) -> str:
+    """The principal's last message in a Claude Code record, as they typed it: the newest user entry with words that
+    no harness marked as not theirs, what a harness wrapped into it left out. "" where there is none or the record
+    cannot be read; other harnesses' records give none, so their judge reads the reply alone."""
+    from synthesis.approvals import CUT, NOT_TYPED, typed_text
+    try:
+        with open(transcript_path if isinstance(transcript_path, str) else "", "rb") as handle:  # a number names a descriptor
+            handle.seek(max(0, handle.seek(0, 2) - tail))
+            lines = handle.read().splitlines()
+    except (OSError, ValueError):
+        return ""
+    for line in reversed(lines):
+        try:
+            entry = json.loads(line) if b'"user"' in line else None
+        except (ValueError, RecursionError):
+            continue
+        message = entry.get("message") if isinstance(entry, dict) and entry.get("type") == "user" else None
+        content = message.get("content") if isinstance(message, dict) and not any(entry.get(flag) for flag in NOT_TYPED) else None
+        parts = [p for p in content if isinstance(p, dict)] if isinstance(content, list) else []
+        text = content if isinstance(content, str) else "\n".join(str(p.get("text") or "") for p in parts if p.get("type") == "text") \
+            if not any(p.get("type") == "tool_result" for p in parts) else ""
+        said = typed_text(text).replace(CUT, " ").strip()
+        if said:
+            return said
+    return ""
+
+
+def workspace_of(cwd) -> str:
+    """The workspace a folder belongs to: its first folder under ~/workspaces, read past links; "" anywhere else."""
+    root = os.path.realpath(os.path.join(os.path.expanduser("~"), "workspaces")) + os.sep
+    where = os.path.realpath(str(cwd)) + os.sep if isinstance(cwd, str) and cwd else ""
+    return where[len(root):].split(os.sep)[0] if where.startswith(root) and len(where) > len(root) else ""
+
+
+def shortcut_verdict(reply: str, hits: list, config: dict, until: float | None = None, asked: str = "", workspace: str = "",
+                     harness: str = ""):
+    """The judge's last word on a reply the list flagged, or None where it gave none. A sure pass of the first reading
+    clears the hit only when a second, narrow question (does the reply ask leave for, wait on or offer back a step the
+    agent could take itself?) passes it surely too: blind labels of the recorded hits found the shortcuts a first
+    reading missed were such asks among choices that were the principal's. A second question with no answer clears
+    nothing. Where the judge is a service (the harness's plan or the cloud), both are asked at once, so a flagged reply
+    waits about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn."""
+    import threading
+    from dataclasses import replace
+    from synthesis import judge
+    content, context, both = _judged(reply, hits), {"where": WHERE, "list_hits": hits}, {}
+    ask = lambda name: judge.ask(name, judge.load_policy(name), content, context, config, until, asked, workspace, harness)
+    worker = threading.Thread(target=lambda: both.update(second=ask(SECOND)), daemon=True)
+    if judge.primary(config, harness, workspace) in ("subscription", "cloud"):
+        worker.start()
+    first = ask("shortcut-phrasing")
+    if first is None or first.verdict == "hold" or not first.sure:
+        return first
+    if worker.ident is not None:  # asked at once: wait for its answer
+        worker.join()
+    else:
+        both["second"] = ask(SECOND)
+    second = both.get("second")
+    if second is None or second.verdict == "pass" and not second.sure:
+        return replace(first, sure=False)
+    return first if second.verdict == "pass" else second
+
+
+def shortcut_problem(reply: str, config: dict, until: float | None = None, transcript_path: str | None = None, cwd=None,
+                     payload: dict | None = None) -> str:
+    """What the shortcut check says of a reply, or "". The list's hits stand as they always have unless a judge is
+    configured and answers (M38): only a reply the list flags goes to it. On this check the judge decides (the
+    principal's ruling of 2026-11-14: a sendback costs one turn): a hit it is sure is benign is cleared, and a hit it
+    holds is sent back with what it read; a pass it is not sure of clears nothing. A judge that cannot answer leaves
+    the list to decide; a judge section that cannot be used is said, and the list decides."""
+    hits = shortcut_hits(reply, list(config.get("shortcut_phrases", [])))
+    listed = ("lazy-shortcut phrasing: " + ", ".join(f'"{h}"' for h in hits)
+              + ". Do the work or name the real blocker instead of deferring it.") if hits else ""
+    if not hits or config.get("judge") in (None, False):
+        return listed
+    from synthesis import judge, paths
+    try:
+        on = judge.settings(config)
+    except judge.ConfigError as exc:
+        return " ".join(filter(None, [listed, f"Also, {exc}; until it is fixed no judge reads replies and the list alone "
+                                                "decides: tell the principal."]))
+    found = shortcut_verdict(reply, hits, config, until, last_message(transcript_path), workspace_of(cwd), paths.harness(payload)) if on else None
+    said = judge.notice(config) if on else ""  # the cloud's cap reached: once a month, whatever the verdict
+    told = f"Tell the principal in this reply: {said}." if said else ""
+    if found is None:
+        return " ".join(filter(None, [listed, told]))
+    if found.verdict == "pass":
+        return told if found.sure else " ".join(filter(None, [listed, told]))
+    return (listed.split(". Do the work")[0] + f' (the judge read "{found.span}" as {found.rule.replace("_", " ")}: '
+            f"{found.reason}). Do the work, name the real blocker, or bring the principal only a choice that is theirs, "
+            f"with your recommendation. {told}").strip()
+
+
 def _explains(text: str, m: re.Match, opens: bool = True) -> bool:
     """Is this wait no announcement: the subject of its sentence ("waiting for a lock blocks a thread"), a fragment
     inside one ("...; waiting on the scope language; then ..."), a label over a list of open loops, or a rule?"""
@@ -586,11 +696,7 @@ def check(payload: dict, config: dict) -> str | None:
     reply = str(payload.get("last_assistant_message") or "")
     if payload.get("stop_hook_active") or not reply:
         return None
-    problems = []
-    hits = shortcut_hits(reply, list(config.get("shortcut_phrases", [])))
-    if hits:
-        problems.append("lazy-shortcut phrasing: " + ", ".join(f'"{h}"' for h in hits)
-                        + ". Do the work or name the real blocker instead of deferring it.")
+    problems, began = [], time.monotonic()
     waits = unarmed_wait(reply, payload, config)
     if waits:
         problems.append("this reply announces a wait (" + ", ".join(f'"{w}"' for w in waits) + ") and nothing is armed to end "
@@ -624,4 +730,6 @@ def check(payload: dict, config: dict) -> str | None:
     if missing:
         problems.append("quotes not found in this session's record: " + "; ".join(f'"{q}"' for q in missing)
                         + ". Quote only what a tool surfaced this session, or remove the quote.")
+    shortcut = shortcut_problem(reply, config, began + ROOM, payload.get("transcript_path"), payload.get("cwd"), payload)  # last: in time
+    problems = [shortcut] * bool(shortcut) + problems
     return "Before this reply goes out, revise it: " + " ".join(problems) if problems else None

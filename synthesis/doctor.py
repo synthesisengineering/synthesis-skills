@@ -11,7 +11,6 @@ plain inputs, so tests feed fake ones.
 from __future__ import annotations
 
 import argparse
-import glob
 import hashlib
 import json
 import os
@@ -939,21 +938,7 @@ def muse_hook_commands(inspect: dict) -> list:
 # through to a different install.
 
 CLIENT_ENV = {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN", "muse": "SYNTHESIS_MUSE_BIN"}
-KNOWN_LOCATIONS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
-    tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
-          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) + (
-    ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",) if h == "claude" else ())
-    for h in HARNESSES}
-
-
-def _expand(candidate: str) -> list:
-    """A location as it is, or a pattern's matches with the newest version folder first."""
-    if "*" not in candidate:
-        return [candidate]
-    def newest(path: str) -> tuple:
-        return max((tuple(map(int, p.split("."))) for p in Path(path).parts if re.fullmatch(r"\d+(\.\d+)+", p)),
-                   default=())
-    return sorted(glob.glob(os.path.expanduser(candidate)), key=newest, reverse=True)
+KNOWN_LOCATIONS, _expand = paths.INSTALLS, paths.expand_install  # each harness's own install locations, shared with the judge
 
 
 PROBE_TIMEOUT = 2.0
@@ -1469,6 +1454,89 @@ def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Chec
                  + (", ".join(f"{h} {v}" for h, v in sorted(installed.items())) or "nothing"))
 
 
+# ---- the plan's judge (M38) ----------------------------------------------------
+
+PLAN_NAMES = {"claude-code": ("Claude Code", "print mode", "run `claude`, then /login"), "codex": ("Codex", "exec", "run `codex login`")}
+FLAGGED = 2.0  # a flagged reply's time against the probe's sentence: 4.1 s against 2.0 for Haiku 5.5 in the replay of 2026-11-15
+
+
+def plan_status(harness: str, command: str) -> str:
+    """What the command line's own status command says of its sign-in, asked as the judge's run asks (the credentials
+    that outrank the plan taken out): plan, api (an account that bills), none, missing (no such command) or unknown."""
+    from synthesis import judge
+    argv = [command, "auth", "status", "--json"] if harness == "claude-code" else [command, "login", "status"]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=15, env=judge.plan_env(), stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        return "missing"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    if harness == "codex":
+        said = (done.stdout + done.stderr).lower()
+        return "none" if "not logged in" in said else "plan" if "using chatgpt" in said else "api" if "api key" in said else "unknown"
+    found = json_in(done.stdout)
+    method = str(found.get("authMethod") or "").lower() if isinstance(found, dict) else ""
+    return "unknown" if not isinstance(found, dict) else "none" if found.get("loggedIn") is False else "plan" \
+        if found.get("subscriptionType") or method == "claude.ai" else "api" if "api" in method or "console" in method else "unknown"
+
+
+def _plan_fix(harness: str, entry: dict, signed: str, why: str) -> str:
+    """The warn for a plan judge that would not answer, with its fix in plain words; "" where it answers."""
+    from synthesis import judge
+    name, mode, sign_in = PLAN_NAMES[harness]
+    model, where = entry["model"], f"judge.subscription.{harness}"
+    if signed == "api":
+        return f"{name} is signed in to an API account, not a plan, so the judge was not asked (it would bill that account): sign in with your plan, or remove {where}"
+    fixes = {"missing": f"`{entry['command']}` is not on PATH: install {name}, or give its path in {where}.command",
+             "none": f"{name} is not signed in: sign in with your plan ({sign_in})",
+             "not_signed_in": f"{name} is signed in, but its {mode} did not use the sign-in" + (" (it may run -p bare by default now)" if
+                              harness == "claude-code" else "") + ": the judge cannot run on the plan until synthesis gives it a way back",
+             "unknown_flag": f"{name} does not know a flag the judge passes, so it is too old: update {name}",
+             "model_unavailable": f"the plan does not offer {model}: name another model in {where}.model",
+             "timeout": f"{model} gave no answer within {judge.PROBE_SECONDS:.0f} s: check the network and the plan's limits"}
+    key = signed if signed in ("missing", "none") else why
+    return (fixes.get(key) or f"{model} gave no verdict ({why}): name another model in {where}.model") + "; until then the word list decides" if key else ""
+
+
+def check_plan_judge(config: dict, probe=None, status=None) -> list:
+    """A line for each harness whose plan judges replies (judge.subscription): ok where its model answers inside the
+    judge's deadline, else a warn with the fix, since a plan judge that does not answer leaves every flagged reply to
+    the word list. Doctor time only: the sign-in's state, then one invented sentence (judge.probe) through the judge's
+    own command line, with hooks off and the credentials that outrank the plan taken out. A sign-in that is missing or
+    bills an API account is not probed, and a `command` that is not the harness's own program is named and never run."""
+    from synthesis import judge
+    try:
+        s = judge.settings(config)
+    except judge.ConfigError as exc:
+        return [Check("warn", "judge", f"the judge section {exc}: no judge reads replies and the word list decides")]
+    plans = {h: e for h, e in ((s or {}).get("subscription") or {}).items() if h in judge.HARNESSES}
+    probe, status, lines = probe or judge.probe, status or plan_status, []  # each probe within PROBE_SECONDS: both inside CLI_TIMEOUT
+    for harness, entry in plans.items():
+        program, foreign = judge._program(entry, harness)
+        if foreign == "not_the_harness":
+            lines.append(Check("warn", f"{harness} plan judge", f"judge.subscription.{harness}.command names `{entry['command']}`, which is "
+                               f"not {PLAN_NAMES[harness][0]}'s own program, so the judge does not run it and the word list decides: "
+                               f"remove the setting, or point it at {PLAN_NAMES[harness][0]}'s own program"))
+            continue
+        signed = status(harness, program) if program else "missing"
+        why, took = probe(config, harness) if signed in ("plan", "unknown") else ("", 0.0)
+        fix, deadline, model = _plan_fix(harness, entry, signed, why), s["deadline_seconds"], entry["model"]
+        faster = (f"give judge.deadline_seconds up to {judge.LONGEST:.0f}" if deadline < judge.LONGEST else
+                  f"{judge.LONGEST:.0f} s is the most the Stop hook gives: name a faster model in judge.subscription.{harness}.model")
+        said = f"{model} answered an invented sentence in {took:.1f} s on the plan"
+        if fix:
+            level, detail = "warn", fix
+        elif took > deadline:
+            level, detail = "warn", f"{said}, past the judge's deadline of {deadline:.1f} s: most verdicts are cut off and the word list decides; {faster}"
+        elif took * FLAGGED > deadline:
+            level, detail = "warn", (f"{said}, but a flagged reply takes about twice as long, past the judge's deadline of {deadline:.1f} s, "
+                                     f"so most verdicts would be cut off and the word list decide; {faster}")
+        else:
+            level, detail = "ok", f"{said}, inside the judge's deadline of {deadline:.1f} s with room for a flagged reply (about twice as long)"
+        lines.append(Check(level, f"{harness} plan judge", detail))
+    return lines
+
+
 # ---- git ----------------------------------------------------------------------
 
 def check_git_hooks_path(value: str, expected: Path) -> Check:
@@ -1887,6 +1955,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         config = paths.config()
     except (OSError, ValueError):
         config = {}
+    planned = _background(lambda: check_plan_judge(config)) if config.get("judge") not in (None, False) else None  # beside the rest
     repos = workspace_repos(config)
     from synthesis import board, project
     sessions = board.sessions()
@@ -1914,6 +1983,9 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     except (OSError, subprocess.SubprocessError):
         value = ""
     checks.append(check_git_hooks_path(value, home / "git-hooks"))
+    if planned:
+        lines, error = planned()
+        checks += lines if lines is not None else [Check("warn", "judge", f"cannot tell whether the plan judge answers ({error})")]
     _note_waits(home, checks, began)
     return checks
 
