@@ -846,6 +846,12 @@ stay open, and no hook running as that same user can close them:
   with no close time are named among those the count could not read, though they closed
   long before. An answer dated up to five minutes ahead of a later alert releases the
   run, inside the tolerance the clock is given (crafted). Review round 2 of 22.37.
+- A deploy CLI copied or linked under another name is not read as that CLI. The guard knows
+  a CLI's own entry script, run by an interpreter, by the package it sits in under
+  `node_modules` (`node_modules/wrangler/bin/wrangler.js`), a `.bin` shim's name and the
+  script's own basename, so wrangler's script copied to `w.js` and run as
+  `node w.js pages deploy` goes unheld (crafted; the ordinary path to the same script ran a
+  production deploy unheld on 2026-11-16, and is held since).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

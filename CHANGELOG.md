@@ -625,6 +625,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   (492 bytes, on the decisive-uncertainty method) moved word for word to the head of
   `references/decisive-uncertainty.md`, its link now naming that file; SKILL.md keeps a one-line pointer and is 7,872
   bytes.
+- **The deploy guard holds a deploy CLI's own script run by an interpreter.** A production deploy ran on 2026-11-16 with
+  no approval asked, as `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=<site>
+  --branch=main`: the guard read an interpreter's script from the start of its path, so `wrangler pages deploy` never
+  matched, while `npx wrangler`, `./node_modules/.bin/wrangler` and bare `wrangler` were held. A script an interpreter
+  runs by path is now also read by the names it answers to: its basename without a `.js`, `.mjs`, `.cjs` or `.ts`
+  extension (a `.bin` shim's name too), and the package it sits in under the last `node_modules`, by the name after
+  its scope; netlify-cli runs netlify, firebase-tools runs firebase, and npm's own `npm-cli.js` runs npm. Such a
+  deploy is held with the same words as `npx wrangler`, and a Python script by path is read the same way (`python3
+  venv/bin/twine upload`). A dry run, `--help` and the same CLIs' ordinary commands (`pages deployment list`, a draft
+  netlify deploy, `npm install`) stay free. A copy of a CLI under another name is not read as the CLI; the open list
+  in `docs/runtime-integration.md` says so.
 
 ## [5.23.2] - 2026-11-15
 

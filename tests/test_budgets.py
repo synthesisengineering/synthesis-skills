@@ -2230,10 +2230,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.24.0, 22.37 (fe50e57c) merged into release/next at 1468fe34: release/next's ceilings (core 22204, plugin 48827) and
 # 22.37's raises in the four paragraphs just above (core 67, 7, 65 and 5: 144; plugin 93, 7, 74 and 5: 179), measured:
 # core 22348 and plugin 49006. The merge's own lines change nothing.
+# 22.38, a deploy CLI's own script run by an interpreter (fix/deploy-interpreter-forms, from main at 218da465):
+# Then each 20 more, all in guards.py, after a production deploy ran on 2026-11-16 with no approval asked, as `node
+# node_modules/wrangler/bin/wrangler.js pages deploy dist ...`: the guard read an interpreter's script from the start of
+# its path, so no deploy pattern matched it. _cli_names 13 (the names a CLI's own entry script answers to: its basename
+# without its extension, a .bin shim's too, and the package it sits in under node_modules, by the name after its
+# scope), CLI_BINS 1 (netlify-cli runs netlify, firebase-tools runs firebase, npm's npm-cli.js runs npm), _deploys 2
+# more (the script read by those names, and its docstring), and the 4 blank lines between them.
+# 5.24.0, 22.38 (0053af96) merged into release/next at fb665578: release/next's ceilings (core 22348, plugin 49006) and
+# 22.38's raise just above (20 each), measured: core 22368 and plugin 49026. The merge's own lines change nothing.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22348
-PLUGIN_BUDGET = 49006
+CORE_BUDGET = 22368
+PLUGIN_BUDGET = 49026
 
 
 def _lines(files):
