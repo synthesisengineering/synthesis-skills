@@ -5367,7 +5367,10 @@ def _globbed(path: str) -> list:
     """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
     copy and redirect checks read one, else the path as written (review round 2, R2-3)."""
     import glob
-    return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) else [path]
+    try:
+        return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) else [path]
+    except re.error:  # a range Python 3.9 cannot compile (`[t-f]`), which matches nothing in the shell either
+        return [path]
 
 
 def _shared(path: str, roots: list) -> str:

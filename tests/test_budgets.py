@@ -2192,10 +2192,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # Codex's, `Command blocked by PreToolUse hook: ` and `Tool call blocked by PreToolUse hook: `); _driver_events reads a
 # line that holds one and leaves its call out, and _made_here leaves it out too, in place. Measured: core 22201 and
 # plugin 48824.
+# Then core and plugin each 3 more, all in guards.py: _globbed 3 (a bracket range Apple's Python 3.9 cannot compile, such
+# as `[t-f]` in a program's list handed on its line, is the word as written, as the shell leaves it; the guard stopped
+# on it there, found by the 3.9 suite on the integrated head). Measured: core 22204 and plugin 48827.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22201
-PLUGIN_BUDGET = 48824
+CORE_BUDGET = 22204
+PLUGIN_BUDGET = 48827
 
 
 def _lines(files):
