@@ -67,7 +67,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `poetry run` or `pipx run` start: through any of them, a program could import synthesis in plain words and open a send
   window, void a grant, or record a transcript under folders of its own. A shell script run by a shell, by its path or
   sourced is now judged as the command lines it holds, three scripts deep, a script the line writes by what the line
-  writes, and `$0` as the script's own path; one the guard cannot open waits. The release's own scripts are trusted as
+  writes, and `$0` as the script's own path; one the guard cannot open waits. A line of Python in such a script, inline
+  or on its input, that reaches synthesis waits for the principal's code with the script's bytes bound to it, where the
+  same line typed on the command is refused. The release's own scripts are trusted as
   before, and the CLI's launcher only where the `current` it runs is the synthesis home's own: a copy beside any other
   is read as what it runs. A Python script run by its path, `ipython`, and what `uv run`, `poetry run`, `pipx run`,
   `pdm run`, `uvx` and their like start are read as Python and as the command they run. The test files pytest collects
@@ -80,10 +82,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   at a test module's or a conftest's top level, in a class body, a decorator or a default, in the file's own functions
   those call, in xunit setup and teardown (`setup_module`, `setup_class` and their like), in a fixture scoped wider than
   a function, in pytest's hooks, or in a plugin of its own named with `-p`. A writer is read under any name it is
-  imported by, and through `getattr` with its name written out. An import after `;` on a program's line counts as one at
-  a line's start. Of 73,887 shell commands recorded over 60 days, 12 newly wait: 6 runs of probe and measurement tests
-  with no isolation the guard can read, and 6 programs whose import after a `;` names one of synthesis's writers, as the
-  same program on separate lines already did; a planted shell script and a planted test file wait too.
+  imported by, and through `getattr` with its name written out, and a program that only reads that way passes, also
+  under a `PYTHONPATH` whose folders are there when judged, shadow nothing but a synthesis byte for byte the guard's own,
+  and are neither written into by the line nor beside another of its programs that may fill them unseen. A module the
+  line writes where a program on it starts counts as one that could stand in, as a file already there does. An import
+  after `;` on a program's line counts as one at a line's start. Of 73,915 shell commands recorded over 60 days, 12
+  newly wait: 6 runs of probe and measurement tests with no isolation the guard can read, and 6 programs whose import
+  after a `;` names one of synthesis's writers, as the same program on separate lines already did. One that waited is
+  refused: three `python3 -c` programs typed on its line import synthesis's own code in text Python cannot parse. Four
+  more wait only in the replay, which moves the synthesis home to a temporary folder: the CLI's launcher in the default
+  home, reached by a path the replay does not move, which in use stands in that home's own `bin` and is trusted. A
+  planted shell script and a planted test file wait too.
 
 ## [5.23.0] - 2026-11-15
 

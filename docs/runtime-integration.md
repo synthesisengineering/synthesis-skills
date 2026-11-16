@@ -399,8 +399,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      never writes, handed on.
      Python on the line (`-c`, or a program on its input) is proved only where none of the
      agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
-     package where it runs named like a module it imports, and no `PYTHONPATH`,
-     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. A
+     package where it runs named like a module it imports, none the line writes there, and no
+     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line, nor a
+     `PYTHONPATH` unless each folder it names is there when judged, shadows nothing Python
+     imports from elsewhere but a `synthesis` package byte for byte the guard's own, and is
+     neither written into by the line nor beside another program on it that may fill it
+     unseen (review round 3 of 22.21). A
      script file, or a module run with `-m` from the folder that holds it, is judged by what
      its text shows (after the 30-day replay: proving every expression held about 3,700
      commands a month): read whole up to 4 MB, with each module of its own it imports (a file
@@ -573,11 +577,14 @@ stay open, and no hook running as that same user can close them:
   (review rounds 4 and 5 of 5.23.1's approval fix; crafted). A shell script built at run
   time (`bash -c "$(…)"`, a script assembled from pieces in a variable) or fetched over the
   network and piped or substituted into a shell (`curl … | sh`, `bash <(curl …)`) is not
-  read, nor is a test placed under a conftest that isolates the synthesis home and then
-  undoes it (deleting or re-pointing `SYNTHESIS_HOME`, overriding the `tmp_path` fixture), or
+  read, nor is a module that another program on the line, one whose writes the guard does
+  not place (a build, a download, an archive it unpacks), writes where a Python program on
+  the line starts and that program imports, nor a test placed under a conftest that
+  isolates the synthesis home and then undoes it (deleting or re-pointing `SYNTHESIS_HOME`,
+  overriding the `tmp_path` fixture), or
   that reaches a writer outside its tests by a name it builds at run time (`getattr` with a name
   joined from pieces, a call through a name it assigns), or through a plugin installed rather
-  than its own (plan item 22.21 and its review rounds 1 and 2; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
+  than its own (plan item 22.21 and its review rounds 1 to 3; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
   `nox`) are ordinary and their tests are not yet read. One that loads synthesis
   through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
   text that says synthesis waits for the principal's code, or is refused on the line.

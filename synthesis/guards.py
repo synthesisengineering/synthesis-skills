@@ -4777,14 +4777,45 @@ def _isolated(words: list) -> bool:
 PYTHON_ENV = re.compile(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
 
 
-def _stand_in(code: str, where: str, module: str = "") -> str:
+def _stand_in(code: str, where: str, module: str = "", written: set | frozenset = frozenset()) -> str:
     """A module a Python program imports (or runs with -m) that a file or package in the folder it starts from could
-    stand in for, since an inline, stdin or module run looks there first; '' for none (the coordinator, 2026-11-14)."""
+    stand in for, since an inline, stdin or module run looks there first, or one the line writes there (`written`, review
+    round 3 of 22.21); '' for none (the coordinator, 2026-11-14)."""
     import sys
     names = {m.split(".")[0] for a, b in re.findall(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w., \t]+))", code, re.M)
              for m in ([a] if a else [part.split()[0] for part in b.split(",") if part.strip()])} | {module.split(".")[0]} - {""}
     return next((m for m in sorted(names - set(sys.builtin_module_names)) if os.path.exists(os.path.join(where, m + ".py"))
-                 or os.path.isdir(os.path.join(where, m))), "")
+                 or os.path.isdir(os.path.join(where, m)) or any(w == _real(os.path.join(where, m + ".py")) or paths.inside(
+                     w, _real(os.path.join(where, m))) for w in written)), "")
+
+
+def _module_path_is_synthesis(line: str, where: str, code: str, written: set | frozenset = frozenset()) -> bool:
+    """Whether the only module-path variable a line sets is PYTHONPATH, and each folder it names shadows nothing Python
+    would import from elsewhere, but for a `synthesis` package byte for byte the one this guard runs: a path that changes
+    nothing the reader proved (review round 3 of 22.21: `PYTHONPATH=<a checkout> python3 -c 'import synthesis.paths as p;
+    print(p.home())'` waited). A folder that holds sitecustomize, a module found elsewhere, or a synthesis unlike the
+    guard's, still waits: any of those may run code the program never names. So does one not there when judged, or one
+    the line writes into (`written`): the line may fill it first. The caller holds a line whose other programs may."""
+    found = [(m[1], m[3].strip("'\"")) for m in ASSIGNED.finditer(line) if PYTHON_ENV.search(" " + m[0])]
+    if not found or any(key != "PYTHONPATH" for key, _ in found):
+        return False
+    here, tops = os.path.dirname(os.path.abspath(__file__)), {name.split(".")[0] for dots, name, _ in _imports(code) if not dots and name}
+    ours = sorted(n for n in os.listdir(here) if n.endswith(".py"))
+    for entry in (os.path.join(where, os.path.expanduser(e)) for _, value in found for e in value.split(":") if e):
+        if not os.path.isdir(entry) or any(paths.inside(w, _real(entry)) for w in written):
+            return False
+        for n in os.listdir(entry):
+            top, path = n[:-3] if n.endswith(".py") else n, os.path.join(entry, n)
+            if not (n.endswith(".py") or os.path.isdir(path)) or not top.isidentifier():
+                continue  # nothing Python imports
+            if top == "synthesis" and os.path.isdir(path):
+                theirs = sorted(f for f in os.listdir(path) if f.endswith(".py"))
+                if theirs != ours or any((_regular(os.path.join(path, f), TEXT_LIMIT) or (None,))[0] != (_regular(os.path.join(here, f), TEXT_LIMIT) or (b"",))[0]
+                                         for f in ours):
+                    return False
+            elif top in tops or top in ("sitecustomize", "usercustomize") or (top != "conftest" and _found_elsewhere(top, _real(entry))):
+                return False  # a module the program imports, or one found elsewhere (pytest alone loads a conftest, from test folders)
+    return True
 
 
 def _shipped(path: str) -> bool:
@@ -5080,6 +5111,14 @@ def _synthesis_reach(text: str) -> tuple:
         if isinstance(up, ast.Attribute) and up.value is n:  # a longer chain: judged at its end, unless it opens the object
             if up.attr in ("__dict__", "__getattribute__", "__getattr__", "__setattr__", "__call__"):
                 return "follows", unfollowed.format(f"its {up.attr}"), None
+            continue
+        name = up.args[1].value if isinstance(up, ast.Call) and getattr(up.func, "id", "") == "getattr" and up.args[:1] == [n] and len(up.args) > 1 and isinstance(
+            up.args[1], ast.Constant) and isinstance(up.args[1].value, str) and len(parts) == 2 and module else ""
+        if name:  # getattr with the name written out is that name (review round 3 of 22.21); one built at run time is not followed
+            if f"{parts[1]}.{name}" in SYNTHESIS_WRITES:
+                return "names", f"names synthesis's `{parts[1]}.{name}`, which writes its state, approvals, windows, board or archive", None
+            if not _synthesis_own(parts[1], name):
+                return "follows", unfollowed.format(f"`{parts[1]}.{name}`, a name its module imports"), None
             continue
         if isinstance(up, ast.Call) and up.func is not n and getattr(up.func, "id", "") in ("getattr", "setattr", "delattr", "vars") and up.args[:1] == [n]:
             return "follows", unfollowed.format(f"{up.func.id}() on it"), None
@@ -5488,8 +5527,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
             env[m[1]] = m[3].strip("'\"")
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
         _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
+    fills = [w for w, _ in found if os.path.basename(w[0]) not in (READERS | WRITERS) - PACKERS - {"git", "synthesis"} and not (
+        os.path.basename(w[0]) == "git" and _git_reads(w))]  # a program that may fill a folder where this guard does not look
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
+        others = any(w is not words for w in fills)  # another such program on the line (review round 3 of 22.21)
         if "/" in words[0] and not SCRIPT.match(os.path.basename(words[0])) and re.match(rb"#![^\n]*\bpython[\d.]*\b", (_regular(
                 os.path.join(where, os.path.expanduser(words[0])), 256) or (b"",))[0]):
             words = ["python3"] + words  # a Python script run by its path is read as Python runs it (22.21)
@@ -5533,7 +5575,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
-            why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+            said = "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+            why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
         start = _program(words)[1]  # what it is handed to load, and the values the line gives variables (review round 4 of 5.23.1's approval fix)
         loaded = [m[3].strip("'\"") for m in assigns] + (argv[1:] if source else words[start + 1 + (words[start:start + 1] == ["-m"]):])
@@ -5572,11 +5615,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
         if source and ((hit is None and SYNTHESIS_IMPORT.search(source)) or reach[0] == "follows"):  # synthesis's code reached by a name it builds
-            why = why or ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a "
-                          "call handed on), so it may reach the approval or send-window code")
+            said = ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a call handed "
+                    "on), so it may reach the approval or send-window code")  # a line of a shell script waits, the script bound (22.21)
+            why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         waits = waits or (Unproven(f"runs `{head}`, a program that {reach[1]}") if reach[0] == "names" else None)
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
-            text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
+            text) and (others or not _module_path_is_synthesis(text, where, "\n".join([source] + [t for _, t in files]), written)) else f"a file in {where} could stand in for `{_stand_in(source, where, written=written)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where, written=written) else ""
         shipped = bool(ran) and _shipped(ran)  # the plugin's own
         shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
             "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare

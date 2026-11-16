@@ -1408,10 +1408,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # fixtures scoped wider than a function), _writers_named 22 (each writer named, under any name it is imported by and
 # through getattr with its name written out, in place of a pattern of the names), _pytest_reach 4 more (a plugin of its
 # own named with -p), XUNIT 2, and their blank lines.
+# Then each 36 more, all in guards.py, from 22.21's review round 3 (a shell script's line of Python that reached synthesis
+# was refused where a script file waits; two programs that only read were held): _module_path_is_synthesis 24 with 2
+# blank lines (a PYTHONPATH whose folders shadow nothing Python imports from elsewhere, and supply none of the program's
+# modules, but a synthesis byte for byte the guard's own, no longer counts against the program's proof),
+# _synthesis_reach 8 more (getattr with the name written out read as that name: a writer is named, a read passes),
+# _self_grant 2 more (on a line of a shell script, the two refusals of a program reaching synthesis wait instead).
+# Then each 8 more, all in guards.py, from the same round (that module-path rule trusted a folder not there when judged,
+# or one the line writes into or another of its programs may fill first, and a stand-in module the line writes beside a
+# program on the line went unseen): _module_path_is_synthesis 3 more (each folder must be there, and the line write
+# nothing inside it), _stand_in 2 more (a module the line writes where the program starts), _self_grant 3 more (the
+# programs on the line that may fill a folder where the guard does not look, which leave a module path untrusted).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17190
-PLUGIN_BUDGET = 43262
+CORE_BUDGET = 17234
+PLUGIN_BUDGET = 43306
 
 
 def _lines(files):
