@@ -10,7 +10,7 @@ spellings made to beat the reader go on the open list (Y4). A read whose own res
 import pytest
 
 from synthesis import guards
-from test_page_scripts import CONFIG, SCRIPT, _script, _session
+from test_page_scripts import CONFIG, SCRIPT, _refused, _script, _session
 from test_page_scripts_review_1 import SITES, _held
 from test_page_scripts_review_5 import BUILT
 
@@ -56,6 +56,32 @@ def test_a_method_compared_is_no_setting(tmp_path, site):
 def test_a_post_method_given_as_the_shorthand_waits(tmp_path, keyword):
     text = WRAP + f"{keyword} method = 'POST'; get('/api/chat.postMessage', {{method}})"
     assert _held(_check(text, _session(tmp_path, SITES["slack"], tab=5))), keyword
+
+
+# --- Y3's class: every assignment the rule reads takes every operator (a move, a form value, a code sink) -------------
+
+@pytest.mark.parametrize("move", ["location.href &&= '/client/C0001/'", "location &&= '/client/C0001/'",
+                                  "location.pathname &&= '/messages'", "location.search ||= '?compose=1'", "location.hash ||= '#compose'"])
+def test_a_move_by_any_assignment_operator_waits(tmp_path, move):
+    session = _session(tmp_path, SITES["slack"], tab=5)
+    assert _held(_check(move.replace("&&=", "=").replace("||=", "="), session)), "control: the = form"
+    assert _held(_check(move, session)), move
+
+
+@pytest.mark.parametrize("fill", ["box.value += 'hello'", "box.value ||= 'hello'"])
+def test_a_form_value_set_by_any_assignment_operator_waits(tmp_path, fill):
+    session, box = _session(tmp_path, SITES["slack"], tab=5), "const box = document.querySelector('textarea'); "
+    assert _held(_check(box + "box.value = 'hello'", session)), "control: the = form"
+    assert _held(_check(box + fill, session)), fill
+
+
+@pytest.mark.parametrize("sink", ["box.innerHTML ||= '<img src=x onerror=go()>'", "box.outerHTML &&= '<a onmouseover=go()>x</a>'",
+                                  "location.href &&= 'javascript:go()'", "link.href ??= 'javascript:go()'"])
+def test_code_put_where_the_page_runs_it_by_any_assignment_operator_is_refused(tmp_path, sink):
+    session, names = _session(tmp_path, SITES["slack"], tab=5), "const box = document.body, link = document.links[0]; "
+    plain = sink.replace("||=", "=").replace("&&=", "=").replace("??=", "=")
+    assert _refused(_check(names + plain, session)), "control: the = form"
+    assert _refused(_check(names + sink, session)), sink
 
 
 def test_a_read_whose_own_result_maps_a_method_key_waits(tmp_path):
