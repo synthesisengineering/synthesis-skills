@@ -378,3 +378,66 @@ def test_the_guard_reads_a_patch_from_the_key_codex_gives_its_hook():
     patch = "*** Begin Patch\n*** Update File: /tmp/a/notes.md\n@@\n-a\n+b\n*** Add File: /tmp/a/new.md\n+x\n*** End Patch\n"
     for key in ("command", "input", "patch"):
         assert guards._file_targets("apply_patch", {key: patch}) == ["/tmp/a/notes.md", "/tmp/a/new.md"]
+
+
+# Codex's code mode (board request 22.33): a call of its `exec` tool is JavaScript, recorded as a custom tool call, and
+# the patches and commands the script makes are recorded only as `item_completed` events, never as calls of their own.
+
+def _meta_row(name, cwd):
+    return {"type": "session_meta", "timestamp": AT, "payload": {"id": name, "cwd": cwd, "cli_version": "0.169.0"}}
+
+
+def _script(text, ident="c-exec"):
+    return {"type": "response_item", "timestamp": AT, "payload": {"type": "custom_tool_call", "name": "exec", "call_id": ident, "input": text}}
+
+
+def _nested(item):
+    return {"type": "event_msg", "timestamp": AT, "payload": {"type": "item_completed", "thread_id": "t1", "turn_id": "u1", "item": item}}
+
+
+def test_a_code_mode_script_yields_no_files_from_a_shell_reading_of_its_javascript(harness):
+    """Read as a shell line, the script's `items.length > limit` wrote a file named limit into the session's folder and
+    tagged that folder's project."""
+    js = 'const n = items.length > limit ? limit : items.length;\nawait tools.exec_command({cmd: "ls"});\ntext(n);\n'
+    _, meta = exported(harness, [_meta_row("xc", f"{harness['kb']}/projects/alpha"), _script(js)],
+                       native=_rollout("01a18a2b-0000-7000-8000-00000000000c"))
+    assert not meta.get("projects")
+
+
+def test_the_commands_and_patches_a_script_made_tag_their_projects(harness):
+    kb = harness["kb"]
+    _, meta = exported(harness, [
+        _meta_row("xd", harness["work"]), _script('await tools.exec_command({cmd: "echo done >> notes.md"});'),
+        _nested({"type": "CommandExecution", "id": "n1", "command": ["/bin/zsh", "-lc", "echo done >> notes.md"],
+                 "cwd": f"{kb}/projects/beta", "status": "completed", "source": "unified_exec_startup"}),
+        _nested({"type": "CommandExecution", "id": "n2", "command": ["/bin/zsh", "-lc", f"cat {kb}/projects/alpha/CONTEXT.md"],
+                 "cwd": harness["work"], "status": "completed"}),                                       # a read tags nothing
+        _nested({"type": "FileChange", "id": "n3", "status": "completed", "changes": {
+            f"{kb}/projects/alpha/resources/a.md": {"type": "add", "content": "x"}}}),
+    ], native=_rollout("01a18a2b-0000-7000-8000-00000000000d"))
+    assert meta["projects"] == ["beta", "alpha"]  # each once, in the order first written
+
+
+def test_a_nested_patch_that_moves_a_file_tags_where_it_lands(harness):
+    moved = {f"{harness['work']}/old.md": {"type": "update", "unified_diff": "", "move_path": f"{harness['kb']}/projects/beta/new.md"}}
+    _, meta = exported(harness, [_meta_row("xg", harness["work"]), _nested({"type": "FileChange", "id": "n4", "changes": moved})],
+                       native=_rollout("01a18a2b-0000-7000-8000-00000000000f"))
+    assert meta["projects"] == ["beta"]
+
+
+def test_a_direct_calls_own_event_is_read_once(harness):
+    """A direct call is recorded as its call and again as an `item_completed` event that carries the call's id."""
+    line = "echo 'unbalanced > notes.md"  # a line the guard's reader cannot read, counted once
+    _, meta = exported(harness, [
+        _meta_row("xe", harness["work"]), _call("exec_command", arguments=json.dumps({"cmd": line, "workdir": harness["work"]})),
+        _nested({"type": "CommandExecution", "id": "c-exec_command-1", "command": ["/bin/zsh", "-lc", line], "cwd": harness["work"]}),
+    ], native=_rollout("01a18a2b-0000-7000-8000-000000000010"))
+    assert meta["skipped"]["a tool call whose written files could not be read"] == 1
+
+
+@pytest.mark.parametrize("item", [{"type": "FileChange", "id": "m1", "changes": ["x"]}, {"type": "FileChange", "id": "m2"},
+                                  {"type": "CommandExecution", "id": "m3", "command": None}, {"type": "CommandExecution", "id": "m4"},
+                                  {"type": "McpToolCall", "id": "m5", "server": "s", "tool": "t"}, "text", None])
+def test_a_nested_event_of_another_shape_tags_nothing_and_stops_nothing(harness, item):
+    _, meta = exported(harness, [_meta_row("xh", harness["work"]), _nested(item)], native=_rollout("01a18a2b-0000-7000-8000-000000000011"))
+    assert not meta.get("projects")
