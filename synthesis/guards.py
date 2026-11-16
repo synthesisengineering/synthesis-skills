@@ -1877,10 +1877,11 @@ class Quoted(str):
 
 class Run(list):
     """A command's words; `wrapped` when an assignment or a wrapper (env, timeout, xargs and the rest of WRAPPERS) stood
-    in front of its program, which may give it an environment, a folder or words of its own."""
-    def __init__(self, words, wrapped: bool = False):
+    in front of its program, which may give it an environment, a folder or words of its own; `clean` when no command
+    before it on the line may have written a file (`_walk`), which a script it runs is read with."""
+    def __init__(self, words, wrapped: bool = False, clean: bool = False):
         super().__init__(words)
-        self.wrapped = wrapped
+        self.wrapped, self.clean = wrapped, clean
 
 
 PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
@@ -1917,12 +1918,12 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
     choices (`mode`) reach the scripts it nests and stay within this call: a check the guard runs for a program's own
     commands starts its own."""
     if mode is None:  # a line's own reading: by each change of folder's text, then, if one lands elsewhere physically, by its real path
-        mode = {"real": False, "split": False, "quiet": prose, "sources": {
+        mode = {"real": False, "split": False, "quiet": prose, "wrote": 1 - bool(_CALL.get("clean")), "sources": {  # wrote: commands that may have written a file
             "CDPATH": [e for e in os.environ.get("CDPATH", "").split(":") if e], "OLDPWD": [os.environ["OLDPWD"]] if os.environ.get("OLDPWD") else [],
-            "vars": {}, "cdable": False, "autocd": False, "unread": False}}
+            "vars": {}, "cdable": False, "autocd": False, "unread": False, "pathdirs": False}}
         found = _commands(command, cwd, depth, writes, runs, feeds, prose, mode, bodies)
         if mode["split"]:
-            mode["real"] = True
+            mode.update(real=True, wrote=1 - bool(_CALL.get("clean")))
             found += _commands(command, cwd, depth, writes, runs, feeds, prose, mode, bodies)
         return found
     if depth > MAX_DEPTH:
@@ -1947,7 +1948,7 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
     this reading found there or missing): each landing of a change of folder past its first, and the folder a failed
     one leaves the shell in after its `&&` chain, goes on `todo` as a starting point of its own."""
     start, cwd, back, stack, outer, upstream, changed, present, gone = state
-    found, stack, outer, chain, pending, started, kept, after = [], list(stack), list(outer), object(), [], None, True, None
+    found, stack, outer, chain, pending, started, kept, after, made = [], list(stack), list(outer), object(), [], None, True, None, {}
     for i, item in enumerate(items[start:], start):
         if after:  # the list before was sent to the background: its changes of folder stay there
             (cwd, back, stack), pending, after = after, [], None
@@ -1984,7 +1985,12 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
         for folder in moved:  # `env -C a env -C b`: b is read from a
             here = os.path.realpath(os.path.join(here, os.path.expanduser(folder)))  # env chdirs as the kernel does (round 2, N1)
         head, script = os.path.basename(words[0]) if words else "", words
-        read_in = [_code_of(os.path.join(here, os.path.expanduser(w))) for w in [w for w in words[1:] if w != "--"][:1]] if head in ("source", ".") else []
+        named = [w for w in words[1:] if w != "--"][:1] if head in ("source", ".") else []
+        aim = os.path.join(here, os.path.expanduser(named[0])) if named else ""
+        own = made.get(os.path.normpath(aim), (-1, None))  # a venv's activate script a tool on the line made: (what had been written then, its && chain)
+        fresh = "/" in "".join(named) and not EXPANDS.search(aim) and not scripts and not mode["sources"]["pathdirs"] and not os.path.lexists(aim) and (
+            not mode["wrote"] or (own[0] == mode["wrote"] and own[1] is chain))  # not there, and nothing on the line may have written it: or the tool's own
+        read_in = [_code_of(aim)] * (bool(named) and not fresh)  # (the coordinator, 2026-11-16: `python3 -m venv .venv && source .venv/bin/activate`)
         if not mode["quiet"] and (any(FOLDER_MOVE.search(s) for s in inner) or any(not t or FOLDER_MOVE.search(t) for t in read_in)):
             _CALL["unplaced"] = True  # eval and source run in this shell, a trap between its commands: a cd there is not followed
         takes_in = bool(words) and bool((head in SHELLS and _shell_input(words)[1]) or ((SCRIPT.match(head) or UNREAD.match(head)) and _program(words)[0] == "stdin"))
@@ -2016,8 +2022,12 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
                         mine += more
         if not taken:
             continue
+        venv = None if wrapped else _venvs(words, here)  # it ran only if the tool succeeded: in its && chain, after no `||` or `!`
+        made.update(dict.fromkeys(venv[0] if venv else (), (mode["wrote"], chain if venv and venv[1] and needed else None)))
+        clean = not mode["wrote"] and not scripts and not wrapped  # nothing before it may have written a file, nor its substitutions, nor in its environment
+        mode["wrote"] += bool(set(targets) - {"/dev/null"}) or not (not words or head in QUIET or venv or (head in SHELLS and any(_shell_input(words)[:2])))
         if words:
-            found.append((Run(words, wrapped), here))
+            found.append((Run(words, wrapped, clean), here))
             if runs is not None:
                 runs.append((chain, needed))
             if feeds is not None:
@@ -2079,6 +2089,38 @@ def _keeps(words: list) -> bool:
     folder is what the guard sees now (round 4 of 5.23.1, Q1). A folder another process changes meanwhile is not seen."""
     head = next((os.path.basename(w) for w in words if w not in KEYWORDS and w not in ("builtin", "command") and not re.match(r"[A-Za-z_]\w*=", w)), "")
     return head in FOLDER_KEEPERS or not head
+
+
+QUIET = frozenset("cd pushd popd pwd echo printf true false : test [ [[ set ls which type dirname basename mkdir rmdir rm touch".split())  # put no text in a file
+EXPANDS = re.compile(r"[$`*?\[\\]")  # a word the shell may expand: the name it reads is another
+VENV_OPTIONS = frozenset({"--clear", "--copies", "--symlinks", "--system-site-packages", "--without-pip", "--upgrade-deps", "--without-scm-ignore-files",
+                          "--seed", "--no-pip", "--no-setuptools", "--no-wheel", "-q", "--quiet"})  # none of them keeps an activate script that is there
+
+
+def _venvs(words: list, here: str) -> tuple | None:
+    """(The activate script of each venv it names plainly, or of `.venv`, uv's default; whether it names them) for a venv
+    tool, which writes only scripts of its own: `python3 -m venv` or `-m virtualenv` (unless a file beside it could stand
+    in for the module or a module-path variable is set), `virtualenv` or `uv venv`, given no option this does not know.
+    None for anything else (the coordinator, 2026-11-16: a venv made and activated in one line)."""
+    head = os.path.basename(words[0]) if words else ""
+    if head.startswith("python") and SCRIPT.match(head) and words[1:3] in (["-m", "venv"], ["-m", "virtualenv"]):
+        if _stand_in("", here, words[2]) or os.environ.get("PYTHONPATH") or os.environ.get("PYTHONHOME"):
+            return None
+        rest = words[3:]
+    elif head == "virtualenv" or (head == "uv" and words[1:2] == ["venv"]):
+        rest = words[1 + (head == "uv"):]
+    else:
+        return None
+    dests, given = [], iter(rest)
+    for w in given:
+        if w in ("-p", "--python", "--prompt"):
+            next(given, None)
+        elif w[:1] == "-" and w not in VENV_OPTIONS and not w.startswith(("--python=", "--prompt=")):
+            return None
+        elif w[:1] != "-":
+            dests.append(w)
+    plain = [d for d in dests if not EXPANDS.search(d) and ".." not in d.split("/")]  # a name read as the tool reads it
+    return [os.path.normpath(os.path.join(here, os.path.expanduser(d), "bin", "activate")) for d in plain or [".venv"] * (head == "uv" and not dests)], bool(dests)
 
 
 def _enterable(path: str) -> bool:
@@ -2154,6 +2196,7 @@ def _cd_sources(text: str, mode: dict) -> None:
     letters = "".join(w for words in re.findall(r"\b(?:set|setopt|zsh|emulate)\b([^;&|\n]*)", plain) for w in re.findall(r"(?:^|\s)[-+]([A-Za-z]+)", words))
     src["cdable"] = src["cdable"] or "cdablevars" in flat or "T" in letters
     src["autocd"] = src["autocd"] or "autocd" in flat or "J" in letters
+    src["pathdirs"] = src["pathdirs"] or "pathdirs" in flat  # zsh then looks for a sourced file named with a slash along PATH too
     given = 0
     for line, counted in ((plain, 1), (text, 0)):  # read unquoted, and as written, where a value may hold a space
         for m in ASSIGNED.finditer(line):
@@ -3193,7 +3236,9 @@ def _own_text(text: str) -> str:
     if not (ASSIGNED.search(text) and re.search(r"python|node|bun|deno|perl|ruby", text)):
         return text
     feeds: list = []
+    unplaced = _CALL.get("unplaced")
     found = _parse(text, "/", feeds=feeds)[0]
+    _CALL["unplaced"] = unplaced  # read from no folder for its programs alone: where the line runs is its own reading's to tell
     for (words, _), fed in zip(found, feeds + [""] * len(found)):
         kind, _, given = _program(words) if SCRIPT.match(os.path.basename(words[0])) else ("", 0, "")
         body = fed if kind == "stdin" else given if kind == "inline" else ""
@@ -6171,9 +6216,10 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 
 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True,
-                     depth: int = 0) -> str | None:
+                     depth: int = 0, clean: bool = False) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
-    only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
+    only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal). `clean`: a
+    script a line runs, with no command before it there that may have written a file (`Run`)."""
     given = _release_tool(command, cwd, session) if hold else {}  # never for a command a program starts: it is judged
     if given:
         codes = approvals.pending()
@@ -6192,7 +6238,8 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
-    still = _CALL.get("still", frozenset())  # readings whose functions move a folder only in a subshell (`_cd_sources`)
+    still, was = _CALL.get("still", frozenset()), _CALL.get("clean")  # readings whose functions move a folder only in a subshell (`_cd_sources`)
+    _CALL["clean"] = hold or clean  # nothing ran before the line itself; before a command a program starts, anything may have
     if FUNCTION.search(command) and FOLDER_MOVE.search(command) and not _moves_by_function(command):
         _CALL["still"] = still | frozenset(readings)  # read as written: a reading's values can break the quoting
     try:
@@ -6203,7 +6250,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
                 return reason
             waits = waits or reason
     finally:
-        _CALL["still"] = still
+        _CALL["still"], _CALL["clean"] = still, was
     if hold and _CALL["unplaced"]:  # where its commands run could not be told (review round 4 of 5.23.1, Q1)
         waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
                                   "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
@@ -6412,7 +6459,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         elif body and not _release_script(target):
             _code_of(target) if target not in written else ""  # the principal's code binds the script as it stood
             text_ = body if head in (".", "source") else re.sub(r"\$\{?0\}?(?!\w)", lambda m: target, body)  # $0: the script's own path
-            inner = check_self_grant(text_, where, config, None, False, depth + 1)
+            inner = check_self_grant(text_, where, config, None, False, depth + 1, getattr(words, "clean", False))
             said = re.sub(r"^Refused: this command |\. Approvals come[\s\S]*$", "", inner) if inner else ""
             why = why or (f"runs {target}, a shell script that {said}" if inner and not isinstance(inner, Unproven) else "")
             waits = waits or (Unproven(f"runs {target}, a shell script that {inner}") if isinstance(inner, Unproven) else None)

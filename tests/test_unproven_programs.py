@@ -1251,19 +1251,29 @@ def test_a_script_that_really_changes_home_or_its_folder_still_waits(world, name
 
 # A virtual environment made and activated in one line, as an honest agent types it (the coordinator, 2026-11-16): the
 # activate script is not there yet when the guard reads the line, and 22.8's rule held any sourced file it could not read.
-# The venv tool writes its own activate script, which changes no folder. And a line that sources a venv and also sets a
-# variable and runs Python waited from a reading the guard makes of the line from no folder, for the programs it hands on.
+# A file that is not there stays not there, and sourcing it fails, unless a command before it on the line writes it. So a
+# sourced file named plainly with a slash, not there, passes when no command before it on the line may have written a
+# file (a venv tool writes only scripts of its own), or when it is the activate script of a venv a venv tool made earlier
+# in its `&&` chain with nothing since that may have written one. And a line that sources a venv and also sets a variable
+# and runs Python waited from a reading the guard makes of the line from no folder, for the programs it hands on.
 SETUP_LINES = "python3 -m venv .venv\n. .venv/bin/activate\npip install -r requirements.txt\nexport PATH=\"$HOME/.local/bin:$PATH\"\n"
 VENV_LINES = {
     "made and activated": "python3 -m venv .venv && source .venv/bin/activate",
     "made, activated and installed into": "python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt",
     "made and dotted, then tested": "python3 -m venv .venv && . .venv/bin/activate && python -m pytest -q",
     "in a repository, made and activated": "cd repo && python3 -m venv .venv && source .venv/bin/activate",
+    "made with options": "python3 -m venv --upgrade-deps --prompt proj .venv && source .venv/bin/activate",
+    "made after another program ran": "python3 --version && python3 -m venv .venv && source .venv/bin/activate",
+    "made if missing, then activated": "test -d .venv || python3 -m venv .venv; source .venv/bin/activate",
+    "named through a variable the line sets": 'VENV=.venv; python3 -m venv "$VENV" && source "$VENV/bin/activate"',
     "made by uv": "uv venv && source .venv/bin/activate",
     "made by virtualenv": "virtualenv venv && source venv/bin/activate",
+    "handed to a shell, as Codex runs a line": "bash -lc 'python3 -m venv .venv && source .venv/bin/activate'",
+    "activated in a repository where none is yet": "cd repo && source .venv/bin/activate",
     "the setup lines": SETUP_LINES,
     "the setup lines with semicolons": SETUP_LINES.strip().replace("\n", "; "),
     "the setup script": "bash setup.sh",
+    "the setup script, then an install": "bash setup.sh && pip install -e .",
 }
 VENV_THERE = {
     "activated in a repository": "cd repo && source .venv/bin/activate",
@@ -1271,14 +1281,14 @@ VENV_THERE = {
     "the setup lines": SETUP_LINES,
     "the setup script": "bash setup.sh",
 }
-ACTIVATE = "export VIRTUAL_ENV=\"$PWD/.venv\"\nexport PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n"
 
 
 def _venv_world(world, there: bool):
     (world["work"] / "repo").mkdir(exist_ok=True)
     _script(world["work"], "setup.sh", "#!/bin/bash\n" + SETUP_LINES)
+    activate = (Path(__import__("venv").__file__).parent / "scripts" / "common" / "activate").read_text(encoding="utf-8")  # the one venv writes
     for base in ((world["work"], world["work"] / "repo") if there else ()):
-        _script(base / ".venv" / "bin", "activate", ACTIVATE)
+        _script(base / ".venv" / "bin", "activate", activate)
 
 
 @pytest.mark.parametrize("name", sorted(VENV_LINES))
@@ -1293,19 +1303,32 @@ def test_a_virtual_environment_activated_where_it_is_passes(world, name):
     assert _verdict(world, VENV_THERE[name]) is None, name
 
 
-def test_a_sourced_file_that_changes_folder_or_cannot_be_read_still_waits(world):
-    """22.8's rule stands wherever no venv tool on the line makes the venv it activates."""
+def test_a_sourced_file_that_changes_folder_or_that_the_line_may_write_still_waits(world):
+    """22.8's rule stands wherever a command before the sourced file may have written it, or the shell may read it from
+    somewhere the guard does not look: where the line goes on running is not known, so it waits."""
     _venv_world(world, there=False)
-    state = paths.state()
-    held = [f"printf 'cd %s\\n' '{state}' > env.sh && source env.sh && touch made.txt",  # a sourced file the line writes
-            "source ./missing.sh && touch made.txt",  # one that is not there and nothing on the line makes
-            "python3 -m venv other && source .venv/bin/activate && touch made.txt"]  # a venv the line does not make
-    for line in held:
-        assert _verdict(world, line), line
-    _script(world["work"] / "moving" / "bin", "activate", f"cd '{state}'\n")
-    assert _verdict(world, "source moving/bin/activate && touch made.txt")  # an activate script there that changes folder
+    unplaced, made = "changes folder in a way this guard does not follow", " && touch made.txt"
+    held = {
+        "a sourced file the line writes": "printf 'cd elsewhere\\n' > env.sh && source env.sh" + made,
+        "one a program before it may write": "python3 -c \"open('env.sh', 'w').write('cd elsewhere')\" && source ./env.sh" + made,
+        "a venv the line does not make, after a program": "pip install wheel && python3 -m venv other && source .venv/bin/activate" + made,
+        "a venv made outside its && chain, after a program": "pip install wheel; python3 -m venv .venv; source .venv/bin/activate" + made,
+        "a venv made only if something failed, after a program": "pip install wheel && true || python3 -m venv .venv && source .venv/bin/activate" + made,
+        "a venv made with an option that keeps its activate script": "pip install wheel && python3 -m venv --upgrade .venv && source .venv/bin/activate" + made,
+        "one its own substitution writes": "python3 -m venv .venv && source .venv/bin/activate \"$(printf 'cd elsewhere' > .venv/bin/activate)\"" + made,
+        "a name the shell looks for along PATH": "source missing.sh" + made,
+        "a name the shell expands from what the guard cannot read": 'source "$A_VENV_NOT_SET_HERE/bin/activate"' + made,
+        "a name zsh looks for along PATH": "setopt pathdirs && python3 -m venv .venv && source .venv/bin/activate" + made,
+        "a setup script run after a write": "mkdir -p .venv/bin && printf 'cd elsewhere\\n' > .venv/bin/activate; bash setup.sh",
+        "a program's own command after its write": "python3 -c \"import subprocess; open('.venv/bin/activate', 'w').write('cd elsewhere'); "
+                                                   "subprocess.run('python3 -m venv .venv; . .venv/bin/activate; touch made.txt', shell=True)\"",
+    }
+    for name, line in held.items():
+        assert unplaced in (_verdict(world, line) or ""), name
+    _script(world["work"] / "moving" / "bin", "activate", "cd elsewhere\n")
+    assert unplaced in (_verdict(world, "source moving/bin/activate" + made) or "")  # an activate script there that changes folder
     _script(world["work"], "venv.py", "print('a venv module of the folder its line runs in')\n")
-    assert _verdict(world, "python3 -m venv .venv && source .venv/bin/activate && touch made.txt")  # venv's stand-in
+    assert unplaced in (_verdict(world, "python3 -m venv .venv && source .venv/bin/activate" + made) or "")  # venv's stand-in
 
 
 def test_a_script_that_really_writes_into_the_protected_folders_is_still_not_let_through(world):

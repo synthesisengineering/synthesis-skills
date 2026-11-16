@@ -2246,10 +2246,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # named for a folder builtin, or its body changes folder and it is called anywhere but in a command substitution),
 # FOLDER_BUILTINS 1, check_self_grant 6 (that reading made once on the text as written, for every reading of it, whose
 # values can break its quoting), and _cd_sources 2 (a printf -v of a literal name no cd reads sets nothing a cd reads).
+# Then core and plugin each 47 more, all in guards.py, so a venv made and activated in one line passes (the coordinator,
+# 2026-11-16: `python3 -m venv .venv && source .venv/bin/activate`, the setup lines and `bash setup.sh` waited on 22.8's
+# rule for a sourced file it could not read). A sourced file not there stays not there unless a command before it on
+# the line writes it. _venvs 24 with its 2 blank lines (a venv tool writes only scripts of its own: python3 -m venv
+# with no file beside it standing in, virtualenv, uv venv, given no option this does not know), QUIET, EXPANDS and
+# VENV_OPTIONS 4 with 2 blank lines, _walk 9 (a sourced file named plainly that is not there passes when no command
+# before it may have written a file, or it is the activate script of a venv made earlier in its && chain with nothing
+# written since; the count of commands that may have written a file, and each command's mark of whether one did before
+# it), Run 1 (that mark, which a script it runs is read with), check_self_grant 2 (none ran before the line; before a
+# command a program starts, any may have), _cd_sources 1 (zsh's path_dirs looks for such a file along PATH), and
+# _own_text 2 (its reading from no folder, for the programs it hands on, no longer leaves the line unplaced).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22431
-PLUGIN_BUDGET = 49089
+CORE_BUDGET = 22478
+PLUGIN_BUDGET = 49136
 
 
 def _lines(files):
