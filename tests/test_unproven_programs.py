@@ -1162,8 +1162,9 @@ def test_an_ordinary_shell_script_passes_however_it_is_run(world, name, how):
 # it as giving HOME a value: a comment names HOME, and an array lists HOME among the variables brew keeps from the
 # environment; neither writes HOME (the coordinator, 2026-11-16: `/opt/homebrew/bin/brew ...` and `eval "$(... shellenv)"`
 # are ordinary). And 22.8's rule for a folder it cannot follow read its `quiet_cd` function, which changes folder, as
-# moving brew's own folder, though brew calls it only in command substitutions, which run in a subshell. This script has
-# the same lines.
+# moving brew's own folder, though brew calls it only in command substitutions, which run in a subshell; and read its
+# `printf -v` of a literal name no cd reads as setting what a relative cd reads, which a `[[ ... || "$X" = ... ]]` the
+# parser splits at its `||` then reached as a command named by a variable. This script has the same lines.
 BREW_SHAPED = """#!/bin/bash
 # Fail fast with concise message when HOME is unset
 if [[ -z "${HOME:-}" ]]
@@ -1184,6 +1185,12 @@ symlink_target_directory() {
 BREW_FILE_DIRECTORY="$(quiet_cd "${0%/*}/" && pwd -P)"
 USR_LOCAL_BREW_FILE_DIRECTORY="$(symlink_target_directory "/usr/local/bin/brew" "/usr/local/bin")"
 HOMEBREW_PREFIX="${0%/bin/brew}"
+BIN_BREW_EXPORTED_VARS=(HOMEBREW_BREW_FILE HOMEBREW_PREFIX)
+printf -v BIN_BREW_EXPORTED_VARS_REGEX '%s|' "${BIN_BREW_EXPORTED_VARS[@]}"
+if [[ -z "${HOMEBREW_PREFIX}" || "${HOMEBREW_PREFIX}" = "${HOMEBREW_BREW_FILE:-}" ]]
+then
+  HOMEBREW_PREFIX="/opt/homebrew"
+fi
 FILTERED_ENV=()
 ENV_VAR_NAMES=(
   BAT_CONFIG_PATH BAT_THEME
@@ -1233,6 +1240,8 @@ BREW_WRITES = {  # the positive controls: the same script, with a line that real
     "HOME by printf -v": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nprintf -v HOME %s /tmp/brew-home\nls ~\n"),
     "its folder function called in the script itself": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nquiet_cd /tmp\necho made > made.txt\n"),
     "a function named cd": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\ncd() { builtin cd /tmp; }\ncd x\necho made > made.txt\n"),
+    "CDPATH set by printf -v, then a relative cd": BREW_SHAPED.replace(
+        "FILTERED_ENV=()\n", "FILTERED_ENV=()\nprintf -v CDPATH %s /tmp\ncd brew-cache\necho made > made.txt\n"),
 }
 
 
