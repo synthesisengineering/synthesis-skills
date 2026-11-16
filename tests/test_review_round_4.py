@@ -128,10 +128,10 @@ def test_q4_install_takes_no_rollback_keyword_and_refuses_an_older_release_for_e
     assert "rollback" not in inspect.signature(install.install).parameters
     assert "rollback" not in inspect.signature(install._install_locked).parameters
     older, before = _plugin(tmp_path, "older", "1.0.0"), install.current_hash()
-    with pytest.raises(install.Refused, match="older than the running"):
+    with pytest.raises(install.Unapproved, match="downgrade"):  # a rollback: the principal's code, on every route (22.18)
         install.install(older)
-    with pytest.raises(install.Refused, match="older than the running"):
-        install._install_locked(older, paths.home(), install.pinned(paths.home()), None)
+    with pytest.raises(install.Unapproved, match="downgrade"):
+        install._install_locked(older, paths.home(), install.pinned(paths.home()), install.traces(paths.home()), False, None, None)
     assert install.current_hash() == before
 
 

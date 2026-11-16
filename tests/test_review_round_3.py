@@ -39,6 +39,12 @@ def _check(line, cwd, config=None):
     return guards.check("Bash", {"command": line}, config or {}, cwd=str(cwd), session={"session_id": "S-1"})
 
 
+@pytest.fixture
+def approved(monkeypatch):
+    """The principal's code given for each install over the runtime these tests set up (22.18: install spends it)."""
+    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)
+
+
 def test_m1_a_physical_cd_through_current_never_reaches_the_runtime(home):
     release = Path(os.path.realpath(paths.home() / "current")).name
     through = "~/.synthesis/v5/current/.."  # the kernel follows `current` first: physically this is releases/
@@ -72,24 +78,25 @@ def _plugin(tmp_path, name, version):
     return folder
 
 
-def test_m2_the_floor_is_read_again_under_a_lock_just_before_current_moves(home, tmp_path, monkeypatch):
+def test_m2_the_change_is_read_under_the_lock_against_the_runtime_current_moves_from(home, tmp_path, monkeypatch):
     old, mid, new = _plugin(tmp_path, "old", "98.0.0"), _plugin(tmp_path, "mid", "98.5.0"), _plugin(tmp_path, "new", "99.0.0")
+    asked = []
+    monkeypatch.setattr(install, "approval", lambda wanted, said, session: asked.append(wanted["action"]))  # each code asked for, given
     install.install(old)  # the runtime the older install starts from
-    released = str(paths.home() / "releases" / "release-99")  # what the overlapping release installs
-    shutil.copytree(new / "synthesis", Path(released) / "synthesis")
-    copied = shutil.copytree
+    released = paths.home() / "releases" / "release-99"  # what the overlapping release installs
+    shutil.copytree(new / "synthesis", released / "synthesis")
+    staged = install._stage
 
-    def overlapping(source, target, *args, **kwargs):  # the release switches current while this install stages
-        made = copied(source, target, *args, **kwargs)
+    def overlapping(plugin_root, where):  # the release switches current while this install stages its copy
+        made = staged(plugin_root, where)
         link = paths.home() / ".current.release"
         link.symlink_to(released)
         os.replace(link, paths.home() / "current")
         return made
-    monkeypatch.setattr(shutil, "copytree", overlapping)
-    with pytest.raises(install.Refused, match="older than the running"):
-        install.install(mid)  # 98.5 passed the floor at the start (98); before the switch the runtime is 99
-    assert os.path.realpath(paths.home() / "current") == released
-    monkeypatch.setattr(shutil, "copytree", copied)
+    monkeypatch.setattr(install, "_stage", overlapping)
+    install.install(mid)  # 98.5 over 98 when it started; read after its copy is staged, it rolls 99 back: a rollback's code
+    assert asked == ["install", "rollback"]
+    monkeypatch.setattr(install, "_stage", staged)
     real, held = os.replace, []
 
     def replacing(source, target):
@@ -118,7 +125,7 @@ def test_m2_a_program_naming_the_locked_half_of_install_waits_for_the_code(home)
         assert said and "approve followed by the code" in said, (name, said)
 
 
-def test_m2_no_program_that_only_reads_can_hold_the_install_lock(home):
+def test_m2_no_program_that_only_reads_can_hold_the_install_lock(home, approved):
     """flock takes a file opened only to read, and the guard lets a program that only reads run with no code; so the
     lock file is one this user may only write. A reader cannot open it to hold the lock (which would make every install
     wait out its two minutes and refuse), and a program that opens it to write, or changes its mode, waits or is refused."""

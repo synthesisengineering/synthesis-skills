@@ -15,6 +15,14 @@ from synthesis import install
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def the_principal_approves_each_change_of_the_runtime(monkeypatch):
+    """An install over an installed runtime spends the principal's code inside install itself (review round 4 of 5.23.1,
+    Q4), which tests/test_runtime_boundary.py holds to; these tests are about what an install lays out, so it is given.
+    A test that runs install in a process of its own meets the real check (the command line test below)."""
+    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)
+
+
 def _plugin_copy(tmp_path, name="plugin-v1"):
     dest = tmp_path / name
     shutil.copytree(ROOT / "synthesis", dest / "synthesis", ignore=shutil.ignore_patterns("__pycache__"))
@@ -54,10 +62,12 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
     assert install.install(v2).endswith(str(isolated_home / "current"))  # idempotent
 
 
-def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, isolated_home):
+def test_a_session_start_never_switches_the_runtime_either_way(tmp_path, isolated_home):
     """2026-10-06: a session that loaded the 5.0.2 plugin started or compacted after 5.0.3 shipped, and its
-    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.23.1 no install may: an
-    older release installed as the runtime brings back the holes later releases closed (review round 1, A1)."""
+    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.23.1 a session start does
+    not move it forward either: the folder a harness passes is its own plugin cache, which the guard does not protect
+    (the principal's sandbox rulings of 2026-11-15). Only an explicit install may, and that waits for his code; an older
+    release is a rollback, which brings back the holes later releases closed and needs his code on every route (A1)."""
     old, new = _plugin_copy(tmp_path, "old"), _plugin_copy(tmp_path, "new")
     (old / "synthesis" / "__init__.py").write_text('__version__ = "1.0.0"\n')
     (new / "synthesis" / "__init__.py").write_text('__version__ = "1.0.1"\n')
@@ -69,11 +79,10 @@ def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, 
     assert "kept" in install.install(old, first_only=True)
     newer = _plugin_copy(tmp_path, "newer")
     (newer / "synthesis" / "__init__.py").write_text('__version__ = "1.0.2"\n')
-    install.install(newer, first_only=True)  # since 5.23.1 a session on a newer plugin does not replace it either
+    assert "kept" in install.install(newer, first_only=True)  # a session on a newer plugin moves nobody
     assert install.version(isolated_home / "current") == (1, 0, 1)
-    with pytest.raises(install.Refused, match="older than the running 1.0.1"):
-        install.install(old)  # an explicit install of an older release is refused too
-    assert install.version(isolated_home / "current") == (1, 0, 1)
+    install.install(old)  # a deliberate rollback is an explicit install, its code given (this file's principal approves)
+    assert install.version(isolated_home / "current") == (1, 0, 0)
 
 
 def test_cli_shim_runs_the_installed_copy_through_a_link_from_any_folder(tmp_path, isolated_home):
@@ -190,19 +199,26 @@ def test_uninstall_dry_run_changes_nothing(tmp_path, isolated_home):
 
 
 def test_install_rerun_changes_nothing(tmp_path, isolated_home):
+    """No file is written again. The releases folder's own time moves: every install stages its copy there and checks
+    it before anything switches (review round 1 of 22.18), and the copy of an unchanged release is then removed."""
     plugin = _plugin_copy(tmp_path)
     install.install(plugin)
-    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")}
+    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*") if p.is_file()}
     install.install(plugin)
-    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")} == stamp
+    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*") if p.is_file()} == stamp
+    assert not [p for p in (isolated_home / "releases").iterdir() if p.name.startswith(".") and p.name != ".install.lock"]
 
 
-def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home):
+def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home, request):
     plugin = _plugin_copy(tmp_path)
     run = lambda *a: subprocess.run([sys.executable, "-S", str(plugin / "synthesis" / "install.py"), *a],
                                     capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
-    out = run(str(plugin), "--git-hooks")
+    out = run(str(plugin), "--git-hooks")  # a first install: no code
     assert out.returncode == 0 and "core.hooksPath ->" in out.stdout
+    principal = request.getfixturevalue("principal")  # the principal's session, as the prompt hook records it once a runtime runs
+    out = run("uninstall")  # removing an installed runtime waits for the principal's code (review round 1 of 22.18)
+    assert out.returncode == 2 and "approve followed by the code" in out.stderr and _hooks_path() != []
+    principal(out.stderr)
     out = run("uninstall")
     assert out.returncode == 0 and "restored core.hooksPath to unset" in out.stdout and _hooks_path() == []
 

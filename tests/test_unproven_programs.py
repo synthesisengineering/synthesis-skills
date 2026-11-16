@@ -578,8 +578,9 @@ def test_the_runtime_is_a_protected_folder(world, target):
     assert reason and reason.startswith("Refused"), reason
 
 
-def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
+def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world, monkeypatch):
     from synthesis import install
+    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)  # the principal's code, given: an install into this home is no subject here
     install.install(ROOT)
     script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
     assert script.is_file()
@@ -799,6 +800,9 @@ def test_a_write_where_synthesis_paths_lead_inside_an_f_string_waits(world):
     "from synthesis.paths import os as o\no.remove('/tmp/x')\n",                                          # a name its module imports
     "import importlib\nimport synthesis\nm = importlib.import_module('synthesis.' + 'sends')\n",      # a name it builds
     "from synthesis.approvals import *\n",                                                              # every name at once
+    "from synthesis import guards\nguards._void('send', {'tool': 'x'})\n",                             # the guard's own record
+    "from synthesis.guards import _record_deploys as mark\nmark(['probe-site'])\n",                    # writers (review round 3
+    "from synthesis import approvals, guards\napprovals.SPENT.append(('/tmp/x.json', b'{}'))\nguards.settle(False)\n",  # of the spend order)
 ])
 def test_a_script_that_writes_through_synthesis_or_reaches_it_unfollowably_waits(world, body):
     script = _script(world["work"] / "uses-synthesis", "use.py", body)
@@ -855,10 +859,17 @@ def _writers_in(root: Path) -> set:
     return writers
 
 
+GUARD_WRITERS = {"guards._record_deploys", "guards._swap", "guards._void", "guards.answered", "guards.settle"}
+
+
 def test_the_writers_the_guard_knows_are_the_ones_synthesis_has():
     """The guard's own judging functions (guards.check and the rest) file a hold the principal answers and never grant,
-    so they read (the coordinator, 2026-11-14); every other function that writes is one of synthesis's writers."""
-    assert guards.SYNTHESIS_WRITES == {w for w in _writers_in(ROOT) if not w.startswith("guards.")}
+    so they read (the coordinator, 2026-11-14); every other function that writes is one of synthesis's writers, and so
+    are the guard's own writers of a decision's records, which an agent's program could otherwise call to delete a
+    grant, plant a deploy record or put back a grant (review round 3 of the spend order, finding 3)."""
+    found = _writers_in(ROOT)
+    assert GUARD_WRITERS <= found
+    assert guards.SYNTHESIS_WRITES == {w for w in found if not w.startswith("guards.")} | GUARD_WRITERS
 
 
 # --- a word names a protected folder only by its own path (the coordinator, 2026-11-15: a skill script run from Claude

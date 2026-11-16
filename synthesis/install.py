@@ -4,13 +4,15 @@ Hooks call ~/.synthesis/v5/bin/synthesis-hook, whose command text never
 changes between releases, so a harness deleting an old plugin folder never
 breaks a running task (Codex still asks for its hook approval again after each
 release: it ties the approval to the installed plugin's contents). At each
-session start the hook passes the plugin folder the harness loaded; if it is a
-newer release than the installed copy, it is installed beside the old one and
-`current` switches atomically. A session still on an older plugin (one that
-resumes or compacts after an upgrade) never switches it back; an explicit
-install (setup, release, `synthesis install`) installs whatever it is given.
+session start the hook passes the plugin folder the harness loaded, the harness's
+own plugin cache, which the guard does not protect: a session start installs from
+it only into a home no runtime has been in (the first install), and never replaces
+or reinstalls one (the principal's sandbox rulings of 2026-11-15). An explicit
+install (setup, release, `synthesis install`, which waits for the principal's
+code) installs whatever it is given, beside the old one, and `current` switches
+atomically.
 
-Run: python3 -S <plugin>/synthesis/install.py [plugin root] [--git-hooks]
+Run: python3 -S <plugin>/synthesis/install.py [plugin root] [--git-hooks]   (the bootstrap: a first install only)
      python3 -S <plugin>/synthesis/install.py uninstall [--dry-run]
 
 `--git-hooks` points the global core.hooksPath at the v5 commit check after
@@ -26,6 +28,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -179,13 +182,100 @@ def _home() -> Path:
     return paths.home()
 
 
-def package_hash(plugin_root: Path) -> str:
+def _files(root: Path) -> list:
+    """(relative path, file) for every file an install copies, in order: every file in the runtime package and the folders
+    in it (compiled code and hidden names left out, a link to a folder not followed), the stable skill scripts and the
+    CHANGELOG. Each is hashed and copied (review round 1 of 22.18, H2: a package folder added to `synthesis/` was copied
+    and not hashed)."""
+    root, found = Path(root), []
+    for folder, dirs, names in os.walk(root / "synthesis"):
+        dirs[:] = sorted(d for d in dirs if d != "__pycache__" and not d.startswith("."))
+        found += [(Path(folder, n).relative_to(root).as_posix(), Path(folder, n)) for n in sorted(names) if not n.startswith(".")]
+    return found + list(_stable_skill_files(root)) + [("CHANGELOG.md", root / "CHANGELOG.md")] * (root / "CHANGELOG.md").is_file()
+
+
+def _read(path: Path) -> bytes:
+    """A regular file's bytes, opened without waiting; OSError for anything else, so a FIFO stops no install or guard."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NONBLOCK", 0))
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"{path} is not a regular file")
+        chunks = [os.read(fd, 1 << 20)]
+        while chunks[-1]:
+            chunks.append(os.read(fd, 1 << 20))
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
+def package_digest(plugin_root: Path) -> str:
+    """The sha256 of every file an install copies, each by its relative path and its length: what the principal's code for
+    an install binds and, cut to 16 characters, the release's name."""
     digest = hashlib.sha256()
-    for path in sorted((plugin_root / "synthesis").glob("*.py")):
-        digest.update(path.name.encode() + b"\0" + path.read_bytes())
-    for rel, path in _stable_skill_files(plugin_root):
-        digest.update(rel.encode() + b"\0" + path.read_bytes())
-    return digest.hexdigest()[:16]
+    for rel, path in _files(plugin_root):
+        data = _read(path)
+        digest.update(f"{rel}\0{len(data)}\0".encode() + data)
+    return digest.hexdigest()
+
+
+def package_hash(plugin_root: Path) -> str:
+    return package_digest(plugin_root)[:16]
+
+
+class Unapproved(Exception):
+    """A change of an installed runtime the principal's code does not approve; the message says how it is approved."""
+
+
+def subject(action: str, home, digest: str = "", git_hooks: bool = False, versions: tuple = ("", "")) -> dict:
+    """What the principal's code for a change of the runtime binds: the change ("install", "rollback" for a release older
+    than the running one, named to him as a downgrade, or "uninstall"), the home, every byte the install takes (the
+    digest of its staged copy), whether git's hooks follow, and the versions it goes from and to. The hook asks for it;
+    the install or uninstall itself spends it."""
+    return {"action": action, "home": os.path.realpath(home), "digest": digest, "git_hooks": bool(git_hooks),
+            "from": versions[0], "to": versions[1]}
+
+
+def change(home, staged: Path, source, digest: str, git_hooks: bool = False) -> tuple:
+    """(the subject, the words for the principal) of installing a staged copy (or a folder, for the hook) into a home."""
+    have, take = version(Path(home) / "current"), version(staged)
+    back = bool(have and take and take < have)
+    said = (f"rolls the synthesis runtime under {home} back from {'.'.join(map(str, have))} to {'.'.join(map(str, take))}, a "
+            f"downgrade, installing from {source}" if back else f"installs a synthesis runtime from {source} into {home}")
+    return (subject("rollback" if back else "install", home, digest, git_hooks, (".".join(map(str, have)), ".".join(map(str, take)))),
+            said + (", and points git's global hooks at its commit check" if git_hooks else ""))
+
+
+RELEASE_TOOL = os.path.join("skills", "synthesis-skills-manager", "scripts", "release.py")
+
+
+def release_route() -> bool:
+    """Whether this process is the release tool running from the protected runtime: its main program is that tool inside
+    a release under this home, started isolated (-I -S, as the release launcher starts it), so no code of an agent's runs
+    in it. Its install of a fresh clone's merged tag needs no code (the principal's ruling of 2026-11-15); a rollback
+    still does. It trusts the process's main program, which a program in the same process can set (a module of its own
+    put in as `__main__`), so such a program is held only by the guard's reading of it (review round 2 of 22.18, K1);
+    22.8's launcher replaces this with a grant the hook issues when it lets the launcher's line through."""
+    import __main__
+    main = os.path.realpath(getattr(__main__, "__file__", "") or os.devnull)
+    return bool(sys.flags.isolated and sys.flags.no_site) and main.endswith(os.sep + RELEASE_TOOL) and paths.inside(
+        main, os.path.realpath(_home() / "releases"))
+
+
+def approval(wanted: dict, said: str, session: dict | None) -> None:
+    """Spend the principal's code for this change of an installed runtime, or file the request and raise Unapproved with
+    what the hook says, so the change waits however the CLI was started (review round 1 of 22.18, H1). Where no runtime
+    ran the prompt hook to make a grant, the session's own record showing the code typed after the request is enough."""
+    from synthesis import approvals
+    try:
+        if approvals.consume("runtime", wanted, session) or approvals.answered("runtime", wanted, session):
+            return
+    except approvals.Unverified as exc:
+        raise Unapproved(str(exc)) from None
+    code = approvals.request("runtime", wanted, f"the synthesis runtime: {said[:150]}")
+    raise Unapproved(f"This {said}. That runtime is what the guard runs, so it changes only on the principal's word: show "
+                     f"them this exact install and ask them to type {approvals.how(code)}; then run the identical command "
+                     "again, with the folder it installs from left as it is now." + ("" if paths.session_id(session) else
+                     " This shell names no session: pass --session with the one the principal types it in."))
 
 
 def _stable_skill_files(plugin_root: Path):
@@ -263,15 +353,15 @@ def _compile(package: Path) -> None:
 
 
 class Refused(RuntimeError):
-    """An install that would put an older release, or bytes other than the ones expected, in the runtime's place."""
+    """An install that would put bytes other than the ones expected in the runtime's place, or that nothing could run."""
 
 
 def takes(rel: str) -> bool:
-    """Whether the runtime takes this file of a plugin (by its path in the plugin) when it installs."""
+    """Whether the runtime takes this file of a plugin (by its path in the plugin) when it installs: what `_files` copies."""
     parts = rel.split("/")
-    return (len(parts) == 2 and parts[0] == "synthesis" and parts[1].endswith(".py")) or rel == "CHANGELOG.md" or (
-        len(parts) == 4 and parts[0] == "skills" and parts[1] in STABLE_SKILL_SCRIPTS and parts[2] == "scripts"
-        and not parts[3].startswith("test_"))
+    return (parts[0] == "synthesis" and len(parts) > 1 and not any(p == "__pycache__" or p.startswith(".") for p in parts[1:])) or (
+        rel == "CHANGELOG.md") or (len(parts) == 4 and parts[0] == "skills" and parts[1] in STABLE_SKILL_SCRIPTS and parts[2] == "scripts"
+                                   and not parts[3].startswith("test_"))
 
 
 def _blob(path: Path) -> str:
@@ -314,80 +404,81 @@ def _install_lock(home: Path):
         os.close(fd)
 
 
-def _older(plugin_root: Path, home: Path) -> str:
-    """Why the plugin may not replace the running runtime: it declares an older version; '' when it may."""
-    running, given = version(home / "current"), version(plugin_root)
-    return (f"{plugin_root} holds {'.'.join(map(str, given)) or 'no version'}, older than the running "
-            f"{'.'.join(map(str, running))}: nothing older installs") if running and given < running else ""
+TRACES = ("releases", "current", "bin", "git-hooks", "state", "board", "sessions")
 
 
-def install(plugin_root: Path, first_only: bool = False, expected: dict = None) -> str:
-    """Install the plugin's runtime if it differs from the current one. Returns a one-line report.
+def traces(home: Path) -> list:
+    """What in a synthesis home shows a runtime was installed there: its own folders, or the state, board or archive its
+    sessions wrote. Uninstall keeps the state, the board and the archive, and the guard refuses to remove them, so a home
+    a runtime has left, by uninstall or by any other route, still shows it (review round 2 of 5.23.1, N6). A releases
+    folder that holds only the release tool's fresh clone, a staged copy or install's lock (hidden names) holds no
+    release: a first install from the release tool makes those before any runtime is there."""
+    def shows(path: Path) -> bool:
+        if path.name != "releases" or path.is_symlink() or not path.is_dir():
+            return os.path.lexists(path)
+        return any(not entry.name.startswith(".") for entry in path.iterdir())
+    return [name for name in TRACES if shows(Path(home) / name)]
 
-    first_only (the session-start hook and the first-install bootstrap): install only where no runtime exists at all.
-    The folder a harness passes is its own plugin cache, which the guard does not protect, so a session start never
-    replaces an installed runtime (the principal's sandbox rulings of 2026-11-15). Any other install refuses (Refused) a
-    release older than the running one (review round 1 of 5.23.1, A1), read when it starts and again, under the same
-    lock, just before `current` moves (round 3, M2), for every caller: a keyword any program in the process could pass is
-    no exception (round 4, Q4); a deliberate rollback waits for the principal's own grant of it. `expected` ({path:
-    blob id}, every file the runtime takes, as the release read it from its fresh clone): the staged copy must hold
-    exactly those bytes before `current` moves, or nothing moves (A3)."""
+
+def _stage(plugin_root: Path, home: Path) -> Path:
+    """A copy of every file an install takes, made in the protected releases folder, where no agent writes: what is
+    hashed, checked and installed is this copy, never the folder as it stands a moment later (review round 1 of 22.18)."""
+    import secrets
+    staging = home / "releases" / f".stage.{os.getpid()}.{secrets.token_hex(4)}"
+    try:
+        for rel, path in _files(plugin_root):
+            (staging / rel).parent.mkdir(parents=True, exist_ok=True)
+            (staging / rel).write_bytes(_read(path))
+            (staging / rel).chmod(stat.S_IMODE(os.stat(path).st_mode) | 0o600)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return staging
+
+
+def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False, session: dict | None = None,
+            expected: dict = None) -> str:
+    """Install the plugin's runtime if it differs from the current one, from a copy staged and hashed under the home's
+    protected releases folder. Returns a one-line report.
+
+    first_only (the session-start hook and the first-install bootstrap): install only into a home no runtime has been
+    in. The folder a harness passes is its own plugin cache, which the guard does not protect, so an installed runtime,
+    or one that was removed, is never replaced from it (the principal's sandbox rulings of 2026-11-15). A home that
+    shows a runtime but has none whole is refused (RuntimeError), loudly, rather than kept. Into a home that shows a
+    runtime, every other install spends the principal's code for exactly the staged copy, or raises Unapproved and
+    nothing moves, whoever calls it (review round 4 of 5.23.1, Q4): the release tool's own install from the protected
+    runtime (release_route) needs none unless it rolls back, and a release older than the running one is a rollback,
+    which always needs the code (round 1, A1). One install at a time in a home, from that check to the switch of
+    `current` (round 3, M2). `expected` ({path: blob id}, every file the runtime takes, as the release read it from its
+    fresh clone): the staged copy must hold exactly those bytes, or nothing moves (A3). git_hooks binds that the caller
+    points git's hooks at it."""
     plugin_root = Path(plugin_root).resolve()
     if not (plugin_root / "synthesis" / "hook.py").is_file():
         if expected is not None:  # a release's install that cannot happen stops it (review round 2, N8: a clone gone)
             raise Refused(f"{plugin_root} holds no synthesis runtime, so the runtime was not installed")
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
+    found = traces(home)
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
         print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
-    if first_only and current_hash():
-        _compile(home / "current" / "synthesis")  # the interpreter it runs on may have changed under it
-        return f"synthesis runtime kept at {current_hash()}: a session start installs only where no runtime exists"
+    if first_only and found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
+        _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
+        return f"synthesis runtime kept at {current_hash()}: a session start installs only into a home no runtime has been in"
+    if first_only and found:
+        raise RuntimeError(f"{home} holds {', '.join(found)}, left by a runtime installed there, so a session start does not "
+                           f"install one from {plugin_root}, the harness's own folder. Install it from your own terminal: "
+                           "setup.py, or `synthesis install` with no folder where the runtime is still there")
     python = pinned_python()
-    if not python:  # nothing could run the guard: install nothing (review round 3, M3)
+    if not python:  # nothing could run the guard: install nothing (review round 3 of 5.23.1, M3)
         raise Refused(NO_PYTHON)
     with _install_lock(home):
-        return _install_locked(plugin_root, home, python, expected)
-
-
-def _install_locked(plugin_root: Path, home: Path, python: str, expected: dict) -> str:
-    if _older(plugin_root, home):
-        raise Refused(_older(plugin_root, home))
-    wanted = package_hash(plugin_root)
-    if wanted != current_hash():
-        release = home / "releases" / wanted
-        if not release.is_dir():
-            staging = home / "releases" / f".{wanted}.{os.getpid()}"
-            shutil.copytree(plugin_root / "synthesis", staging / "synthesis",
-                            ignore=shutil.ignore_patterns("__pycache__"))
-            for rel, path in _stable_skill_files(plugin_root):
-                (staging / rel).parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(path, staging / rel)
-            (staging / "HASH").write_text(wanted + "\n", encoding="utf-8")
-            if (plugin_root / "CHANGELOG.md").is_file():  # the upgrade note quotes it to running sessions
-                shutil.copy2(plugin_root / "CHANGELOG.md", staging / "CHANGELOG.md")
-            (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
-            wrong = _differences(staging, expected) if expected is not None else []
-            if wrong:
-                shutil.rmtree(staging, ignore_errors=True)
-                raise Refused(f"the staged runtime is not the release's bytes ({'; '.join(wrong[:4])}), so current did not move")
-            os.replace(staging, release)
-        elif expected is not None and _differences(release, expected):
-            raise Refused(f"{release} is not the release's bytes ({'; '.join(_differences(release, expected)[:4])}), "
-                          "so current did not move")
-        if _older(plugin_root, home):  # the floor read again, just before the switch (round 3, M2)
-            raise Refused(_older(plugin_root, home) + " (the runtime moved while this install staged its copy)")
-        link = home / f".current.{os.getpid()}"
-        link.symlink_to(release)
-        os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
-    for name in (*ENTRY_POINTS, *GIT_HOOKS):  # before compiling: the compile runs the interpreter the hook launcher names
-        _write_exec(home / ("git-hooks" if name in GIT_HOOKS else "bin") / name, launcher(home, python, name))
+        wanted = _install_locked(plugin_root, home, python, found, git_hooks, session, expected)
     _compile(home / "current" / "synthesis")
     copies = {}
-    for name in DAY_END:
-        source = plugin_root / "skills" / "synthesis-daily-rituals" / "scripts" / name
+    for name in DAY_END:  # from the release as installed, never from the folder after its check
+        source = Path(os.path.realpath(home / "current")) / "skills" / "synthesis-daily-rituals" / "scripts" / name
         if source.is_file():
             copies[name] = source.read_text(encoding="utf-8")
             _write_exec(home / "bin" / name, copies[name])
@@ -399,6 +490,40 @@ def _install_locked(plugin_root: Path, home: Path, python: str, expected: dict) 
     if not config.exists():
         config.write_text("{}\n", encoding="utf-8")
     return f"synthesis runtime {wanted} at {home / 'current'}"
+
+
+def _install_locked(plugin_root: Path, home: Path, python: str, found: list, git_hooks: bool, session, expected) -> str:
+    """The install under its lock: stage, check the copy against `expected`, spend the principal's code where it is
+    needed (the change is read against the runtime running now, which no other install can move meanwhile), switch
+    `current`, and write the launchers. Returns the release's name."""
+    staging = _stage(plugin_root, home)
+    try:
+        wrong = _differences(staging, expected) if expected is not None else []
+        if wrong:
+            raise Refused(f"the staged runtime is not the release's bytes ({'; '.join(wrong[:4])}), so current did not move")
+        digest = package_digest(staging)
+        wanted = digest[:16]
+        if found:
+            wanted_change, said = change(home, staging, plugin_root, digest, git_hooks)
+            if wanted_change["action"] == "rollback" or not release_route():
+                approval(wanted_change, said, session or {"session_id": paths.session_id()})
+        release = home / "releases" / wanted
+        if wanted != current_hash():
+            if not release.is_dir():
+                (staging / "HASH").write_text(wanted + "\n", encoding="utf-8")
+                (staging / "SOURCE").write_text(f"{plugin_root}\n{time.strftime('%Y-%m-%dT%H:%M:%S%z')}\n", encoding="utf-8")
+                os.replace(staging, release)
+            elif expected is not None and _differences(release, expected):
+                raise Refused(f"{release} is not the release's bytes ({'; '.join(_differences(release, expected)[:4])}), "
+                              "so current did not move")
+            link = home / f".current.{os.getpid()}"
+            link.symlink_to(release)
+            os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    for name in (*ENTRY_POINTS, *GIT_HOOKS):  # before compiling: the compile runs the interpreter the hook launcher names
+        _write_exec(home / ("git-hooks" if name in GIT_HOOKS else "bin") / name, launcher(home, python, name))
+    return wanted
 
 
 def move_board(home: Path) -> list:
@@ -536,17 +661,21 @@ class InUse(Exception):
     """The runtime stays: something still runs it."""
 
 
-def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = False) -> list:
+def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = False, session: dict | None = None) -> list:
     """Remove what install created; restore core.hooksPath; keep anything the user changed. Refuses (InUse), removing
     nothing, while Codex's own hooks.json runs the stable hook: its guard would then hold every guarded call in Codex,
     with nothing there to put the runtime back (review round 2 of 5.21.0). `codex_cleared`: the caller takes all of that
-    out first (setup.py uninstall's dry run, which has left its own declarations in place)."""
+    out first (setup.py uninstall's dry run, which has left its own declarations in place). Where the home shows a
+    runtime, a removal spends the principal's code for it, or raises Unapproved and nothing is removed, whoever calls it."""
     from synthesis import doctor
     running = {} if codex_cleared else doctor.codex_user_entries(paths.codex_home())[0]
     if running:
         raise InUse(f"Codex's own {paths.codex_home() / 'hooks.json'} runs the synthesis runtime for {', '.join(running)}, so "
                     "it stays: run setup.py uninstall, which takes out what setup declared there, or remove those hooks, "
                     "then this again; nothing was removed")
+    if not dry_run and traces(home or _home()):
+        approval(subject("uninstall", home or _home()), f"removes the installed synthesis runtime under {home or _home()} "
+                 "(`current`, its launchers and its releases)", session or {"session_id": paths.session_id()})
     home, report, (verb, kept) = home or _home(), [], ("would remove", "would keep") if dry_run else ("removed", "kept")
     registered = _registrations(home).get("git_hooks_path")
     if registered:
@@ -570,8 +699,12 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
     for release in sorted((home / "releases").glob("*")) if (home / "releases").is_dir() else []:
         if release.name == ".install.lock":
             continue  # install's own lock, removed below
-        if release.name.startswith(".") or package_hash(release) != release.name:
-            report.append(f"{kept} {release}: its files changed since install")
+        try:
+            whole = not release.name.startswith(".") and package_hash(release) == release.name
+        except OSError:  # a file in it that is no regular file, or cannot be read
+            whole = False
+        if not whole:
+            report.append(f"{kept} {release}: its files do not hash to its name (changed since install, or named by an older install)")
             continue
         if not dry_run:
             shutil.rmtree(release)
@@ -580,10 +713,12 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
         (home / "releases" / ".install.lock").unlink()
     if (home / "registrations.json").exists() and not dry_run:
         (home / "registrations.json").unlink()
-    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board)")
+    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board); "
+                  "with them there no session start installs a runtime here again, so a harness that still has the plugin "
+                  "holds every guarded call until setup.py installs one")
     return report
 
 
-if __name__ == "__main__":  # the bootstrap hooks.json runs before the stable `synthesis` command exists
+if __name__ == "__main__":  # the bootstrap hooks.json runs before the stable `synthesis` command exists: a first install only
     from synthesis import cli
     sys.exit(cli.main(sys.argv[1:] if sys.argv[1:2] == ["uninstall"] else ["install", "--first", *sys.argv[1:]]))

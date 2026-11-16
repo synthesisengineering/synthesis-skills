@@ -238,7 +238,7 @@ def test_install_refuses_a_runtime_older_than_the_one_running(tmp_path):
     newer, older = checkout(tmp_path / "newer", "5.23.1", True), checkout(tmp_path / "older", "5.0.0", True)
     install.install(newer)
     before = os.path.realpath(paths.home() / "current")
-    with pytest.raises(install.Refused, match="older than the running"):
+    with pytest.raises(install.Unapproved, match="downgrade"):  # a rollback needs the principal's code on every route
         install.install(older)
     assert os.path.realpath(paths.home() / "current") == before
 
@@ -285,6 +285,7 @@ def test_a_release_builds_pushes_and_installs_from_a_fresh_clone_never_the_check
     _forge(repo, git(repo, "rev-parse", "HEAD:skills/demo/SKILL.md"), b"What no CI saw.\n")  # the checkout's own store
     _forge(repo, git(repo, "rev-parse", "HEAD:synthesis/guards.py"), b"# a guard no CI saw\n")
     monkeypatch.setattr(release.doctor, "run_checks", lambda: [])  # the doctor's own checks are tested where it lives
+    monkeypatch.setattr(install, "release_route", lambda: True)  # run as the launcher runs it (the train's board is a trace)
     installed = []
     real = install.install
     monkeypatch.setattr(install, "install", lambda root, **k: installed.append((Path(root), k)) or real(root, **k))

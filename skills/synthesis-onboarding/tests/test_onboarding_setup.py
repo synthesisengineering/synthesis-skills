@@ -14,6 +14,13 @@ import setup
 PLUGIN_ID = "synthesis-skills@synthesis-engineering"
 
 
+@pytest.fixture(autouse=True)
+def the_principal_approves_each_change_of_the_runtime(monkeypatch):
+    """A setup run over an installed runtime spends the principal's code inside install itself (review round 4 of 5.23.1,
+    Q4), which tests/test_runtime_boundary.py holds to; these tests are about setup's other steps, so it is given."""
+    monkeypatch.setattr(setup.install, "approval", lambda *args, **kwargs: None)
+
+
 def fake_cli(tmp_path, name, responses):
     """A CLI that logs its argv and prints the first response whose key prefixes its arguments."""
     log, data = tmp_path / f"{name}.log", tmp_path / f"{name}.json"
@@ -1318,7 +1325,7 @@ def test_uninstall_takes_codexs_user_level_declaration_out_with_the_runtime_what
     home = codex_home(tmp_path, monkeypatch, config="")
     setup.codex_user_hooks(True, setup.REPO)
     gone = []
-    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False: gone.append("runtime") or ["removed the runtime"])
+    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False, session=None: gone.append("runtime") or ["removed the runtime"])
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
     assert setup.main(["uninstall", "--clients", "claude"]) == 0
     assert gone and not (home / "hooks.json").exists() and SWITCH not in (home / "config.toml").read_text()
@@ -1330,7 +1337,7 @@ def test_uninstall_keeps_the_runtime_and_fails_when_it_cannot_take_the_declarati
     setup.codex_user_hooks(True, setup.REPO)
     (home / "config.toml").write_text((home / "config.toml").read_text() + "this is not toml\n")
     gone, before = [], files(home)
-    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False: gone.append("runtime") or ["removed the runtime"])
+    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False, session=None: gone.append("runtime") or ["removed the runtime"])
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
     assert setup.main(["uninstall", "--clients", "claude,codex,muse"]) == 1
     assert gone == [] and files(home) == before and "runtime stays" in capsys.readouterr().out
@@ -1533,7 +1540,7 @@ def test_a_runtime_install_that_fails_leaves_no_declaration_behind(tmp_path, mon
     (Path.home() / ".synthesis" / "v5" / "bin" / "synthesis-hook").unlink()
     _codex_cli(tmp_path, monkeypatch)
 
-    def failing(git_hooks):
+    def failing(git_hooks, session=None):
         raise OSError("[Errno 28] No space left on device")
     monkeypatch.setattr(setup, "install_runtime", failing)
     assert setup.main(["plugin", "--no-input", "--clients", "codex", "--codex-user-hooks"]) == 1
@@ -1546,7 +1553,7 @@ def test_uninstall_keeps_the_runtime_while_a_declaration_of_the_persons_still_ru
     home = codex_home(tmp_path, monkeypatch, hooks={"hooks": own})
     setup.codex_user_hooks(True, setup.REPO)
     gone, before = [], files(home)
-    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False: gone.append("runtime") or ["removed the runtime"])
+    monkeypatch.setattr(setup.install, "uninstall", lambda dry_run=False, codex_cleared=False, session=None: gone.append("runtime") or ["removed the runtime"])
     monkeypatch.setattr(setup.doctor, "find_client", lambda name: None)
     assert setup.main(["uninstall", "--clients", "claude,codex,muse"]) == 1
     assert gone == [] and files(home) == before and "runtime stays" in capsys.readouterr().out

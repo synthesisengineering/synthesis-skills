@@ -87,16 +87,12 @@ objects from memory with `git fast-import`, and the tree written is held to the 
 give. The stable runtime is installed from that clone, its staged copy checked against the tag's
 listing before `current` moves, and the release refuses a version older than the running runtime
 or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
-`install.install` refuses a folder that declares an older version than the running runtime, read
-when it starts and again, under a lock on the synthesis home, just before `current` moves (its
-file is one this user may only write, so no program that only reads can hold it), for every
-caller: no keyword passes the floor. A deliberate rollback waits for the principal's own grant
-of it, which a separate change brings; until it lands, no route installs an older release, and
-the guard holds a program that names the installer only where its import starts a line. What a
-folder declares is its own claim, so the CLI's `synthesis install <folder>` and `synthesis
-uninstall`, which pass with no code, are open until they wait for the principal's code (the same
-change). Review rounds 1 to 4 of 5.23.1 found and closed the rest (A1 to A3, N2, N3, N7, N8,
-N10, M2, M4, Q4).
+`install.install` replaces an installed runtime only on the principal's code for exactly the
+staged copy, or on the release launcher's own run with none; a release older than the running one
+is a rollback, which needs his code on every route, and no keyword passes that. One install runs
+at a time in a synthesis home, under a lock (its file is one this user may only write, so no
+program that only reads can hold it). Review rounds 1 to 4 of 5.23.1 found and closed the rest
+(A1 to A3, N2, N3, N7, N8, N10, M2, M4, Q4).
 
 ## What the script refuses, and why
 

@@ -6,6 +6,76 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
 
 ## [5.23.1] - 2026-11-15
 
+- **The runtime the guard runs changes only on the principal's code** (review round 2 of 5.23.1, N5 and N6, both live
+  in 5.23.0; his sandbox rulings of 2026-11-15). `synthesis install <folder>` made any folder the runtime with no code,
+  by PATH and by `~/.synthesis/v5/bin/synthesis`, since the guard read it as a program that names no protected folder,
+  and the version floor read only what the folder said about itself. `synthesis uninstall` removed `current`, the
+  launchers and the releases with no code, and the next session start's bootstrap then installed the harness folder's
+  own code as a first install. Now a command that installs a runtime from a folder, removes it or writes its launchers
+  again waits for the principal's code for that exact command, run in the folder it was asked from, with each folder it
+  installs from bound by the hash of its runtime (a folder changed after the code asks again): `synthesis install`
+  with or without a folder and `synthesis uninstall`, by PATH, the stable path, a link, `python -m synthesis.cli`, `-m
+  synthesis` or `-m synthesis.install`, the CLI's module or any `synthesis/install.py` run by path (the runtime's own
+  had passed as the plugin's), the CLI's script read by a shell, behind `env`, `nohup`, `xargs`, `find -exec` or `uv
+  run`, in every harness's shell. The CLI's own parser reads the words (`cli.parsed`, which the CLI dispatches with
+  too), so help, `uninstall --dry-run` and words the CLI refuses need no code; a word the guard cannot read makes the
+  command wait. A Python program's import of synthesis is read wherever a statement may start:
+  `python3 -c "import sys; from synthesis import install; install.install(...)"` had passed, since the guard looked for
+  the import only at the start of a line. A name or a file of synthesis's handed to a loader is refused.
+- **A session start installs only into a home no runtime has been in.** It installed the plugin folder's runtime
+  whenever that folder carried a newer release, and the bootstrap installed whatever the folder held whenever the
+  stable hook was missing. That folder is the harness's own plugin cache, which the guard does not protect. Now both
+  install only where the synthesis home holds none of `releases`, `current`, `bin`, `git-hooks`, `state`, `board` or
+  `sessions` (`install.traces`; `install.py` passes `synthesis install --first`): an installed runtime is never replaced
+  from that folder, at any version, and a home a runtime has left, by uninstall or any other route, keeps its state,
+  board and archive, so no session start installs there again. The bootstrap says so on stderr, and every guarded call
+  is held until setup or the release script installs a runtime. The doctor's package check no longer says a session
+  start updates the runtime. `docs/runtime-integration.md` states what stays open: the bootstrap runs the plugin
+  folder's own code and `hooks.json` lives in that folder, so an agent that rewrites the harness's plugin cache changes
+  what the next session start runs; sealing the plugin caches belongs to the sandbox.
+- **Measured first**, over 60 days of this Mac's records, read only (263,900 shell commands: 115,777 in Claude Code and
+  148,123 in Codex; the controls found 4,961 `git commit`, 1,001 `synthesis claim` and 965 `synthesis who` runs):
+  `synthesis uninstall` never ran; `synthesis install` ran twice (once from a folder, once for its help); the
+  runtime's `install.py` by path 6 times (4 into a test's own home); setup.py's plugin install twice; the release script
+  154 times and its dry run 57 (both already waited, run from a checkout); `update`, which v5 does not have, 13 times;
+  42 Python programs called the installer (4 into a test's own home). Replayed after review round 1 of 22.18 through
+  5.23.0's guard and this one, each from its installed runtime as the hook runs it (6,997 commands: each that names the
+  CLI near install or uninstall, setup.py, release.py or install.py, or holds a Python import of synthesis the old
+  reading missed), 12 now wait or are refused, on 6 days: two runs of a copy's `install.py` in a temporary folder; three
+  programs that import synthesis after a `;` and name its doctor's or its wait's writer; and seven that import it after
+  a `;`, or load its file, in a way the reader cannot follow, refused as the same program is when its import starts a
+  line. Eight of the twelve are test or probe work by their own marks (a temporary folder, a home of their own, pytest).
+- **How it was checked.** Tests first, committed alone: 50 of them failed on the code before. The runtime's own entry
+  points are also judged by the installed runtime's guard, where its install.py had passed as the plugin's.
+- **Install and uninstall themselves spend the principal's code** (review round 1 of 22.18, H1; review round 4 of 5.23.1,
+  Q4). The guard held the CLI only where it was the command on the line, so a script run by `sh`, by its path or
+  sourced, Python's `subprocess` or `os.system`, a Python file, perl, awk, a git alias, a make recipe, a wrapper of
+  another name, `crontab` or `at` reached it with no code, and a program could call `install.install` itself. Now
+  `install.install` and `install.uninstall`, which the CLI, install.py's main, setup.py and the release script all run
+  through, refuse to replace or remove a runtime in a home that shows one (`install.traces`) unless a live grant the
+  principal's prompt backs names that exact change; otherwise they file the request and raise `install.Unapproved` with
+  what the hook says. The hook asks for the same subject where it reads the CLI as the command and only checks it, so
+  the principal approves before the run and the install spends it. Where no runtime runs the prompt hook (after an
+  uninstall), the session's own record showing the code is enough (`approvals.answered`). The first install, help, a dry
+  run and words the CLI refuses need no code. That holds for every route that starts the CLI, setup.py or the release
+  script as a process of its own. A program that runs in the installer's own process (imports it and calls it, or puts
+  its own function in place of the check) is held only by the guard's reading of that program, which holds it where it
+  spells the installer and passes it where it builds the names at run time, the guard's documented residual (review
+  round 2 of 22.18, K1). setup.py takes `--session` for the session the principal types the code in, from his own
+  terminal, where no harness gives one, and passes it to the install and the uninstall (K2).
+- **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
+  the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
+  hook's check was what got installed. Now `package_digest` is the sha256 of every file an install copies (the whole
+  package with its folders, the stable scripts and the CHANGELOG, each by its path and length); the install stages that
+  copy in the protected releases folder, hashes the copy, checks it and installs from it. `synthesis install` with no
+  folder binds the CLI's own folder the same way, and a bare `synthesis` that PATH resolves to anything but the stable
+  launcher is not read as the CLI. A release older than the running one is a subject of its own, `rollback`, named to
+  the principal as a downgrade with both versions. The release tool's own install needs no code only where the process
+  is that tool inside the protected runtime, started isolated (`-I -S`), and never for a rollback
+  (`install.release_route`); run from a checkout, as main runs it, its install stage waits for the code. That test trusts
+  the process's main program, which a program in the same process can set, until 22.8's launcher replaces it with a grant
+  the hook issues when it lets the launcher's line through (K1).
+
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
   approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
   Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
@@ -52,17 +122,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   notes, exports Muse's bundle, verifies every harness and installs the runtime from that clone alone; the runtime's
   staged copy must hold the tag's listing before `current` moves, and a clone gone before then stops the run. A run
   removes only its own clone, and another run's only when that run is gone and the clone is over six hours old.
-  `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. `install.install`
-  refuses a folder that declares a version older than the running runtime, read when it starts and again, under a
-  lock on the synthesis home, just before `current` moves (review round 3; the lock's file is one this user may only
-  write, so no program that only reads can hold it). It does so for every caller: no keyword passes the floor, since
-  any program in the process could pass one (round 4, Q4), so until the principal's grant of a rollback lands (the
-  separate change below) no route installs an older release. The guard holds a program that names `install`, or its
-  locked half, where the program's import starts a line; one whose import follows a semicolon passes this release
-  until that change's reading of imports lands. With no interpreter to pin, install stops and names what to install,
-  and Apple's `/usr/bin/python3` shim is never pinned. What a folder declares is its own claim, so the CLI's
-  `synthesis install <folder>` and `synthesis uninstall`, which pass with no code, stay open until they wait for the
-  principal's code (a separate change).
+  `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. An install of a
+  release older than the running one is a rollback, which needs the principal's code on every route (above); no
+  keyword passes it, since any program in the process could pass one (round 4, Q4). One install runs at a time in a
+  synthesis home, from that check to the switch of `current`, under a lock (review round 3; the lock's file is one this
+  user may only write, so no program that only reads can hold it). With no interpreter to pin, install stops and names
+  what to install, and Apple's `/usr/bin/python3` shim is never pinned.
 - **Commands are judged in every folder they may run in**: a Codex `workdir`, a terminal tab's `cwd`, `env -C` and
   `git -C` by their real paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1); a
   shell's `cd`, `pushd` and `popd` by their text and by their real paths (`cd -P`, `set -P`, zsh's `chase_dots` and
@@ -95,6 +160,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
   1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
   answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **An approval is spent only once it is confirmed, and confirming it reads only the record written since it was
+  granted.** A Codex session's record had grown to 1.9 GB. The principal typed two codes; the guard deleted each grant
+  and then read the record from its start for the prompt, which took 4.6 s, past the hook's 4 s deadline. The calls
+  were held with the grants gone, so each identical retry asked for a new code and neither call ran. The guard now
+  reads the grant, finds the prompt, and only then spends it; a grant changed while it was checked is never used. The
+  prompt hook records how long the session's record was when the principal typed, and the check reads back from the
+  end to 16 MB before that point, and the whole line there, so older lines written after the prompt (a compaction
+  block) cannot hide it: 0.02 s on that record. A grant filed before this release, or by a harness whose prompt names
+  no record, keeps the approval window's time rule. Nothing a call's decisions record stands until its answer (a
+  window's send is counted at once and marked settled or undone then): a call that is held, at the deadline or by a
+  later check, ran nothing, so it gives back the grants it used and leaves no record of a send, a send window's count,
+  a deploy for the 45-minute brake, or a grant voided by the code that released it; the hook settles them as it
+  answers, and a check a script enters itself (the local-messaging sender's) settles them when it returns. A record
+  that cannot be written holds the call, undoes the records written before it (a deploy another call recorded
+  meanwhile stays, and a desktop page's record of typed words released by their code is not undone) and gives back
+  its grants, and the answer still goes out. In one process, one thread judges at a time and another waits its turn,
+  the send lock too, and the hook settles only the call its own check judged. A grant given back appears whole or not
+  at all. A window closes once its last planned send has gone, so a send held after another went leaves its place to
+  the window, and desktop window sends are judged one at a time like the others. The guard's 4 s deadline counts from
+  when the hook process loaded, and an alarm that lands as the deadline is taken down still holds the call; a hold
+  answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
+  records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
+  approved again once.
 
 ## [5.23.0] - 2026-11-15
 

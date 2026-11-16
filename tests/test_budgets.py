@@ -1390,10 +1390,116 @@ ROOT = Path(__file__).resolve().parents[1]
 # Q3); check_self_grant 5 fewer and _CD_REAL with its comment 5 fewer (the physical pass and its flags gone, the
 # unplaced wait added); the blank lines between the new functions 22. _simple hands on the operator after each command
 # in place. install.py: the rollback keyword gone (Q4), and CDPATH and OLDPWD kept by the launchers, in place.
+# Then core and plugin each 64 more, all in approvals.py, so a grant is read before it is spent and finding the
+# principal's prompt reads only the approval window (a Codex record of 1.9 GB took 4.6 s to read from its start, past the
+# hook's 4 s, after the grants had been deleted): _lines_back 16 (a record's lines from its end), _spend 13 (a grant taken
+# once, the bytes it held returned), _stamps 10 (every time a line carries), typed 9 more (read from the end; a run of
+# lines older than the window ends it), consume 6 more (read, check, then spend; a grant changed during the check is
+# never used), STAMP and the run's two constants 2, and the new functions' 8 blank lines.
+# Then each 46 more, from that fix's review round 1 (a compaction block of older lines after the prompt ended the search
+# before it; a long line was read in time proportional to its length squared; a deadline later in the same call lost a
+# grant spent earlier): approvals.py 42 (give_back 13 and SPENT 1, with 4 blank lines: a call that is held gives back the
+# grants it used; _lines_back 9 more, a long line kept as its pieces and read back only to a position; grant_from_prompt
+# 5 more, the record's size when he typed; typed 3 more, read back to that position; consume 3 more, what it used noted;
+# _stamps 2 more, a number read by its length; MARGIN 1; backed 1 more), hook.py 4 (pre_tool_use: the list cleared, and
+# the grants given back when the call is held).
+# Then each 101 more, from that fix's review round 2 (a deploy, a send, a send window's count and a voided grant stayed
+# recorded when a later check of the same call held it, so the retry was refused; a grant given back could be found half
+# written; a prompt line longer than the margin was cut): the hook is now the boundary, writing a call's records only
+# when it lets the call through. guards.py 45: settle 10 (each record written if the call is let through, undone in
+# reverse if it is held, the grants kept spent or given back), _after 4 and _void 4 (a record queued; a grant voided at
+# once and put back if the call is held), EFFECTS and UNDER_HOOK 2, with 8 blank lines; check 15 more (its body moved to
+# _check, the records settled here for a direct caller, also when the check raises); _record_deploys 6 with 2 blank lines
+# (the deploy brake's record, written at settle), less check_deploy 3 and check_outgoing 3 (their records queued in
+# place). approvals.py 33: put_back 21 with 2 blank lines (a grant written beside its place and linked in, so it appears
+# whole or not at all; a write that takes only part), less give_back 7 (it calls put_back); void 7 more (it returns what
+# it removed); _lines_back 10 more (the line holding the read's first byte read whole). sends.py 17: undo 8 with 2 blank
+# lines (a window's send counted at once and undone if its call is held), log 4 more (an id per send, its mark
+# returned), ledger 3 more (an undone send left out). hook.py 6: BEGAN 1 with its blank line (the deadline counts from
+# the process's start), pre_tool_use 4 more (the guard's records settled when it answers; an answer later than a harness
+# waits keeps them).
+# Then each 49 more, from review round 3 (a sender that runs check_send itself left no record of an approved send; a
+# record that could not be written ended the hook with no answer, so Claude Code ran a held call; two window sends counted
+# at once lost a planned send when the second was held; an agent's program could call the guard's new writers):
+# guards.py 30: _entry 23 with 2 blank lines (the first check a caller enters starts the call's records and settles them
+# unless the hook answers; check, check_send, check_deploy, check_desktop, check_driven and check_outgoing are entries,
+# their 6 decorator lines), _DEPTH 1, settle 6 more (each record its own, the first failure raised after the rest),
+# check_desktop 1 more (the window decision under the send lock), the guard's writers in SYNTHESIS_WRITES 1, less check
+# 10 (its wrapper is _entry). sends.py 16: _note 7 and _rows 3, with 4 blank lines (a line about a send, "undone" or
+# "settled"; a day's lines), settle 4 more and spent 3 more (the window closes once its last planned send has gone, so
+# one still being judged keeps it open), less undo 4 and ledger 1. hook.py 3: pre_tool_use 3 more (a record that cannot
+# be written holds the call, and the answer still goes out).
+# Then each 51 more, from review round 4 (two threads would share a call's records; an interrupt left the hook's flag
+# on; a call held because its record failed kept its grants spent and the records before it; the send lock taken inside
+# itself waited for ever): guards.py 34: _record_deploys 10 more (the deploy record put back as it was if a later record
+# fails), _logged 6 with 2 blank lines (a send's line, undone the same way), _entry 8 more (one thread judges at a time;
+# the first entered puts the depth back however it ends), _JUDGING 1 and `import _thread` 1, settle 6 more (a call whose
+# record fails is held: every record undone and its grants given back). approvals.py 15: alone 12 more (taken again
+# inside itself in one process, it does not lock again), _ALONE 1 with 2 blank lines. hook.py 2: pre_tool_use 2 more
+# (the hook's flag put back however the check ended).
+# Then each 37 more, from review round 5 and CI on b458c09f (refusing a second thread broke two identical calls at once,
+# which the send lock serializes; the hook settled another thread's records; the send lock's count was the process's; an
+# interrupt just after the guard was taken left it taken; putting back a deploy record erased another call's; an alarm
+# as the deadline was taken down escaped the hook with no answer): guards.py 32: answered 7 and hook_answers 3, with 4
+# blank lines (the hook settles only the call its own check judged, in the thread it answers for), _PENDING 1, _swap 6
+# with 2 blank lines (a file replaced whole), _entry 4 more (a second thread waits its turn; the lock taken and freed
+# inside the try; the hook's call's records kept for its answer), settle 4 more (the records given, or the current
+# check's), _record_deploys 1 more (a deploy recorded meanwhile stays). hook.py 10: pre_tool_use 3 more (an alarm as the
+# deadline is taken down still holds; an interrupt settles as held), _answer 5 with 2 blank lines. approvals.py 5 fewer:
+# alone 2 more (the thread that holds the lock) and `import _thread` 1, less give_back 6 and its 2 blank lines (settle
+# puts back the grants it is given).
+# Then each 21 more, all in guards.py, from review round 6 (a commit that entered the guard while it settled waited for
+# ever; the alarm in a check's own finally left the hook's call unsettled; a thread inside the send lock entering a check
+# could wait on a thread waiting for the lock): answered 9 more (a check cut short in its own finally: what it left is
+# settled and the guard freed), _entry 8 more (no entry while this thread settles or holds the send lock; the hook's
+# call marked as entered; the depth and the lock put back last), hook_answers 3 more (records an unanswered call left
+# stand), _SETTLING 1.
+# Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
+# records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
+# no check entered while the answer settles them.
+# 5.23.1, the runtime changes only on the principal's code (review round 2, N5 and N6; his sandbox rulings of
+# 2026-11-15): core 156 more and plugin 156, measured. guards.py 120: check_runtime 26 (the hold, bound to the command,
+# the folder it runs in and each folder's runtime hash; the line read as written too where it uses a variable it does
+# not set; with its blank lines), _cli_words 24 (the CLI's words by every spelling: its name, a link, -m, its module or
+# install.py by path, a shell, a runner), _runtime_change 25 (what it does to the runtime, said for the principal; a
+# folder it cannot read bound as such), _cli_reads 20 (the CLI's own parser reads the words; a word the guard cannot
+# read waits), _named_cli 7, the section's comment 4, RUNNERS and CLI_MODULES 4, SYNTHESIS_IMPORT 1 (an import wherever
+# a statement may start) and SYNTHESIS_LOADED 2 (a name or a file of synthesis's handed to a loader), _synthesis_reach 6
+# (such a file, loaded 2; one only opened runs only by exec or eval 2, so a syntax check passes; the runtime named for
+# what an installer writes 2) and the dispatch 1. install.py 22: traces and TRACES 10
+# (what a runtime leaves in a home), install 8 (first_only: kept where the runtime is whole, refused loudly where it is
+# not), the module's docstring 2 and uninstall's last report line 2. cli.py 14: parsed 13 and command_at 6 (one reading
+# of the CLI's words for it and for the guard), less _main's 6, and `install --first` 1. hook.py and doctor.py change
+# lines in place.
+# 22.18's review round 1 (H1, H2) and 5.23.1's round 4 (Q4): install and uninstall themselves spend the principal's
+# code for the install that happens: core 160 more and plugin 165, measured. install.py 116: approval 17 (spends the code,
+# or files the request and says what the hook says; the session's own record where no hook ran), _stage 16 (the copy
+# made in the protected releases folder, from which the install is made), _read 14 (a regular file's bytes, opened
+# without waiting), _files 12 (every file an install copies), release_route 12 (the release tool from the protected
+# runtime, started isolated), change 10 (an install's subject and words, a rollback named as a downgrade), package_digest
+# 10 (sha256 of each file by its path and length), subject 9, uninstall 8 (it spends the code itself), install 5 (the
+# check on the staged copy, the release route, the day-end copies from the installed release), Unapproved 4,
+# RELEASE_TOOL 3 and the stat import 1, less package_hash's 5. approvals.py 19: answered (the code as the session's record
+# shows it, where no prompt hook made a grant). cli.py 16: _shell 8 (the session a shell belongs to), cmd_install 5 and
+# cmd_uninstall 3 (through install and uninstall, a refusal said). guards.py 9: _cli_words 7 (the CLI's own folder; a
+# bare `synthesis` PATH finds elsewhere is no CLI) and _runtime_change 4 (the install's own subject), less check_runtime's
+# 2 (it checks the grant and spends nothing). setup.py 1 and release.py 4: a refused install is said, not raised.
+# Merged with main at b8efb5ee (5.23.1's approval fix, 2026-11-15): main's ceilings (core 16881, plugin 42953) and this
+# branch's two itemized raises above (core 156 and 160, plugin 156 and 165): core 17197 and plugin 43274, measured.
+# 22.18's review round 2 (K1, K2): core 1 more and plugin 10, measured. install.py 1: release_route's docstring says it
+# trusts the process's main program until 22.8's launcher brings a grant the hook issues. setup.py 9: `--session` 2,
+# main 5 (a shell acts only as its own session; the session handed to the install and the uninstall), install_runtime's
+# docstring 2; install_runtime's and _uninstall's own lines change in place.
+# Releases from the runtime (22.8) merged with 22.18 at 71198117, which carries main at b8efb5ee: 22.18's ceilings (core
+# 17198, plugin 43284) and 22.8's itemized raises above from main at 82412084 (16507 and 42579 there: core 636, plugin
+# 783), less 4 each that the merge's own lines save, measured: install.py 4 fewer (the floor's `_older` gone, as 22.18's
+# rollback kind is the floor; `traces` reads a releases folder holding only the release tool's clone, a staged copy or
+# install's lock as no release; install's docstring and its locked half joined), guards.py 1 more (the writers list),
+# cli.py 1 fewer (the install call joined).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17143
-PLUGIN_BUDGET = 43362
+CORE_BUDGET = 17830
+PLUGIN_BUDGET = 44063
 
 
 def _lines(files):
@@ -1411,7 +1517,7 @@ def test_whole_plugin_stays_within_its_budget():
 
 # What the modules a pre-tool-use call for a shell command loads import as they load, by the module that asks.
 HOOK_NEEDS = ("json", "os", "re", "signal", "sys", "time",                        # hook.py (signal: its deadline)
-              "__future__", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py
+              "__future__", "_thread", "datetime", "fnmatch", "itertools", "math", "shlex",  # guards.py (_thread: loaded at start)
               "hashlib", "pathlib", "unicodedata",                                # approvals.py and paths.py
               "base64", "contextlib", "dataclasses",                              # board.py
               "urllib.parse")                                                     # sends.py

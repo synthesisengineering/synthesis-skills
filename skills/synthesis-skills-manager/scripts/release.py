@@ -634,6 +634,10 @@ def main(argv=None) -> int:
         lines += installed
         if not args.dry_run:  # the stable runtime from the clone, its staged copy checked against the tag's listing
             lines.append(install.install(clone, expected=runtime_listing(clone, f"v{version}")))
+    except install.Unapproved as exc:  # the runtime waits for the principal's code: a rollback, or no grant from the hook
+        print("\n".join(lines + [f"runtime: {exc}"] + ([f"the release train ({train}) stays claimed by this session"] if train else [])),
+              flush=True)
+        return 2
     except (setup.SetupError, install.Refused) as exc:
         print("\n".join(lines + [f"stopped: {exc}"] + ([f"the release train ({train}) stays claimed by this "
                                                          "session; fix the cause and rerun"] if train else [])))
