@@ -4628,8 +4628,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
-GRANTING = re.compile(r"\b(?:%s)\b" % "|".join(sorted(re.escape(w) for w in SYNTHESIS_WRITES if w.split(".")[0] in (
-    "approvals", "sends", "guards", "hook", "cli", "commit_check", "paths"))))  # the writers approvals rest on; the board's grant nothing
+GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
+                                                                    "paths"))  # the writers approvals rest on; the board's grant nothing
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
@@ -5151,20 +5151,60 @@ def _isolates_home(text: str, autouse: bool = True) -> bool:
         any(a.arg in fixtures for a in t.args.args + t.args.kwonlyargs) for t in tests))
 
 
-def _at_import(text: str) -> bool:
-    """Whether what a test module or a conftest runs as pytest collects it, before any fixture, reaches synthesis's code:
-    a writer named, a path of synthesis's taken (`STATE = paths.state()`, written through later), or synthesis loaded
-    another way, at its top level or in a class body, decorators and defaults included (review round 1 of 22.21)."""
+XUNIT = frozenset({"setup_module", "teardown_module", "setUpModule", "tearDownModule", "setup_class", "teardown_class", "setUpClass",
+                   "tearDownClass", "setup_function", "teardown_function", "setup_method", "teardown_method", "setup", "teardown"})
+
+
+def _writers_named(text: str) -> set:
+    """Each of synthesis's writers a program names, under whatever name it imports synthesis's code by (`import
+    synthesis.sends as s`, a function imported under another name), and through `getattr(module, '<name written out>')`,
+    as the reader of a script spells them (review round 2 of 22.21); a name built at run time is not read."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return set()
+    bound = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            bound.update({a.asname or "synthesis": a.name if a.asname else "synthesis" for a in n.names if a.name.split(".")[0] == "synthesis"})
+        elif isinstance(n, ast.ImportFrom) and not n.level and (n.module or "").split(".")[0] == "synthesis":
+            bound.update({a.asname or a.name: f"{n.module}.{a.name}" for a in n.names})
+
+    def spelt(node) -> str:
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "getattr" and len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+            return f"{spelt(node.args[0])}.{node.args[1].value}" if spelt(node.args[0]) else ""
+        return bound.get(node.id, "") if isinstance(node, ast.Name) else (f"{spelt(node.value)}.{node.attr}" if spelt(node.value) else "") if isinstance(
+            node, ast.Attribute) else ""
+    return {w for n in ast.walk(tree) for w in [".".join(spelt(n).split(".")[1:3])] if w in SYNTHESIS_WRITES}
+
+
+def _outside_tests(text: str) -> bool:
+    """Whether what a test module or a conftest runs outside its tests reaches synthesis's code: a writer named, a path
+    of synthesis's taken (`STATE = paths.state()`, written through later), or synthesis loaded another way. That is its
+    top level and its class bodies, decorators and defaults included, with the file's own functions they call; xunit
+    setup and teardown; pytest's hooks; and fixtures scoped wider than a function. Only a test, and the function-scoped
+    fixtures it uses, run under the fixture that isolates the home (review rounds 1 and 2 of 22.21)."""
     import ast
     try:
         tree = ast.parse(text)
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         return False
-    for n in ast.walk(tree):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            n.body = [ast.Pass()]  # what a function holds runs when it is called, under the fixtures in force
+    functions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    bodies, own = {id(f): f.body for f in functions}, {f.name for f in tree.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    fixture = {id(f) for f in functions for d in f.decorator_list if "fixture" in (getattr(getattr(d, "func", d), "attr", "") or getattr(getattr(d, "func", d), "id", ""))}
+    keep = {id(f) for f in functions if (f.name in XUNIT and id(f) not in fixture) or f.name.startswith("pytest_") or any(  # a fixture by its scope
+        k.arg == "scope" and getattr(k.value, "value", "") != "function" for d in f.decorator_list for k in getattr(d, "keywords", []))}
+    while True:  # the file's own functions that code outside its tests calls run there too
+        for f in functions:
+            f.body = bodies[id(f)] if id(f) in keep else [ast.Pass()]
+        called = {c.func.id for c in ast.walk(tree) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in own}
+        more = {id(f) for f in functions if f.name in called and f in tree.body} - keep
+        if not more:
+            break
+        keep |= more
     top = ast.unparse(tree)
-    return _synthesis_reach(top)[0] in ("names", "places") or bool(_synthesis_loads([top], [], "/"))  # a name built to hide one is crafted
+    return bool(_writers_named(top)) or _synthesis_reach(top)[0] in ("names", "places") or bool(_synthesis_loads([top], [], "/"))
 
 
 def _pytest_reach(words: list, where: str) -> str:
@@ -5177,6 +5217,10 @@ def _pytest_reach(words: list, where: str) -> str:
     args, i = [], at + 1
     while i < len(words):
         args, i = (args, i + 1 + (words[i] in PYTEST_VALUES)) if words[i].startswith("-") else (args + [words[i].split("::")[0]], i + 1)
+    for plugin in [os.path.join(where, (w[2:] or "".join(words[k + 1:k + 2])) + ".py") for k, w in enumerate(words) if w.startswith("-p")]:
+        code = _code_of(plugin) if os.path.isfile(plugin) else ""  # a plugin of its own, named with -p: all of it runs outside the tests
+        if code and (_writers_named(code) & GRANTING or _synthesis_loads([code], [], where)):
+            return f"{plugin}, a plugin of its own that reaches synthesis's writers outside every test"
     files = []
     for root in [os.path.join(where, os.path.expanduser(a)) for a in args] or [where]:
         for folder, dirs, names in os.walk(root) if os.path.isdir(root) else [(os.path.dirname(root), [], [os.path.basename(root)])] * os.path.isfile(root):
@@ -5198,14 +5242,14 @@ def _pytest_reach(words: list, where: str) -> str:
         for c in conftests[folder]:
             isolating[c] = isolating[c] if c in isolating else _isolates_home(_code_of(c))
         if ((trusted and any(isolating[c] for c in conftests[folder])) or _isolates_home(_code_of(file), False)) and not any(
-                _at_import(_code_of(p)) for p in [file] + conftests[folder]):
+                _outside_tests(_code_of(p)) for p in [file] + conftests[folder]):
             continue  # under a home at a temporary path for every test, with nothing reaching synthesis as the files load
         if time.monotonic() > _CALL["until"]:
             return "more test files than this guard reads in its time"
         for path, text in [(p, _code_of(p)) for p in [file] + conftests[folder] if p not in judged]:
             judged.add(path)  # a writer named, or synthesis loaded another way; a test that patches a module changes only its process
             reach = _synthesis_reach(text) if "synthesis" in text else ("", "", None)
-            why = ("names one of synthesis's writers that approvals rest on" if reach[0] == "names" and GRANTING.search(text)
+            why = ("names one of synthesis's writers that approvals rest on" if _writers_named(text) & GRANTING
                    else _synthesis_loads([text], [], where) if "synthesis" in text else "")
             if why:
                 return f"{path}, which {why}, with no conftest that puts the synthesis home at a temporary path for every test"

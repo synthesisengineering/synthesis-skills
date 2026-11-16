@@ -575,8 +575,9 @@ stay open, and no hook running as that same user can close them:
   network and piped or substituted into a shell (`curl … | sh`, `bash <(curl …)`) is not
   read, nor is a test placed under a conftest that isolates the synthesis home and then
   undoes it (deleting or re-pointing `SYNTHESIS_HOME`, overriding the `tmp_path` fixture), or
-  that reaches a writer as the file loads by a name it builds (plan item 22.21 and its review
-  round 1; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
+  that reaches a writer outside its tests by a name it builds at run time (`getattr` with a name
+  joined from pieces, a call through a name it assigns), or through a plugin installed rather
+  than its own (plan item 22.21 and its review rounds 1 and 2; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
   `nox`) are ordinary and their tests are not yet read. One that loads synthesis
   through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
   text that says synthesis waits for the principal's code, or is refused on the line.

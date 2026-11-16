@@ -31,8 +31,11 @@ it runs is the synthesis home's own. For pytest, the test files it collects and 
 writer approvals rest on, or synthesis loaded another way, unless each test file runs with the synthesis home at a
 temporary path for every test. That is trusted only from a fixture that sets `SYNTHESIS_HOME` (or `HOME`) from the
 test's `tmp_path` and is autouse, in a conftest above the file or in the file itself, or that every test in the file
-requests. Nothing that runs as a file loads counts: a writer named, a path of synthesis's taken or synthesis loaded at a
-test module's or a conftest's top level, in a class body, a decorator or a default leaves that file read.
+requests. Only a test, and the function-scoped fixtures it uses, run under that fixture: a writer named (under any name
+it is imported by, or through `getattr` with its name written out), a path of synthesis's taken, or synthesis loaded
+anywhere else leaves that file read. That is a test module's or a conftest's top level, its class bodies, decorators and
+defaults, the file's own functions they call, xunit setup and teardown, fixtures scoped wider than a function, pytest's
+hooks, and a plugin of the agent's own named with `-p`.
 
 ## Contents
 

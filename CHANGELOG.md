@@ -75,14 +75,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   each test file runs with the synthesis home at a temporary path for every test: under a fixture that sets
   `SYNTHESIS_HOME` (or `HOME`) from the test's `tmp_path` and is autouse, in a conftest above the file or in the file
   itself, or that every test in the file requests, as synthesis's own conftests do, so the suite runs from its checkout
-  or a worktree with no code. Nothing that runs as a file loads counts as isolated: a writer named, a path of
-  synthesis's taken (`STATE = paths.state()`) or synthesis loaded at a test module's or a conftest's top level, in a
-  class body, a decorator or a default leaves that file read. An import after `;` on a program's line counts as one at
-  a line's start. Of 73,816 shell commands recorded over 60 days, 111 newly wait: 99 runs of tests that set the home
-  at a temporary path only inside a test's body or through a fixture not every test in the file requests, 6 runs of
-  probe and measurement tests with no isolation the guard can read, and 6 programs whose import after a `;` names one of
-  synthesis's writers, as the same program on separate lines already did; a planted shell script and a planted test
-  file wait too.
+  or a worktree with no code. Only a test, and the function-scoped fixtures it uses, run under that fixture; a writer
+  named, a path of synthesis's taken (`STATE = paths.state()`) or synthesis loaded anywhere else leaves the file read:
+  at a test module's or a conftest's top level, in a class body, a decorator or a default, in the file's own functions
+  those call, in xunit setup and teardown (`setup_module`, `setup_class` and their like), in a fixture scoped wider than
+  a function, in pytest's hooks, or in a plugin of its own named with `-p`. A writer is read under any name it is
+  imported by, and through `getattr` with its name written out. An import after `;` on a program's line counts as one at
+  a line's start. Of 73,887 shell commands recorded over 60 days, 12 newly wait: 6 runs of probe and measurement tests
+  with no isolation the guard can read, and 6 programs whose import after a `;` names one of synthesis's writers, as the
+  same program on separate lines already did; a planted shell script and a planted test file wait too.
 
 ## [5.23.0] - 2026-11-15
 

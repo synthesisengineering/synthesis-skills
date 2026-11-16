@@ -1401,10 +1401,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # 2 more (the launcher trusted only where the `current` it runs is the synthesis home's own), _isolates_home 1 more (a
 # test file's own fixture counts only when autouse or every test requests it; nothing that runs at import, which a
 # conftest's environment set from mkdtemp was), _pytest_reach 1 more (what runs at import leaves a file read).
+# Then each 44 more, all in guards.py, from 22.21's review round 2 (writers that ran outside the tests were trusted as
+# isolated: at load through an alias, getattr with the name written out or a helper the file calls; in xunit setup, a
+# module-scoped fixture or pytest's hooks): _outside_tests 26 in place of _at_import's 14 (what runs outside a test:
+# the top level and class bodies with the file's own functions they call, xunit setup and teardown, pytest's hooks and
+# fixtures scoped wider than a function), _writers_named 22 (each writer named, under any name it is imported by and
+# through getattr with its name written out, in place of a pattern of the names), _pytest_reach 4 more (a plugin of its
+# own named with -p), XUNIT 2, and their blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17146
-PLUGIN_BUDGET = 43218
+CORE_BUDGET = 17190
+PLUGIN_BUDGET = 43262
 
 
 def _lines(files):
