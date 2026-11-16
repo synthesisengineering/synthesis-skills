@@ -120,3 +120,49 @@ def test_prose_stays_prose_and_only_a_file_the_program_writes_and_starts_counts(
 def test_a_reach_of_the_functions_in_code_is_still_refused(tmp_path, line):
     said = _said(line, tmp_path)
     assert said.startswith("Refused") or "approve followed by the code" in said, (line, said)
+
+
+def _py(program: str) -> str:
+    return "python3 - <<'EOF'\n" + program + "\nEOF" if "\n" in program else "python3 -c " + shlex.quote(program)
+
+
+SHELLED = "\"python3 -c '" + CALL + "'\""
+REACHED = {  # review round 2 of 22.22: what reaches a started program is read through each way a program hands it on
+    "a module alias": _py("import os as o; o.system(" + SHELLED + ")"),
+    "a from-import": _py("from os import system; system(" + SHELLED + ")"),
+    "a starter looked up by name": _py("import os; getattr(os, 'system')(" + SHELLED + ")"),
+    "a starter handed on": _py("import functools, subprocess; functools.partial(subprocess.run, ['python3', '-c', " + repr(CALL) + "])()"),
+    "a with-block handle": _py("import subprocess\nwith open('s.py', 'w') as f:\n    f.write(" + repr(CALL) + ")\nsubprocess.run(['python3', 's.py'])"),
+    "its standard input": _py("import subprocess; p = subprocess.Popen(['python3'], stdin=subprocess.PIPE); p.communicate(" + repr(CALL.encode()) + ")"),
+    "a parameter": _py("import subprocess\ndef go(c):\n    subprocess.run(['python3', '-c', c])\ngo(" + repr(CALL) + ")"),
+    "a function of its own": _py("import subprocess\ndef code():\n    return " + repr(CALL) + "\nsubprocess.run(['python3', '-c', code()])"),
+    "a name given another's value": _py("import subprocess; a = " + repr(CALL) + "; b = a; subprocess.run(['python3', '-c', b])"),
+    "a list it appends to": _py("import subprocess; cmd = ['python3', '-c']; cmd.append(" + repr(CALL) + "); subprocess.run(cmd)"),
+    "adjacent strings": _py("import subprocess; subprocess.run(['python3', '-c', 'from synthesis import approvals; ' 'approvals.consume(1, 2)'])"),
+    "an f-string's text": _py("import subprocess; m = 'approvals'; subprocess.run(['python3', '-c', f'from synthesis import {m}; {m}.consume(1, 2)'])"),
+    "a module the started program imports": _py("import subprocess; open('helper.py', 'w').write(" + repr(CALL) + "); subprocess.run(['python3', '-c', 'import helper'])"),
+    "a module run by -m": _py("import subprocess; open('mod.py', 'w').write(" + repr(CALL) + "); subprocess.run(['python3', '-m', 'mod'])"),
+    "a file renamed into place": _py("import os, subprocess; open('t.txt', 'w').write(" + repr(CALL) + "); os.rename('t.txt', 's.py'); subprocess.run(['python3', 's.py'])"),
+    "a note a started shell runs": _py("import subprocess; open('n.md', 'w').write(" + repr(CALL) + "); subprocess.run('for f in *.md; do python3 \"$f\"; done', shell=True)"),
+    "the environment": _py("import os, subprocess; os.environ['C'] = " + SHELLED + "; subprocess.run('sh -c \"$C\"', shell=True)"),
+    "a node destructuring rename": "node -e " + shlex.quote("const {execSync: run} = require('child_process'); run(" + SHELLED + ")"),
+    "a node alias": "node -e " + shlex.quote("const run = require('child_process').execSync; run(" + SHELLED + ")"),
+    "a ruby backtick": "ruby -e " + shlex.quote("`python3 -c '" + CALL + "'`"),
+}
+
+
+@pytest.mark.parametrize("way", list(REACHED))
+def test_what_reaches_a_started_program_is_read_through_every_way_it_is_handed_on(tmp_path, way):
+    said = _said(REACHED[way], tmp_path)
+    assert said.startswith("Refused") or "approve followed by the code" in said, (way, said)
+
+
+@pytest.mark.parametrize("line", [
+    _py("import subprocess\nwith open('CONTEXT.md', 'w') as f:\n    f.write(\"synthesis: approvals.consume and open_window are the guard's own\\n\")\n"
+        "subprocess.run(['git', 'add', 'CONTEXT.md'])\nsubprocess.run(['git', 'commit', '-m', 'Notes'])"),
+    _py("import os; open('n.md', 'w').write('synthesis: consume is the guard\\'s'); os.system('git add n.md && git commit -m notes')"),
+])
+def test_a_note_handed_to_a_program_that_does_not_run_it_is_prose(tmp_path, line):
+    """A plain document the program writes is prose unless a started program can run it: an interpreter or a shell, or
+    the document named as the program itself."""
+    assert APPROVAL_CODE not in _said(line, tmp_path), line
