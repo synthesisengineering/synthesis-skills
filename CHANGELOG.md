@@ -557,6 +557,74 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   blocked by PreToolUse hook: ...` or `Tool call blocked by PreToolUse hook: ...`, direct or made inside a code-mode
   script) counted as run: a refused navigate placed the page a browser tool then acted on, and another session's refused
   call voided a send step.
+- **An autopilot run stops when its own work outruns the principal's, and the stop holds** (`synthesis-autopilot`
+  4.2.0, plan item 22.37(d), the principal's rulings of 2026-11-16). A review of a run's own fixes can always find one
+  more way around them, and each finding can become an item, so a plan could keep growing while the principal's own
+  work waited. Each checklist item now carries its origin: `origin: principal` when it delivers the principal's
+  request, their backlog or a build their ruling ordered (another session's request counts), `origin: self` when it
+  only fixes, reviews or re-reviews what the run produced. An item added after engagement carries `added <time>`, and
+  a checked item `closed <time>`; the template marks the items a plan starts with as principal, and a run that adopts
+  origins mid-run tags every item and stamps what closed in the last 24 hours. At every wake `cycle` counts, over the
+  last 24 hours, the principal items closed and the self-generated items added, prints both and writes them on the
+  wake's ledger line, and at each day's first wake writes the open principal items under a new `## Backlog count`
+  section. When the second outnumbers the first, or the open principal items rose two days running (the day before
+  yesterday, yesterday and today, each higher than the one before), the count stops the run until the principal
+  answers, past its 24 hours while the count's blocker is open and alerted with no answer after it, when the line says
+  the question is still waiting: `cycle --advanced` refuses the advance and prints the one line to bring them, ending
+  "Continue, narrow, or stop?" and naming any item whose origin or time it could not read; a cycle that only names a
+  wait is recorded and opens with "start nothing new until the principal answers", as does the hourly wake's prompt.
+  The stop is the one exception to never blocking a whole run on one question (binding rule 8 and the decision
+  protocol): the turn-end check asks for the line in any open status but paused, asks a run that has asked to set
+  `Status: blocked`, and names every item added or closed after the count blocker's alert until the principal is told
+  and alerted again. Only the principal's own reply lets the run go on: quoted on the `Principal answer:` line with
+  where and when they gave it, its first word continue or narrow (a reply such as "Yes, continue." is quoted from that
+  word, the whole reply kept on the checked blocker), dated after the count blocker's alert and inside the window, and
+  never written from the agent's own judgement, since the count's question is a checkpoint the principal reserved. A
+  time more than five minutes ahead, or one that cannot be read (a year such as 9999 used to end `cycle` with a
+  traceback and switch the turn-end check off), is rejected and named: a self item with such a time counts as added
+  now, a principal item as not closed, and both checks keep working. A plan written before origins counts nothing and
+  never stops, and `cycle` says so once; in a plan that counts, it names each item it could not read once. The
+  session-start brief, after compaction too, says a stopped run waits for the principal's answer and gives the line.
+  The check reads only the plan it already loaded, and each section's items once: on a 201-item plan with 2,000 ledger
+  lines and 60 days of counts the whole check took 1.0 ms under Python 3.12 and 1.4 ms under Apple's 3.9; on a real
+  620 KB plan of 146 items, with every item tagged as the run's own so the count stops it and reads each item against
+  the alert, it took 9.7 ms and 11.7 ms, and as a new process 32.3 ms where the hook budget allows 43.1, twice what
+  its standard-library modules take to load there (77.0 against 124.2 under 3.9). It imports nothing new. The fan-out
+  rules and binding rule 11 name the principal's cap of three agents at once. Binding rules 8, 11 and 14 carry these;
+  `references/plan-file.md` the convention, the answer and the template; `references/procedure.md`,
+  `references/turn-end-check.md`, the re-entry protocol and runaway control the rest. To make room for rule 14, the
+  Procedure's six numbered steps (1,313 bytes) moved word for word from SKILL.md to the new `references/procedure.md`;
+  SKILL.md keeps the helper path and a pointer, and is 7,479 bytes. The crafted ways past the count that remain (an
+  item of the run's own marked principal, a close stamped again later, one of the principal's items split in several,
+  work done during a stop without its time) are on the open list in `docs/runtime-integration.md`.
+- **A review has caps, and the coordinator holds them** (`synthesis-adversarial-review` 2.1.0). Two review rounds per
+  item, counted per item, so a fix, or a fix to a fix, never starts them again. After the second, the coordinator
+  applies the test: a finding blocks only if an honest agent would hit it in ordinary work or it appears in the
+  principal's records, and anything else goes on the open list, as the adjudicator records. The coordinator bounds the
+  review, not the reviewer. At most three agents run at once, and a release ships what has passed review and never
+  waits for another round. Binding rules 15 and 16, in full in the new `references/review-caps.md`; the findings
+  template gains a `Rounds:` line.
+- **One ordered backlog per project, and it must shrink** (`synthesis-project-management` 3.6.0). The plan CONTEXT.md
+  names holds it, each item marked with its origin as autopilot marks it. Its open principal items are written at each
+  day's first session; two rises running mean stop and re-plan with the principal. At every checkpoint, principal
+  items closed are counted against self-generated items added since the last; when, over a day, the second outnumbers
+  the first, new work stops for the principal's one line. Work goes top-down: finish, ship and install before anything
+  new, and a side quest only when it serves the principal's goals: it unblocks the current item, it is an important
+  issue that serves those goals, or the principal asked for it. Binding rules 14 to 16, in full in the new
+  `references/backlog.md`. The checkpoint's procedure leads to that count from its step 4 (`synthesis-checkpoint`
+  2.1.0).
+- **Decide what the goals already decide** (`synthesis-thinking-framework` 3.1.0). The principal's ruling of 2026-11-16:
+  when a recommendation follows from their goals, guidelines and wish for the best-quality work, the agent decides it,
+  acts, and reports it in one line. What still goes to the principal is the project's rule as the brief for this
+  change gave it: what needs their own authority (money, sends, deploys, their accounts and settings, their voice, an
+  approval only they can give, a checkpoint they reserved, whose answer is never written from the agent's own
+  judgement), or a real conflict between their goals that their rulings don't settle. The rule names its approval
+  item "an approval code", the runtime's typed approval; this skill ships in the hook-free directory package, which
+  has none and whose check refuses the phrase, so the skill says what the item means anywhere. Binding rule 10, in
+  full in `references/decision-ownership.md`. To make room, the last paragraph of "Decision ownership and execution"
+  (492 bytes, on the decisive-uncertainty method) moved word for word to the head of
+  `references/decisive-uncertainty.md`, its link now naming that file; SKILL.md keeps a one-line pointer and is 7,872
+  bytes.
 
 ## [5.23.2] - 2026-11-15
 

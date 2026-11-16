@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.1"
+  version: "3.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -27,6 +27,7 @@ A five-mode thinking methodology with a pre-response protocol. Use it to choose 
 7. **Judge every promised outcome in its own terms,** and define the observation that separates a useful result from a plausible wrong one before implementing.
 8. **When a missing fact could change the next decision,** use the decisive-uncertainty method: the cheapest credible discriminating observation, refuted predictions kept, stop when the decision is supported.
 9. **Revisit a decision only when new evidence changes its assumptions or consequences,** not merely because another skill loads.
+10. **Decide what the goals already decide.** When a recommendation follows from the principal's goals, guidelines and wish for the best-quality work, decide it, act, and report it in one line. Bring the principal only what needs their own authority (money, sends, deploys, their accounts and settings, their voice, an approval only they can give, a checkpoint they reserved, whose answer is never written from the agent's own judgement), or a real conflict between their goals that their rulings don't settle.
 
 ## Contents
 
@@ -81,4 +82,4 @@ Execute an already-decided or delegated technical choice after checking its cons
 
 For mixed-domain work, evaluate every promised outcome in its own terms. A software test does not establish writing quality, and an eloquent explanation does not establish a deployment. Define what observation would discriminate a useful result from a plausible but wrong one before implementation.
 
-Use the [decisive-uncertainty method](references/decisive-uncertainty.md) when a missing fact could change the next decision. Prefer the cheapest credible discriminating observation, retain refuted predictions, and stop when the required decision is supported. In an autopilot run, the journal adapter (synthesis-autopilot, `references/uncertainty-journal.md`) binds actual local execution to the affected acceptance closure; unsupported semantic and external-state questions remain explicit.
+The decisive-uncertainty method, with an autopilot run's journal, is in [references/decisive-uncertainty.md](references/decisive-uncertainty.md).

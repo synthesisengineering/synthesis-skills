@@ -64,3 +64,9 @@ triggers.
 | ...: optional reusable campaign; explicit feedback | — | Cut with `refresh.py`; peer reports use `synthesis msg` |
 | ...: final result and claim disposition | refresh-and-report.md ("Report") | Reworded |
 | scripts/refresh.py (REPLACE) and test_refresh.py | `synthesis resume`, `synthesis brief`, `synthesis doctor`; context doctor | tests/test_resume.py, tests/test_doctor.py, synthesis-context-lifecycle tests/test_context_doctor.py |
+
+## 2.0.2 to 2.1.0 (2026-11-16)
+
+| Change | Where |
+|---|---|
+| Procedure step 4 gains one sentence after its existing text: make the count at every checkpoint, principal items closed against self-generated items added since the last, which stops new work for the principal's one line (the principal's rulings of 2026-11-16) | SKILL.md, Procedure step 4, linking synthesis-project-management's `references/backlog.md`, "The count at every checkpoint", where the count is in full. No earlier sentence changed or moved |

@@ -33,6 +33,28 @@ The request is written as a short user message naming the open work, because a
 model that ends a turn with a summary responds best to being told exactly what
 remains and that a real blocker is an acceptable answer.
 
+**The count comes first.** While a plan that is running, waiting or blocked has
+open items, the check reads the count from the same plan
+([plan-file.md](plan-file.md#origins-and-the-count)). When the run added more of its
+own items than it closed of the principal's in the last 24 hours, or the
+principal's open items rose two days running, or the count's blocker is open and
+alerted (so the stop outlasts its 24 hours), and no answer of the principal's
+counts, the stop holds the whole run, whatever its status:
+
+- With no open blocker carrying the count's line and an alert, it asks for the one
+  line to bring the principal: "Your autopilot plan <plan> stops for its count:
+  start nothing new until the principal answers. Bring them this one line: <the
+  line> Record it under ## Blockers, alert them (autopilot_cli.py alert --kind
+  blocked) and set Status: blocked; their answer goes on the Principal answer:
+  line, their reply quoted, with where and when they gave it."
+- With that blocker alerted, it names every item added or closed after the latest
+  alert, and asks the run to tell the principal what was done and alert them
+  again; a new alert on the blocker clears it.
+- With nothing moved since, a run still marked running is asked to set
+  `Status: blocked`; a blocked or waiting run may end its turn as before.
+
+It reads nothing the plan does not hold, so the bounds below are unchanged.
+
 ## What bounds it
 
 - **At most three continuations in a row per plan.** A stop that arrives with
@@ -115,9 +137,38 @@ first_wake, backstop, blockers, questions) for tools such as the Console.
 ```text
 $ python3 -S "$AP" cycle --plan <plan> --advanced "migrated /orders; 12 tests pass"
 cycle recorded (1 in the ledger)
+note: no checklist item carries an origin, so the count counts nothing (references/plan-file.md, Origins and the count)
 $ python3 -S "$AP" cycle --plan <plan>
 refused: a cycle that advanced nothing must name the external wait it is on (--waiting-on). There is no way to record a bare spin: if nothing advanced and nothing external is awaited, the run is spinning, so record a blocker and alert, or close.
 ```
+
+That plan's items carry no origin, so the count counts nothing and says so once.
+A plan written from the template is counted. Here the run has closed one of
+the principal's items and added two of its own in the last 24 hours, so `cycle`
+refuses the advance, writes the day's count of open principal items, and prints
+the one line to bring the principal (exit 1):
+
+```text
+$ python3 -S "$AP" cycle --plan <plan> --advanced "re-reviewed the guard fix"
+refused: the count stops this run. Start nothing new until the principal answers: bring them this one line, record it under ## Blockers with its alert, and set Status: blocked. Only their own reply lets the run go on: quoted on the Principal answer: line with where and when they gave it, its first word continue or narrow, dated after the blocker's alert and after 2026-11-15T09:40-05:00.
+migrate endpoints: in the last 24 hours this run added 2 item(s) of its own and closed 1 of yours. Continue, narrow, or stop?
+```
+
+Once that line is under `## Blockers` with its alert, and the principal's reply is
+written as `Principal answer: "Continue." — chat, 2026-11-16T09:52-05:00`, the same
+advance is recorded, with the count on the wake's ledger line:
+
+```text
+$ python3 -S "$AP" cycle --plan <plan> --advanced "re-reviewed the guard fix"
+cycle recorded (1 in the ledger)
+last 24 hours: 1 principal item(s) closed, 2 self-generated item(s) added; 1 principal item(s) open
+```
+
+A cycle with only `--waiting-on` is recorded while the count stops the run. Its
+output opens with "the count stops this run: start nothing new until the principal
+answers. The one line:" and the line, before its own. In a plan that counts,
+`cycle` names each item whose origin or time it could not read, once, the first
+time it finds it.
 
 **Close** with `--done`, `--incomplete "<reason>"` or `--cancelled "<reason>"`.
 It refuses (exit 1, plan unchanged) with every problem listed, then on success
@@ -156,7 +207,7 @@ delivered one; the written report in the plan is always required.
 
 ```text
 $ python3 -S "$AP" wake-prompt --plan <plan>
-Autopilot wake for the plan at <plan>. Read that plan before anything else. If its Status is done, incomplete or cancelled, do no work: delete this scheduled job, read the deletion back, and stop. If another session owns it, run `autopilot_cli.py status --all`; take it over only when the plan has been silent longer than its Silent after: line allows, otherwise message the owner and stop. Otherwise verify the plan's state against git and the files on disk, record this wake in the cycle ledger, and continue the next open checklist item.
+Autopilot wake for the plan at <plan>. Read that plan before anything else. If its Status is done, incomplete or cancelled, do no work: delete this scheduled job, read the deletion back, and stop. If another session owns it, run `autopilot_cli.py status --all`; take it over only when the plan has been silent longer than its Silent after: line allows, otherwise message the owner and stop. Otherwise verify the plan's state against git and the files on disk, record this wake in the cycle ledger, and continue the next open checklist item, unless `cycle` says the count stops the run: then start nothing new until the principal answers.
 ```
 
 **Takeover** of a plan whose owner has gone silent past `Silent after:`:
@@ -173,7 +224,9 @@ finds a board notice at its next prompt.
 contract as `reply_check.check`; `evaluate(payload, config)` returns
 `(reason, note)` so the hook can also print the cap note as `systemMessage`; and
 `brief(payload) -> str` is a one-paragraph reminder of the owned run for the
-session-start hook, including after compaction.
+session-start hook, including after compaction. When the count has stopped the
+run it names no next item: it says the run waits for the principal's answer, and
+gives the one line.
 
 ## How it differs from the 2.4.0 gate
 

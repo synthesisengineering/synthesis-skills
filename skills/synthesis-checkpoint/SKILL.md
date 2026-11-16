@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.3"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -51,7 +51,7 @@ next claim or change needs; a new contradiction triggers full recovery.
 1. **Clock.** `date "+%Y-%m-%d %H:%M:%S %Z (%A)"`; note any drift from what you believed.
 2. **Project.** `synthesis brief` (directive, current state, plan), then read CONTEXT.md, the plan, the newest session entry and REFERENCE.md. In a fresh session use `synthesis resume <id>`; a CONFLICT warning stops project writes.
 3. **Evidence.** `git log -10 --pretty=format:"%h %ai %ci %s" -- <project>` and `git status --short -- <project>`; compare dated session entries with the header and index. Optionally `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <path>`.
-4. **Decisions.** Re-read the plan and the in-session task list; check that the facts, reasons and conditions the next step depends on are in the record.
+4. **Decisions.** Re-read the plan and the in-session task list; check that the facts, reasons and conditions the next step depends on are in the record. Then make [the count at every checkpoint](../synthesis-project-management/references/backlog.md#the-count-at-every-checkpoint): principal items closed and self-generated items added since the last checkpoint, which stops new work for the principal's one line when, over a day, the second outnumbers the first.
 5. **Report** one short paragraph:
 
    > **Checkpoint complete.** Today 2026-05-27 10:49 EDT (Wednesday). Latest recorded session 2026-05-25 (`sessions/2026-05.md`); last commit 2026-05-26 is publication evidence. CONTEXT.md and the index agree. Claim: `<paths>`, no conflict. Proceeding with [next action].

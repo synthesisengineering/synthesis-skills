@@ -2195,10 +2195,45 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then core and plugin each 3 more, all in guards.py: _globbed 3 (a bracket range Apple's Python 3.9 cannot compile, such
 # as `[t-f]` in a program's list handed on its line, is the word as written, as the shell leaves it; the guard stopped
 # on it there, found by the 3.9 suite on the integrated head). Measured: core 22204 and plugin 48827.
+# 22.37, an autopilot run's own work counted against the principal's (feature/no-self-generated-loops, from main at
+# 218da465), in its four paragraphs:
+# Then the core 67 more and the plugin 93, so an autopilot run counts its own work against the principal's (plan item
+# 22.37(d), the principal's rulings of 2026-11-16: when, over a day, the run adds more self-generated items than it
+# closes principal ones, or the principal's open items rise two days running, it starts nothing new and asks the
+# principal one line). autopilot.py 67: tally 31 (each item's origin and times read, the days' counts, the principal's
+# answer, and whether the count stops the run), _recent 7 (a time inside the day; one that cannot be read counts
+# nothing), stop_line 7 (the one line), turn_end_reason 6 more (the check asks for that line before the next item),
+# WINDOW, ORIGIN, ADDED_AT, CLOSED_AT, DAY_COUNT and ANSWER 6, the module docstring 2 more, and the new section's
+# heading 1 and its 7 blank lines. The plugin's 26 more are autopilot_cli.py's: cmd_cycle 25 more (the day's count
+# written at its first wake, the refused advance with the one line, the note of items the count leaves out, said once,
+# and the count on the ledger line and in the output) and NOTED 1.
+# Then each 7 more, all in autopilot.py's brief, so a run its count stopped comes back at session start and after
+# compaction as waiting for the principal's answer, with the one line, and names no next item: its count read 1, the
+# test 1, that paragraph 4, and its docstring 1 more.
+# Then the core 65 more and the plugin 74, from review round 1 of 22.37 (a stopped run that set itself blocked was held
+# by nothing; a plan adopting origins mid-run was stopped with a false line; any dated "continue" released the run, read
+# anywhere on the line; a stamp near the year 9999 ended cycle with a traceback and switched the turn-end check off).
+# autopilot.py 65: _held 24 (the hold in any open status but paused: ask, name what moved after the count blocker's
+# alert, or set blocked), _answered 12 (the principal's reply quoted, where and when, its first word, after the alert),
+# _moment 11 (a time read once, None when it cannot be read or converted) less _age_seconds 5 (it reads through
+# _moment), _asked 5 (the count blocker's latest alert), _label 4 and _names 2 (items named by number or place, at most
+# ten), Plan 4 (each section's items read once per loaded plan: 3 in items, 1 in __init__; on a 630 KB plan the check
+# took 17.3 ms without it and 9.7 with it), stop_line 2 more (the items it could not read), tally 1 more (rejected
+# stamps, consecutive days), AHEAD, ALERTED, ASKS, MOVED_AT and QUOTED 5 less ANSWER 1, the module docstring 1, and
+# the new functions' 12 blank lines less _recent's 2 and _recent 7; turn_end_reason 3 fewer (its stop request moved
+# into _held). autopilot_cli.py 9: cmd_cycle 8 more (the stop said first on a wait, the refusal's terms, each item told
+# once and a plan with no origins once), wake_prompt 1 more (start nothing new until the principal answers), TOLD and
+# NO_ORIGINS 2 less NOTED 1, and 1 blank line fewer.
+# Then each 5 more, all in autopilot.py, from review round 2 of 22.37 (with no answer, the stop lapsed once its 24 hours
+# slid past the items that caused it): stop_line 3 (the reason for a question still waiting), tally 1 more (an open,
+# alerted count blocker keeps the stop), and its docstring 1 more.
+# 5.24.0, 22.37 (fe50e57c) merged into release/next at 1468fe34: release/next's ceilings (core 22204, plugin 48827) and
+# 22.37's raises in the four paragraphs just above (core 67, 7, 65 and 5: 144; plugin 93, 7, 74 and 5: 179), measured:
+# core 22348 and plugin 49006. The merge's own lines change nothing.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22204
-PLUGIN_BUDGET = 48827
+CORE_BUDGET = 22348
+PLUGIN_BUDGET = 49006
 
 
 def _lines(files):
