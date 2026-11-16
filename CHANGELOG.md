@@ -534,6 +534,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   more wait only in the replay, which moves the synthesis home to a temporary folder: the CLI's launcher in the default
   home, reached by a path the replay does not move, which in use stands in that home's own `bin` and is trusted. A
   planted shell script and a planted test file wait too.
+- **Prose that names the approval functions is not a reach of them** (22.22). A peer Codex seat's small program, which
+  only wrote its own project-management files, was refused as running synthesis's approval code: the self-grant rule
+  matched the names of the approval and send-window functions anywhere in a program's text, and strings it wrote to a
+  file quoted them. Now the rule reads the program's code: a string counts only where it is the bare name or a dotted
+  path to it (as getattr, a subscript or attrgetter takes it), an f-string only for its expressions, and comments not
+  at all. A program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function), or starts a program
+  (node's child_process family, Python's subprocess, os.system, os.exec and os.spawn), keeps every string: a string it
+  hands that program, or writes to a file it then starts, is code, and one that starts `synthesis sends open` is refused
+  as one that opens the window (review round 1). A call, an import, an attribute reach, a getattr or subscript by the
+  name, and a program it starts that reaches them are refused as before. A script the same line writes with `cat`
+  from a heredoc (`cat > s.py <<'EOF'`) and then runs is judged by the heredoc's body, as the script it is: one that
+  calls the approval or send-window code waits as a script file's would (an older gap, the same on 5.23.1); one the
+  line writes any other way is not read (the runtime doc's open list). Replayed over 60 days of this
+  Mac's records, each guard from its installed runtime: of 257 commands the rule could fire on, 155 were refused for this
+  reason before and 66 after; 88 now pass, 1 waits on another rule, and 5 that passed now wait, each a heredoc script read
+  as its body. Of the 119 that review round 1's head let pass, 88 still do and 31 are refused again, programs that start
+  a program. Read by Python's own syntax tree (78) or its tokenizer (10), none of the 88 reaches the functions in code,
+  and four planted self-grant programs are refused before and after.
 
 ## [5.23.2] - 2026-11-15
 

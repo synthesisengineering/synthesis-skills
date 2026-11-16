@@ -796,13 +796,13 @@ stay open, and no hook running as that same user can close them:
   loader a name its literals spell is refused since 22.21. A test holds the open case as an
   expected failure (`tests/test_combined_review_1.py`), so it is seen when it closes.
 - A script or module a line writes and then runs is not read. A Python script the line
-  writes from a heredoc (`cat > s.py <<'EOF'`, `tee`) and then runs, and a module the line
-  writes that a program on it imports (read as it stood before the line, if at all), run
-  with no code even when they name synthesis's writers. A shell script the line writes from
-  a heredoc is read as that heredoc's text (22.21), and a script the line writes with no
-  heredoc (`printf` or `echo` into a file) waits as one the guard cannot read. Reading what
-  each writer puts in a file is parked (review round 4 of 22.21 and round 2 of 22.22;
-  ordinary, and the same on main).
+  writes from a heredoc with any writer but `cat` (`tee s.py <<'EOF'`) and then runs, and a
+  module the line writes that a program on it imports (read as it stood before the line, if
+  at all), run with no code even when they name synthesis's writers. A shell script the line
+  writes from a heredoc is read as that heredoc's text (22.21), a script `cat` writes from one
+  as its body (22.22), and a script the line writes with no heredoc (`printf` or `echo` into
+  a file) waits as one the guard cannot read. Reading what each writer puts in a file is
+  parked (review round 4 of 22.21 and round 2 of 22.22; ordinary, and the same on main).
 - A launcher line handed to a bare shell (`bash -lc '<line>'`, as Codex's shell tool hands
   it) passes when the first shell of that name on the harness's PATH is the system's. A
   shell of the agent's put in a folder this user writes, ahead of the system's, after the

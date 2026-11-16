@@ -1897,7 +1897,7 @@ FOLDER_MOVE = re.compile(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd
 
 
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None, prose: bool = False, mode: dict | None = None) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False, mode: dict | None = None, bodies: dict | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
@@ -1919,10 +1919,10 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         mode = {"real": False, "split": False, "quiet": prose, "sources": {
             "CDPATH": [e for e in os.environ.get("CDPATH", "").split(":") if e], "OLDPWD": [os.environ["OLDPWD"]] if os.environ.get("OLDPWD") else [],
             "vars": {}, "cdable": False, "autocd": False, "unread": False}}
-        found = _commands(command, cwd, depth, writes, runs, feeds, prose, mode)
+        found = _commands(command, cwd, depth, writes, runs, feeds, prose, mode, bodies)
         if mode["split"]:
             mode["real"] = True
-            found += _commands(command, cwd, depth, writes, runs, feeds, prose, mode)
+            found += _commands(command, cwd, depth, writes, runs, feeds, prose, mode, bodies)
         return found
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
@@ -1936,11 +1936,11 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         if len(seen) > PLACINGS:
             _CALL["unplaced"] = _CALL["unplaced"] or not mode["quiet"]
             break
-        found += _walk(items, state, depth, writes, runs, feeds, prose, mode, todo)
+        found += _walk(items, state, depth, writes, runs, feeds, prose, mode, todo, bodies)
     return found
 
 
-def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: bool, mode: dict, todo: list) -> list:
+def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: bool, mode: dict, todo: list, bodies: dict | None = None) -> list:
     """The commands of a line read from one starting point (its item, the folder, the one before it, pushd's stack, the
     subshells open, what the command before piped, whether a command before may have changed a folder, and the folders
     this reading found there or missing): each landing of a change of folder past its first, and the folder a failed
@@ -1999,6 +1999,8 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
             head in OPAQUE or head in READERS - WORDS or head in ACTORS)  # a reader may still redirect: `date >> file`; a key press handed to `watch`
         if writes is not None and taken:
             writes += [(t, cwd) for t in targets]
+        if bodies is not None and words == ["cat"] and stdin:  # `cat > s.py <<'EOF'`: the file holds the heredoc's body
+            bodies.update({_real(os.path.join(cwd, os.path.expanduser(t))): "\n".join(text for text, _ in stdin) for t in targets})
         if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
             for at, word in enumerate(words[1:], 1):
                 held = ([], [], [])
@@ -2062,7 +2064,7 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
         upstream = (here, files) if files else "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n") if head in ("echo", "printf", "cat") else (
             f"{UNREAD_INPUT} {head}")  # what another program prints into a shell cannot be read (finding 18)
         for script in scripts:
-            found += _commands(script, here, depth + 1, writes, runs, feeds, False, mode)
+            found += _commands(script, here, depth + 1, writes, runs, feeds, False, mode, bodies)
     return found
 
 
@@ -3039,6 +3041,32 @@ SCRIPTED_WRITE = re.compile(
 SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|open_batch|batch_spend|batch_unspend|grant_from_prompt|consume|put_back|_window_file|_batch_file)\b"
                               r"|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
+GRANT_NAME = re.compile(r"[\w.]*\b(?:open_window|grant_from_prompt|consume|put_back|_window_file|write_json|write_text|touch|unlink|paths\.state)")
+RUNS_STRINGS = re.compile(r"\b(?:exec|eval|compile|execfile|run_path|run_module|runcode|runsource|Function)\s*\(|\bnew\s+Function\b|\bvm\s*\.\s*run"
+                          r"|\b(?:subprocess|child_process|Popen|execSync|execFile|execFileSync|spawn|spawnSync|fork|create_subprocess_\w+)\b"
+                          r"|\bos\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)\b|\bpty\s*\.\s*spawn\b")  # or starts a program with them
+WINDOW_CLI = re.compile(r"\bsynthesis\b[\s\S]{0,200}?\bsends\b[\s\S]{0,40}?\bopen\b")  # the send window's CLI, started by a program
+
+
+def _granting_text(script: str, head: str) -> str:
+    """The text a self-grant is looked for in: the program's code, a string kept only where it is the bare name or a
+    dotted path to it (as getattr, a subscript or attrgetter takes it) and an f-string only for its expressions, every
+    comment out. A program that runs a string as code, or starts a program (node's child_process, Python's subprocess,
+    os.system, os.exec and os.spawn), keeps every string: a string it hands that program, or writes to a file it starts,
+    is code (22.22 and its review round 1: prose written to a file, a docstring or a log line that names the functions
+    was refused as running them)."""
+    if RUNS_STRINGS.search(script):
+        return script
+
+    def kept(m) -> str:
+        quote = re.match(r"[rRbBuUfF]{0,2}(\"\"\"|'''|\"|'|`)", m[0])
+        body = m[0][quote.end():len(m[0]) - len(quote[1])]
+        if GRANT_NAME.fullmatch(body.strip()):
+            return body
+        return " ".join(re.findall(r"\{([^{}]*)\}", body)) or '""' if "f" in m[0][:quote.start(1)].lower() else '""'
+    text = PROGRAM_STRINGS.sub(kept, script)
+    hashed = not re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node|swift|java|jshell|groovy|scala)", head)
+    return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
 LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
@@ -5421,7 +5449,7 @@ def _runtime_copy(path: str) -> str:
     return os.path.join(stable if _real(stable) == release else release, rel) if rel and os.path.isfile(os.path.join(release, rel)) else ""
 
 
-def _unread(words: list, where: str, written: set, line: str) -> tuple:
+def _unread(words: list, where: str, written: set, line: str, bodies: dict | None = None) -> tuple:
     """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs, whether
     its words carry program text, the file of a module run with -m from the folder that holds it), or ("", "", False,
     "") for a known reader: a program on the READERS list with none of
@@ -5430,12 +5458,13 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
     program read with certainty that writes nothing and runs nothing, a shell's script on the line or its input (each
     command is judged). Python is named whatever its program, which its reader proves or not where it is read. Any
     other program is named, wherever it sits (review of 5.22.1: a list of the programs that write never ends). A script
-    file the same line writes is read as the line."""
+    file the same line writes is read as the line, and one `cat` writes from a heredoc as that heredoc's body (review round 1
+    of 22.22: the script it is, so its reach of synthesis's code is judged as a file's would be)."""
     head = os.path.basename(words[0])
 
     def code(name: str) -> str:
         path = os.path.realpath(os.path.join(where, os.path.expanduser(name)))
-        return "" if not name else line if path in written else _code_of(path)
+        return "" if not name else (bodies or {}).get(path) or (line if path in written else _code_of(path))
 
     def files() -> str:  # the program files awk and sed are given with -f
         return "\n".join(code(w.split("=", 1)[1] if w.startswith("--") else after) for w, after in zip(words, words[1:] + [""])
@@ -6118,9 +6147,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         return {m[0] for m in re.finditer(re.escape(name), text, re.I)}
     mine = spelled(store.name) if store else set()  # the store's own name: a write from inside its folder
     names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
-    redirects, readable = [], True
+    redirects, readable, bodies = [], True, {}  # bodies: what a heredoc the line writes to a file puts in it
     try:  # the files the parsed command writes, named in full or not (2026-11-11: a path relative to the session's
-        _commands(text, cwd, writes=redirects)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
+        _commands(text, cwd, writes=redirects, bodies=bodies)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
     except (Unreadable, StopIteration, IndexError):
         readable = False
     held = [_real(r) for r in raw if not store or r != str(store)]
@@ -6175,7 +6204,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
                 if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
                     handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
-        label, code, program, mine = _unread(words, where, written, text) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
+        label, code, program, mine = _unread(words, where, written, text, bodies) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
         python = head.startswith("python") and bool(SCRIPT.match(head))
         ran = _real(mine or os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
                                                                             else _program(words)[2]))) if code and code != text else ""  # the script file it runs
@@ -6188,7 +6217,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
             [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
-        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(_granting_text(script, head)) or (
+                RUNS_STRINGS.search(script) and WINDOW_CLI.search(script))):  # a program that starts `synthesis sends open`
             said = "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
             why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from

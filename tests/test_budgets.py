@@ -2172,10 +2172,25 @@ ROOT = Path(__file__).resolve().parents[1]
 # trusted where install wrote it, in the home's bin, by the clause that trusts bin; the text comparison with the old
 # launcher, which 22.8 removed, goes). The CLI's runner list, RUNNERS in "the runtime changes only on the principal's
 # code" above, is RUNNER_PROGRAMS now, so 22.21's table of runners keeps its name; the two had shadowed each other.
+# 22.22, prose that names the self-grant functions (2026-11-15, a peer Codex seat's program refused for strings it wrote
+# to a file): core 21 more and plugin 21, measured, all in guards.py: _granting_text 18 (the program's code, a string
+# kept where it is the bare name or a dotted path to it, an f-string for its expressions, comments out, every string
+# kept for a program that runs one as code) with its 2 blank lines, GRANT_NAME 1 and RUNS_STRINGS 1, less nothing; the
+# rule's own line changes in place.
+# 22.22's review round 1: core 9 more and plugin 9, measured, all in guards.py. RUNS_STRINGS 2 (a program that starts a
+# program keeps every string: node's child_process family, Python's subprocess, os.system, os.exec, os.spawn, pty.spawn),
+# WINDOW_CLI 1 (`synthesis sends open` started by a program), _granting_text's docstring 2, _commands 2 (a `cat`
+# heredoc's body kept for the file it writes, and its parameter), _unread 1 (that body read as the script it is) and
+# _self_grant 1 (the bodies it reads, the window started by a program).
+# 5.24.0, 22.22 (5018d0a1: prose that names the self-grant functions, from main at b8efb5ee) merged into release/next at
+# 26a20de9: release/next's ceilings (core 22168, plugin 48791) and 22.22's raises in the two paragraphs just above (21 and
+# 9, core and plugin alike: 30 each), measured: core 22198 and plugin 48821. The merge's own lines change in place: the
+# parser takes release/next's reading mode and 22.22's heredoc bodies, and hands both to each reading and to _walk,
+# which since 22.8 holds the loop 22.22's line sits in.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22168
-PLUGIN_BUDGET = 48791
+CORE_BUDGET = 22198
+PLUGIN_BUDGET = 48821
 
 
 def _lines(files):
