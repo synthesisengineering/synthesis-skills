@@ -79,6 +79,10 @@ What PreToolUse holds:
 - **Destructive commands.** A recursive `rm` of `/`, your home folder, `~/workspaces`,
   any folder directly inside it, a root you list in `protected_roots`, or any git
   repository is refused, and so is a force push to `main` or `master`.
+- **The guard's own settings.** An agent's write to `~/.synthesis/v5/config.json` or to the
+  commit check's hooks in `~/.synthesis/v5/git-hooks`, by a file tool or a shell command,
+  waits for your code for that exact write, since those settings decide what every approval
+  means. Reading them needs none.
 - **Account routing.** Calendar, mail and sharing calls are checked against the account
   you configure for the workspace a session runs in, since an invitation sent from the
   wrong account cannot be unsent. Nothing is routed until you set `account_routing`.

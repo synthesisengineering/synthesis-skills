@@ -1367,10 +1367,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# 22.20: core and plugin each 124 more, all in guards.py, so an agent's write of the guard's own settings (config.json)
+# or of a git hook waits for the principal's code (a review of 2026-11-15: a file tool rewrote either with no code).
+# The settings' block 47: the comment 7, SETTINGS_KIND 1, SETTINGS_SAID 6 (what each holds, as a hold names it),
+# _settings 3, _settings_said 3, check_settings_write 19 (a file tool's write bound to the tool, the file and all it
+# writes), with 8 blank lines. The shell's 61, with 10 blank lines among them: Overdue 2 (a reading out of time names no
+# folder), _judged 10 (a reading judged with the settings protected, without them, or alone), _reached 9 (which of the
+# two a hold names), _named_files 14 (the code binds each file the command names as it stood), _settings_hold 16 (the
+# hold, its code and its words). check_self_grant 8 more (with the settings protected, then without, then alone: 5; the
+# settings hold 2; its docstring 1). _protected_roots 4 more (the settings among the folders while a command is judged
+# for them 2, its docstring 2). _check 3 more (the file tools' settings check 1; a shell tool's own `workdir`, where a
+# relative write lands, 2). _shell_writes 1 more, its docstring (`~` put in before a target is joined to its folder: a
+# claimed file written as `~/...` was never looked at). In place: `paths.config_file` among SYNTHESIS_PLACES, a proof
+# cached for its own folders in _shows, the approved-lines store named only where it is protected in _self_grant; hook.py's
+# file tools judged without a config that cannot be read changes 2 lines in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16881
-PLUGIN_BUDGET = 42953
+CORE_BUDGET = 17005
+PLUGIN_BUDGET = 43077
 
 
 def _lines(files):

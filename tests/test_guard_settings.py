@@ -12,6 +12,7 @@ code for that exact call, the private installer's copy included; reading them, a
 """
 
 import json
+import os
 import re
 import shlex
 import time
@@ -275,7 +276,7 @@ def test_a_shell_tool_that_names_its_own_folder_is_judged_there(world):
     for tool in ("bash", "exec_command"):  # Muse's, Codex's
         call = {"command": "echo '{}' > config.json", "workdir": str(world["v5"])}
         assert _held(guards.check(tool, call, CONFIG, cwd=str(world["work"]), session=world["session"]))
-        call = {"command": "echo '{}' > config.json", "workdir": "../home/.synthesis/v5"}  # relative to the session's folder
+        call = {"command": "echo '{}' > config.json", "workdir": os.path.relpath(world["v5"], world["work"])}  # from the session's folder
         assert _held(guards.check(tool, call, CONFIG, cwd=str(world["work"]), session=world["session"]))
     assert guards.check("bash", {"command": "echo '{}' > config.json", "workdir": str(world["work"])}, CONFIG,
                         cwd=str(world["v5"]), session=world["session"]) is None  # a project's own, from wherever the session began

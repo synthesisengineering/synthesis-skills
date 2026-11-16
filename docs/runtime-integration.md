@@ -186,7 +186,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    sandbox may be granted it without reaching the state folder), a harness's transcript
    folder or the approved commit lines.
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
-     not the command spells a protected folder out: relative to the session's folder, to a
+     not the command spells a protected folder out: relative to the session's folder (or the
+     folder a Codex or Muse shell call names as its own, its `workdir`), to a
      `cd` (`cd -`, `pushd` and `popd` are followed), to where `env -C` or `sudo -D` sends
      the command, through a variable, through a link the same command makes (a relative link
      is read from the folder it is made in). A command is read once for each value it gives
@@ -482,8 +483,33 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
    shipped, 30 days of shell commands recorded on one machine were run through the old
    guard and this one, and every command the new one refused was read.
-3. **No hook text holds the phrase** (see What the hook returns).
-4. **Random codes** mean a code cannot be planted before its request exists, and a
+3. **The guard's own settings and the global commit check's entry points take the
+   person's code.** `config.json` in the synthesis home holds what every approval
+   means: the commit lines the person approved, their own repositories, the hosts their
+   action sheets upload to, the signatures a send window lets through, the forbidden
+   phrases, the account each workspace acts as and the turn-end judge's program and host.
+   `git-hooks` beside it holds what git runs before every commit, merge and commit message
+   in every repository. The person changes both, so a write there is not refused: it waits
+   for their code for exactly that call. A file tool (Write, Edit, MultiEdit, NotebookEdit,
+   Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
+   file and everything it writes; a shell command to the command, the folder it runs in,
+   each script it runs and each file it names, as each stands then, so a file changed after
+   the approval makes it a new command. A shell command is read as for the protected
+   folders above, with these two among them: a redirect, what a file utility changes, a
+   pattern that may name them, a folder changed throughout that holds them, a program that
+   writes there or starts a command that does, and synthesis's own `paths.config_file()`
+   read as the config's path; a program the guard cannot prove only reads that names either
+   waits. A command that also reaches one of the protected folders above is refused, as
+   before. The copy that installs the person's settings from a private repository waits like
+   any other write. A path is judged where it really leads and in any case, so a link made
+   beforehand, `..`, `~`, `$HOME` or capitals change nothing. Reading needs no code (`cat`,
+   `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, and a
+   redirect of `cat` for a copy); `cp` and `ln` of them wait, as for every protected file,
+   since they can link as well as copy. The installer's own route (`synthesis install`,
+   `synthesis update`, the release script's install stage) writes the hooks from the runtime
+   it installs, which the guard trusts as it trusts itself.
+4. **No hook text holds the phrase** (see What the hook returns).
+5. **Random codes** mean a code cannot be planted before its request exists, and a
    later identical call never reuses the code an earlier approval answered.
 
 ### What remains open
@@ -552,7 +578,12 @@ stay open, and no hook running as that same user can close them:
   through git when the store lives in a synced repository (a pull, a checkout, a restore).
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
-- The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
+- The routes above that the guard cannot read reach the runtime under `~/.synthesis/v5`,
+  its config and its git hooks as they reach the protected folders, and so does a write
+  through a hard link to one of them made by such a route. Git can also be told to skip
+  the commit check without touching its entry points (`git commit --no-verify`, `git -c
+  core.hooksPath=…`, or the global `core.hooksPath` changed with `git config --global`);
+  the guard holds none of these.
 - A program of the agent's that loads synthesis without the plain words `import synthesis`
   or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
   copy that is no protected folder) is read as reaching none of synthesis's writers, so it
@@ -622,7 +653,10 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
 
 - **PreToolUse fails closed** for the calls it guards: an unreadable
   `~/.synthesis/v5/config.json` or an exception inside a guard blocks the call
-  with the reason. When the hook itself cannot answer (it times out, crashes,
+  with the reason. A file tool is judged without the config it cannot read, since
+  the folders and settings it guards need none: an ordinary write goes, a write into
+  the state folder is refused and the config's own repair waits for the person's
+  code. When the hook itself cannot answer (it times out, crashes,
   prints output the harness cannot read, or cannot start because the stable hook
   is missing), Claude Code 2.1.295 or later blocks the call too, since the
   plugin's handler sets `"onFailure": "block"` (5.21.0); Claude Code names the

@@ -4,6 +4,48 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **An agent's write of the guard's own settings or of a git hook waits for the principal's code** (plan item 22.20).
+  `~/.synthesis/v5/config.json` holds the guard's own settings: the commit lines he approved, his own repositories, the
+  hosts his action sheets upload to, the signatures a send window lets through, the forbidden phrases, the account each
+  workspace acts as and the turn-end judge's settings. `~/.synthesis/v5/git-hooks` holds what git runs before every
+  commit, merge and commit message in every repository. A review on 2026-11-15 found that a file tool rewrote either
+  with no code, and a second showed what a written setting reaches: the turn-end check made to run any program, the
+  cloud judge made to post to any host. A write there now waits for his code for exactly that call. A file tool (Write,
+  Edit, MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
+  file and everything it writes. A shell command is read as for the protected folders, with these two among them (a
+  redirect, `cp`, `mv`, `tee`, `install`, `ln`, `sed -i`, `rm`, `dd`, `curl -o`, a pattern that names the config, a
+  folder changed throughout, a Python, node or perl program that writes there or starts a command that does, a program
+  using synthesis's own `paths.config_file()`), and bound to the command, the folder it runs in, each script it runs and
+  each file it names as it stands, so a file changed after the approval makes it a new command. The copy that installs
+  his settings from his private repository after a pull request merges waits like any other write: a change to the
+  guard's settings changes what approvals mean, and no agent grants itself an approval. A path is judged where it really
+  leads and in any case, so a link made beforehand, `..`, `~`, `$HOME` or capitals change nothing. A command that also
+  reaches the state folder, its board or a harness's transcripts is still refused outright. Reading needs no code
+  (`cat`, `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, `cat` for a copy); `cp` and
+  `ln` of them wait, as for every protected file, since they can link as well as copy. Codex's and Muse's shells are
+  now judged in the folder a command names as its own (`workdir`), not the session's, so a bare name written there lands
+  where the guard looks. A config that cannot be read held every shell call and let every file tool through unjudged, so
+  a file tool could rewrite the config or forge a grant in the state folder; a file tool is now judged without it: an
+  ordinary write goes, the config's repair waits for his code, the state folder stays refused. The installer's own
+  route (`synthesis install`, `synthesis update`, the release script's install stage) is unchanged, by his ruling on
+  the sandbox that releases install from the protected tool without a code. Measured first, read only, over 60 days of
+  this Mac's records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, each call
+  counted once): no file tool wrote either; 19 shell commands on 12 days copied his settings into place from his private
+  repository (5 on 2026-10-22, 2 on each of three other days, 1 on the rest), 1 other shell command wrote the config,
+  and the guard's Python reader holds 15 programs on 6 days as writing one or the other. Replayed over the 39,360
+  recorded calls that name the settings, `.synthesis` or `v5-config`, and every file-tool call: 40 newly wait for the
+  code, 19 of them writes of the settings and 21 commands that name them while running a program the guard cannot prove
+  only reads or writing where it cannot read; 41 that already waited for a protected folder now wait for the settings'
+  code; none is newly refused and none newly passes; no file-tool call newly waits. Judging a shell command took a
+  median 3.0 ms against 2.8 before, and its 99th percentile 80 ms against 72; a file write through the hook is held to
+  the hook's budget by a test of its own.
+- **A claimed file written as `~/…` is a claimed path.** The shell's writes were joined to the folder a command ran in
+  before the home folder was put in, so `echo x > ~/…/notes.md` into a file another session had claimed was never
+  looked at, and the session export tagged no project for such a write. Each target now has `~` put in first, as the
+  shell does.
+
 ## [5.23.1] - 2026-11-15
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal

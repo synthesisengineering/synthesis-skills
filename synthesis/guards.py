@@ -3015,12 +3015,63 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines."""
-    store = paths.line_allowances(config or {})
+    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines.
+    While a shell command is judged for the guard's own settings (`_CALL["settings"]`, set by check_self_grant), those
+    are among them too, or alone ("only")."""
+    store, mode = paths.line_allowances(config or {}), _CALL.get("settings")
+    if mode == "only":
+        return _settings()
     return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
                              *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
                              paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
-                             *([store] if store else [])]]
+                             *([store] if store else [])]] + (_settings() if mode else [])
+
+
+# The guard's own settings and the global commit check's entry points (22.20). What an approval means rests on both: a
+# setting names the lines the principal approved, his own repositories, the hosts a sheet uploads to, what a send window
+# lets through, the phrases a message may not hold, the account each workspace acts as and the turn-end judge's program
+# and host; a git hook is what git runs before every commit in every repository. A review of 2026-11-15 found that a file
+# tool rewrote either with no code. A write there is not refused, since the principal changes them: it waits for his
+# code for that exact call, the private installer's copy of his settings included (the orchestrating session's ruling
+# under his standing rule that no agent grants itself an approval). Reading them needs none.
+SETTINGS_KIND = "guard-settings"
+SETTINGS_SAID = {
+    "config.json": ("the synthesis guard's own settings", "its line allowances, own repositories, sheet hosts, send-window "
+                    "signatures, forbidden phrases, account routing and the turn-end judge's settings"),
+    "git-hooks": ("the global commit check's entry points", "what git runs before every commit, merge and commit message in "
+                  "every repository"),
+}
+
+
+def _settings() -> list[str]:
+    """config.json and the git-hooks folder of the synthesis home this guard runs for."""
+    return [str(paths.config_file()), str(paths.home() / "git-hooks")]
+
+
+def _settings_said(reached: list) -> str:
+    """What each of the settings a write reaches is and holds, as a hold names it."""
+    return " and ".join(f"{SETTINGS_SAID[os.path.basename(p)][0]} ({p}: {SETTINGS_SAID[os.path.basename(p)][1]})" for p in reached)
+
+
+def check_settings_write(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A file tool's write of the guard's own settings or of a git hook waits for the principal's code for exactly that
+    call: the tool, the file it lands in and everything it writes (22.20). Judged where the path really leads, in any
+    case, so a link made beforehand, `..` or capitals change nothing."""
+    import hashlib
+    targets = _file_targets(tool, tool_input)
+    real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
+    reached = [s for s in _settings() if any(paths.inside(real[t], os.path.realpath(s)) for t in targets)]
+    if not reached:
+        return None
+    hit = next(t for t in targets if any(paths.inside(real[t], os.path.realpath(s)) for s in reached))
+    subject = {"tool": tool, "writes": sorted(set(real.values())),
+               "input": hashlib.sha256(json.dumps(tool_input, sort_keys=True, default=str).encode("utf-8")).hexdigest()}
+    if approvals.consume(SETTINGS_KIND, subject, session):
+        return None
+    code = approvals.request(SETTINGS_KIND, subject, f"{tool} writes {real[hit]}, the guard's own settings")
+    return (f"{tool} would write {hit}, {_settings_said(reached)}. A change there changes what every approval means, so it "
+            "waits for the principal: show them the exact change (the file and what the call writes) and ask them to type "
+            f"{approvals.how(code)}; then make the identical call again. Reading it needs no code.")
 
 
 def _claude_parts(real: str) -> list:
@@ -3080,8 +3131,9 @@ def _file_targets(tool: str, tool_input: dict) -> list[str]:
 def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[str]:
     """The files a shell line writes or removes: redirects, what its utilities change (`_landing`), `apply_patch`;
     in every reading of the line (`_resolved`). A reading that cannot be made is passed over, and kept in `unread`
-    for a caller that counts them."""
-    targets = []
+    for a caller that counts them. `~` is put in before a target is joined to its folder, as the shell does (22.20: a
+    claimed file written as `~/…` was joined to the folder the command ran in, and its claim never looked at)."""
+    targets, at = [], lambda where, t: os.path.join(where, os.path.expanduser(t))
     for text in _resolved(command):
         writes = []
         try:
@@ -3090,11 +3142,11 @@ def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[st
             if unread is not None:
                 unread.append(text)
             continue
-        targets += [os.path.join(w, t) for t, w in writes]
+        targets += [at(w, t) for t, w in writes]
         for words, where in found:
-            targets += [os.path.join(where, w) for w in _landing(words)]
+            targets += [at(where, w) for w in _landing(words)]
             if os.path.basename(words[0]) == "apply_patch":
-                targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
+                targets += [at(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     return targets
 
 
@@ -4601,7 +4653,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
-SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
+SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir", "paths.config_file",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
 
 
@@ -4936,9 +4988,9 @@ def _shows(files: list, words: list, where: str, names: list, raw: list, env: di
     scripts or the call's deadline, it is not read (finding 12). None is refused on this reading."""
     at = _program(words)[1]
     argv = words[at + (words[at:at + 1] == ["-m"]):]  # what Python hands it: its own file first, then the words after it
-    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names))
+    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names), tuple(raw))  # a proof holds for its folders
     if key not in _CALL["proofs"]:
-        if len(_CALL["proofs"]) >= PROOFS_A_CALL:
+        if sum(k[-1] == key[-1] for k in _CALL["proofs"]) >= PROOFS_A_CALL:  # each set of protected folders reads as many
             return "is one script more than this guard reads in one call"
         _CALL["proofs"][key] = ""
         for file, text in files:
@@ -5176,7 +5228,8 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
-    only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
+    only reads names a protected folder, or because it may change the guard's own settings: what it does with them
+    protected, then without them, then with them alone (`hold`: file the code and spend it; else the reason)."""
     home = os.path.expanduser("~")
     if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
@@ -5184,13 +5237,20 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
-    waits = None
+    waits, touched, inside = None, False, _CALL.get("settings") is not None  # inside: a command a program starts, judged in its pass
     for text in readings:
-        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
-            "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+        reason = _judged(command, text, cwd, config, _CALL["settings"] if inside else True)
+        if not inside and reason and not isinstance(reason, Overdue):  # held with the settings protected: and without them?
+            base = _judged(command, text, cwd, config, False)
+            if base and not isinstance(base, Unproven):
+                return base  # refused whatever the settings: the folders every approval rests on take no code
+            alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only")
+            touched, reason = bool(alone) and not isinstance(alone, Overdue), base
         if reason and not isinstance(reason, Unproven):
             return reason
         waits = waits or reason
+    if touched:
+        return _settings_hold(command, cwd, waits, session, hold)
     if not waits:
         return None
     if not hold:
@@ -5206,6 +5266,67 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             "tail, grep or jq, or a Python program whose writes the guard can read.")
 
 
+class Overdue(Unproven):
+    """A reading the guard ran out of time to judge: it waits, and says nothing of which folder it would have reached."""
+
+
+def _judged(command: str, text: str, cwd: str, config: dict | None, settings) -> str | None:
+    """One reading judged with the guard's own settings among the protected paths (True), without them (False), or as the
+    only ones ("only"); a command a program starts is judged the same way as the program (22.20)."""
+    if time.monotonic() > _CALL["until"]:
+        return Overdue("is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+    before, _CALL["settings"] = _CALL.get("settings"), settings
+    try:
+        return _self_grant(command, text, cwd, config)
+    finally:
+        _CALL["settings"] = before
+
+
+def _reached(command: str, cwd: str) -> list:
+    """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, else the ones
+    it spells; both, where it shows neither (a pattern, a path a program builds)."""
+    try:
+        landed = [_real(re.sub(r"/\*\*(?:/\*)?$", "", t)) for t in _shell_writes(command, cwd)]
+    except RecursionError:
+        landed = []
+    found = [s for s in _settings() if any(paths.inside(t, _real(s)) for t in landed)]
+    return found or [s for s in _settings() if os.path.basename(s).casefold() in command.casefold()] or _settings()
+
+
+def _named_files(command: str, cwd: str) -> list:
+    """Each regular file a command names, by a word or a `<`, with its size, time and the digest of its first megabyte:
+    a settings write's code binds what it copies and reads as it stood when the principal was shown it (22.20)."""
+    import hashlib
+    marks: dict = {}
+    words = [(w, where) for ws, where in _parse(command, cwd)[0] for w in ws[1:]]
+    words += [(w, cwd) for w in re.findall(r"(?<![<\d])<(?![<(&])\s*([^\s;&|<>()]+)", command)]
+    for word, where in words:
+        word = word.split("=", 1)[-1] if word.startswith("-") else word
+        path = _real(os.path.join(str(where), os.path.expanduser(word))) if word and not word.startswith("-") else ""
+        found = _regular(path, 1 << 20) if path and path not in marks and len(marks) < 32 else None
+        if found is not None:
+            marks[path] = f"{found[1].st_size}:{found[1].st_mtime_ns}:{hashlib.sha256(found[0]).hexdigest()}"
+    return sorted(marks.items())
+
+
+def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool) -> str | None:
+    """A shell command that may change the guard's own settings or a git hook waits for the principal's code for that
+    command, the folder it runs in, each script it runs and each file it names, as they stand (22.20)."""
+    said = _settings_said(_reached(command, cwd))
+    if not hold:
+        return Unproven(f"may change {said}")
+    subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items()),
+               "files": _named_files(command, cwd)}
+    if approvals.consume(SETTINGS_KIND, subject, session):
+        return None
+    code = approvals.request(SETTINGS_KIND, subject, f"the guard's own settings: {command[:140]}")
+    return (f"This command may change {said}" + (f"; it also {also}" if also else "") + ". A change there changes what "
+            "every approval means, so it waits for the principal: show them this exact command and what it writes there (the "
+            f"file it copies, the text it puts in), and ask them to type {approvals.how(code)}; then run the identical command "
+            f"again from {cwd}. The code binds the command, the folder it runs in and each file it names as it stands now, so a "
+            "file changed after the approval makes it a new command. Reading these files needs no code (cat, head, grep, jq).")
+
+
 def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
     """One reading of a command: the reason it is refused, or None."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
@@ -5213,7 +5334,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
 
     def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case
         return {m[0] for m in re.finditer(re.escape(name), text, re.I)}
-    mine = spelled(store.name) if store else set()  # the store's own name: a write from inside its folder
+    mine = spelled(store.name) if store and str(store) in raw else set()  # the store's own name: a write from inside its folder
     names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
     redirects, readable = [], True
     try:  # the files the parsed command writes, named in full or not (2026-11-11: a path relative to the session's
@@ -6453,6 +6574,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
             cwd = os.path.expanduser("~")
     if tool.endswith("__run_in_terminal") and tool_input.get("cwd"):  # the tab starts its shell there
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+    elif shell_tool(tool) and tool_input.get("workdir"):  # Codex's and Muse's shells run a command in the folder it names (22.20)
+        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["workdir"]))))
     if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
@@ -6461,7 +6584,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                 or check_outgoing(command, config, cwd, session)
                 or check_claimed(_shell_writes(command, cwd), cwd, session))
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+        return (check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+                or check_settings_write(tool, tool_input, cwd, session))
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
