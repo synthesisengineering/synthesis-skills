@@ -315,3 +315,13 @@ def test_a_node_template_s_built_part_is_read_where_it_lands(tmp_path):
 def test_what_stops_reading_the_commands_a_program_starts(tmp_path, program, held):
     line = "python3 -c " + shlex.quote(program) + " && python3 s.py"
     assert (guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) == guards.UNKNOWN_CONTENT) is held, program
+
+
+@pytest.mark.parametrize("program, held", [  # waiting for a started program's output hands it nothing; giving it input does
+    ("import subprocess; p = subprocess.Popen(['git', 'status'], stdout=subprocess.PIPE); p.communicate()", False),
+    ("import subprocess; out, _ = subprocess.Popen(['git', 'log'], stdout=subprocess.PIPE).communicate(timeout=5)", False),
+    ("import subprocess; p = subprocess.Popen(['python3'], stdin=subprocess.PIPE); p.communicate(b'print(1)')", True),
+])
+def test_waiting_for_a_started_program_is_no_input_to_it(tmp_path, program, held):
+    line = "python3 -c " + shlex.quote(program) + " && python3 s.py"
+    assert (guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) == guards.UNKNOWN_CONTENT) is held, program
