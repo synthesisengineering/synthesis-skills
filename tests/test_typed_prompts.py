@@ -192,6 +192,14 @@ def test_a_relative_target_is_read_against_the_rows_working_directory(harness):
     assert meta["projects"] == ["beta"]
 
 
+def test_a_target_written_from_the_home_folder_tags_its_project(harness, monkeypatch):
+    """22.20: a shell write spelled `~/…` was joined to the row's folder before the home folder was put in."""
+    kb = Path(harness["kb"])
+    monkeypatch.setenv("HOME", str(kb.parent))
+    _, meta = exported(harness, [called(harness, "Bash", {"command": f"echo done >> ~/{kb.name}/projects/beta/notes.md"})])
+    assert meta["projects"] == ["beta"]
+
+
 def test_the_hooks_project_and_the_written_ones_are_kept_together(harness):
     hook = row(harness, "attachment", attachment={"type": "hook_additional_context", "content": "Active project: alpha (/kb/projects/alpha)"})
     _, meta = exported(harness, [hook, called(harness, "Write", {"file_path": f"{harness['kb']}/projects/beta/CONTEXT.md", "content": "x"}),
