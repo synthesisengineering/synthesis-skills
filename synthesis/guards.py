@@ -6497,6 +6497,15 @@ def _unfilled(text: str, bare: str | None) -> bool:
     return any(bare is None or m[0] in bare for m in re.finditer(r"\$(?:\(|[0-9@*#?!$-]|\{[^}]*\}?|[A-Za-z_]\w*)|`", text))
 
 
+def _away(start: str, whole: bool = False) -> bool:
+    """Whether an address's spelled start names a scheme and a host that is not this machine, closed by /, ? or # before
+    anything a program or the shell fills in (`whole`: nothing is): it goes to that host whatever is filled in after it.
+    From the ruling's suite on a fresh clone: the Drive publisher's query from the environment made its host's address
+    read as one the environment gives."""
+    m = re.match(r"\s*[a-z][\w+.-]*://(?:[^/?#@\s]*@)?([^/?#@\s]+)" + ("(?:[/?#]|$)" if whole else "[/?#]"), start, re.I)
+    return bool(m) and not _here(m[1].lower()) and not _here(_carried(m[1].lower().rsplit(":", 1)[0]))
+
+
 def _http_body(words: list, where: str, feed: str, written: set, bare: str | None = None) -> tuple:
     """(text, readable) of what an HTTP client posts: its data words, a file named with @ or a file option, its input,
     or HTTPie's fields and --raw; a body the guard cannot read (a file it lacks, one the line writes, input another
@@ -6727,8 +6736,9 @@ def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies
             aims = [a for a in (_mcp_endpoint("http://localhost" + w if head in ("http", "https", "xh") and re.match(r":\d*(?:/|$)", w) else w)
                                 for w in words[1:]) if a]
             shown = "$unread-config" in words or any(("$" in w or "`" in w) and words[i - 1] not in ADDRESSLESS and not (  # an address the shell
-                head in ("http", "https", "xh") and "://" not in w and re.match(r"[\w.\[\]-]+(?::=|==|=|:)", w))  # fills in, not a body, a header
-                for i, w in enumerate(words[1:], 1) if not w.startswith(("-", "@")))  # or a field, or a config unread
+                head in ("http", "https", "xh") and "://" not in w and re.match(r"[\w.\[\]-]+(?::=|==|=|:)", w)) and not _away(  # fills in, not a body,
+                re.split(r"[$`]", w)[0]) for i, w in enumerate(words[1:], 1) if not w.startswith(("-", "@")))  # a header, a field, another
+            # host's address with its path filled in, or a config unread
             redirect = re.search(r"(?<![<\d])<\s*(['\"]?)([^\s'\"<>|;&]+)\1", line) if head in ("http", "https", "xh") and not feed else None
             feed = (_code_of(os.path.join(where, _home(redirect[2]))) or UNREAD_INPUT) if redirect else feed
             if not aims and not shown:
@@ -6951,22 +6961,54 @@ def _py_bodies(text: str) -> tuple | None:
             found |= by_name.get(n.id, set()) if isinstance(n, ast.Name) else set()
         return found | ({"?"} if not found and any(named(n) in ("environ", "getenv") for n in inner) else set())
 
+    def start(e, depth=0) -> tuple:  # the text an address spells before anything it fills in, and whether that is all of it
+        whole = _constant(e, binds, changed)
+        if isinstance(whole, str):
+            return whole, True
+        if isinstance(e, ast.Call) and named(e.func) == "format" or isinstance(e, ast.BinOp) and isinstance(e.op, ast.Mod):  # "{}".format(), "%s" %
+            spelled = _constant(getattr(e.func, "value", None) if isinstance(e, ast.Call) else e.left, binds, changed)
+            return (re.split(r"[{%]", spelled)[0] if isinstance(spelled, str) else ""), False
+        parts, out = e.values if isinstance(e, ast.JoinedStr) else [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) else [], ""
+        for p in parts if depth < 8 else ():
+            got, whole = start(p.value if isinstance(p, ast.FormattedValue) and p.conversion == -1 and p.format_spec is None else p, depth + 1)
+            out += got
+            if not whole:
+                return out, False
+        return out, bool(parts) and depth < 8
+
+    aimed_at: dict = {}  # where each name's address comes from, read once a program
+
+    def targets(e) -> set:  # where an address comes from, as sources() reads it, but none from one it spells for another host
+        if _away(*start(e)):
+            return set()
+        if isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.IfExp)):
+            return set().union(*[targets(x) for x in ([e.body, e.orelse] if isinstance(e, ast.IfExp) else e.elts)], set())
+        if not isinstance(e, ast.Name) or e.id in changed or e.id not in binds:
+            return sources(e)
+        if e.id not in aimed_at:
+            aimed_at[e.id] = set()
+            aimed_at[e.id] = set().union(*[targets(g) for how, node, at in binds[e.id] for g in (
+                [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, e.id) if how == "param" else []) if isinstance(g, ast.AST)], set())
+        return aimed_at[e.id]
+
     def aims(node, f, n, spots) -> set:  # where a write's address comes from: its URL, host or base URL, or the connection it is made on
-        given = [k.value for k in node.keywords if k.arg in ("url", "base_url", "host")] + (
-            node.args[spots[0] + 1:spots[0] + 2] if spots else [] if n in ("send", "sendall", "endheaders") else node.args[:1])
         made = f.value if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Call) else next((b.value for how, b, _ in binds.get(
             getattr(getattr(f, "value", None), "id", None), ()) if how == "assign" and isinstance(b.value, ast.Call)), None)
-        return set().union(*[sources(x) for x in given + (list(made.args) + [k.value for k in made.keywords] if made is not None else [])], set())
+        joined = made is not None and named(made.func) in ("HTTPConnection", "HTTPSConnection", "HTTPConnectionPool", "HTTPSConnectionPool")
+        given = [] if joined else [k.value for k in node.keywords if k.arg in ("url", "base_url", "host")] + (  # a connection's path names no host
+            node.args[spots[0] + 1:spots[0] + 2] if spots else [] if n in ("send", "sendall", "endheaders") else node.args[:1])
+        return set().union(*[targets(x) for x in given + (list(made.args) + [k.value for k in made.keywords] if made is not None else [])], set())
 
-    def handed_line(e) -> str | None:  # a line a program hands a shell, a value it cannot read standing as a word the shell fills in
-        if text_of(kind(e)) is not None:
-            return text_of(kind(e))
+    def handed_line(e, q=str) -> str | None:  # a line a program hands a shell (q=shlex.quote: a word of a client it starts), a value it
+        if text_of(kind(e)) is not None:  # cannot read standing as a word the shell fills in
+            return q(text_of(kind(e)))
         parts = e.values if isinstance(e, ast.JoinedStr) else [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) else None
-        spelled = [p.value if isinstance(p, ast.Constant) else handed_line(p.value if isinstance(p, ast.FormattedValue) else p) or (
+        spelled = [q(str(p.value)) if isinstance(p, ast.Constant) else handed_line(p.value if isinstance(p, ast.FormattedValue) else p, q) or (
             "$ENV_TARGET" if sources(p) else "$UNREAD") for p in parts or ()]
-        return "".join(str(s) for s in spelled) if parts else None
+        return "".join(spelled) if parts else None
 
     low = any(named(n) in ("HTTPConnection", "HTTPSConnection", "putrequest", "socket", "create_connection") for n in nodes)  # sends by hand
+    modules = {a.asname or a.name.split(".")[0] for n in nodes if isinstance(n, ast.Import) for a in n.names}  # os.open() opens a file
     bodies, lines, wrote, marked, aimed = [], [], False, False, []
     for node in nodes:
         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Attribute) and t.attr in BODY_KEYS for t in node.targets):
@@ -6974,7 +7016,7 @@ def _py_bodies(text: str) -> tuple | None:
         elif isinstance(node, (ast.List, ast.Tuple)) and node.elts and isinstance(node.elts[0], ast.Constant) and os.path.basename(
                 str(node.elts[0].value)) in sends.WEB:  # a client it starts: its words, each one it builds read as a body is
             spelled = [kind(x) for x in node.elts]
-            lines.append(shlex.join(text_of(k) if text_of(k) is not None else "$ENV_TARGET" if sources(x) else "" for k, x in zip(spelled, node.elts)))
+            lines.append(" ".join(handed_line(x, shlex.quote) or ("$ENV_TARGET" if sources(x) else "$UNREAD") for x in node.elts))
             bodies, wrote = bodies + [x for k in spelled if text_of(k) is None for x in k], True
         elif (isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.upper() in WRITE_METHODS and id(node) in configured
               or isinstance(node, ast.Attribute) and node.attr in WRITE_METHODS):  # a write method set where no write found here takes it
@@ -6987,7 +7029,8 @@ def _py_bodies(text: str) -> tuple | None:
             spots = [] if mine else [i for i, a in enumerate(node.args) if str(_constant(a, binds, changed)).upper() in WRITE_METHODS]
             request = n in ("request", "Request", "putrequest", "build_request", "stream", "urlopen")
             if not mine:  # a library's request call
-                given += (node.args[1:2] if n in ("urlopen", "Request") or (attr and n == "open") else node.args[1:3] if attr and n in ("post", "put", "patch")
+                given += (node.args[1:2] if n in ("urlopen", "Request") or (attr and n == "open" and getattr(f.value, "id", None) not in modules)
+                          else node.args[1:3] if attr and n in ("post", "put", "patch")
                           else node.args[spots[0] + 2:spots[0] + 3] if n == "request" and spots else node.args[:1] if attr and n in (
                               "send", "sendall", "endheaders") and low else [])
             if n in SHELLED and node.args and not isinstance(node.args[0], (ast.List, ast.Tuple)) and (attr or n not in binds and n not in defs):
@@ -7162,6 +7205,30 @@ def _js_sources(expr: str, text: str, depth: int = 0) -> set:
     return seen[(expr, depth)]
 
 
+def _js_start(expr: str, text: str, depth: int = 0) -> tuple:
+    """The text a JavaScript address spells before anything it fills in, and whether that is all of it: its strings and
+    templates joined by +, to a template's first ${, through a name that stands for one value."""
+    s, out = expr.strip(), ""
+    while s:
+        m = re.match(r"""(['"])((?:\\.|(?!\1)[^\\])*)\1|`((?:\\.|\$(?!\{)|[^`\\$])*)(`|\$\{)""", s)
+        name = re.match(r"[A-Za-z_$][\w$]*(?![\w$.(\[])", s) if not m and depth < 4 else None
+        values = _js_values(name[0], text) if name else []
+        got, whole = (m[2] if m[1] else m[3], m[4] != "${") if m else _js_start(values[0], text, depth + 1) if len(values) == 1 else ("", False)
+        out, s = out + got, s[(m or name).end():].lstrip() if whole else ""
+        if not whole or not s or s[0] != "+":
+            return out, whole and not s
+        s = s[1:].lstrip()
+    return out, False
+
+
+def _js_targets(expr: str, text: str, depth: int = 0) -> set:
+    """_js_sources for an address, but none from one that spells another host before anything it fills in."""
+    if _away(*_js_start(expr, text)):
+        return set()
+    values = [v for v in _js_values(expr.strip(), text) if v != expr] if depth < 4 and re.fullmatch(r"\s*[A-Za-z_$][\w$]*\s*", expr) else []
+    return set().union(*[_js_targets(v, text, depth + 1) for v in values]) if values else _js_sources(expr, text)
+
+
 def _js_enclosing(masked: str, places: list) -> list:
     """For each place, in order, in a program's text with its strings and comments blanked: (where the innermost call's
     bracket opens, where the innermost object's opens), read in one pass."""
@@ -7208,7 +7275,7 @@ def _js_bodies(text: str) -> tuple:
             given += [shape[k] for k in ("url", "host", "hostname", "baseURL") if shape and k in shape]
         else:  # the request a write or a pipe goes to, as the program makes it, or a .post()'s address
             given = args[:1] if post else _js_values(receiver[1], text) if verb and receiver else _js_values(args[0], text) if pipe and args else []
-        bodies, aimed = bodies + handed, aimed + [(handed, set().union(*[_js_sources(g, text) for g in given], set()))]
+        bodies, aimed = bodies + handed, aimed + [(handed, set().union(*[_js_targets(g, text) for g in given], set()))]
     for m in JS_RUNS.finditer(masked):  # a client it runs: a shell line, or a program and the array of its arguments
         args = _js_parts(text[m.end():_js_scan(text, m.end(), "")], ",")
         first = _js_kind(args[0], text)
@@ -7236,7 +7303,7 @@ def _posted_bodies(files: list, head: str, where: str, path: str, args, feed: st
     named, values = aimed or _names_mcp("\n".join(t for _, t in files), head), values or {}
     if not named and not re.search(r"\b(?:environ|getenv)\b|process\s*\.\s*env\b|\bargv\b|parse_args", "\n".join(t for _, t in files)):
         return []
-    hit = lambda srcs: any(s == "argv" and any(_unfilled(w, bare) for w in args) or s != "argv" and (  # noqa: E731
+    hit = lambda srcs: any(s == "argv" and any(_unfilled(w, bare) and not _away(re.split(r"[$`]", w)[0]) for w in args) or s != "argv" and (  # noqa: E731
         s not in values or any(_mcp_endpoint(v) == "mcp" for v in values[s])) for s in srcs)
     how = f"`{head}` posting a body it reads or builds to " + ("a local MCP server" if named else "an address the environment gives")
     calls, bodies, lines = [], [], []

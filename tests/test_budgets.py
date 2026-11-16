@@ -1476,10 +1476,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # a file that may make a request is read), _js_enclosing 3 (every site's brackets in one pass), _js_values 3 and
 # _js_called less 1 (each name and each function read once), _js_bodies 2, _js_kind 1, _js_read less 2, and the blank
 # lines around _joinings 2.
+# Then 67 more in each, all in guards.py, from the ruling's suite on a fresh clone (five of the plugin's own scripts
+# waited when run for their help or a dry run: os.open(path, flags) read as an opener's open(url, data), and a request to
+# a host the Drive publisher spells, its query from the environment, read as an address the environment gives): _away 9
+# (whether an address's spelled start names a scheme and a host other than this machine, closed before anything filled
+# in); _py_bodies 33 (the text an address spells before what it fills in, through a constant, an f-string, a + join, a
+# .format() or a % 14; where an address comes from with none from one spelled for another host, through its names,
+# lists and conditionals, each name read once 12; a connection's path names no host 1; the modules a program imports,
+# whose own open() opens a file 1, and that rule's line 1; the blank lines between them 4); _js_start 16 and _js_targets
+# 8 (the same for a node address, with the blank lines before each); curl's address rule 1 (an address spelled for
+# another host, its path filled in, is that host's).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18191
-PLUGIN_BUDGET = 44263
+CORE_BUDGET = 18258
+PLUGIN_BUDGET = 44330
 
 
 def _lines(files):
