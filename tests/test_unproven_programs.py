@@ -1426,3 +1426,56 @@ def test_a_module_path_is_judged_against_python_s_own_installation_not_this_proc
     (world["work"] / "joins" / "re").mkdir(parents=True)  # no __init__.py: it hides nothing
     assert HELD in _another_way(world, body, "line program", world["work"] / "hides")
     assert _another_way(world, body, "line program", world["work"] / "joins") == ""
+
+
+# A Python script or module the same command writes is read from what the command writes: a heredoc fed to `cat >` or
+# `tee`, a redirect of `echo` or `printf`. A writer named in it waits as it would on disk, and what only prints passes;
+# one a program on the line writes is unknown, and waits (review round 4 of 22.21: a script written by a heredoc and run
+# on the same line passed with a writer in plain words, as on main, and so did a module the line wrote).
+WRITER = f"from synthesis import sends\nsends.open_window{OPENS}\n"
+QUIET = "print('a module of its own')\n"
+WRITTEN_SCRIPTS = {
+    "a heredoc, then run on the next line": "cat > prog.py <<'EOF'\n{body}EOF\npython3 prog.py",
+    "a heredoc with an unquoted marker, then && run": "cat > prog.py <<EOF && python3 prog.py\n{body}EOF",
+    "a heredoc with the redirect after it": "cat <<'EOF' > prog.py\n{body}EOF\npython3 prog.py",
+    "tee from a heredoc, then ; run": "tee prog.py > /dev/null <<'EOF'\n{body}EOF\npython3 prog.py",
+    "a printf redirect, then && run": "printf '%s' {quoted} > prog.py && python3 prog.py",
+    "an echo redirect, then && run": "echo {quoted} > prog.py && python3 prog.py",
+}
+WRITTEN_MODULES = {  # (the script on disk that imports it, if any; the line)
+    "a heredoc module a script imports": ("import helper3\n", "cat > helper3.py <<'EOF'\n{body}EOF\npython3 script.py"),
+    "a heredoc module named like the standard library's": ("import json\n", "cat > json.py <<'EOF'\n{body}EOF\npython3 script.py"),
+    "a heredoc script and its heredoc module": (None, "cat > prog.py <<'EOF'\nimport helper4\nEOF\ncat > helper4.py <<'EOF'\n{body}EOF\n"
+                                                      "python3 prog.py"),
+    "a heredoc module a -c program imports": (None, "cat > helper5.py <<'EOF'\n{body}EOF\npython3 -c 'import helper5'"),
+    "a tee module a -c program imports": (None, "tee helper6.py > /dev/null <<'EOF'\n{body}EOF\npython3 -c 'import helper6'"),
+    "a printf module a -c program imports": (None, "printf %s {quoted} > helper7.py && python3 -c 'import helper7'"),
+    "an echo module a program on its input imports": (None, "echo {quoted} > helper8.py && python3 - <<'EOF'\nimport helper8\nEOF"),
+}
+
+
+def _waits_only_for_the_writer(world, line: str, name: str) -> None:
+    for body, waits in ((WRITER, True), (QUIET, False)):
+        reason = _verdict(world, line.format(body=body, quoted=shlex.quote(body))) or ""
+        assert (HELD in reason if waits else reason == ""), (name, "writer" if waits else "quiet", reason[:100])
+
+
+@pytest.mark.parametrize("name", sorted(WRITTEN_SCRIPTS))
+def test_a_python_script_the_line_writes_and_runs_is_read_from_what_it_writes(world, name):
+    _waits_only_for_the_writer(world, WRITTEN_SCRIPTS[name], name)
+
+
+@pytest.mark.parametrize("name", sorted(WRITTEN_MODULES))
+def test_a_module_the_line_writes_and_a_program_on_it_imports_is_read_from_what_it_writes(world, name):
+    script, line = WRITTEN_MODULES[name]
+    if script:
+        _script(world["work"], "script.py", script)
+    _waits_only_for_the_writer(world, line, name)
+
+
+@pytest.mark.parametrize("line", ["python3 make.py > prog.py && python3 prog.py", "python3 make.py > helper9.py && python3 -c 'import helper9'",
+                                  "python3 make.py > helper9.py && python3 script.py"])
+def test_a_script_or_module_a_program_on_the_line_writes_is_unknown_and_waits(world, line):
+    _script(world["work"], "make.py", "print('print(1)')\n")
+    _script(world["work"], "script.py", "import helper9\n")
+    assert HELD in (_verdict(world, line) or ""), line
