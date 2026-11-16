@@ -268,7 +268,10 @@ v5 has two stable paths, both outside the harnesses' caches:
   (the first install), and rewrites any launcher that differs from what the runtime writes.
   Since 5.23.1 a session start never replaces an installed runtime from a harness's folder,
   which the guard does not protect (the release launcher installs from a clone of GitHub it
-  verified; the CLI's `synthesis install <folder>` is open until it waits for a code): a session start on a newer plugin says so once and names
+  verified, on the grant the hook writes for its line; the CLI's `synthesis install
+  <folder>`, in any spelling, waits for the principal's code wherever a runtime is
+  installed, and only a first install into a home no runtime has been in needs none): a
+  session start on a newer plugin says so once and names
   `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, and the
   doctor warns while the two differ. Nothing older than the running runtime installs, and
   `synthesis doctor` fails when `current` is missing or its files changed.

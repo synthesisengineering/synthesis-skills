@@ -1590,9 +1590,18 @@ def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, 
     bytecode compiles the runtime at its first call, which is how CI runs the suite; a session's hooks are told to
     write none, so the budget's own runs are told the same and leave the runtime as they found it (both found by a
     review before 5.8.1 was released)."""
-    from importlib.util import cache_from_source
+    import subprocess
+    import sys
+    from synthesis import install
     monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
-    compiled = [Path(cache_from_source(str(source))) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    # Where the interpreter the launchers pin, run isolated as they run it, looks for compiled code: beside the source
+    # and for its own version, whatever folder this process keeps compiled code in (Apple's Python keeps it under a
+    # prefix, and the pinned interpreter need not be the one running the tests).
+    python = install.pinned(compiled_runtime.parent) or sys.executable
+    sources = [str(source) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    asked = subprocess.run([python, "-I", "-S", "-c", "import importlib.util as u, sys; print('\\n'.join(map(u.cache_from_source, "
+                            "sys.argv[1:])))", *sources], env={}, capture_output=True, text=True, check=True)
+    compiled = [Path(line) for line in asked.stdout.splitlines()]
     for file in compiled:
         file.unlink()
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})

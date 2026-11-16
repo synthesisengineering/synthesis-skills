@@ -20,7 +20,7 @@ recording the value it replaces; uninstall restores that value unless the user
 changed it since, and removes only files install wrote that are still unedited.
 """
 
-from __future__ import annotations  # Apple's Python 3.9, the oldest interpreter it pins, reads `dict | None` no other way
+from __future__ import annotations
 
 import contextlib
 import fcntl
