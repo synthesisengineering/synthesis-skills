@@ -1479,3 +1479,24 @@ def test_a_script_or_module_a_program_on_the_line_writes_is_unknown_and_waits(wo
     _script(world["work"], "make.py", "print('print(1)')\n")
     _script(world["work"], "script.py", "import helper9\n")
     assert HELD in (_verdict(world, line) or ""), line
+
+
+# Crafted, on the open list (docs/runtime-integration.md): a module named like one of Python's own installation, put
+# beside a script or in a module-path folder before the command, holding a writer, which a script whose own text names
+# nothing of synthesis imports; the guard takes it for the installed module (review round 4 of 22.21). Each is expected
+# to fail, strictly: once the guard holds one, its test fails until the open list says so.
+STAND_INS = {  # (where the stand-in stands, under the work folder; the line)
+    "a json.py beside the script": ("json.py", "python3 script.py"),
+    "a json package beside the script": ("json/__init__.py", "python3 script.py"),
+    "a module-path folder hiding an installed module": ("stand/pytest/__init__.py", "PYTHONPATH=stand python3 script.py"),
+    "a module-path folder hiding an installed module, under -S": ("stand/pytest/__init__.py", "PYTHONPATH=stand python3 -S script.py"),
+}
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="crafted: a stand-in named like an installed module (the open list)")
+@pytest.mark.parametrize("name", sorted(STAND_INS))
+def test_a_stand_in_named_like_an_installed_module_that_holds_a_writer_waits(world, name):
+    place, line = STAND_INS[name]
+    _script(world["work"] / os.path.dirname(place), os.path.basename(place), WRITER)
+    _script(world["work"], "script.py", "import json\n" if place.startswith("json") else "import pytest\n")
+    assert HELD in (_verdict(world, line) or ""), name

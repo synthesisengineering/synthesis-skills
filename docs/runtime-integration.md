@@ -584,11 +584,15 @@ stay open, and no hook running as that same user can close them:
   not place (a build, a download, an archive it unpacks), writes where a Python program on
   the line starts and that program imports, nor a test placed under a conftest that
   isolates the synthesis home and then undoes it (deleting or re-pointing `SYNTHESIS_HOME`,
-  overriding the `tmp_path` fixture), or
-  that reaches a writer outside its tests by a name it builds at run time (`getattr` with a name
-  joined from pieces, a call through a name it assigns), or through a plugin installed rather
-  than its own (plan item 22.21 and its review rounds 1 to 3; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
-  `nox`) are ordinary and their tests are not yet read. One that loads synthesis
+  overriding the `tmp_path` fixture), or that reaches a writer outside its tests by a name
+  it builds at run time (`getattr` with a name joined from pieces, a call through a name it
+  assigns), or through a plugin installed rather than its own (plan item 22.21 and its
+  review rounds 1 to 3; crafted). A module named like one of Python's own installation and
+  put in place before the command (a `json.py` or `json/` beside a script, a `PYTHONPATH`
+  folder hiding a site-packages module, with or without `-S`), holding a writer, that a
+  script whose own text names nothing of synthesis imports, is taken for the installed
+  module and not read (review round 4 of 22.21; crafted). Test runners other than pytest
+  (`unittest` discovery, `tox`, `nox`) are ordinary and their tests are not yet read. One that loads synthesis
   through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
   text that says synthesis waits for the principal's code, or is refused on the line.
 
