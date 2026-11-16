@@ -1300,6 +1300,96 @@ ROOT = Path(__file__).resolve().parents[1]
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
+# 5.23.1, releases from the protected runtime with no code (the principal's decision packet of 2026-11-15, row
+# "releases"), as review round 1 left it: core 280 more and plugin 400. guards.py 147: _release_tool 47 (the release
+# launcher install wrote, for an interpreter it would still pin, by its absolute path, plain words alone, each
+# documented option once with --repo-root or --install-only --tag, a named session only the asking one, the line
+# unwrapped exactly from Codex's shell tool, on that checkout), release_checkout 30 (the canonical checkout: a
+# checkout's root, an origin, every remote's fetch and push address as git uses it the repository on GitHub, on main,
+# its own and a worktree's config keys from those that run nothing; unreadable is a reason), _kit_loaded 20 (the release
+# tool's modules a program loads, found by file where Python finds them, or found nowhere while it names a protected
+# folder), the block's comment 9 with its blank lines, the constants 15 (RELEASE_REPOSITORY, RELEASE_KIT, GITHUB_REMOTE
+# and PLAIN_LINE 1 each, RELEASE_OPTIONS 2, RELEASE_CONFIG 4, KIT_FILES 2, KIT_LOADS 3 with its blank lines),
+# _canonical_remote 5 and _kit_file 5 with their blank lines, _shipped 5 (the release kit is never the plugin's own, in
+# any spelling), _self_grant 5 (a program loading the kit waits), check_self_grant 4 (the exact launcher line passes,
+# never one a program starts, never with a pending code) and check 2 (a Codex command judged in its workdir).
+# install.py 123: interpreter_problems 18, pinned_python 15, launcher_text 11, pinned 10 and launcher 6, each with its
+# blank lines (the interpreter pinned at install: its own real path, owned by root with every folder above it, writable
+# by neither this user nor its groups, Python 3.9 or later; each launcher runs it with -I -S under env -i with only the
+# named variables, the system's folders first on PATH, and refuses when there is none); the launchers' comment 8 and
+# constants 25 (KEPT 7, ENTRY 6, GIT_KEPT 4, PYTHONS 3, NO_PYTHON 3, SAFE_PATH 1, ENTRY_POINTS 1) and the runtime's
+# kit line 1; _pinned_run 11 with COMPILED 4 and COMPILE 4 in place of the in-process _compiled 8 and _compile 7 (the
+# runtime compiled for the pinned interpreter, beside its source, where an isolated run looks); install 13 (nothing
+# older than the running release installs; the staged copy must hold the listing before current moves; its
+# docstring); takes 8, _differences 8, _blob 5 and Refused 4 with their blank lines; _owned_files 1 and the shlex
+# import 1; less the three fixed launcher texts 13 and the 2 lines of the git hook's old text. doctor.py 10:
+# check_hook_script 10 (every launcher is the text install writes for the interpreter it pins, which must still be one
+# install would pin). release.py 120: fresh_clone 19, github_state 12, floor_problems 12, install_preflight 11,
+# runtime_listing 10, remove_clone 6, clean_env 6 and on_main 4, each with its blank lines (a fresh clone of what
+# GitHub serves, made with git's own config left out in the protected releases folder, and everything built, pushed,
+# exported and installed from it; GitHub's main tip and tag read the same way; nothing older than the running runtime
+# or GitHub's latest release; an install's tag on main in the clone; the runtime's listing; only a clone it made is
+# removed); main 16 (--tag and the rules for it and --repo-root, the clone, the version it holds, the runtime from it
+# with its listing, the clone removed, the doctor after every install); the docstring 15 (the launcher commands, the
+# fresh clone, the stages renumbered); preflight 4 (GitHub's state and the floor); CANONICAL_URL, TAG and GIT's
+# comment 3 and the CANONICAL comment 2. PLUGIN for REPO, ci_state, git, collections_head and publish's read-back
+# change lines in place.
+# 5.23.1, a session start never replaces an installed runtime from its harness's folder (the principal's sandbox
+# rulings of 2026-11-15; review round 1's open item 1): core 29 more and plugin 29. hook.py 20: _newer_plugin_note 18
+# with its blank lines (once per version: both versions and the release launcher's install line), _emit 1 (a system
+# message beside the context) and session_start 1. doctor.py 6: check_package's warning for a newer plugin 5 and its
+# fail message's second line 1. install.py 2: install's docstring (first_only, the first install only, in place of
+# forward_only). cli.py 1: `install --first`, which the bootstrap passes.
+# 5.23.1, review round 2 of releases from the protected runtime: core 42 more and plugin 63. install.py 39:
+# refresh_launchers 18 with its blank lines (every launcher that differs from what the runtime writes rewritten, for the
+# interpreter it pins, re-pinned when that one may no longer run the guard: N4), pinned_git 10 with its blank lines and
+# GITS 2 with its comment 3 (git by its real path, checked as the interpreter is, never Apple's /usr/bin shim, which finds
+# its git through a cache in this user's own temporary folder), launcher_text 4 (its own home whatever the caller
+# exports, N2, the real git's folder first on PATH, its docstring) and install 2 (a release's install of a folder with
+# no runtime raises, N8). hook.py 3: every session start puts the launchers right, with or without a plugin folder.
+# guards.py: a workdir, a terminal tab's cwd, env -C and git -C placed by their real paths (N1) and refresh_launchers
+# among the writers change lines in place. release.py 15: _running 10 with its blank lines and fresh_clone 1 (a run
+# removes only its own clone and those of runs that ended, N8), floor_problems 2 (GitHub's highest version tag read by
+# git with its own config left out, never by a gh on PATH, N7, and its docstring) and preflight 2 (its docstring: the
+# commit it read is the one returned and released, N10). build_collections.py 6: tree 5 (each collection file's id held
+# to its bytes in memory, N3) and the hashlib import 1. Then plugin 6 more, all in release.py: main 5 (a run from an
+# installed runtime refuses a synthesis home other than the one that runtime is installed in, N2, whatever launched it)
+# and STALE_CLONE 1 (another run's clone is removed only when that run is gone and the clone is hours old, N8);
+# build_collections.py's tree, now written from memory with fast-import, its index in the repository's own git folder
+# and the tree held to the files' ids (N3), changes lines in place.
+# 5.23.1, review round 3 of releases from the protected runtime: core 81 more and plugin 81. guards.py 30:
+# check_self_grant 8 (a line whose cd lands elsewhere physically is judged again with every cd placed by its real path,
+# M1), _commands 3 (each cd's textual and real places, and the mark that they differ), _CD_REAL 1 with its comment 4,
+# _gated_push 9 (in a gated repository a push that creates, moves or deletes a version tag, or carries tags with
+# --tags, --follow-tags or push.followTags, M5) and check_pr_gate 5 (its hold names the version tag); SYNTHESIS_WRITES
+# names install's _install_lock and _install_locked in place. install.py 51: _install_lock 27 with its decorator and
+# blank lines (one install at a time in a home, from its floor check to the switch of current, M2; its file one this
+# user may only write, made so if an earlier build left it readable, since flock takes a file opened only to read and
+# the guard lets a program that only reads run with no code; the file closed whatever happens), _older 7 with its blank
+# lines (why a plugin may not replace the running runtime), install and
+# _install_locked 9 (the floor read again under the lock just before current moves, the rollback parameter only the
+# code-approved route passes, an install that stops when nothing can be pinned, M3, and the docstring), uninstall 4
+# (install's own lock removed, and passed over in the sweep of releases), pinned_python 2 (Apple's /usr/bin shim refused,
+# and its docstring) and the contextlib and fcntl imports 2. release.py: a clone folder named by the run's pid and a
+# random part (M4) changes lines in place.
+# 5.23.1, review round 4 of releases from the protected runtime: core 204 more and plugin 204, all in guards.py.
+# _commands and _walk 64 (101 lines become 42 and 123: a line is read from every starting point its changes of folder
+# give it, each kept on a list with the folder, the one before it, pushd's stack, the subshells open, what was piped,
+# whether a command before may have changed a folder and the folders the reading found there or missing; a cd that may
+# fail has its own folder read on at the end of its && chain, a cd piped into a command or a list sent to the
+# background moves nothing past its subshell, the last of a pipeline both ways; the physical reading runs inside the
+# parse, so a nested check no longer resets it; `env cd` moves nothing; auto_cd and a command named by a substitution;
+# a cd in eval, source or a trap leaves the line unplaced; and the docstring; Q1), _landings 28 (each landing of a cd or
+# pushd: OLDPWD, CDPATH and cdpath entries, cdable_vars values, zsh's `cd old new`), _cd_sources 33 (what the line sets
+# up for those, read with its quoting taken away, and what leaves it unplaced: a CDPATH it cannot read, a redefined cd,
+# a function or alias on a line that changes folder, BASH_ENV, ZDOTDIR), _moved 9 (the folder stack after a landing,
+# out of the old cd branch), _unquoted_line 7 ($'…', backslashes and quotes taken away), _keeps 5, FOLDER_KEEPERS 3 and
+# _enterable 3 (whether a cd may fail: no folder there now, or a command before that may make, remove or move one),
+# PLACINGS, FOLDER_MOVE, UNQUOTED, FUNCTION and ESCAPES 5; _gated_push 22, _remote_tags 12 and check_pr_gate 1 (a push
+# waits only when it makes, moves or deletes a version tag the remote is asked about, a branch named v... is a branch;
+# Q3); check_self_grant 5 fewer and _CD_REAL with its comment 5 fewer (the physical pass and its flags gone, the
+# unplaced wait added); the blank lines between the new functions 22. _simple hands on the operator after each command
+# in place. install.py: the rollback keyword gone (Q4), and CDPATH and OLDPWD kept by the launchers, in place.
 # Then core and plugin each 64 more, all in approvals.py, so a grant is read before it is spent and finding the
 # principal's prompt reads only the approval window (a Codex record of 1.9 GB took 4.6 s to read from its start, past the
 # hook's 4 s, after the grants had been deleted): _lines_back 16 (a record's lines from its end), _spend 13 (a grant taken
@@ -1367,10 +1457,58 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# 5.23.1, the runtime changes only on the principal's code (review round 2, N5 and N6; his sandbox rulings of
+# 2026-11-15): core 156 more and plugin 156, measured. guards.py 120: check_runtime 26 (the hold, bound to the command,
+# the folder it runs in and each folder's runtime hash; the line read as written too where it uses a variable it does
+# not set; with its blank lines), _cli_words 24 (the CLI's words by every spelling: its name, a link, -m, its module or
+# install.py by path, a shell, a runner), _runtime_change 25 (what it does to the runtime, said for the principal; a
+# folder it cannot read bound as such), _cli_reads 20 (the CLI's own parser reads the words; a word the guard cannot
+# read waits), _named_cli 7, the section's comment 4, RUNNERS and CLI_MODULES 4, SYNTHESIS_IMPORT 1 (an import wherever
+# a statement may start) and SYNTHESIS_LOADED 2 (a name or a file of synthesis's handed to a loader), _synthesis_reach 6
+# (such a file, loaded 2; one only opened runs only by exec or eval 2, so a syntax check passes; the runtime named for
+# what an installer writes 2) and the dispatch 1. install.py 22: traces and TRACES 10
+# (what a runtime leaves in a home), install 8 (first_only: kept where the runtime is whole, refused loudly where it is
+# not), the module's docstring 2 and uninstall's last report line 2. cli.py 14: parsed 13 and command_at 6 (one reading
+# of the CLI's words for it and for the guard), less _main's 6, and `install --first` 1. hook.py and doctor.py change
+# lines in place.
+# 22.18's review round 1 (H1, H2) and 5.23.1's round 4 (Q4): install and uninstall themselves spend the principal's
+# code for the install that happens: core 160 more and plugin 165, measured. install.py 116: approval 17 (spends the code,
+# or files the request and says what the hook says; the session's own record where no hook ran), _stage 16 (the copy
+# made in the protected releases folder, from which the install is made), _read 14 (a regular file's bytes, opened
+# without waiting), _files 12 (every file an install copies), release_route 12 (the release tool from the protected
+# runtime, started isolated), change 10 (an install's subject and words, a rollback named as a downgrade), package_digest
+# 10 (sha256 of each file by its path and length), subject 9, uninstall 8 (it spends the code itself), install 5 (the
+# check on the staged copy, the release route, the day-end copies from the installed release), Unapproved 4,
+# RELEASE_TOOL 3 and the stat import 1, less package_hash's 5. approvals.py 19: answered (the code as the session's record
+# shows it, where no prompt hook made a grant). cli.py 16: _shell 8 (the session a shell belongs to), cmd_install 5 and
+# cmd_uninstall 3 (through install and uninstall, a refusal said). guards.py 9: _cli_words 7 (the CLI's own folder; a
+# bare `synthesis` PATH finds elsewhere is no CLI) and _runtime_change 4 (the install's own subject), less check_runtime's
+# 2 (it checks the grant and spends nothing). setup.py 1 and release.py 4: a refused install is said, not raised.
+# Merged with main at b8efb5ee (5.23.1's approval fix, 2026-11-15): main's ceilings (core 16881, plugin 42953) and this
+# branch's two itemized raises above (core 156 and 160, plugin 156 and 165): core 17197 and plugin 43274, measured.
+# 22.18's review round 2 (K1, K2): core 1 more and plugin 10, measured. install.py 1: release_route's docstring says it
+# trusts the process's main program until 22.8's launcher brings a grant the hook issues. setup.py 9: `--session` 2,
+# main 5 (a shell acts only as its own session; the session handed to the install and the uninstall), install_runtime's
+# docstring 2; install_runtime's and _uninstall's own lines change in place.
+# Releases from the runtime (22.8) merged with 22.18 at 71198117, which carries main at b8efb5ee: 22.18's ceilings (core
+# 17198, plugin 43284) and 22.8's itemized raises above from main at 82412084 (16507 and 42579 there: core 636, plugin
+# 783), less 4 each that the merge's own lines save, measured: install.py 4 fewer (the floor's `_older` gone, as 22.18's
+# rollback kind is the floor; `traces` reads a releases folder holding only the release tool's clone, a staged copy or
+# install's lock as no release; install's docstring and its locked half joined), guards.py 1 more (the writers list),
+# cli.py 1 fewer (the install call joined).
+# 22.18's review round 2, K1, as 22.8 closes it (the coordinator's direction of 2026-11-15): core 57 more and plugin 57.
+# install.py 41: _spend_release 28 (the hook's grant spent once, for the release tool's fresh clone in the protected
+# releases folder at the tag `v<version>`, its staged copy holding exactly that tag's tree), grant_release 9 (what the
+# hook writes for the launcher's line), _grant_file 3 and RELEASE_GRANT_SECONDS 1, the check and the grant bound when
+# the module loads 1 with its comment 4 (a function put in `install.approval` changes nothing), install's docstring 1,
+# and the blank lines 6, less release_route 11 and RELEASE_TOOL 1 (no main program or interpreter flag trusted).
+# guards.py 16: _grant_release 12 (the version of the tag the line names or its checkout's manifests carry; a dry run
+# granted nothing), check_self_grant 2 (the grant written where the launcher's line passes) and blank lines 2;
+# _release_tool hands on the options it read in place of a yes.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16881
-PLUGIN_BUDGET = 42953
+CORE_BUDGET = 17887
+PLUGIN_BUDGET = 44120
 
 
 def _lines(files):

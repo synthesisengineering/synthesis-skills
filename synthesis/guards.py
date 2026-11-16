@@ -1663,8 +1663,8 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
 
 def _simple(tokens: list) -> list:
     """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in, files written,
-    link). The link is "&&" when only `&&` stands between a command and the one before it, so it runs only if that
-    one succeeded; "||" when it runs only if that one failed; "" otherwise."""
+    link, the operator after it). The link is "&&" when only `&&` stands between a command and the one before it, so it
+    runs only if that one succeeded; "||" when it runs only if that one failed; "" otherwise."""
     items, words, stdin, scripts, skip, piped, writes, before = [], [], [], [], "", False, [], []
     for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
@@ -1686,7 +1686,7 @@ def _simple(tokens: list) -> list:
         else:
             if words or stdin or scripts or writes:
                 link = before[0] if before[:1] in (["&&"], ["||"]) and set(before[1:]) <= {"\n"} else ""  # `&&` may end a line
-                items.append((words, stdin, scripts, piped, writes, link))
+                items.append((words, stdin, scripts, piped, writes, link, rest[0]))
                 before = []
             before.append(rest[0])
             words, stdin, scripts, skip, writes = [], [], [], "", []
@@ -1839,25 +1839,82 @@ STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "pe
                       "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
 
+PLACINGS = 256  # the starting points a line's changes of folder may give its commands; past them the line waits (round 4)
+FOLDER_MOVE = re.compile(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd|popd)(?=[\s;&|)`}]|$)")  # a change of folder in a script
+
+
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None, prose: bool = False) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False, mode: dict | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
     command found and in the same order, (the `&&` chain it stands in, whether a later command of
     that chain runs only if this one ran and succeeded). `feeds` collects, the same way, the text each
-    command reads on its own stdin (its heredocs and here-strings)."""
+    command reads on its own stdin (its heredocs and here-strings).
+
+    A command is listed once for each folder it may run in (review rounds 3 and 4 of 5.23.1, M1 and Q1). A change of
+    folder may land where its text leads or where its real path does (`cd -P`, `set -P`, zsh's chase options: the guard
+    cannot know a user's shell options), under a CDPATH or cdpath entry the line or the environment gives, at a
+    variable's value (cdable_vars), at OLDPWD (`cd -`), where zsh's `cd old new` leads, or at a folder named as a
+    command (auto_cd). It may fail (no folder there when the guard looks, or a command before it that may make, remove,
+    move or change one), leaving the commands after its `&&` chain where they were, and a folder a reading found missing
+    stays missing in it; in a pipeline it moves only its own subshell (the last one's moves zsh), and a list sent to the
+    background leaves the shell where it was. Each such landing reads the rest of the line from there. One reading's
+    choices (`mode`) reach the scripts it nests and stay within this call: a check the guard runs for a program's own
+    commands starts its own."""
+    if mode is None:  # a line's own reading: by each change of folder's text, then, if one lands elsewhere physically, by its real path
+        mode = {"real": False, "split": False, "quiet": prose, "sources": {
+            "CDPATH": [e for e in os.environ.get("CDPATH", "").split(":") if e], "OLDPWD": [os.environ["OLDPWD"]] if os.environ.get("OLDPWD") else [],
+            "vars": {}, "cdable": False, "autocd": False, "unread": False}}
+        found = _commands(command, cwd, depth, writes, runs, feeds, prose, mode)
+        if mode["split"]:
+            mode["real"] = True
+            found += _commands(command, cwd, depth, writes, runs, feeds, prose, mode)
+        return found
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
-    found, outer, upstream, chain, back, stack = [], [], "", object(), cwd, []
-    for item in _simple(_lex(command)):
+    _cd_sources(command, mode)
+    items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "", False, frozenset(), frozenset())], set()
+    while todo:
+        state = todo.pop()
+        if (*state[:5], repr(state[5]), *state[6:]) in seen:
+            continue
+        seen.add((*state[:5], repr(state[5]), *state[6:]))
+        if len(seen) > PLACINGS:
+            _CALL["unplaced"] = _CALL["unplaced"] or not mode["quiet"]
+            break
+        found += _walk(items, state, depth, writes, runs, feeds, prose, mode, todo)
+    return found
+
+
+def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: bool, mode: dict, todo: list) -> list:
+    """The commands of a line read from one starting point (its item, the folder, the one before it, pushd's stack, the
+    subshells open, what the command before piped, whether a command before may have changed a folder, and the folders
+    this reading found there or missing): each landing of a change of folder past its first, and the folder a failed
+    one leaves the shell in after its `&&` chain, goes on `todo` as a starting point of its own."""
+    start, cwd, back, stack, outer, upstream, changed, present, gone = state
+    found, stack, outer, chain, pending, started, kept, after = [], list(stack), list(outer), object(), [], None, True, None
+    for i, item in enumerate(items[start:], start):
+        if after:  # the list before was sent to the background: its changes of folder stay there
+            (cwd, back, stack), pending, after = after, [], None
+            stack = list(stack)
         if item in ("(", ")"):
             if item == "(":
-                outer.append((cwd, back, list(stack)))
+                outer.append((cwd, back, tuple(stack), tuple(pending)))
+                pending = []
             elif outer:
-                cwd, back, stack = outer.pop()  # a subshell's cd ends with it
+                cwd, back, stack, pending = outer.pop()  # a subshell's cd ends with it
+                stack, pending = list(stack), list(pending)
             continue
-        words, stdin, scripts, piped, targets, link = item
+        words, stdin, scripts, piped, targets, link, ended = item
+        changed, kept = changed or not kept, _keeps(words)
+        if link != "&&":  # a new chain: a change of folder before it may have failed, leaving the shell where it was
+            todo += [(i, *was[:3], tuple(outer), upstream, changed, *was[3:]) for was in pending]
+            pending = []
+        if link == "" and not piped:  # a list starts here: where `&` after it leaves the shell
+            started = (cwd, back, tuple(stack))
+        after = (started or (cwd, back, tuple(stack))) if ended == "&" else None
+        lead = next((os.path.basename(w) for w in words if w not in KEYWORDS and not re.match(r"[A-Za-z_]\w*=", w)), "")
         chain = chain if link == "&&" else object()
         opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
         needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
@@ -1870,8 +1927,11 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
-            here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
+            here = os.path.realpath(os.path.join(here, os.path.expanduser(folder)))  # env chdirs as the kernel does (round 2, N1)
         head, script = os.path.basename(words[0]) if words else "", words
+        read_in = [_code_of(os.path.join(here, os.path.expanduser(w))) for w in [w for w in words[1:] if w != "--"][:1]] if head in ("source", ".") else []
+        if not mode["quiet"] and (any(FOLDER_MOVE.search(s) for s in inner) or any(not t or FOLDER_MOVE.search(t) for t in read_in)):
+            _CALL["unplaced"] = True  # eval and source run in this shell, a trap between its commands: a cd there is not followed
         takes_in = bool(words) and bool((head in SHELLS and _shell_input(words)[1]) or ((SCRIPT.match(head) or UNREAD.match(head)) and _program(words)[0] == "stdin"))
         stdin = [((_code_of(os.path.join(here, os.path.expanduser(t[2:]))) or f"{UNREAD_INPUT} {t[2:]}") if takes_in else "", True)
                  if t.startswith("\0<") else (t, lit) for t, lit in stdin]  # its script, when it reads one there; else nothing it runs
@@ -1905,20 +1965,33 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                 runs.append((chain, needed))
             if feeds is not None:
                 feeds.append("\n".join([text for text, _ in stdin] + [_piped(upstream)] * (piped and takes_in)))
-            if words[0] in ("cd", "pushd", "popd"):  # where the next command runs: `cd -` goes back, `popd` to the folder pushd left
-                to = next((w for w in words[1:] if w == "-" or not re.match(r"[-+]", w)), None)
-                turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
+            verb = words[1:] if words[0] == "builtin" else words
+            if verb[:1] and verb[0] in ("cd", "pushd", "popd") and lead in ("cd", "pushd", "popd", "builtin", "command") and ended not in ("|", "|&"):
+                # where the next command runs (`env cd` and `nohup cd` run a cd of their own, and one piped into another
+                # command moves only its own subshell): `cd -` goes back, `popd` to the folder pushd left
+                operands = [w for w in verb[1:] if w == "-" or not re.match(r"[-+]", w)]
+                to = operands[0] if operands else None
+                turn = next((w for w in verb[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
-                aim = _led(os.path.expanduser(os.path.expandvars(to or "~")), cwd)
-                went = back if to == "-" else aim if aim[:1] in ("$", "`") else os.path.normpath(os.path.join(cwd, aim))
-                if words[0] == "cd":
-                    dirs[0] = went if to is not None or not turn else dirs[at]
-                elif words[0] == "popd":
-                    dirs = (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
-                else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
-                    dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
-                cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+                lands = [cwd] if verb[0] == "popd" else _landings(operands, cwd, back, mode)
+                aim = _moved(verb[0], dirs, lands[0], to, turn, at)[0]
+                if not changed and aim in gone:  # this reading had it fail before, and nothing since made it: it fails again
+                    lands = []
+                elif changed or not (aim in present or _enterable(aim)):  # no folder there now, or a command before may have
+                    pending.append((cwd, back, tuple(stack), present, gone | {aim}))  # made, removed or moved one: it may fail
+                    present = present | {aim}
+                for went in lands[1:] + [None] * (piped and bool(lands)):  # each other landing, and the last of a pipeline
+                    moved = _moved(verb[0], dirs, went, to, turn, at) if went else dirs  # in bash's own subshell: unmoved
+                    todo.append((i + 1, moved[0], cwd if went else back, tuple(moved[1:][::-1]), tuple(outer), f"{UNREAD_INPUT} {verb[0]}", changed,
+                                 present, gone))
+                if lands:
+                    dirs = _moved(verb[0], dirs, lands[0], to, turn, at)
+                    cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+            elif (mode["sources"]["autocd"] and len(words) == 1) or (re.match(r"[$`]", words[0]) and words[1:]):
+                # a folder named as a command (auto_cd), or a command whose name this cannot read, which may be a cd
+                went = _landings(words[:1] if len(words) == 1 else words[1:2], cwd, back, mode)[0]
+                todo.append((i + 1, went, cwd, tuple(stack), tuple(outer), f"{UNREAD_INPUT} {head}", changed or not kept, present, gone))
             if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it
                 roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found
                 scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
@@ -1935,8 +2008,115 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         upstream = (here, files) if files else "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n") if head in ("echo", "printf", "cat") else (
             f"{UNREAD_INPUT} {head}")  # what another program prints into a shell cannot be read (finding 18)
         for script in scripts:
-            found += _commands(script, here, depth + 1, writes, runs, feeds)
+            found += _commands(script, here, depth + 1, writes, runs, feeds, False, mode)
     return found
+
+
+FOLDER_KEEPERS = frozenset("cd pushd popd dirs echo printf pwd true false : test [ [[ ls cat head tail wc grep egrep fgrep rg sort uniq "
+                           "cut tr date whoami id uname basename dirname realpath readlink stat file which type export set setopt unsetopt "
+                           "shopt unset local declare typeset read sleep wait printenv touch tee diff cmp jq less more".split())
+
+
+def _keeps(words: list) -> bool:
+    """Whether a command can neither make, remove, move nor change a folder, so whether a `cd` after it finds its
+    folder is what the guard sees now (round 4 of 5.23.1, Q1). A folder another process changes meanwhile is not seen."""
+    head = next((os.path.basename(w) for w in words if w not in KEYWORDS and w not in ("builtin", "command") and not re.match(r"[A-Za-z_]\w*=", w)), "")
+    return head in FOLDER_KEEPERS or not head
+
+
+def _enterable(path: str) -> bool:
+    """A folder there now that this user may enter, or one named through what this cannot read, which may be."""
+    return path[:1] in ("$", "`") or (os.path.isdir(path) and os.access(path, os.X_OK))
+
+
+def _moved(verb: str, dirs: list, went: str, to, turn: str, at: int) -> list:
+    """The folder stack, this folder first, after `verb` lands at `went`: `cd` replaces the top (with a number alone,
+    by the folder it names), `popd` takes off the top or the one a number names, `pushd` puts a folder on top, turns the
+    stack by a number, or alone swaps the top two."""
+    if verb == "cd":
+        return [went if to is not None or not turn else dirs[at]] + dirs[1:]
+    if verb == "popd":
+        return (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
+    return [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
+
+
+def _landings(operands: list, cwd: str, back: str, mode: dict) -> list:
+    """Every folder a `cd` or `pushd` with these operands may land in, the one its words name first (review round 4 of
+    5.23.1, Q1): `cd -` at OLDPWD too, wherever the line or the environment sets it; a relative name under each CDPATH
+    or cdpath entry, and under cdable_vars at a variable's value, a folder `hash -d` names or a user's home; zsh's `cd
+    old new` at this folder's path with `old` replaced by `new`, and old bash's, which takes `old`. Each by its text,
+    or in the physical reading by its real path. A relative name on a line that sets CDPATH in a way this cannot read
+    leaves the line unplaced."""
+    src, to = mode["sources"], operands[0] if operands else None
+
+    def placed(aim: str) -> str:  # a substitution it cannot read stays as written
+        aim = _led(os.path.expanduser(os.path.expandvars(aim)), cwd)
+        if aim[:1] in ("$", "`"):
+            return aim
+        text, real = os.path.normpath(os.path.join(cwd, aim)), os.path.realpath(os.path.join(cwd, aim))
+        mode["split"] = mode["split"] or os.path.realpath(text) != real  # a link before a `..` (round 3, M1)
+        return real if mode["real"] else text
+    if to == "-":
+        lands = [back] + [placed(v) for v in src["OLDPWD"]]
+    elif len(operands) > 1:
+        lands = [placed(cwd.replace(operands[0], operands[1], 1))] * (operands[0] in cwd) + [placed(operands[0])]
+    else:
+        lands = [placed(to or "~")]
+        if to and not (to.startswith(("/", "~", "$", "`", "./", "../")) or to in (".", "..")):  # a relative name
+            _CALL["unplaced"] = _CALL["unplaced"] or (src["unread"] and not mode["quiet"])
+            lands += [placed(os.path.join(entry, to)) for entry in src["CDPATH"] if entry]
+            home = os.path.expanduser("~" + to) if re.fullmatch(r"[A-Za-z_][\w.-]*", to) else ""
+            lands += [placed(v) for v in src["vars"].get(to, []) + [os.environ.get(to, ""), home] if src["cdable"] and v and v != "~" + to]
+    return list(dict.fromkeys(lands))
+
+
+UNQUOTED = re.compile(r"\$'((?:[^'\\]|\\.)*)'|\\(.)|['\"]")  # $'…', a backslash and its letter, a quote
+FUNCTION = re.compile(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*[{(]")  # a function defined
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "v": "\v"}
+
+
+def _unquoted_line(text: str) -> str:
+    """A line with its quoting taken away, as the shell takes it away before a builtin reads its words: `export
+    "CD""PATH=…"` and `export $'CD\\x50ATH=…'` both name CDPATH."""
+    def ansi(body: str) -> str:
+        return re.sub(r"\\(?:x([0-9A-Fa-f]{1,2})|([0-7]{1,3})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|(.))", lambda m: chr(min(int(
+            m[1] or m[2] or m[3] or m[4], 8 if m[2] else 16), 0x10FFFF)) if not m[5] else ESCAPES.get(m[5], m[5]), body)
+    return UNQUOTED.sub(lambda m: ansi(m[1]) if m[1] is not None else m[2] or "", text)
+
+
+def _cd_sources(text: str, mode: dict) -> None:
+    """What a line sets up that its changes of folder read (review round 4 of 5.23.1, Q1), read with its quoting taken
+    away: CDPATH (given a value, exported, or in `${CDPATH:=…}`) and zsh's cdpath; OLDPWD; the variables it gives
+    values and the folders `hash -d` names, read under cdable_vars; and whether it turns cdable_vars or auto_cd on (zsh
+    reads option names in any case and without underscores; -T and -J are their letters). A CDPATH or cdpath set in a
+    way this cannot read, or a name set through another name (a nameref, `printf -v`, zsh's (P) flag), leaves a
+    relative `cd` unplaced; so does, for any change of folder, an alias, a function or enable/disable on a line that
+    changes folder, and BASH_ENV or ZDOTDIR given to the shells it starts. An unplaced line waits."""
+    src, plain = mode["sources"], _unquoted_line(text)
+    flat = plain.lower().replace("_", "")
+    letters = "".join(w for words in re.findall(r"\b(?:set|setopt|zsh|emulate)\b([^;&|\n]*)", plain) for w in re.findall(r"(?:^|\s)[-+]([A-Za-z]+)", words))
+    src["cdable"] = src["cdable"] or "cdablevars" in flat or "T" in letters
+    src["autocd"] = src["autocd"] or "autocd" in flat or "J" in letters
+    given = 0
+    for line, counted in ((plain, 1), (text, 0)):  # read unquoted, and as written, where a value may hold a space
+        for m in ASSIGNED.finditer(line):
+            value = m[3].strip("'\"")
+            if m[1] == "CDPATH":
+                src["CDPATH"], given = src["CDPATH"] + value.split(":"), given + counted
+            elif m[1] == "OLDPWD":
+                src["OLDPWD"] = src["OLDPWD"] + [value]
+            src["vars"].setdefault(m[1], []).append(value)
+    for m in re.finditer(r"\bcdpath\+?=\(([^()]*)\)|\$\{(?:cdpath|CDPATH):{0,2}=([^}]*)\}", plain):
+        src["CDPATH"], given = src["CDPATH"] + (m[1].split() if m[1] is not None else m[2].split(":")), given + 1
+    for m in re.finditer(r"\bhash\s+-d\s+([A-Za-z_]\w*)=(\S+)", plain):
+        src["vars"].setdefault(m[1], []).append(m[2])
+    named = len(re.findall(r"(?<![\w${])(?:cdpath|CDPATH)\b|\$\{(?:cdpath|CDPATH):{0,2}=", plain)) - len(re.findall(
+        r"\b(?:unset|export)\s+(?:-\w+\s+)*(?:cdpath|CDPATH)\b(?!\+?=)", plain))  # each place it names CDPATH, but to unset or export it
+    src["unread"] = src["unread"] or named > given or any(re.search(r"[$`(]", e) for e in src["CDPATH"]) or bool(re.search(
+        r"\b(?:declare|typeset|local)\s+(?:-\w+\s+)*-\w*n|\bprintf?\s+(?:-\w+\s+)*-v|\$\{\([^)]*P", plain))
+    if not mode["quiet"] and (re.search(r"(?:^|[\s;&|(])(?:BASH_ENV|ZDOTDIR)=|\b(?:enable|disable)\s[^;&|\n]*?\b(?:cd|pushd|popd|builtin"
+                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and (FUNCTION.search(plain) or re.search(r"\balias\s+\S", plain)))):
+        _CALL["unplaced"] = True
 
 
 def _piped(upstream) -> str:
@@ -1969,7 +2149,7 @@ def _git(words: list[str], cwd: str) -> tuple[str | None, str]:
     i = 1
     while i < len(words) and words[i].startswith("-"):
         if words[i] == "-C" and i + 1 < len(words):
-            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(words[i + 1])))
+            cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(words[i + 1])))  # git chdirs as the kernel does
         i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
     return (words[i] if i < len(words) else None), cwd
 
@@ -2628,23 +2808,68 @@ def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branc
             return target if target in defaults else None
         return UNREAD_BRANCH if "" in current else next(iter(sorted(current & defaults)), None)
 
+    follows = options.get("follow-tags") or (options.get("follow-tags") is not False and _run_git(
+        where, "config", "--get", "push.followTags")[1].strip().lower() in ("true", "yes", "on", "1"))
+    there: list = []  # the version tags the remote holds, asked of it once, and only when a push may touch one
+
+    def changes(tag: str, deleting: bool = False, value: str = "") -> bool:
+        """Whether the push makes, moves or deletes the version tag `tag` there (round 4 of 5.23.1, Q3): a tag the
+        remote lacks, or holds at another object than `value` (else the local tag's), or deletes one it holds; True
+        when the remote cannot be asked."""
+        there[:] = there or [_remote_tags(where, named or remote)]
+        if there[0] is None:
+            return True
+        return tag in there[0] if deleting else there[0].get(tag) != _run_git(where, "rev-parse", "--verify", "--quiet", value or tag)[1].strip()
+
+    def carried(sources: list):  # a version tag `--tags` takes along, or `--follow-tags` (annotated, reachable from what is pushed)
+        local = (_run_git(where, "for-each-ref", "--format=%(refname)", "refs/tags/v*")[1].split() if options.get("tags") else [
+            ref for source in sources for kind, _, ref in (row.partition(" ") for row in _run_git(
+                where, "for-each-ref", f"--merged={source}", "--format=%(objecttype) %(refname)", "refs/tags/v*")[1].splitlines())
+            if kind == "tag"] if follows else [])
+        hit = next((ref for ref in dict.fromkeys(local) if changes(ref)), None)
+        return (repo, hit) if hit else None
     if not refspecs:  # git consults its config; `--tags` alone pushes tags and no branch
         hit = None if options.get("tags") else UNREAD_BRANCH if mapped else lands("HEAD")
-        return (repo, hit) if hit else None
-    at = 0
+        return (repo, hit) if hit else carried(["HEAD"])
+    at, sources = 0, []
     while at < len(refspecs):
         spec, at = refspecs[at], at + 1
         if spec == "tag" and at < len(refspecs):  # `tag <name>` pushes that tag
             at += 1
+            if refspecs[at - 1].startswith("v") and changes(f"refs/tags/{refspecs[at - 1]}"):
+                return repo, f"refs/tags/{refspecs[at - 1]}"
             continue
         source, colon, target = spec.lstrip("+").partition(":")
-        target = target or source
-        if target.startswith("refs/tags/"):  # a tag is what gets updated, whatever is pushed onto it
+        target, deleting = target or source, bool(options.get("delete") or (colon and not source))
+        bare = not target.startswith("refs/")
+        tagged = bare and _run_git(where, "rev-parse", "--verify", "--quiet", f"refs/tags/{target}")[0] == 0  # git pushes the tag of that name
+        tag = target if target.startswith("refs/tags/") else f"refs/tags/{target}" if bare else ""
+        # A version tag made, moved or deleted there is a release's alone (round 3, M5): one named in full, a bare name
+        # git takes for a local tag, a bare name a push writes onto, or one it deletes. A branch named v... is a branch.
+        if tag.startswith("refs/tags/v") and (deleting or tagged or not bare or (colon and target != source)) and changes(
+                tag, deleting, source if colon and source != target else ""):
+            return repo, tag
+        if target.startswith("refs/tags/") or tagged:  # another tag is what gets updated, whatever is pushed onto it
             continue
+        sources += [source] if source and not deleting else []
         hit = UNREAD_BRANCH if not colon and mapped else lands(target.replace("refs/heads/", "", 1))
         if hit:
             return repo, hit
-    return None
+    return carried(sources)
+
+
+def _remote_tags(where: str, remote: str) -> dict | None:
+    """The version tags a remote holds, {refs/tags/name: object id}, asked of it with no prompt and a short wait; None
+    when it cannot be asked (round 4 of 5.23.1, Q3: whether a push makes, moves or deletes one)."""
+    import subprocess
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+    try:
+        done = subprocess.run(["git", "-C", where, "ls-remote", "--tags", "--refs", remote, "refs/tags/v*"], capture_output=True,
+                              text=True, timeout=5, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None if done.returncode else {ref: oid for oid, _, ref in (row.partition("\t") for row in done.stdout.splitlines()) if ref}
 
 
 def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
@@ -2699,6 +2924,12 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
         return None
     repo, branch = hits[0]
     code = approvals.request("push-direct", subject, f"DIRECT push to {repo} {branch}: {command[:140]}")
+    if branch.startswith("refs/tags/"):
+        return (f"This makes, moves or deletes the version tag {branch[len('refs/tags/'):]} on {repo} (or {repo} could not be "
+                "asked which version tags it holds), where version tags are made by its release tool alone: a stray one stops "
+                "every release and install as older than it. If the principal wants "
+                f"this one push, show them the exact command and ask them to type {approvals.how(code)}. Then run the "
+                "identical command again.")
     return (f"This pushes straight to {branch} of {repo}, which takes changes only through a pull request: push a "
             "branch, open the pull request, let its checks pass, merge it, then install from the merged branch. If the "
             f"principal wants this one push to go direct, show them the exact command and ask them to type {approvals.how(code)}. "
@@ -3015,9 +3246,9 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines."""
+    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), harness transcripts, approved commit lines."""
     store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
+    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
                              *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
                              paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                              *([store] if store else [])]]
@@ -4568,7 +4799,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "unplaced": False, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, whether where its commands run could be told, and its deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -4585,17 +4816,21 @@ READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "r
 GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
 GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
 ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
-SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
+SYNTHESIS_IMPORT = re.compile(  # wherever a statement may start: a line, after `;` or `:`, in a list (5.23.1: `import sys; from
+    r"(?:^|[;:])[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*synthesis\b)", re.M)  # synthesis ...` passed)
+SYNTHESIS_LOADED = re.compile(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
+                              r"[ \t]*\([^)\n]*?['\"][^'\"\n]*\bsynthesis(?:[./]|['\"])")  # a name or a file of synthesis's handed to a loader
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone consume grant_from_prompt put_back remember request void"),
+    ("approvals", "_expire _spend alone answered consume grant_from_prompt put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
-    ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
+    ("install", "_install_lock _install_locked _merge _spend_release _stage _write_exec approval grant_release install move_board "
+                "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
@@ -4757,16 +4992,166 @@ def _stand_in(code: str, where: str, module: str = "") -> str:
                  or os.path.isdir(os.path.join(where, m))), "")
 
 
+# --- the release tool, run from the protected runtime with no code (the principal, 2026-11-15) -----------------------
+# A release installs the runtime this guard runs from, so it runs from that runtime, where no agent can change it,
+# through the launcher install writes in the protected bin/ (review round 1 of 5.23.1, A4): the interpreter pinned at
+# install, isolated, with a fixed environment. Exactly that launcher passes with no code: alone on the line in plain
+# words, by its absolute path, with only the options the tool documents, on the canonical checkout (`release_checkout`)
+# or naming a tag to install. What it publishes and installs then comes from a fresh clone of what GitHub serves, which
+# its own preflight requires to be the tip of main with CI passed. The tool by its own path, a copy of it or of the
+# launcher, the scripts the runtime carries for it and every other way of running them are judged as any other program:
+# `RELEASE_KIT` is never the plugin's own (`_shipped`).
+RELEASE_REPOSITORY = "synthesisengineering/synthesis-skills"
+RELEASE_KIT = ("skills/synthesis-skills-manager/scripts/", "skills/synthesis-onboarding/scripts/")  # its imports with it
+GITHUB_REMOTE = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
+RELEASE_OPTIONS = {"--repo-root": r"/.+", "--tag": r"v\d+\.\d+\.\d+", "--clients": r"(?:claude|codex|muse)(?:,(?:claude|codex|muse))*",
+                   "--session": r"[\w.:-]{1,128}", "--install-only": None, "--dry-run": None}
+RELEASE_CONFIG = re.compile(  # a checkout's own config keys that run no program and send git nowhere
+    r"core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)|user\.(?:name|email)"
+    r"|remote\.[^.\s]+\.(?:url|fetch|gh-resolved)|branch\..+\.(?:remote|merge|pushremote|rebase|vscode-merge-base|description)"
+    r"|extensions\.(?:worktreeconfig|objectformat)")
+PLAIN_LINE = re.compile(r"[\w./:@%+,=~-]+(?: +[\w./:@%+,=~-]+)*")  # words no shell changes: no quote, variable, glob or operator
+KIT_FILES = ("skills/synthesis-skills-manager/scripts/release.py", "skills/synthesis-onboarding/scripts/setup.py",
+             "skills/synthesis-onboarding/scripts/workspace.py")  # the release tool's modules that write
+KIT_LOADS = re.compile(r"\b(?:import_module|__import__)\(\s*['\"](release|setup|workspace)['\"]")
+
+
+def _kit_file(path: str) -> bool:
+    spelt = paths.spelled(os.path.realpath(path))
+    return any(spelt.endswith(paths.spelled(os.sep + rel.replace("/", os.sep))) for rel in KIT_FILES)
+
+
+def _kit_loaded(texts: list, where: str, isolated: bool, named: str) -> str:
+    """The release tool's own module a Python program loads ('' for none): a script or module of its own that is one,
+    or a module named like one that it imports and that is one where Python finds it (the folder it starts from, its
+    script's folder, a folder its text names). Found nowhere while the program names a protected folder, which is a
+    path it builds into the runtime, it is taken to be one. A project's own release or setup is not (round 1, A6)."""
+    for path, text in texts:
+        if path and _kit_file(path):
+            return path
+        wanted = ({m.split(".")[0] for dots, m, _ in _imports(text) if not dots} | set(KIT_LOADS.findall(text))) & {
+            "release", "setup", "workspace"} if "release" in text or "setup" in text or "workspace" in text else set()
+        folders = ([] if isolated else [where]) + [os.path.dirname(path)] * bool(path) + [
+            spot for spot in (os.path.join(where, os.path.expanduser(next(filter(None, c)))) for c in CANDIDATE.findall(text))
+            if os.path.isdir(spot)]
+        for name in sorted(wanted):
+            found = [file for file in (os.path.join(folder, name + ".py") for folder in folders) if os.path.isfile(file)]
+            if any(map(_kit_file, found)) or (not found and named):
+                return next(filter(_kit_file, found), f"`{name}`, which it finds in no folder this guard reads")
+    return ""
+
+
+def _canonical_remote(url: str) -> bool:
+    found = GITHUB_REMOTE.match(url)
+    return bool(found) and found.group(1).lower() == RELEASE_REPOSITORY
+
+
+def release_checkout(repo: str) -> list:
+    """Why `repo` is not the canonical checkout of the synthesis-skills repository, [] when it is: the root of a git
+    checkout; an origin, with every remote's address for fetching and for pushing, as git uses it after any rewriting,
+    the repository on GitHub; on main; its own config, and a worktree's, setting only keys that run no program and send
+    git nowhere. These reads run no program of the checkout's; one git cannot make is a reason (release.py asks too)."""
+    import subprocess
+
+    def git(*args):
+        try:
+            done = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=4, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return done.stdout if done.returncode == 0 else None
+    top = git("rev-parse", "--show-toplevel")
+    if not top or os.path.realpath(top.strip()) != os.path.realpath(repo):
+        return [f"{repo} is not the root of a git checkout"]
+    remotes, branch, keys = git("remote", "-v"), (git("symbolic-ref", "--quiet", "--short", "HEAD") or "").strip(), git(
+        "config", "--list", "--show-scope", "--name-only")
+    if remotes is None or keys is None:
+        return [f"git cannot read the remotes or the config of {repo}"]
+    found = [(line.split() + [""])[:2] for line in remotes.splitlines() if line.strip()]
+    wrong = sorted({f"{name} {url}" for name, url in found if not _canonical_remote(url)})
+    odd = sorted({key for scope, _, key in (line.partition("\t") for line in keys.splitlines())
+                  if scope in ("local", "worktree") and not RELEASE_CONFIG.fullmatch(key)})
+    return ([] if any(name == "origin" for name, _ in found) else ["it has no origin remote"]) + (
+        [f"its remotes lead elsewhere than github.com/{RELEASE_REPOSITORY}: {', '.join(wrong[:4])}"] if wrong else []) + (
+        [] if branch == "main" else [f"it is on {branch or 'a detached HEAD'}, not main"]) + (
+        [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
+
+
+def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
+    """The options of a command line that is exactly the release launcher install wrote, on the canonical checkout or
+    naming a tag to install (above); {} for any other. Its paths are absolute, so no folder the command runs from moves
+    them (A5), and a session it names is the one asking (A9)."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        argv = []
+    if len(argv) == 3 and os.path.basename(argv[0]) in ("bash", "zsh", "sh") and argv[1] in ("-lc", "-c"):
+        command = argv[2]  # Codex's shell tool hands the line to a shell, exactly as written (round 1, A7)
+    line, release = command.strip(), os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    words, home = line.split(), os.path.expanduser("~")
+    if not PLAIN_LINE.fullmatch(line) or os.path.basename(words[0]) != "synthesis-release" or os.path.realpath(
+            paths.home() / "current") != release or not paths.inside(release, os.path.realpath(paths.home() / "releases")):
+        return False  # a line a shell changes, another program, or this guard is not the protected runtime's
+
+    def place(word: str, shell: bool) -> str:  # an absolute path as the shell hands it on: `~/` leads home only at a word's start
+        word = home + word[1:] if shell and word.startswith("~/") else word
+        return word if word[:1] == "/" and "~" not in word else ""
+    from synthesis import install
+    target, python = paths.home() / "bin" / "synthesis-release", install.pinned(paths.home())
+    try:
+        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, "synthesis-release")
+    except OSError:
+        written = False
+    if not written or not python or install.interpreter_problems(python) or os.path.realpath(place(words[0], True) or "/") != (
+            os.path.realpath(target)):
+        return False  # not the launcher install wrote, for an interpreter it would still pin
+    given, at = {}, 1
+    while at < len(words):
+        name, joined, value = words[at].partition("=")
+        pattern = RELEASE_OPTIONS.get(name, "")
+        if pattern == "" or name in given or (joined and pattern is None):
+            return False  # an option it does not document, one given twice, or a switch given a value
+        if pattern is not None and not joined:
+            at += 1
+            value = words[at] if at < len(words) else ""
+        if pattern is not None and not re.fullmatch(pattern, place(value, not joined) if name == "--repo-root" else value):
+            return False
+        given[name], at = place(value, not joined) if name == "--repo-root" else value, at + 1
+    if "--session" in given and given["--session"] != paths.session_id(session):
+        return {}  # another session's id would take or drop that session's hold on the release train
+    if "--install-only" in given:
+        return given if "--tag" in given and "--repo-root" not in given else {}
+    return given if "--tag" not in given and given.get("--repo-root") and not release_checkout(given["--repo-root"]) else {}
+
+
+def _grant_release(given: dict, line: str) -> None:
+    """The one install the release launcher's line may make with no code: of `v<version>`, the tag it names or the version
+    its checkout's manifests carry, into this home, written for `install` to spend (review round 2 of 22.18, K1). A dry
+    run installs nothing; a version that cannot be read is granted nothing, and that install waits for the code."""
+    if "--dry-run" in given:
+        return
+    from pathlib import Path
+    from synthesis import install
+    version = given["--tag"][1:] if "--install-only" in given else str(paths.read_json(
+        Path(given["--repo-root"]) / ".claude-plugin" / "plugin.json").get("version") or "")
+    if re.fullmatch(r"\d+\.\d+\.\d+", version):
+        install.grant_release(version, line)
+
+
 def _shipped(path: str) -> bool:
     """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
     synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
     as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
-    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14)."""
+    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14).
+    The release tool and what it imports are the release's alone (2026-11-15): each is judged as any other script."""
     release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    if paths.inside(path, release):
-        return True
     parts = path.split(os.sep)
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
+    inside = paths.inside(path, release)
+    if paths.spelled(os.path.relpath(paths.spelled(path), paths.spelled(release)) if inside else rel).replace(
+            os.sep, "/").startswith(tuple(map(paths.spelled, RELEASE_KIT))):
+        return False
+    if inside:
+        return True
     here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
     mine = _regular(path, SCRIPT_LIMIT + 1)
     names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
@@ -4997,8 +5382,10 @@ def _synthesis_reach(text: str) -> tuple:
     writes reads, whoever calls it."""
     import ast
     import warnings
-    if not SYNTHESIS_IMPORT.search(text):
+    loaded = [m[1] for m in SYNTHESIS_LOADED.finditer(text)]  # "open" for a file only opened, which runs only by exec or eval
+    if not (SYNTHESIS_IMPORT.search(text) or loaded):
         return "", "", None
+    runs = ("exec", "eval") if all(loaded) and not SYNTHESIS_IMPORT.search(text) else ("exec", "eval", "compile", "globals", "locals")
     unfollowed = "reaches synthesis's own code in a way its reader cannot follow ({})"
     try:
         with warnings.catch_warnings():
@@ -5024,16 +5411,20 @@ def _synthesis_reach(text: str) -> tuple:
         label = (n.func.id if isinstance(n.func, ast.Name) else "") if isinstance(n, ast.Call) else ""
         called = (getattr(n.func, "attr", "") or label) if isinstance(n, ast.Call) else ""
         said = n.args[0].value if isinstance(n, ast.Call) and n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str) else None
-        if label in ("exec", "eval", "compile", "globals", "locals") or called in ("run_path", "run_module") or (
+        if label in runs or called in ("run_path", "run_module") or (
                 called in ("import_module", "__import__") and (said is None or said.split(".")[0] == "synthesis")) or (
-                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)):
+                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)) or (
+                called in ("spec_from_file_location", "SourceFileLoader", "load_source") and any(  # a file of synthesis's, loaded
+                    isinstance(c, ast.Constant) and re.search(r"(?:^|/)synthesis(?:/|$)", str(c.value)) for a in n.args for c in ast.walk(a))):
             return "follows", unfollowed.format("code or a name it builds"), None
         whole = spelt(n) if isinstance(n, (ast.Name, ast.Attribute)) and isinstance(n.ctx, ast.Load) else ""
         if not whole:
             continue
         parts, up = whole.split("."), parents.get(id(n))
         if ".".join(parts[1:3]) in SYNTHESIS_WRITES:
-            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which writes its state, approvals, windows, board or archive", None
+            runtime = parts[1] == "install" or ".".join(parts[1:3]) in ("cli.cmd_install", "cli.cmd_uninstall")
+            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which " + (
+                "installs, removes or rewrites the runtime the guard runs" if runtime else "writes its state, approvals, windows, board or archive"), None
         if ".".join(parts[1:3]) in SYNTHESIS_PLACES:
             places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
             plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
@@ -5177,20 +5568,29 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
     only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
+    given = _release_tool(command, cwd, session) if hold else {}  # never for a command a program starts: it is judged
+    if given:
+        codes = approvals.pending()
+        if not (codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command)):
+            _grant_release(given, command)  # the one install this line's run may make with no code (22.18, K1)
+            return None
     home = os.path.expanduser("~")
     if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS)
     waits = None
-    for text in readings:
+    for text in readings:  # each command is judged in every folder it may run in (`_commands`)
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
             "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
         if reason and not isinstance(reason, Unproven):
             return reason
         waits = waits or reason
+    if hold and _CALL["unplaced"]:  # where its commands run could not be told (review round 4 of 5.23.1, Q1)
+        waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
+                                  "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
     if not waits:
         return None
     if not hold:
@@ -5285,6 +5685,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
             waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
+        kit = _kit_loaded(([("", source)] if source else []) + (files if ran and not _shipped(ran) else []), where,
+                          _isolated(words), named) if python else ""
+        if kit and not waits:  # 5.23.1: the release tool runs as itself, from the runtime, or waits
+            waits = Unproven(f"runs `{head}` on a program that imports the release tool's own modules ({kit}), which claim "
+                             "the board, install the runtime and publish; the tool itself, run from the installed runtime, needs no code")
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
@@ -6304,6 +6709,125 @@ def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: 
     return check_desktop("browser_batch", tool, {"actions": steps, "call": {"tool": tool, "input": tool_input}}, config, session) if steps else None
 
 
+# --- the runtime the guard runs (5.23.1) ------------------------------------------------------------
+# Review round 2 of 5.23.1: `synthesis install <folder>` made any folder the runtime (N5), and `synthesis uninstall`
+# removed it so that the next session start took the harness's folder (N6), both with no code, by PATH and by the stable
+# path. The principal's sandbox rulings of 2026-11-15: a command that writes what the guard trusts waits for his code of
+# that exact command. A program that calls the installer itself waits in check_self_grant (_synthesis_reach).
+
+RUNNERS = ("uv", "uvx", "poetry", "pdm", "hatch", "pipenv", "pipx", "conda", "mamba")  # run the program they are handed
+CLI_MODULES = {"synthesis": "cli", "synthesis.cli": "cli", "synthesis.__main__": "cli", "synthesis.install": "install"}
+
+
+def _named_cli(word: str, where: str) -> bool:
+    """The synthesis CLI by its name: on PATH, by its stable path, a link to it or a copy named so, or a program word the
+    guard cannot read that names it."""
+    return os.path.basename(word) == "synthesis" or (word[:1] in ("$", "`") and "synthesis" in word) or (
+        "/" in word and os.path.basename(_real(os.path.join(where, os.path.expanduser(word)))) == "synthesis")
+
+
+def _cli_words(words: list, where: str) -> tuple | None:
+    """(the words the CLI is handed, the folder its own install takes) for a command that runs it, by any spelling the
+    guard can read: its name, `python -m synthesis.cli` (or `synthesis`, `synthesis.install`), its module or an
+    install.py run by path, its script read by a shell, behind a runner. install.py hands `install` unless it is told
+    `uninstall` (this release's adds --first; a copy of another's may not). A bare `synthesis` that PATH finds anywhere
+    but the stable launcher is a program of its own, judged as that (review round 1 of 22.18, H2). None otherwise."""
+    if os.path.basename(words[0]) in RUNNERS:
+        words = next((words[i:] for i, w in enumerate(words) if i and (_named_cli(w, where) or SCRIPT.match(os.path.basename(w)))), [])
+    head = os.path.basename(words[0]) if words else ""
+    if words and _named_cli(words[0], where):
+        import shutil
+        found = shutil.which("synthesis") if words[0] == "synthesis" and {"install", "uninstall"} & set(words[1:]) else ""
+        if found and _real(found) != _real(str(paths.home() / "bin" / "synthesis")):
+            return None
+        launcher = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] else str(paths.home() / "bin" / "synthesis"))))
+        return words[1:], _real(os.path.join(os.path.dirname(os.path.dirname(launcher)), "current"))
+    if not (head in SHELLS or (head.startswith("python") and SCRIPT.match(head))):
+        return None
+    kind, at, name = _program(words)
+    if kind != "file" or not name:
+        return None
+    if words[at] != name:  # -m, alone or after other letters: the package from the folder it starts in, if it is there
+        entry, rest, own = CLI_MODULES.get(name), words[at + 1 + words[at].endswith("m"):], where if os.path.isdir(os.path.join(where, "synthesis")) else ""
+    else:
+        path, rest = _real(os.path.join(where, os.path.expanduser(name))), words[at + 1:]
+        inside, own = os.path.basename(os.path.dirname(path)) == "synthesis", os.path.dirname(os.path.dirname(path))
+        entry = ("cli" if _named_cli(name, where) or (inside and os.path.basename(path) in ("cli.py", "__main__.py"))
+                 else "install" if inside and os.path.basename(path) == "install.py" else None)
+    return ((rest if entry == "cli" or rest[:1] == ["uninstall"] else ["install", *rest]), own) if entry else None
+
+
+def _cli_reads(argv: list) -> tuple:
+    """(what the CLI does with these words, its namespace), read by its own parser as it dispatches them: ("install", ...),
+    ("uninstall", ...), or ("", None) for another command, its help, a dry run or words it refuses. A word the guard cannot
+    read may be anything when it runs (empty, an option), so with one an install or an uninstall is taken as asked."""
+    import contextlib
+    import io
+    from synthesis import cli
+    name = "".join(argv[cli.command_at(argv):][:1])
+    if not (name in ("install", "uninstall") or name.startswith(("$", "`"))):
+        return "", None
+    if any(re.search(r"[$`*?\[]", w) for w in argv):
+        return (name if name in ("install", "uninstall") else "install or uninstall"), None
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            args = cli.parsed(argv)
+    except SystemExit:
+        return "", None
+    return ("uninstall" if args.fn is cli.cmd_uninstall and not args.dry_run else "install" if args.fn is cli.cmd_install else ""), args
+
+
+def _runtime_change(words: list, where: str, subjects: list) -> str:
+    """What a command does to the runtime the guard runs, in words for the principal; '' for nothing. The subject the CLI
+    spends for it goes into `subjects`: the change, the home, and every byte the install takes from its folder as it is
+    now (install.subject), so the code binds the install that happens."""
+    from pathlib import Path
+    from synthesis import install
+    argv, own = (_cli_words(words, where) if words else None) or (None, "")
+    action, args = _cli_reads(argv) if argv is not None else ("", None)
+    home = paths.home()
+    if action and args is None:
+        subjects.append({"action": "unreadable", "command": shlex.join(words), "where": str(where)})
+        return f"runs the synthesis CLI with a word this guard cannot read, so it may {action} the runtime under {home}"
+    if action == "uninstall":
+        subjects.append(install.subject("uninstall", home))
+        return (f"removes the installed synthesis runtime under {home} (`current`, its launchers and its releases); until one is "
+                "installed again every guarded call is held, and no session start installs one there")
+    if action != "install":
+        return ""
+    folder = os.path.normpath(os.path.join(where, os.path.expanduser(args.plugin))) if args.plugin else own
+    try:
+        digest = install.package_digest(Path(folder)) if folder and os.path.isfile(os.path.join(folder, "synthesis", "hook.py")) else ""
+    except OSError:
+        digest = "unreadable"
+    source = folder if args.plugin else f"{own or 'a folder this guard cannot find'}, the CLI's own folder, writing its launchers again,"
+    wanted, said = install.change(home, Path(folder or os.devnull), source, digest, args.git_hooks)
+    subjects.append(wanted)  # the same subject the install computes from its staged copy, a rollback named as one
+    return said
+
+
+def check_runtime(command: str, cwd: str, session: dict | None = None) -> str | None:
+    """A command that installs a synthesis runtime from a folder, removes the installed one or rewrites its launchers
+    waits for the principal's code for that exact command, run where it was asked and with each folder it takes as it is
+    now. Help and a dry run need no code: the CLI's own parser says what its words do. The line is read with its variables
+    put, and also as written when it uses one it does not set, whose value where it runs the guard cannot be sure of."""
+    found, subjects = [], []
+    unset = {m[1] or m[4] for m in USED.finditer(command)} - {m[1] for m in ASSIGNED.finditer(_own_text(command))} - {
+        m[1] for m in LOOPED.finditer(command)}
+    for text in dict.fromkeys([command] * bool(unset) + _resolved(command)):
+        if "synthesis" in text.lower():
+            for words, where in _parse(text, cwd)[0]:
+                said = "" if isinstance(where, Quoted) else _runtime_change(words, where, subjects)
+                found += [said] if said and said not in found else []
+    waiting = [s for i, s in enumerate(subjects) if s not in subjects[:i] and not approvals.backed("runtime", s, session)]
+    if not found or not waiting:  # the hook checks the code and spends nothing: the CLI spends it (review round 1 of 22.18)
+        return None
+    code = approvals.request("runtime", waiting[0], f"the synthesis runtime: {command[:150]}")
+    return (f"This command {'; it '.join(found)}. That runtime is what the guard runs, so it changes only on the principal's "
+            f"word: show them this exact command and ask them to type {approvals.how(code)}; then run the identical command "
+            "again, with each folder it installs from left as it is now. The install itself spends the code.")
+
+
 # --- dispatch -----------------------------------------------------------------------------------
 
 SHELL_TOOLS ={"Bash", "bash", "exec_command", "exec", "shell", "shell_command", "local_shell", "run_shell_command"}  # "bash": Muse
@@ -6452,10 +6976,13 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         except OSError:
             cwd = os.path.expanduser("~")
     if tool.endswith("__run_in_terminal") and tool_input.get("cwd"):  # the tab starts its shell there
-        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+        cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+    elif shell_tool(tool) and tool_input.get("workdir") and isinstance(tool_input["workdir"], str):  # Codex runs it there (round 1, A5)
+        cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))  # where the kernel puts it (round 2, N1)
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
+        return (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
+                or check_self_grant(command, cwd, config, session)
                 or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
                 or check_outgoing(command, config, cwd, session)

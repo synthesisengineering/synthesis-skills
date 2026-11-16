@@ -89,14 +89,24 @@ def check_runtime(home: Path) -> Check:
 
 
 def check_hook_script(home: Path) -> Check:
-    hook = home / "bin" / "synthesis-hook"
-    try:
-        text = hook.read_text(encoding="utf-8")
-    except OSError:
-        return Check("fail", "hook script", f"{_short(hook)} is missing")
-    if text != install.HOOK_SCRIPT:
-        return Check("fail", "hook script", f"{_short(hook)} differs from the shipped text; run install")
-    return Check("ok", "hook script", "stable entry text matches this release")
+    """Every launcher is the text install writes for the interpreter the hook launcher pins, and that interpreter is
+    still one install would pin: owned by root with every folder above it, writable by neither this user nor its groups."""
+    python = install.pinned(home)
+    if not python:
+        return Check("fail", "hook script", f"{_short(home / 'bin' / 'synthesis-hook')} pins no interpreter; run install")
+    problems = install.interpreter_problems(python)
+    if problems:
+        return Check("fail", "hook script", f"the pinned interpreter {python} may not run the guard: {problems[0]}; run install")
+    for folder, names in (("bin", install.ENTRY_POINTS), ("git-hooks", install.GIT_HOOKS)):
+        for name in names:
+            try:
+                same = (home / folder / name).read_text(encoding="utf-8") == install.launcher(home, python, name)
+            except OSError:
+                same = False
+            if not same:
+                return Check("fail", "hook script", f"{_short(home / folder / name)} is missing or differs from what install "
+                                                    "writes; run install")
+    return Check("ok", "hook script", f"every launcher runs {python}, pinned and isolated")
 
 
 def check_config(home: Path) -> Check:
@@ -230,9 +240,15 @@ def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check
     if not runtime:
         return Check("fail", name, "no runtime to compare against (see runtime)")
     found = install.package_hash(plugin_root)
+    have, offered = install.version(paths.home() / "current"), install.version(plugin_root)
+    if found != runtime and have and offered > have:  # a session start never installs it (2026-11-15)
+        return Check("warn", name, f"the plugin is synthesis {'.'.join(map(str, offered))}, newer than the runtime "
+                                   f"{'.'.join(map(str, have))}; install it with `~/.synthesis/v5/bin/synthesis-release "
+                                   f"--install-only --tag v{'.'.join(map(str, offered))}`")
     if found != runtime:
-        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; "
-                                   "start a session in this harness to update, or reinstall the plugin")
+        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; reinstall the plugin in this "
+                                   "harness, or install the release it carries with `~/.synthesis/v5/bin/synthesis-release "
+                                   "--install-only --tag v<version>`")
     if (plugin_root / "synthesis" / "__pycache__").exists():
         return Check("warn", name, f"matches the runtime ({found}), but something wrote __pycache__ into the plugin folder")
     return Check("ok", name, f"plugin code matches the runtime ({found})")

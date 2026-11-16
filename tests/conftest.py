@@ -118,9 +118,12 @@ def hook_budget(compiled_runtime):
     top or inside a function: one more is paid on every call, so it is taken out of the call's path or named in the
     test, where a reviewer sees it. A module named that nothing of the call's own imports is refused too, since the
     allowance is measured from what is named."""
+    from synthesis import install
+    python = install.pinned(compiled_runtime.parent) or sys.executable  # as the launchers run it: pinned, -I -S (5.23.1)
+
     def hold(call: list, needs: tuple, rounds: int = 15, **run) -> str:
         quiet = {**run, "env": {**run.get("env", os.environ), "PYTHONDONTWRITEBYTECODE": "1"}}
-        first = subprocess.run([sys.executable, "-S", "-c", _ASKED, *call], capture_output=True, text=True, **quiet)
+        first = subprocess.run([python, "-I", "-S", "-B", "-c", _ASKED, *call], capture_output=True, text=True, **quiet)
         asked = json.loads(first.stderr.rsplit("\nasked ", 1)[1])
         script = "the caller" if call[0] == "-c" else Path(call[0]).name
         unnamed = sorted(name for name in asked if name.split(".")[0] != "synthesis" and name not in needs)
@@ -130,14 +133,13 @@ def hook_budget(compiled_runtime):
         idle = sorted(set(needs) - set(asked))
         assert not idle, f"{', '.join(idle)} is named as a need and nothing of the call's own imports it: take it out"
         if "synthesis" in asked:
-            from synthesis import install
             assert install._compiled(compiled_runtime / "synthesis"), (
                 "the runtime is not compiled for this interpreter, so every call compiles it from its source: the "
                 "installer's compile step, or what became of what it wrote, is at fault")
 
         def once(args: list, **how) -> float:
             began = time.perf_counter()
-            subprocess.run([sys.executable, "-S", *args], capture_output=True, text=True, check=True, **how)
+            subprocess.run([python, "-I", "-S", "-B", *args], capture_output=True, text=True, check=True, **how)
             return time.perf_counter() - began
         floor = ["-c", "import " + ", ".join(needs)]
         once(floor, env={key: value for key, value in os.environ.items() if key != "PYTHONDONTWRITEBYTECODE"})

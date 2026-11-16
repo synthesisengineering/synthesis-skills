@@ -313,8 +313,7 @@ SHIPPED_READERS = [
     "synthesis-daily-rituals/scripts/relied_on.py --json", "synthesis-daily-rituals/scripts/lapse_review.py --json",
     "synthesis-daily-rituals/scripts/ritual_state.py --direction start", "synthesis-daily-rituals/scripts/stop_reprompts.py",
     "synthesis-autopilot/scripts/autopilot_cli.py status", "synthesis-local-messaging/scripts/messages_send.py --help",
-    "synthesis-onboarding/scripts/setup.py --dry-run",
-]
+]  # not onboarding's setup.py: the release tool and what it imports are never trusted as shipped (5.23.1)
 
 
 @pytest.mark.parametrize("call", SHIPPED_READERS)
@@ -579,8 +578,9 @@ def test_the_runtime_is_a_protected_folder(world, target):
     assert reason and reason.startswith("Refused"), reason
 
 
-def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world):
+def test_the_rituals_scripts_run_from_the_installed_runtime_still_pass(world, monkeypatch):
     from synthesis import install
+    monkeypatch.setattr(install, "_approve", lambda *args, **kwargs: None)  # the principal's code, given: an install into this home is no subject here
     install.install(ROOT)
     script = paths.home() / "current" / "skills" / "synthesis-daily-rituals" / "scripts" / "ritual_state.py"
     assert script.is_file()

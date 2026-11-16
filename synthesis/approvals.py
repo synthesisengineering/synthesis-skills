@@ -299,6 +299,25 @@ def backed(kind: str, subject, session: dict | None = None) -> bool:
         return False
 
 
+def answered(kind: str, subject, session: dict | None = None) -> bool:
+    """True once where the session's own record shows the principal typing the code of the request for exactly this
+    subject after it was filed, though no prompt hook made a grant of it: a command that checks its own approval (the
+    CLI's install and uninstall) reads that record itself, so a runtime can be approved while none runs the hook. The
+    request is spent."""
+    key, record = digest(kind, subject), transcript(session)
+    for code in pending() if record else []:
+        data = paths.read_json(_dir("approval-requests") / f"{code}.json")
+        if data.get("digest") != key or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+            continue
+        try:
+            if typed(record, code, float(data.get("at", 0)), paths.session_id(session)):
+                (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+                return True
+        except OSError:
+            return False
+    return False
+
+
 def void(kind: str, subject) -> list:
     """Spend a grant of exactly this subject, and drop a request for one that still waits, using neither: the same
     thing went out on another code, so a second copy has to be shown again (2026-11-13: a message released by the
