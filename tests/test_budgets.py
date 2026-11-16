@@ -1372,10 +1372,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
 # sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
 # `_strings` taking the fields to leave out, and the check reading through it, change in place.
+# Then each 74 more, all in guards.py, so the date rules reach a site published from a JSON catalog by upload (2026-11-16:
+# an article's published instant kept only in its catalog, a personal site's build reading that catalog from whichever
+# worktree its command names, and a change on origin's main before its upload were each outside the date check):
+# _catalog_dates 27 with 2 blank lines (each catalog article's published time or documented instant, at a commit or in
+# the working tree; unreadable blocks), _rendered_checkouts 18 with 2 blank (the checkout a deploy command hands its
+# build in a variable, else the default; a value it cannot follow blocks), _published_head 7 with 2 blank (the HEAD the
+# last approved deploy kept), check_dates 8 more (catalogs read beside front matter and checked as config, the published
+# base from that HEAD), check_deploy 7 more (the renders map checked as config, each rendered checkout compared with its
+# own last approved deploy), _record_deploys 1 more (the record keeps the HEAD it was approved at).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16886
-PLUGIN_BUDGET = 42958
+CORE_BUDGET = 16960
+PLUGIN_BUDGET = 43032
 
 
 def _lines(files):

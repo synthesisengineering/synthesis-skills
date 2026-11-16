@@ -2052,6 +2052,35 @@ def _dates(root: str, rev: str | None, globs: list[str]) -> dict[str, float] | N
     return {p: t for p, t in found.items() if t is not None}
 
 
+def _catalog_dates(root: str, rev: str | None, globs: list[str]) -> dict[str, float] | None:
+    """{"<catalog>#<id>": moment} for each article a JSON catalog lists, at rev or in the working tree: its `published`
+    time, or the documented `publishedInstantOverride` instant that replaces it. A unified site keeps an article's
+    published instant there, which no front-matter date line shows (2026-11-16). A catalog that cannot be read, or
+    has no `articles` list, is None, so the deploy blocks."""
+    if not globs:
+        return {}
+    code, out = _run_git(root, "grep", "-z", "-l", "-I", "-e", "", *([rev] if rev else ["--untracked"]),
+                         "--", *[f":(glob){g}" for g in globs])
+    if code not in (0, 1):
+        return None
+    found: dict[str, float] = {}
+    for name in filter(None, out.split("\0")):
+        path = name[len(rev) + 1:] if rev else name
+        try:
+            text = _run_git(root, "show", f"{rev}:{path}")[1] if rev else open(os.path.join(root, path), encoding="utf-8").read()
+            articles = json.loads(text)["articles"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        if not isinstance(articles, list):
+            return None
+        for a in [a for a in articles if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("published"), str)]:
+            instant = a.get("publishedInstantOverride")
+            moment = _moment(f"date: {instant if isinstance(instant, str) else a['published']}")
+            if moment is not None:
+                found[f"{path}#{a['id']}"] = moment
+    return found
+
+
 def _show(moment: float) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(moment))
 
@@ -2060,16 +2089,20 @@ def _listing(items: list[str]) -> str:
     return "; ".join(items[:5]) + (f"; and {len(items) - 5} more" if len(items) > 5 else "")
 
 
-def check_dates(root: str, rev: str | None, config: dict) -> str | None:
+def check_dates(root: str, rev: str | None, config: dict, published_at: str | None = None) -> str | None:
     """Refuse a deploy that puts a page live before its stated date or re-dates a live page.
     These hold even for an approved deploy: an approval covers a publish, not a break in the
-    site's own timeline (2026-08-29; the flat layout escaped the old scan until 2026-08-31)."""
-    globs = config.get("deploy_content", DEFAULT_CONTENT)
-    if not isinstance(globs, list) or not all(isinstance(g, str) for g in globs):
-        return "deploy_content in the synthesis config must be a list of path globs; deploy blocked until it is fixed"
-    live = _dates(root, rev, globs)
-    if live is None:
-        return f"could not read the content dates in {root}; deploy blocked until `git grep` works there"
+    site's own timeline (2026-08-29; the flat layout escaped the old scan until 2026-08-31).
+    published_at is the commit the site's last approved upload published, when the guard recorded one: a site
+    published by upload can have its change on origin's main before the upload, so main is not what is live."""
+    globs, catalogs = config.get("deploy_content", DEFAULT_CONTENT), config.get("deploy_catalogs", [])
+    for key, value in (("deploy_content", globs), ("deploy_catalogs", catalogs)):
+        if not isinstance(value, list) or not all(isinstance(g, str) for g in value):
+            return f"{key} in the synthesis config must be a list of path globs; deploy blocked until it is fixed"
+    live, listed = _dates(root, rev, globs), _catalog_dates(root, rev, catalogs)
+    if live is None or listed is None:
+        return f"could not read the content dates in {root}; deploy blocked until `git grep` and its catalogs read there"
+    live.update(listed)
     early = sorted(p for p, t in live.items() if t > time.time() + FUTURE_SKEW)
     if early:
         return ("A page must never go live before its stated date, even with approval: "
@@ -2077,17 +2110,21 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
                 + ". Hold this deploy until then, or have the principal correct the date.")
     if not live:
         return None
-    code, out = _run_git(root, "for-each-ref", "--format=%(objectname)",
-                         "refs/remotes/origin/HEAD", "refs/remotes/origin/main", "refs/remotes/origin/master")
-    base = out.split("\n", 1)[0].strip() if code == 0 else ""
+    if published_at and _run_git(root, "rev-parse", "--verify", "-q", f"{published_at}^{{commit}}")[0] == 0:
+        base = published_at
+    else:
+        code, out = _run_git(root, "for-each-ref", "--format=%(objectname)",
+                             "refs/remotes/origin/HEAD", "refs/remotes/origin/main", "refs/remotes/origin/master")
+        base = out.split("\n", 1)[0].strip() if code == 0 else ""
     if not base:
         if not _run_git(root, "remote")[1].strip():
             return None  # never pushed anywhere: no live dates to protect
         return ("Could not find the published branch (origin's main) to check that no live page's date changes. "
                 f"Run `git -C {root} fetch origin`, then retry.")
-    published = _dates(root, base, globs)
-    if published is None:
+    published, was_listed = _dates(root, base, globs), _catalog_dates(root, base, catalogs)
+    if published is None or was_listed is None:
         return f"could not read the published content dates in {root}; deploy blocked"
+    published.update(was_listed)
     moved = sorted(p for p in live if p in published and live[p] != published[p])
     if moved:
         return ("Published dates never change, even with approval. This deploy re-dates live pages: "
@@ -2287,15 +2324,25 @@ def _last_deploy(identity: str):
     return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
-def _record_deploys(identities) -> None:
+def _published_head(identity: str) -> str | None:
+    """The commit a site's last approved deploy was approved at, from the record that keeps it (2026-11-16)."""
+    try:
+        line = (_last_deploy(identity).read_text(encoding="utf-8").split("\n") + ["", "", ""])[2]
+    except OSError:
+        return None
+    return line if re.fullmatch(r"[0-9a-f]{40,64}", line) else None
+
+
+def _record_deploys(identities, heads: dict | None = None) -> None:
     """The deploy brake's record of a deploy the guard let through, for the 45-minute check: written if the call is let
     through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4),
-    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole."""
+    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole. Its third
+    line keeps the HEAD the deploy was approved at, what a site published by upload now serves."""
     kept: list = []
 
     def write():
         for identity in identities:
-            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n".encode("utf-8")
+            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n{(heads or {}).get(identity, '')}\n".encode("utf-8")
             kept.append((record, record.read_bytes() if record.exists() else None, mine))
             _swap(record, mine)
 
@@ -2314,6 +2361,26 @@ def _swap(path, data: bytes) -> None:
     os.replace(made, path)
 
 
+def _rendered_checkouts(entries: list, command: str) -> tuple[list[str], str | None]:
+    """The checkouts a site's build renders beside its own: each listed path, and for {"variable": NAME, "default": PATH}
+    the checkout holding the path the deploy command hands the build in NAME, else PATH (2026-11-16: a personal site's
+    build reads the article catalog its command names, from any worktree). A value the guard cannot follow to a
+    checkout, for a variable or a relative path in it or no checkout around it, blocks the deploy."""
+    found: list[str] = []
+    for entry in entries:
+        given = [m.group(3) for m in ASSIGNED.finditer(command) if isinstance(entry, dict) and m.group(1) == entry["variable"]]
+        if not given:
+            found.append(os.path.realpath(os.path.expanduser(entry if isinstance(entry, str) else entry["default"])))
+        for value in given:
+            plain = os.path.expanduser(value[1:-1] if len(value) > 1 and value[0] in "\"'" and value[-1] == value[0] else value)
+            root = _checkout(plain)[0] if os.path.isabs(plain) and not re.search(r"[$`]", plain) and os.path.exists(plain) else None
+            if not root:
+                return [], (f"This deploy hands its build {entry['variable']}={value}, which the guard cannot follow to a checkout, "
+                            "so it cannot check the dates of what the build renders. Name the file by its whole path, then retry.")
+            found.append(root)
+    return list(dict.fromkeys(found)), None
+
+
 @_entry
 def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
@@ -2328,14 +2395,21 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
         return None
     heads, identities, recent = {}, [], []
     # A site whose build renders other repositories' working trees publishes their dates too.
-    renders = {os.path.realpath(os.path.expanduser(k)): v for k, v in (config.get("deploy_also_renders") or {}).items()}
+    renders = config.get("deploy_also_renders") or {}
+    if not isinstance(renders, dict) or not all(isinstance(v, list) and all(isinstance(e, str) or (
+            isinstance(e, dict) and set(e) == {"variable", "default"} and all(isinstance(x, str) for x in e.values()))
+            for e in v) for v in renders.values()):
+        return ("deploy_also_renders in the synthesis config must map each site to a list of repository paths or "
+                '{"variable", "default"} entries; deploy blocked until it is fixed')
+    renders = {os.path.realpath(os.path.expanduser(k)): v for k, v in renders.items()}
     for directory, rev in targets:
         root, main = (None, None) if re.search(r"[$`]", directory) or directory.startswith("github:") else _checkout(directory)
         identities.append(main or directory)
         if root:
-            reason = check_dates(root, rev, config)
-            for extra in renders.get(os.path.realpath(main or root), []) if not reason else []:
-                reason = reason or check_dates(os.path.realpath(os.path.expanduser(extra)), None, config)
+            reason = check_dates(root, rev, config, None if rev else _published_head(main or root))
+            extras, reason = ([], reason) if reason else _rendered_checkouts(renders.get(os.path.realpath(main or root), []), command)
+            for extra in extras:
+                reason = reason or check_dates(extra, None, config, _published_head(_checkout(extra)[1] or extra))
             if reason:
                 return reason
             heads[main] = _run_git(root, "rev-parse", "HEAD")[1].strip()  # approval binds to what HEAD is now
@@ -2349,7 +2423,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
     if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
-        _record_deploys(identities)  # a deploy held later by another check of the call did not happen
+        _record_deploys(identities, heads)  # a deploy held later by another check of the call did not happen
         return None
     if recent:
         name, last = recent[0]
