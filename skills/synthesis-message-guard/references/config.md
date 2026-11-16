@@ -31,7 +31,7 @@ those itself.
 | `message_format.default_email_format` | Default `html`. `plain` lets every transport send plain text (still with whole paragraphs). |
 | `message_format.plain_email_tools` | Tool-name globs of transports that can only send plain text (for example `mcp__apple-mail__*`). |
 | `signature.markers` | Strings that mark a persona signature (for example the persona's emoji). |
-| `signature.domains` | Persona domains that must appear only inside a link on a link-capable channel. |
+| `signature.domains` | Persona domains that must appear only inside a link on a link-capable channel. The check reads the message's own text, never its addressing (2026-11-15: an email the principal had approved was refused because its recipient's address was at a persona domain). A marker or a domain in these fields, at any depth, is not the signature, so it neither starts the check nor counts as the domain shown in words: the recipients and the account the call acts as (`to`, `cc`, `bcc`, `recipient`, `recipients`, `space_id`, `space_name`, `user_google_email`, `from_account`, `from_email`, `account`, `user_email`, `sender`, `calendar`), the sender and reply address (`from`, `from_name`, `fromName`, `fromEmail`, `reply_to`, `replyTo`), the message it answers (`in_reply_to`, `references`, `inReplyTo`, `in_reply_to_id`), the `subject`, and an invitation's guests and calendar (`attendees`, `attendeeEmails`, `addedAttendees`, `addedAttendeeEmails`, `removedAttendeeEmails`, `calendar_id`, `calendarId`). Every other field is read, so a footer that shows the domain as text in a body (HTML or plain), a description, a comment or a chat message is still refused. |
 | `signature.plain_url_tools` | Tool globs whose channel cannot render links, where the visible domain is the right form. Fields that never render a link are left out of the check in any tool: an RSVP's comment (`rsvp_comment`, `responseComment`), which reaches the organizer as plain text (2026-10-22). |
 | `own_repos` | Repository globs (`owner/*`, `owner/name`) whose PRs, issues and comments are the principal's own work, not sends: GitHub connector tools naming that `owner`/`repo`, and `gh` commands whose `-R`, API path or `origin` remote names it. |
 | `not_send_tools` | Tool globs never treated as sends, for a tool whose name reads like one but reaches no person. |
@@ -403,8 +403,9 @@ in chat. The tools are listed in `sends.DOCUMENT_EDITS`; creating a new document
 The paragraph rule does not apply to a document's own line breaks, and a window never covers an edit, since
 an edit carries no signature.
 
-Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized; the
-binding rule covers it. Computer use and browser actions are covered below.
+Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized, except a
+call to a local MCP server's tool, which is judged as that tool's call (below); the binding rule covers the rest.
+Computer use and browser actions are covered below.
 
 **Windows.** Only the principal opens one, for a planned number of sends (`--sends`, 1 to 50) within at most 12
 hours: the last planned send closes it (2026-10-27: a window stayed open for hours after its planned sends, and
@@ -695,6 +696,20 @@ commands recorded in the 60 days before 5.23.0, this reading holds 39 the old gu
 key pressed: osascript whose script comes from another program's output or from words the shell fills in, and programs
 whose strings run such a script. It takes 0.17 ms on a typical command and 307 ms at worst.
 
+A program that hands osascript a script from a file (5.24.0, the review of the runtime's carried scripts): an agent's own
+Python that read a script file and passed it to `-e` ran with no code while `osascript <file>` waited, and pointed at the
+local-messaging skill's `messages_transport.js` that is a Messages send. When a program's osascript argument list shows no
+whole script, the guard reads how it is cut short: a computed script file (`['osascript', '-l', 'JavaScript', path]`), or
+a computed `-e` script or input that comes from a file (a read in the expression, or in what the name it uses is given).
+Each script file the program names (a string ending `.js`, `.jxa`, `.scpt`, `.applescript` or `.osa`, beside the program
+or where it runs), and each such word of its arguments when it reads its arguments, is judged as `osascript <file>` is.
+It waits when it writes one of those script files before running osascript (a log or a record it writes is none), when
+it reads one it does not name, and when a file it names cannot be read (not there, compiled). A script built from the
+program's own strings is read as before, so the plugin's notifications (`display notification` with the text filled in)
+pass, and a lookup (`shutil.which("osascript")`) runs nothing. The plugin's own script as shipped is
+judged by its own gate (the local-messaging sender asks the send guard itself), and a run the principal approved by its
+exact command, with the protected-folder code, is not asked about a second time in that run.
+
 A browser tool from any other server is read by what it does (5.23.0, the same review), on the page that server's own
 results show (Playwright's `- Page URL:` and tab list, Chrome DevTools' selected page, Puppeteer's `Navigated to`) or its
 own newest navigate, in a Claude Code record or a Codex rollout. A click is read by the control the current page's
@@ -704,6 +719,129 @@ dropped text holding one, an accepted dialog, and an evaluate or a script that a
 `browser_run_code_unsafe` waits when it loads its code from a file or its code starts a command that acts. A tool the
 guard does not know, on a server that drives a browser, is a step that may send, and so is any step where nothing shows
 the page. The code binds the call itself, so it is not spent on another control or box.
+
+## A local MCP server's tools from the shell (5.24.0)
+
+The meeting-transcripts skill's `mcp_client.py <tool> <json>` calls any tool of the local workspace-mcp server, whose
+default tier includes `send_gmail_message`, and a write to this machine is no post to another host: neither the client nor
+a `curl` POST of the same JSON-RPC to `localhost:8765/mcp` waited (the review of the runtime's carried scripts,
+2026-11-15). A command that calls a local MCP server's tool is now judged as that tool's own call, by the same judgement a
+connector call takes (the account it acts as, the travel rule, then the send rules, or the upload rule for one that does
+not send), with the server named `workspace-mcp`:
+
+- **An HTTP client to an address on this machine** (`localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, in any case and
+  with a trailing dot, HTTPie's and xh's `:port` shorthand, and a URL in a variable the line sets or exports; `curl`,
+  with its `-K` config file read, `wget`, HTTPie, `xh`): its body read from its data words, a redirect's file, an
+  `@file`, a file option, its heredoc or input, a `$(cat file)`, HTTPie's fields or its `--raw`. A variable the line
+  sets (an assignment or a `for` list) is put into the words that use it, so a body it holds is read whole. Each
+  `tools/call` request it holds, a batch's included, is that tool's call. A body it cannot read (a file it lacks, one
+  the same line writes, input another program writes, another substitution, a variable or parameter the line does not
+  set, outside single quotes) waits when the address is a local MCP server's endpoint (port 8765 or the one
+  `WORKSPACE_MCP_PORT` names, or a path ending `/mcp`, `/sse` or `/messages`) or an address the shell fills in from a
+  variable the line does not set, which may be one; a body, a header or an HTTPie field the shell fills in is no
+  address, and neither is an address that spells its scheme and a host other than this machine, on a port that is no
+  local MCP server's, before what the shell fills in (`https://api.example.com/v1/$ID`), so a post to an address spelled
+  for another host is that host's, judged by the web rule. A liveness read, `initialize`, `tools/list` and any other
+  local app's API pass.
+- **A program that posts the JSON-RPC or calls a client's `call_tool`**, given inline, on its input, in a file or as a
+  module (in Python with the modules of its own it imports, which count only their literal names): its tool name read as
+  a literal, an item of a literal list, tuple or dict a loop walks (a part it unpacks or a key it takes included), a
+  function's, a method's or a lambda's parameter followed to the calls that pass it, a JSON-RPC helper called with the
+  method (as a literal or a name only that literal is given), or a name it takes from its arguments, which are then read
+  (the client's own form: its first argument names the tool and a JSON argument gives its arguments). An argument the
+  shell fills in names the tool only when the rest of it is a name's, and a JSON argument holding one is arguments the
+  guard cannot read. The line's own variables reach the program's path and its arguments. A program whose strings only
+  mention the method makes no call, and a program the line writes is read as the line's heredocs. Another language is
+  read by the names its text gives.
+- **Every body a program hands over** (review rounds 1 and 3). A Python or node program whose text, with its own
+  modules, names this machine's MCP endpoint (an address that reads as one, `WORKSPACE_MCP_URL` or `WORKSPACE_MCP_PORT`,
+  or two of a local host, port 8765 and an `/mcp` path, written together or apart), or whose line hands it one (the line
+  names port 8765 or an `/mcp` path, or one of the program's arguments reads as the endpoint), and makes any HTTP write
+  is judged by each body it hands over. A write, in Python, is a call given a body by keyword (`data`, `json`, `body`,
+  `content`, `files`) or by position (`urlopen`, `Request`, an opener's `open`, a library's `post`, `put` and `patch`,
+  `http.client`'s `request` after its method; `send`, `sendall` and `endheaders` in a program that opens a connection or
+  a socket by hand), a call handed a write method, and a `.data` (or `.body`, `.json`) it sets; in node, a `body`,
+  `data` or `json` property, what `.write()`, `.end()` or `.send()` hands anything but `process.stdout`,
+  `process.stderr` or a file stream, the body of a `.post()`, `.put()` or `.patch()`, and what it pipes into a request.
+  A module's own `open()`, as `os.open`, opens a file and is no write. A client it starts (a list such as `['curl', …]`,
+  a line handed to a shell, node's `exec` and `spawn`) is judged as on the line, what it cannot read standing as a word
+  the shell fills in. The body is read through what the program spells (strings joined from literals and names that hold
+  them), a JSON-RPC request it builds (its method read through the names and the parameters that give it, its
+  `tools/call` read as above), a file it reads (`open`, `Path`, `json.load`, `readFileSync`, `createReadStream`) by a
+  name it spells or takes from its arguments (argparse's included), its input, and its own arguments; in Python through
+  what its own functions return, and in node through each call of the helper that builds it. A body it cannot read
+  waits: a value from the environment, the network or a call the guard does not know, a name the program changes in
+  place (an item or attribute it sets, an `append` or `update`), a method or tool name it builds, a file it lacks or the
+  line writes, a write method handed to a call the guard does not know as a request or set where no write takes it, and,
+  in another language or in a program that does not parse, a write method or a body word in its text. A program that
+  only reads (a GET, a liveness check) hands over no body and passes. A program whose text and line name no endpoint is
+  judged the same way by the bodies of each write whose address comes from a variable an earlier command exported
+  (`os.environ`, `getenv`, `process.env`, read through its names and through the connection the write is made on) or
+  from an argument the shell fills in, as curl to an address the shell fills in is (round 3's ruling): a send waits, a
+  body it cannot read waits, and readable bodies that are no send pass; an address the line itself gives is read as it
+  is. An address goes where its host is: one whose spelled start names a scheme and a host other than this machine, on a
+  port that is no local MCP server's, closed by `/`, `?` or `#` before anything filled in (a constant, an f-string, a
+  `+` join, `.format()`, `%`, a template), is that host's whatever the environment fills in after it, while a local host
+  with its port or path filled in, or a host left open to what follows, is not; a connection made to a host
+  (`http.client`, urllib3's pools) is that host's whatever path a request names.
+- **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
+  the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
+  program runs, and a call whose tool name the guard cannot read (one the shell fills in, one built or read while it
+  runs), wait for a code for the exact command and the programs it runs; a changed program needs a new one. A reading
+  tool passes. The meeting fetcher's reads (`inspect_doc_structure`, `get_doc_as_markdown`, `search_drive_files`) pass.
+
+Sixty days of Claude Code and Codex records (2026-11-15) held 251 client runs, 48 liveness reads of the server and 113
+programs posting its JSON-RPC, none naming a sending tool and none whose result read as a message, draft or event made.
+A command line a program builds from values the guard cannot read is judged as on the line, each such value standing as
+a word the shell fills in; a raw socket client on the line (`nc`, `socat`) and a Python program's asyncio stream are not
+read (on the open list).
+
+## A git command and the programs its configuration names (5.24.0)
+
+`git status`, which the guard reads as a reader, runs the program a repository's own `core.fsmonitor` names, and an agent
+may make the repository: the reviewer's wrote into the synthesis state folder (the same review). A git command is now
+judged as running each program the configuration it reads names, as if the line ran it where git does (the top of the
+working tree): every shell guard reads it, so a program that writes where approvals live is held or refused, and one that
+sends waits as a send.
+
+- **The configuration read:** the repository's own config file with the files it includes (`include.path` and every
+  `includeIf`), its worktree's, a file the line points git at (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`), and the line's
+  own (`-c`, `--config-env`, `GIT_CONFIG_COUNT` with its keys and values, `GIT_CONFIG_PARAMETERS`), the last value read
+  winning as in git; a linked worktree reads its repository's.
+- **The programs:** `core.fsmonitor` (not a boolean), each executable in the folder `core.hooksPath` names,
+  `core.sshCommand`, `core.editor`, `sequence.editor`, `core.pager` and `pager.<command>`, `core.askPass`,
+  `core.gitProxy`, `core.alternateRefsCommand`, `credential.helper` (a `!` command, a path, or `git credential-<name>`),
+  `diff.external` and a diff driver's `command` or `textconv`, a filter's `clean`, `smudge` or `process`, a merge driver,
+  `gpg.program` and its kin, `interactive.diffFilter`, a remote's `uploadpack` or `receivepack`, a submodule's `!`
+  update, a trailer's command, a diff or merge tool's, a browser's or a man viewer's command, a `sendemail.smtpServer`
+  path, an alias when it is the command run, and the programs the line's environment gives git (`GIT_SSH_COMMAND`,
+  `GIT_SSH`, `GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`, `GIT_PAGER`, `GIT_EXTERNAL_DIFF`, `GIT_ASKPASS`, `SSH_ASKPASS`,
+  `GIT_PROXY_COMMAND`) or its `--exec-path`.
+- **What waits:** a value the guard cannot read (`--config-env` naming a variable that neither the line nor the guard's
+  own environment gives, or one holding a substitution), an include `--config-env` names through such a variable, and
+  programs nested past two levels wait for the protected-folder code. A repository whose configuration names no program reads as before;
+  none of the 350 repositories the records' git commands ran in, nor the 320 under the workspaces, names one.
+- **Other scopes (review round 1):** the user's and the system's config are read too (the global and XDG files or the
+  one `GIT_CONFIG_GLOBAL` names, the system file unless `GIT_CONFIG_NOSYSTEM`, with what each includes), and each
+  submodule's for a command that reaches submodules. Hooks count only for a command that runs them (a commit's, a
+  checkout's, a push's; status and diff only an index refresh's), never in synthesis's own installed git-hooks folder,
+  whose commit check then counts the repository's own `.githooks` and `.git/hooks` hooks for a commit; a credential
+  helper, an SSH command or an askpass program counts only for a command that reaches a remote.
+- **The plugin's scanners** (every carried script that runs git in a folder it is handed): the context doctor
+  (`--project`, the repository holding it, each `--root`, and with neither the knowledge roots its setting names),
+  `repo_state.py` (the paths `--workspace-root`'s `.agents/repos.yaml` declares, and each repository one or two folders
+  under `--discover`), `stray_lessons.py` (each `--repo`), `pr_queue_scan.py` (the repos.yaml `--repos-yaml` or
+  `--workspace` names), `portfolio_review.py` (the repository of each `--index`, else those roots) and `sharing_scan.py`
+  (its repository). A run whose repositories' own configuration names a program waits for the protected-folder code,
+  and the user's programs are judged as for git on the line.
+- **A planted hook:** a write into a repository's `.git/hooks` or `.githooks`, into any git dir's own `hooks` folder (a
+  bare repository's), or into a folder `core.hooksPath` names other than synthesis's own, by the file tools or the shell,
+  and a `git config` that sets any key naming a program git runs (`core.hooksPath` other than synthesis's folder or
+  `/dev/null`, `core.fsmonitor` other than a boolean, an alias only to a shell or options), wait for the principal's code
+  for that exact call. A push to a repository on this disk counts that repository's receiving hooks (pre-receive,
+  update, post-receive, post-update, proc-receive, push-to-checkout, reference-transaction) unless its hooks folder is
+  synthesis's own; includes named on the command line (`-c`, `--config-env` with the variable the line sets or the
+  guard's own environment gives, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`) are followed as in a file.
 
 ## Calibration
 

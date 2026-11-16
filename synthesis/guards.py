@@ -89,16 +89,16 @@ def is_send_tool(tool: str, config: dict) -> bool:
     return any(fnmatch.fnmatchcase(tool, p) for p in patterns)
 
 
-def _strings(value, key: str = ""):
-    """(field, text) for every populated string in a call, nested parts included. Attachment
-    payloads are bound by the approval digest but are not prose to scan."""
+def _strings(value, key: str = "", leave: frozenset = frozenset()):
+    """(field, text) for every populated string in a call, nested parts included, and none under a field in `leave`.
+    Attachment payloads are bound by the approval digest but are not prose to scan."""
     if isinstance(value, dict):
         for k, v in value.items():
-            if k not in ("attachments", "attachment"):
-                yield from _strings(v, k)
+            if k not in ("attachments", "attachment") and k not in leave:
+                yield from _strings(v, k, leave)
     elif isinstance(value, list):
         for v in value:
-            yield from _strings(v, key)
+            yield from _strings(v, key, leave)
     elif isinstance(value, str) and value.strip():
         yield key, value
 
@@ -322,7 +322,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
                      "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
-    rendered = "\n".join(t for k, t in strings if k not in PLAIN_FIELDS)
+    rendered = "\n".join(t for _, t in _strings(tool_input, leave=UNSIGNED))
     if any(m and m in rendered for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
             fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send", "desktop_type"]
             + signature.get("plain_url_tools", [])):
@@ -1059,6 +1059,11 @@ ADDRESSED = ("to", "cc", "bcc", "recipient", "recipients", "space_id", "space_na
 # account by calendar name, so `calendar` counts; a Google calendar id does not (the connector's
 # own account is still the organizer).
 ACCOUNT_KEYS = ("user_google_email", "from_account", "from_email", "account", "user_email", "sender", "calendar")
+# What the signature check never reads, at any depth: fields that never render a link, and those that address a message
+# rather than say it (its recipients and account, above; its sender, reply address, the message it answers and subject; an
+# invitation's guests and calendar). 2026-11-15: an approved email was refused for its recipient's address, at a persona domain.
+UNSIGNED = PLAIN_FIELDS | frozenset(ADDRESSED + ACCOUNT_KEYS + THREAD_HEADERS + ("from", "from_name", "fromName", "fromEmail", "reply_to",
+    "replyTo", "subject", "attendees", "attendeeEmails", "addedAttendees", "addedAttendeeEmails", "removedAttendeeEmails", "calendar_id", "calendarId"))
 
 
 def routed(tool: str, tool_input: dict) -> bool:
@@ -4800,7 +4805,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "unplaced": False, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, whether where its commands run could be told, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "unplaced": False, "until": 0.0, "approved": False}  # one call's script texts, their marks, its proofs, where its paths lead, whether where its commands run could be told, its deadline, and a run the principal approved
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -5631,7 +5636,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = None
     for text in readings:  # each command is judged in every folder it may run in (`_commands`)
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
@@ -5648,6 +5653,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         return waits  # a command a program starts that waits makes that program wait
     subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items())}  # a rewritten script is a new command
     if approvals.consume("protected-read", subject, session):
+        _CALL["approved"] = True  # this exact run: a program's osascript file is not asked about again (`_osa_files`)
         return None
     code = approvals.request("protected-read", subject, f"a program near the approval records: {command[:140]}")
     return (f"This command {waits}. The protected folders hold what every approval rests on (the synthesis state, its "
@@ -6765,9 +6771,10 @@ def _code_only(text: str, head: str) -> str:
     return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
 
 
-def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -> str:
+def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0, path: str = "", args: tuple = ()) -> str:
     """What a program's text does that waits: an input or Apple Event library it uses, or a command it starts that
-    presses keys, clicks or acts through another app (each read where the program runs, through the files it names).
+    presses keys, clicks or acts through another app (each read where the program runs, through the files it names),
+    and a script it hands osascript from a file (`_osa_files`, with `path` the program's file and `args` its words).
     A program that starts nothing is only read, and so is the prose in its strings and comments."""
     code = _code_only(text, head)
     if INPUT_LIBS.search(code) or any(INPUT_MODULES.fullmatch(m[2]) for m in IMPORTED.finditer(text)):
@@ -6782,23 +6789,31 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -
     found = list(PROGRAM_STRINGS.finditer(text))
     runs_osa = any(re.match(r"\s*(?:\S*/)?osa(?:script|compile)\b", line) for line, _ in lines) or any(  # an osascript list, whole or cut short
         os.path.basename(_unquoted(m[0]).strip()) in ("osascript", "osacompile") for m in found)
+    cuts: list = []  # how each osascript list that shows no whole script is cut short ("file", "read" or "built")
     for at, literal in enumerate(found):
         value = _unquoted(literal[0])
         first = os.path.basename(value.split(None, 1)[0]) if value.strip() else ""
         program = first in ACTORS or first in SHELLS or bool(SCRIPT.match(first) or UNREAD.match(first))
         if program and value.strip() == value.split(None, 1)[0]:  # a list of words: this one and the strings after it
             words, last = [value], literal
-            for later, nxt in zip(found[at:], found[at + 1:]):
-                if not re.fullmatch(r"\s*,\s*", text[later.end():nxt.start()]):
+            osa = first in ("osascript", "osacompile")
+            for later, nxt in zip(found[at:], found[at + 1:]):  # osascript's words may follow in an array of their own (Node's)
+                if not re.fullmatch(r"\s*,\s*" + (r"\[?\s*" if osa and later is literal else ""), text[later.end():nxt.start()]):
                     break
                 words.append(_unquoted(nxt[0]))
                 last = nxt
             if first in INPUT_PROGRAMS:
                 return KEYS + ", or acts through another app"
             whole = text[last.end():].lstrip()[:1] in ("]", ")")  # a list a computed word cuts short shows no script
-            if first not in ("osascript", "osacompile") or (whole and len(words) > 1):  # osascript alone is a lookup or a message
+            run = len(words) > 1 or text[:literal.start()].rstrip().endswith("[") or CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()])
+            cut = _osa_cut(words, whole, text[last.end():], text) if osa and run else ""  # `which("osascript")` is a lookup
+            if cut == "args" and _writes_script(text, [w for w in words[1:] if not w.startswith("-")][:1]):
+                cuts.append("file")  # a script file it names, which it writes before it runs it
+            if not osa or cut in ("args", "lines") or (whole and len(words) > 1):  # osascript alone is a lookup, a message or its input
                 lines.append((shlex.join(words), where))
-                runs_osa = runs_osa or first in ("osascript", "osacompile")
+                runs_osa = runs_osa or osa
+            elif cut:
+                cuts.append(cut)
         elif program and CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()]):  # a command line handed to a shell
             lines.append((value, where))
             runs_osa = runs_osa or first in ("osascript", "osacompile")
@@ -6818,6 +6833,90 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -
             acts = _osa_judge(value, bool(re.search(r"\bApplication\s*\(", value)))
             if acts:
                 return acts[1]
+    return _osa_files(text, head, where, path, cuts, args) if {"file", "read"} & set(cuts) else ""
+
+
+# A program that hands osascript a script it read from a file ran with no code while `osascript <file>` waited: pointed at
+# the local-messaging skill's transport, a Messages send (review of the runtime's carried scripts, 2026-11-15, problem B).
+OSA_EXT = re.compile(r"\.(?:js|jxa|scpt|scptd|applescript|osa)$", re.I)
+FILE_READS = re.compile(r"\bopen\s*\(|\.read_(?:text|bytes)\s*\(|\breadFile(?:Sync)?\s*\(|\bFile\s*\.\s*(?:read|open)\b|\bIO\s*\.\s*read"
+                        r"|\bslurp\b|\bfile_get_contents\s*\(|\bDeno\s*\.\s*readTextFile|\bjson\s*\.\s*load\s*\(|\bload\s*\(")
+WRITE_TARGET = re.compile(r"""\bopen\s*\(\s*([^,\n]{1,300}?)\s*,\s*['"][wax]|\.write_(?:text|bytes)\s*\(|"""
+                          r"""\b(?:writeFile(?:Sync)?|File\s*\.\s*write|IO\s*\.\s*write|file_put_contents|Deno\s*\.\s*writeTextFile)\s*\(\s*([^,\n]+)""")
+
+
+def _writes_script(text: str, names: list) -> bool:
+    """Whether a program writes a script file it hands osascript: a write whose target spells one of `names` or any
+    script file, or is a name the program gives one (a log or a record it writes is none)."""
+    given = set(re.findall(r"(?m)^[ \t]*([A-Za-z_]\w*)[ \t]*=[^\n]*['\"][^'\"\n]*\.(?:js|jxa|scpt|scptd|applescript|osa)['\"]", text))
+    for found in WRITE_TARGET.finditer(text):
+        at = start = found.start()
+        while not (found[1] or found[2]) and start > 0 and at - start < 200 and (text[start - 1].isalnum() or text[start - 1] in "_.()[]'\"/ "):
+            start -= 1  # a path's own write method: its receiver, read back from the call
+        target = found[1] or found[2] or text[start:at]
+        var = re.match(r"\s*\(?\s*([A-Za-z_]\w*)", target)
+        if any(n and n in target for n in names) or OSA_EXT.search(target.strip("'\"` )")) or (var and var[1] in given):
+            return True
+    return False
+
+
+def _osa_cut(words: list, whole: bool, after: str, text: str) -> str:
+    """What an osascript argument list hands it: "args" when it names its script file (any computed words are the
+    script's own), "lines" when its -e lines are shown, "file" when its script file (or an option's value) is computed,
+    "read" when it hands -e or its input a script from a file, "built" for one built from the program's own strings."""
+    i, given = 1, False
+    while i < len(words):
+        word = words[i]
+        if word in ("-e", "-l", "-s", "-o", "-t", "-c"):
+            if i + 1 >= len(words):
+                return _osa_from(after, text) if word == "-e" else "file"
+            given, i = given or word == "-e", i + 2
+        elif word.startswith("-") and word != "-":
+            given, i = given or word.startswith("-e"), i + 1
+        else:
+            return "lines" if given else "args"
+    if given:
+        return "lines"
+    return _osa_from(after, text) if whole else "file"  # alone, on its input; cut short, at its script file
+
+
+def _osa_from(after: str, text: str) -> str:
+    """"read" for a computed script (the expression after the list, or osascript's input) that comes from a file: a read
+    in the expression, or in what a name it uses is given; "built" for one the program builds from its own strings."""
+    expression = (re.match(r"\s*,\s*([^,\]\n]+)", after) or re.search(r"\binput\s*=\s*([^,\n]+)", after[:300]) or [None, ""])[1]
+    if FILE_READS.search(expression):
+        return "read"
+    name = re.match(r"\s*\*?([A-Za-z_]\w*)", expression)
+    given = re.findall(rf"(?m)^\s*(?:(?:const|let|var)\s+)?{re.escape(name[1])}\s*(?::[^=\n]*)?=(?!=)\s*(.+)$", text) if name else []
+    if any(FILE_READS.search(g) for g in given):
+        return "read"
+    return "built" if given and all(re.match(r"""[rRbBuUfF]{0,2}['"`]""", g) for g in given) else "read" if FILE_READS.search(text) else "built"
+
+
+def _osa_files(text: str, head: str, where: str, path: str, cuts: list, args) -> str:
+    """For a program that starts osascript with a script file it computes or a script it reads from a file: each script
+    file it names, or takes from its arguments, judged as `osascript <file>` is; a file it writes, one it does not name
+    and one the guard cannot read wait. The plugin's own script as shipped is judged by its own gate (a sender asks the
+    send guard itself), and a run the principal approved by its exact command in this call is not asked about twice."""
+    if (path and _shipped(path)) or _CALL.get("approved"):
+        return ""
+    code = _code_only(text, head)
+    names = [n for n in (_unquoted(m[0]).strip() for m in PROGRAM_STRINGS.finditer(text)) if OSA_EXT.search(n)]
+    names += [a for a in args if OSA_EXT.search(a)] if re.search(r"\bargv\b|\bARGV\b|\$ARGV\b", code) else []
+    if not names:
+        return UNREAD_OSA + " (a script it reads from a file it does not name)"
+    if _writes_script(text, names):
+        return UNREAD_OSA + " (a script file the program writes before it runs it)"
+    jxa = bool(re.search(r"""['"`]-l['"`]\s*,\s*\[?\s*['"`]JavaScript['"`]""", text, re.I))
+    for name in dict.fromkeys(names):
+        file = next((p for p in (os.path.realpath(os.path.join(f, _home(name))) for f in ([os.path.dirname(path)] if path else []) + [where])
+                     if os.path.isfile(p)), "")
+        body = _code_of(file) if file else ""
+        if not body:
+            return UNREAD_OSA + f" (a script file it names that the guard cannot read: {name})"
+        acts = _osa_judge(body, jxa or name.lower().endswith((".js", ".jxa")) or "javascript" in body.split("\n", 1)[0].lower())
+        if acts:
+            return acts[1]
     return ""
 
 
@@ -6892,7 +6991,8 @@ def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, writt
             return "desktop", UNREAD_OSA + " (a program the line writes before it runs it)", ""
         files = (_python_files(module or path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(where if kind != "file" else os.path.dirname(path)), given if module else "")[0]
                  if head.startswith("python") and text else [(path, text)])
-        acts = next((a for _, body in files for a in [_program_acts(body, head, where, depth)] if a), "")
+        args = words[_program(words)[1] + (kind == "file" or words[_program(words)[1]:][:1] == ["-"]):]  # the words it is handed
+        acts = next((a for file, body in files for a in [_program_acts(body, head, where, depth, file if file and os.path.basename(file) != "-" else "", args)] if a), "")
         return ("desktop", acts, "") if acts else None
     if "/" in words[0]:
         first = _code_of(os.path.join(where, os.path.expanduser(words[0])))
@@ -6900,7 +7000,8 @@ def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, writt
         if "osascript" in shebang:
             return _osa_judge(first, "javascript" in shebang.lower())
         if re.search(r"\b(?:python[\d.]*|node|bun|deno|perl|ruby|swift)\b", shebang):
-            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth)
+            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth,
+                                 os.path.realpath(os.path.join(where, os.path.expanduser(words[0]))), words[1:])
             return ("desktop", acts, "") if acts else None
     runs_file = head in SHELLS or head in (".", "source") or "/" in words[0]
     target = os.path.realpath(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS
@@ -7355,6 +7456,942 @@ def _project(session: dict | None) -> str:
     return me.project if me else ""
 
 
+# --- a local MCP server's tools, called from the shell (5.24.0) --------------------------------------------------------
+# The meeting skill's client (`mcp_client.py <tool> <json>`) calls any tool of the local workspace server, whose default
+# tier holds send_gmail_message, and a write to this machine is no post to another host: neither the client nor a curl of
+# the same JSON-RPC waited (review of the runtime's carried scripts, 2026-11-15, problem A). A command that calls a local
+# server's tool, by an HTTP client to its endpoint or by a program that posts its JSON-RPC (the client is one), is judged
+# as that tool's call is, by `_connector`; one whose tool or arguments the guard cannot read waits when it may send.
+LOCAL_MCP = "workspace-mcp"  # the server the meeting skill runs here, as the harnesses name it
+MCP_CALLS = re.compile(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
+MCP_LINE = re.compile(r"tools/call|call_?[tT]ool|mcp_client|:8765\b|/mcp\b")  # a line that names a local MCP server or its call
+MCP_NAMED = re.compile(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
+MCP_HOST = re.compile(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$", re.I)
+BODIES = {"-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--post-data",
+          "--body-data", "--post-file", "--body-file", "-T", "--upload-file", "-F", "--form"}
+ADDRESSLESS = BODIES | {"--raw", "-H", "--header", "-X", "--request", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie",
+                        "-c", "--cookie-jar", "-o", "--output", "-w", "--write-out"}  # options whose word is no address
+ARGV = "\0argv"  # a tool name a program takes from its own arguments
+
+
+def _mcp_endpoint(word: str) -> str:
+    """'mcp' for a local MCP server's endpoint (the workspace server's port, or the one WORKSPACE_MCP_PORT names, or an
+    MCP path), 'local' for any other address on this machine, '' for a word that names none."""
+    found = MCP_HOST.match(word)
+    if not found or not (found[1] or found[3] or found[4]):
+        return ""
+    return "mcp" if (found[3] or "") in {"8765", os.environ.get("WORKSPACE_MCP_PORT") or "8765"} or re.search(
+        r"/(?:mcp|sse|messages)/?$", found[4] or "") else "local"
+
+
+def _rpc_calls(text: str) -> list:
+    """(tool or None, arguments or None) for each tools/call request a JSON-RPC body holds, a batch's included; text
+    that names the method and cannot be parsed is read for the names it gives."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return [(a or b, None) for a, b in MCP_NAMED.findall(text)] or [(None, None)] if "tools/call" in text else []
+    calls = []
+    for item in data if isinstance(data, list) else [data]:
+        params = item.get("params") if isinstance(item, dict) and item.get("method") == "tools/call" else None
+        if params is not None:
+            name, given = (params.get("name"), params.get("arguments", {})) if isinstance(params, dict) else (None, None)
+            calls.append((name if isinstance(name, str) else None, given if isinstance(given, dict) else None))
+    return calls
+
+
+def _unfilled(text: str, bare: str | None) -> bool:
+    """Whether a word still holds what the shell fills in, which the guard cannot read: a substitution, a parameter, or a
+    variable the line does not set, where the shell expands it (`bare`, the line without its single-quoted parts; None
+    when that is not known). Round 3: `curl -d "$BODY"` to the server passed."""
+    return any(bare is None or m[0] in bare for m in re.finditer(r"\$(?:\(|[0-9@*#?!$-]|\{[^}]*\}?|[A-Za-z_]\w*)|`", text))
+
+
+def _away(start: str, whole: bool = False) -> bool:
+    """Whether an address's spelled start names a scheme and a host that is not this machine, on a port that is not a
+    local MCP server's, closed by /, ? or # before anything a program or the shell fills in (`whole`: nothing is): it goes
+    to that host whatever is filled in after it (a name that resolves here reaches no server on a port it does not
+    name). From the ruling's suite on a fresh clone: the Drive publisher's query from the environment made its host's
+    address read as one the environment gives."""
+    m = re.match(r"\s*[a-z][\w+.-]*://(?:[^/?#@\s]*@)?(([^/?#@\s]+?)(?::(\d+))?)" + ("(?:[/?#]|$)" if whole else "[/?#]"), start, re.I)
+    return bool(m) and not _here(m[1].lower()) and not _here(_carried(m[2].lower())) and m[3] not in {
+        "8765", os.environ.get("WORKSPACE_MCP_PORT") or "8765"}
+
+
+def _http_body(words: list, where: str, feed: str, written: set, bare: str | None = None) -> tuple:
+    """(text, readable) of what an HTTP client posts: its data words, a file named with @ or a file option, its input,
+    or HTTPie's fields and --raw; a body the guard cannot read (a file it lacks, one the line writes, input another
+    program writes, a substitution, a variable the line does not set) is not readable."""
+    from synthesis import sends
+    parts, readable, fields, httpie = [], True, {}, os.path.basename(words[0]) in ("http", "https", "xh")
+    for i, word in enumerate(words[1:], 1):
+        key, eq, given = word.partition("=")
+        if word in BODIES or (httpie and word == "--raw"):
+            value, form = (words[i + 1] if i + 1 < len(words) else ""), word
+        elif eq and (key in BODIES or (httpie and key == "--raw")) and key.startswith("--"):
+            value, form = given, key
+        elif re.match(r"-[dFT].", word):
+            value, form = word[2:], word[:2]
+        elif httpie and re.match(r"[\w.\[\]-]+:?=[^=]", word) and not word.startswith("-"):
+            name, raw = re.split(r":?=", word, maxsplit=1)
+            try:
+                fields[name] = json.loads(raw) if ":=" in word else raw
+            except ValueError:
+                readable = False
+            continue
+        else:
+            continue
+        name = value[1:] if value.startswith("@") and form not in ("--data-raw", "--raw") else value if form in ("--post-file", "--body-file", "-T", "--upload-file") else None
+        if name is None:
+            inner, rest = sends._substitutions(value) if ("$(" in value or "`" in value) else ([], value)
+            cat = [sends.CAT.fullmatch(s) for s in inner]
+            if not all(c and os.path.isfile(os.path.join(where, os.path.expanduser(c[2]))) for c in cat) or _unfilled(rest, bare):
+                readable = False
+            parts += [_code_of(os.path.join(where, os.path.expanduser(c[2]))) for c in cat if c] + ([rest] if rest.strip() else [])
+        elif name == "-":
+            readable, parts = readable and bool(feed.strip()) and UNREAD_INPUT not in feed, parts + [feed]
+        else:
+            path = os.path.realpath(os.path.join(where, _home(name)))
+            text = "" if "$" in name or "`" in name or path in written else _code_of(path)
+            readable, parts = readable and bool(text or (os.path.isfile(path) and path not in written and "$" not in name)), parts + [text]
+    if httpie:
+        parts += [json.dumps(fields)] if fields else [feed] if feed.strip() and UNREAD_INPUT not in feed else []
+    return "\n".join(parts), readable
+
+
+def _curl_config(words: list, where: str) -> list:
+    """The options curl's config files give (-K, --config), as words, read as cheaply as its -d @file (round 2); one the
+    guard cannot read gives a word the shell would fill in, so the call is unknown."""
+    out = []
+    for k, word in enumerate(words[1:], 1):
+        name = words[k + 1] if word in ("-K", "--config") and k + 1 < len(words) else word[9:] if word.startswith("--config=") else word[2:] if re.match(r"-K.", word) else ""
+        text = (_code_of(os.path.join(where, _home(name))) if name != "-" else "") if name else None
+        out += ["$unread-config"] if text == "" else []
+        for line in (text or "").splitlines():
+            found = re.match(r"\s*(-{0,2}[A-Za-z][\w-]*)\s*(?:[=:]\s*|\s+|$)(.*?)\s*$", line)
+            key, value = (found[1].lstrip("-"), found[2].strip("\"'")) if found and not line.lstrip().startswith("#") else ("", "")
+            out += [value] if key == "url" else [("-" if len(key) == 1 else "--") + key] + [value][:bool(value)] if key else []
+    return out
+
+
+def _bindings(nodes: list) -> tuple:
+    """(each name's assignments, loops, `with` targets, unpackings and parameters; each function's calls; each lambda's
+    name; the names a program changes in place, by an item or attribute it sets, an augmented assignment or a method
+    that adds to it) in a parsed Python program."""
+    import ast
+    binds: dict = {}
+    calls: dict = {}
+    lambdas: dict = {}
+    changed: set = set()
+    for node in nodes:
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and node.value is not None:
+            for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                root = target
+                while isinstance(root, (ast.Subscript, ast.Attribute)):
+                    root = root.value
+                if root is not target or isinstance(node, ast.AugAssign):
+                    changed.add(getattr(root, "id", None))
+                for at, part in enumerate(target.elts) if isinstance(target, (ast.Tuple, ast.List)) else ():
+                    binds.setdefault(getattr(part, "id", None), []).append(("unpack", node, at))
+                if isinstance(target, ast.Name) and not isinstance(node, ast.AugAssign):
+                    binds.setdefault(target.id, []).append(("assign", node, None))
+                    lambdas.update({id(node.value): target.id} if isinstance(node.value, ast.Lambda) else {})
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and isinstance(node.target, (ast.Name, ast.Tuple, ast.List)):
+            for at, target in enumerate([node.target] if isinstance(node.target, ast.Name) else node.target.elts):
+                binds.setdefault(getattr(target, "id", None), []).append(("loop", node, None if isinstance(node.target, ast.Name) else at))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            for at, arg in enumerate(node.args.args):
+                binds.setdefault(arg.arg, []).append(("param", node, at))
+        elif isinstance(node, ast.withitem) and isinstance(node.optional_vars, ast.Name):
+            binds.setdefault(node.optional_vars.id, []).append(("with", node, None))
+        elif isinstance(node, ast.Call):
+            calls.setdefault(getattr(node.func, "id", getattr(node.func, "attr", "")), []).append(node)
+            if getattr(node.func, "attr", "") in ("append", "extend", "insert", "update", "setdefault", "add") and isinstance(node.func.value, ast.Name):
+                changed.add(node.func.value.id)
+    return binds, calls, lambdas, changed
+
+
+def _constant(expr, binds: dict, changed: set):
+    """The literal an expression is: a constant, or a name every assignment of which gives that one constant."""
+    import ast
+    if isinstance(expr, ast.Constant):
+        return expr.value
+    given = binds.get(expr.id, ()) if isinstance(expr, ast.Name) and expr.id not in changed else ()
+    values = {repr(node.value.value) for how, node, _ in given if how == "assign" and isinstance(node.value, ast.Constant)}
+    whole = given and len(values) == 1 and all(how == "assign" and isinstance(node.value, ast.Constant) for how, node, _ in given)
+    return given[0][1].value.value if whole else None
+
+
+def _tools_called(text: str, python: bool, own: bool = True) -> list:
+    """(tool, arguments) for each tool call a program's text makes on an MCP server: a literal name, ARGV for one it takes
+    from its arguments, None for one it builds or reads while it runs; arguments when they are a literal, else None. A
+    module the program imports (own=False) counts only its literal names: a name it is handed is its caller's."""
+    if not MCP_CALLS.search(text):
+        return []
+    import ast
+    try:
+        tree = ast.parse(text) if python else None
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        tree = None
+    if tree is None:  # another language, or Python that does not parse: by the names its text gives
+        return [(a or b, None) for a, b in MCP_NAMED.findall(text)] or [(None, None)]
+
+    def literal(node):
+        try:
+            value = ast.literal_eval(node) if node is not None else None
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    nodes, sites = list(ast.walk(tree)), []
+    binds, calls, lambdas, changed = _bindings(nodes)
+    for node in nodes:  # the method by a literal or by a name only that literal is given (round 3)
+        if isinstance(node, ast.Call) and re.fullmatch(r"call_?[tT]ool", getattr(node.func, "attr", getattr(node.func, "id", ""))):
+            named = next((k.value for k in node.keywords if k.arg in ("name", "tool", "tool_name")), node.args[0] if node.args else None)
+            given = next((k.value for k in node.keywords if k.arg == "arguments"), node.args[1] if len(node.args) > 1 else None)
+            sites.append((named, given))
+        elif isinstance(node, ast.Call) and any(_constant(a, binds, changed) == "tools/call" for a in node.args):
+            at = next(i for i, a in enumerate(node.args) if _constant(a, binds, changed) == "tools/call")  # rpc("tools/call", params)
+            params = next((k.value for k in node.keywords if k.arg == "params"), node.args[at + 1] if len(node.args) > at + 1 else None)
+            inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
+            sites.append((inner.get("name"), inner.get("arguments")))
+        elif isinstance(node, ast.Dict):
+            keys = {k.value: v for k, v in zip(node.keys, node.values) if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            if _constant(keys.get("method"), binds, changed) == "tools/call":
+                params = keys.get("params")
+                inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
+                sites.append((inner.get("name"), inner.get("arguments")))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)) and len(node.value) < TEXT_LIMIT:
+            spelled = node.value.decode("utf-8", "replace") if isinstance(node.value, bytes) else node.value
+            sites += [(ast.Constant(n) if n else None, ast.Constant(a)) for n, a in _rpc_calls(spelled)] if (
+                "tools/call" in spelled and spelled.strip()[:1] in "{[") else []
+
+    def names(expr, depth=0, part=None) -> list:  # part: the place in each item a loop unpacks, as `for name, args in CALLS`
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str) and part is None:
+            return [expr.value]
+        if expr is None or depth > 4 or not own:
+            return [None]
+        if any(isinstance(n, ast.Name) and n.id == "argv" or isinstance(n, ast.Attribute) and n.attr == "argv" for n in ast.walk(expr)):
+            return [ARGV]
+        if isinstance(expr, ast.Subscript) and isinstance(expr.slice, ast.Constant) and part is None:  # spec["name"], pair[0]
+            return names(expr.value, depth + 1, expr.slice.value)
+        if isinstance(expr, ast.Dict) and isinstance(part, str):
+            return next((names(v, depth + 1) for k, v in zip(expr.keys, expr.values) if isinstance(k, ast.Constant) and k.value == part), [None])
+        if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):  # a literal collection a loop walks: each item, or its part
+            return [x for e in expr.elts for x in (names(e, depth + 1) if part is None else names(e, depth + 1, part) if isinstance(e, ast.Dict)
+                                                   else names(e.elts[part], depth + 1) if isinstance(part, int) and isinstance(e, (ast.Tuple, ast.List))
+                                                   and len(e.elts) > part else [None])]
+        if isinstance(expr, ast.Dict) or (isinstance(expr, ast.Call) and getattr(expr.func, "attr", "") in ("keys", "items")):
+            keys = expr.keys if isinstance(expr, ast.Dict) else None  # a dict walked gives its keys
+            return [x for k in keys for x in names(k, depth + 1)] if keys is not None and part in (None, 0) else (
+                names(expr.func.value, depth + 1) if keys is None and part in (None, 0) else [None])
+        if not isinstance(expr, ast.Name):
+            return [None]
+        found = [None] if expr.id in changed else []  # a name changed in place may hold what no assignment shows
+        for how, node, at in binds.get(expr.id, ()):
+            if how == "assign":
+                found += names(node.value, depth + 1, part)
+            elif how == "loop":
+                found += names(node.iter, depth + 1, at)
+            elif how == "param":  # what each call of its function passes there
+                called = node.name if not isinstance(node, ast.Lambda) else lambdas.get(id(node), "")
+                for call in calls.get(called, ()) if called else ():
+                    spot = at - (isinstance(call.func, ast.Attribute) and [a.arg for a in node.args.args][:1] in (["self"], ["cls"]))  # a method's own
+                    given = next((k.value for k in call.keywords if k.arg == expr.id), call.args[spot] if 0 <= spot < len(call.args) else None)
+                    found += names(given, depth + 1)
+                found += [] if called else [None]
+            else:  # a `with` target or a name unpacked from a tuple
+                found += [None]
+        return found or [None]
+
+    strong = sites or any(isinstance(n, ast.Constant) and n.value == "tools/call" or getattr(n, "attr", getattr(n, "id", "")) in ("call_tool", "callTool")
+                          for n in nodes)  # a method or a client call it uses, not prose in a string that names one
+    sites = sites[:64] + [(None, None)] * (len(sites) > 64)  # past 64 calls, one more is unknown: each name is followed through the program
+    return [(n, literal(given) if isinstance(n, str) and n != ARGV else None) for named, given in sites for n in names(named)
+            if own or n is not None] or ([(None, None)] if own and strong else [])
+
+
+def _line_values(line: str) -> dict:
+    """{name: [each value]} for each variable a line sets for its own commands (`B=…; curl -d "$B"`, a `for` list, the
+    environment it gives a program)."""
+    found: dict = {}
+    for m in ASSIGNED.finditer(_own_text(line)) if ASSIGNED.search(line) else ():
+        found.setdefault(m[1], {})[m[3][1:-1] if len(m[3]) > 1 and m[3][0] == m[3][-1] and m[3][0] in "'\"" else m[3]] = None
+    for m in LOOPED.finditer(line) if "$" in line else ():
+        found.setdefault(m[1], {}).update(dict.fromkeys(["$("] if re.search(r"\$\(|`", m[2]) else [w.strip("'\"") for w in m[2].split()]))
+    return {name: list(values) for name, values in found.items()}
+
+
+def _filled(words: list, values: dict) -> list:
+    """Each reading of a command's words with the line's own values put where they are used, so a body a variable holds
+    is read whole (round 3: put into the line's text, a JSON value's quotes split it). A variable the line does not
+    set, or one past READINGS readings, stays as written, which the guard cannot read."""
+    used = [n for n in values if any("$" + n in w or "${" + n in w for w in words)]
+    used = used if math.prod(len(values[n]) for n in used) <= READINGS else [n for n in used if len(values[n]) == 1]
+    return [[USED.sub(lambda u: _put(u, dict(zip(used, choice))) if (u[1] or u[4]) in used else u[0], w) for w in words]
+            for choice in itertools.product(*(values[n] for n in used))]
+
+
+def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies: str = "", depth: int = 0) -> list:
+    """(tool or None, arguments or None, how, folder, program file) for each call a parsed line makes on a local MCP
+    server: an HTTP client to an address here, a program whose text posts JSON-RPC or calls a client's call_tool (with
+    the modules of its own it imports), and the shell files it runs. Each command is read with the variables the line
+    sets put in its words."""
+    from synthesis import sends
+    calls: list = []
+    values, bare = _line_values(line), re.sub(r"'[^'\n]*'", "", line) if line else None
+    for (words, where), feed in [((w, where), feed) for (raw, where), feed in zip(commands, feeds + [""] * (len(commands) - len(feeds)))
+                                 for w in (_filled(raw, values) if values else [raw])]:
+        head = os.path.basename(words[0]) if words else ""
+        if head in sends.WEB:
+            words = words + (_curl_config(words, where) if head == "curl" else [])
+            aims = [a for a in (_mcp_endpoint("http://localhost" + w if head in ("http", "https", "xh") and re.match(r":\d*(?:/|$)", w) else w)
+                                for w in words[1:]) if a]
+            shown = "$unread-config" in words or any(("$" in w or "`" in w) and words[i - 1] not in ADDRESSLESS and not (  # an address the shell
+                head in ("http", "https", "xh") and "://" not in w and re.match(r"[\w.\[\]-]+(?::=|==|=|:)", w)) and not _away(  # fills in, not a body,
+                re.split(r"[$`]", w)[0]) for i, w in enumerate(words[1:], 1) if not w.startswith(("-", "@")))  # a header, a field, another
+            # host's address with its path filled in, or a config unread
+            redirect = re.search(r"(?<![<\d])<\s*(['\"]?)([^\s'\"<>|;&]+)\1", line) if head in ("http", "https", "xh") and not feed else None
+            feed = (_code_of(os.path.join(where, _home(redirect[2]))) or UNREAD_INPUT) if redirect else feed
+            if not aims and not shown:
+                continue
+            text, readable = _http_body(words, where, feed, written, bare)
+            readable = readable and "$unread-config" not in words  # a config file it could not read
+            found = _rpc_calls(text) if text else []
+            calls += [(t, a, f"`{head}` to an address here", where, "") for t, a in found]
+            if not readable and ("mcp" in aims or shown):
+                calls.append((None, None, f"`{head}` to a local MCP server, with a body the guard cannot read", where, ""))
+        elif SCRIPT.match(head) or UNREAD.match(head) or head in ("deno", "php"):
+            kind, at, given = _program(words)
+            module = _module_file(given, "" if _isolated(words) else os.path.realpath(where)) if words[at:at + 1] == ["-m"] else ""
+            path = module or (os.path.realpath(os.path.join(where, _home(given))) if kind == "file" and given else "")
+            text = given if kind == "inline" else feed if kind == "stdin" else bodies if path in written else _code_of(path) if path else ""
+            if UNREAD_INPUT in text or (not text and path in written):  # input another program writes, or a file the line
+                text = "'tools/call'" if MCP_LINE.search(line) else ""  # writes with no heredoc: unknown where the line names a server
+            files = (_python_files(path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(
+                where if not path else os.path.dirname(path)), given if module else "")[0] if head.startswith("python") and text else [(path, text)])
+            args = words[at + 1:] if kind == "file" else words[at + (words[at:at + 1] == ["-"]):] if kind == "stdin" else words[at:]
+            aimed = bool(re.search(r":8765\b|/mcp\b", line)) or any(_mcp_endpoint(w) == "mcp" for w in args)  # handed the endpoint
+            calls += _posted_bodies(files, head, where, path, args, "" if kind == "stdin" else feed, written, depth, aimed, values, bare) if text else []
+            for file, body in files:
+                for tool, given_args in _tools_called(body, head.startswith("python"), own=file == files[0][0]):
+                    how = f"`{head}` running {'a program that' if kind != 'file' else os.path.basename(path) + ', which'} calls a tool"
+                    if tool != ARGV:
+                        calls.append((tool, given_args, how, where, path))
+                        continue
+                    named = [w for w in args if re.fullmatch(r"[A-Za-z][\w.-]{1,80}", w) or ("$" in w or "`" in w) and re.fullmatch(
+                        r"(?:[\w.-]+|\$\{?\w+\}?|\$\([^()]*\)|`[^`]*`)+", w)]  # a word the shell fills in counts when it can make a name
+                    objects = [o for o in (_json_object(w) for w in args if "$" not in w and "`" not in w) if o is not None]
+                    calls += [(None if "$" in w or "`" in w else w, objects[0] if len(named) == 1 and len(objects) == 1 else None,
+                               how + " named in its arguments", where, path) for w in named]
+        elif depth < 2:
+            script = _script_file(words, where)
+            if script and script != TOO_LARGE:
+                inner: list = []
+                try:
+                    parsed = _parse(script, where, feeds=inner)[0]
+                except (Unreadable, ValueError):
+                    continue
+                calls += _mcp_calls(parsed, inner, written, script, "\n".join(f for f in inner if f.strip()), depth + 1)
+    return calls
+
+
+# A program's posts to a local MCP endpoint (rounds 1 and 3). Round 3 stopped reading them spelling by spelling: a Python or
+# node program whose text names this machine's MCP endpoint, its host with the port or the path together or apart, and
+# makes any HTTP write (a write method, a request call handed a body by position or by keyword, a request's .write() or
+# .end(), a client it starts) is judged by every body it hands over that the guard can read, and waits when one cannot be
+# read. A program that only reads (a GET, a liveness check) hands over none.
+LOCAL_IN = re.compile(r"(?:^|[/@\s\[])(?:localhost|127\.0\.0\.1|::1|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?=$|[\]:/\s])", re.I)
+BODY_KEYS = ("data", "json", "body", "content", "files")
+WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+SHELLED = ("system", "popen", "run", "call", "check_output", "check_call", "Popen", "getoutput", "getstatusoutput")
+LOGGED = ("print", "log", "debug", "info", "warning", "warn", "error", "exception", "critical")
+KINDS = 256  # the distinct values a body expression is read as, past which one more is a value the guard cannot read
+HTTP_HINT = re.compile(r"\burlopen\b|\bRequest\b|\b(?:requests|httpx|aiohttp|urllib3|pycurl|socket|axios|got|curl|wget|xh|subprocess|child_process)\b"
+                       r"|http\.client|HTTPConnection|\bfetch\s*\(|\.(?:request|post|put|patch)\s*\(|\b(?:execSync|spawn|spawnSync|execFile)\b"
+                       r"|\bos\s*\.\s*(?:system|popen)\b|['\"](?:POST|PUT|PATCH|DELETE)['\"]", re.I)  # a request a file may make
+CLIENT_LINE = re.compile(r"""[`'"]?\s*(?:\S*/)?(?:curl|wget|https?|xh)(?:\s|$)""")  # a command line that starts an HTTP client
+JS_SITES = re.compile(r"(?<![\w$.])(body|data|json)\s*:(?!:)|[{,]\s*(body|data|json)\s*(?=[,}])|\.\s*(write|end|send)\s*\(|\.\s*(post|put|patch)\s*\(|\.\s*(pipe)\s*\(")
+JS_RUNS = re.compile(r"(?<![\w$])(exec|execSync|spawn|spawnSync|execFile|execFileSync|execa|execaSync)\s*\(")
+JS_FUNCS = re.compile(r"\bfunction\s+([\w$]+)\s*\(([^()]*)\)|([\w$]+)\s*[=:]\s*(?:async\s+)?(?:function\s*[\w$]*\s*)?\(([^()]*)\)\s*(?:=>|\{)"
+                      r"|(?<![\w$.])(?!(?:if|for|while|switch|catch|function)\b)([\w$]+)\s*\(([^()]*)\)\s*\{")
+
+
+def _names_mcp(text: str, head: str) -> bool:
+    """Whether a program's text names this machine's MCP endpoint: an address that reads as one, the variable that sets
+    it, or a local host with the server's port or an MCP path, written together or apart (round 3)."""
+    if not re.search(r"8765|/mcp|WORKSPACE_MCP_", text):
+        return False
+    strings = [_unquoted(m[0]) for m in PROGRAM_STRINGS.finditer(text)]
+    port = re.search(r"(?<![\w.])8765(?![\w.])", _code_only(text, head)) or any(re.search(r"(?<![\w.])8765(?![\w.])", s) for s in strings)
+    path = any(re.search(r"(?:^|[^\w.-])/mcp(?:/|$|[?#\s])", s) for s in strings)
+    return bool(re.search(r"WORKSPACE_MCP_(?:URL|PORT)", text) or any(_mcp_endpoint(w) == "mcp" for s in strings for w in s.split()[:64])
+                or (port or path) and (port and path or any(LOCAL_IN.search(s) for s in strings)))
+
+
+def _joinings(parts: list) -> list:
+    """What a body joined from parts can be: each joining of the parts' texts when every part is text, while there are
+    at most KINDS of them within TEXT_LIMIT in all (else one the guard cannot read); otherwise each part's own kinds."""
+    texts = [[k[1] for k in p] if p and all(isinstance(k, tuple) and k[0] == "text" for k in p) else None for p in parts]
+    if any(t is None for t in texts):
+        return [x for p in parts for x in p]
+    if math.prod(len(t) for t in texts) * max(sum(max(map(len, t)) for t in texts), 1) > TEXT_LIMIT or math.prod(len(t) for t in texts) > KINDS:
+        return [None]
+    return [("text", "".join(c)) for c in itertools.product(*texts)]
+
+
+def _py_bodies(text: str) -> tuple | None:
+    """(what each HTTP write in a Python program hands over, the command lines it hands a shell or starts), or None for
+    one that does not parse. A body is ("text", words) for what the program spells, "built" for a JSON-RPC request it
+    builds with a method the guard reads (its tools/call read by _tools_called), ("file", names) for a file it reads,
+    "stdin", "argv" for its own arguments, or None for a value the guard cannot read."""
+    import ast
+    from synthesis import sends
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return None
+    nodes = list(ast.walk(tree))
+    binds, calls, lambdas, changed = _bindings(nodes)
+    defs = {n.name: n for n in nodes if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    named = lambda f: getattr(f, "attr", getattr(f, "id", ""))  # noqa: E731
+    uses = lambda e, name: any(named(n) == name for n in ast.walk(e))  # noqa: E731
+    text_of = lambda k: k[0][1] if len(k) == 1 and isinstance(k[0], tuple) and k[0][0] == "text" else None  # noqa: E731
+    parsed = {t for t, ways in binds.items() if any(how == "assign" and named(getattr(node.value, "func", None)) in ("parse_args", "parse_known_args")
+                                                    for how, node, _ in ways)}  # argparse's namespace: its own arguments
+    argued = lambda e: uses(e, "argv") or isinstance(e, ast.Attribute) and getattr(e.value, "id", None) in parsed  # noqa: E731
+    configured = {id(k.value) for n in nodes if isinstance(n, ast.Call) for k in n.keywords if k.arg == "method"} | {id(n.value) for n in nodes if isinstance(
+        n, ast.Assign)} | {id(v) for n in nodes if isinstance(n, ast.Dict) for k, v in zip(n.keys, n.values) if getattr(k, "value", None) == "method"}
+
+    def passed(fn, at, name) -> list:  # what each call of a function hands a parameter, else its default; [False] with no call here
+        called, first, out = fn.name if not isinstance(fn, ast.Lambda) else lambdas.get(id(fn), ""), len(fn.args.args) - len(fn.args.defaults), []
+        for call in calls.get(called, ()) if called else ():
+            spot = at - (isinstance(call.func, ast.Attribute) and [a.arg for a in fn.args.args][:1] in (["self"], ["cls"]))
+            given = next((k.value for k in call.keywords if k.arg == name), call.args[spot] if 0 <= spot < len(call.args) else None)
+            out.append(given if given is not None else fn.args.defaults[at - first] if at >= first else None)
+        return out or [False]
+
+    def files(e, depth=0) -> list:  # the file names an expression gives: a literal, ARGV for one of its arguments, or None
+        if isinstance(e, ast.Constant) and isinstance(e.value, (str, int)):
+            return [e.value]
+        if not isinstance(e, ast.AST) or depth > 6:
+            return [None]
+        if argued(e):
+            return [ARGV]
+        if isinstance(e, ast.Name):
+            return [f for how, node, _ in binds.get(e.id, ()) for f in (files(node.value, depth + 1) if how == "assign" else [None])] or [None]
+        parts = [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div) else e.args if isinstance(e, ast.Call) and named(
+            e.func) in ("join", "Path", "PurePath", "expanduser", "abspath", "realpath", "str", "fspath") else []
+        found = [files(p, depth + 1) for p in parts]
+        return [os.path.expanduser(os.path.join(*[f[0] for f in found]))] if found and all(len(f) == 1 and isinstance(f[0], str) for f in found) else [None]
+
+    def opened(e, depth=0) -> list:  # what a file object, or the thing a read is called on, reads: a file, its input, or None
+        if not isinstance(e, ast.AST) or depth > 6:
+            return [None]
+        if isinstance(e, ast.Attribute) and uses(e, "stdin"):
+            return ["stdin"]
+        if isinstance(e, ast.Call) and named(e.func) == "open" and isinstance(e.func, ast.Attribute) and not e.args:
+            return opened(e.func.value, depth + 1)  # Path(name).open()
+        if isinstance(e, ast.Call) and named(e.func) in ("open", "Path", "PurePath", "FileIO"):
+            return [("file", tuple(files(e.args[0] if e.args else next((k.value for k in e.keywords if k.arg in ("file", "path")), None))))]
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div):
+            return [("file", tuple(files(e)))]
+        return [x for how, node, _ in binds.get(e.id, ()) for x in (opened(node.value, depth + 1) if how == "assign" else opened(
+            node.context_expr, depth + 1) if how == "with" else [None])] or [None] if isinstance(e, ast.Name) else [None]
+
+    read: dict = {}  # each expression read once a program; one met again while it is read (a cycle) is unknown
+
+    def kind(e) -> list:  # each kind once, and at most KINDS of them (past that, one more the guard cannot read)
+        if id(e) not in read:
+            read[id(e)] = [None]
+            found = list(dict.fromkeys(reading(e)))
+            read[id(e)] = found if len(found) <= KINDS else found[:KINDS] + [None]
+        return read[id(e)]
+
+    def reading(e) -> list:
+        if e is None or isinstance(e, ast.Constant) and e.value is None:
+            return []
+        if not isinstance(e, ast.AST):
+            return [None]
+        if isinstance(e, ast.Constant):
+            return [("text", e.value.decode("utf-8", "replace") if isinstance(e.value, bytes) else str(e.value))]
+        if isinstance(e, ast.Dict):  # a request it builds: judged by its method, its tools/call by _tools_called
+            keys = {k.value: v for k, v in zip(e.keys, e.values) if isinstance(k, ast.Constant)}
+            method = kind(keys["method"]) if "method" in keys else [("text", "")]
+            return [None] if None in e.keys or not method or any(not isinstance(m, tuple) or m[0] != "text" for m in method) else ["built"]
+        if isinstance(e, (ast.List, ast.Tuple, ast.Set)):
+            return [x for item in e.elts for x in kind(item)] or ["built"]
+        if isinstance(e, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            return kind(e.elt)
+        if isinstance(e, (ast.Await, ast.Starred, ast.FormattedValue, ast.NamedExpr)):
+            return kind(e.value)
+        if isinstance(e, (ast.IfExp, ast.BoolOp, ast.BinOp, ast.JoinedStr)):  # parts it joins: each joining when all are text
+            parts = [kind(p) for p in ([e.body, e.orelse] if isinstance(e, ast.IfExp) else [e.left, e.right] if isinstance(e, ast.BinOp) else e.values)]
+            return _joinings(parts) if isinstance(e, (ast.BinOp, ast.JoinedStr)) else [x for p in parts for x in p]
+        if isinstance(e, ast.Call):
+            f, n = e.func, named(e.func)
+            if n in ("read", "read_text", "read_bytes", "readlines", "readline", "getvalue") and isinstance(f, ast.Attribute):
+                return opened(f.value)
+            if n in ("open", "Path") or (n == "load" and e.args):
+                return opened(e.args[0] if n == "load" else e)
+            if n == "input":
+                return ["stdin"]
+            if n in defs and (isinstance(f, ast.Name) or named(f.value) in ("self", "cls")):  # what a function of its own returns
+                return [x for r in ast.walk(defs[n]) if isinstance(r, ast.Return) for x in kind(r.value)]
+            if n in ("dumps", "loads", "str", "bytes", "bytearray", "deepcopy", "dict", "list", "tuple"):
+                return [x for a in e.args[:1] + [k.value for k in e.keywords if n == "dict"] for x in kind(a)] or ["built"]
+            if n in ("encode", "decode", "strip", "format", "replace", "lower", "upper", "copy", "get", "items", "values", "keys", "join") and isinstance(f, ast.Attribute):
+                return kind(f.value) + [x for a in e.args for x in kind(a)]
+            return [None]
+        if isinstance(e, (ast.Subscript, ast.Attribute, ast.Name)) and argued(e):
+            return ["argv"]
+        if isinstance(e, ast.Attribute) and uses(e, "stdin"):
+            return ["stdin"]
+        if isinstance(e, ast.Subscript):
+            return kind(e.value)
+        if not isinstance(e, ast.Name) or e.id in changed:  # a value it reads from elsewhere, or one it changes in place
+            return [None]
+        found = []
+        for how, node, at in binds.get(e.id, ()):
+            given = [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, e.id) if how == "param" else None
+            found += opened(node.context_expr) if how == "with" else [None] if given is None else [x for g in given for x in kind(g)]
+        return found or [None]
+
+    by_name: dict = {}  # where each name's values come from, read once a program (a name met again while it is read adds nothing)
+
+    def sources(e) -> set:  # where a value comes from: each environment variable it reads ("?" for one it cannot name), "argv"
+        found, inner = set(), list(ast.walk(e)) if isinstance(e, ast.AST) else []
+        for n in inner:
+            got = n.slice if isinstance(n, ast.Subscript) and named(n.value) == "environ" else n.args[0] if isinstance(n, ast.Call) and n.args and (
+                named(n.func) == "getenv" or named(n.func) == "get" and named(getattr(n.func, "value", None)) == "environ") else None
+            found |= {got.value if isinstance(got, ast.Constant) else "?"} if got is not None else set()
+            found |= {"argv"} if named(n) == "argv" or isinstance(n, ast.Attribute) and getattr(n.value, "id", None) in parsed else set()
+            if isinstance(n, ast.Name) and n.id not in by_name:
+                by_name[n.id] = set()
+                by_name[n.id] = set().union(*[sources(g) for how, node, at in binds.get(n.id, ()) for g in (
+                    [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, n.id) if how == "param" else []) if isinstance(g, ast.AST)], set())
+            found |= by_name.get(n.id, set()) if isinstance(n, ast.Name) else set()
+        return found | ({"?"} if not found and any(named(n) in ("environ", "getenv") for n in inner) else set())
+
+    def start(e, depth=0) -> tuple:  # the text an address spells before anything it fills in, and whether that is all of it
+        whole = _constant(e, binds, changed)
+        if isinstance(whole, str):
+            return whole, True
+        if isinstance(e, ast.Call) and named(e.func) == "format" or isinstance(e, ast.BinOp) and isinstance(e.op, ast.Mod):  # "{}".format(), "%s" %
+            spelled = _constant(getattr(e.func, "value", None) if isinstance(e, ast.Call) else e.left, binds, changed)
+            return (re.split(r"[{%]", spelled)[0] if isinstance(spelled, str) else ""), False
+        parts, out = e.values if isinstance(e, ast.JoinedStr) else [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) else [], ""
+        for p in parts if depth < 8 else ():
+            got, whole = start(p.value if isinstance(p, ast.FormattedValue) and p.conversion == -1 and p.format_spec is None else p, depth + 1)
+            out += got
+            if not whole:
+                return out, False
+        return out, bool(parts) and depth < 8
+
+    aimed_at: dict = {}  # where each name's address comes from, read once a program
+
+    def targets(e) -> set:  # where an address comes from, as sources() reads it, but none from one it spells for another host
+        if _away(*start(e)):
+            return set()
+        if isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.IfExp)):
+            return set().union(*[targets(x) for x in ([e.body, e.orelse] if isinstance(e, ast.IfExp) else e.elts)], set())
+        if not isinstance(e, ast.Name) or e.id in changed or e.id not in binds:
+            return sources(e)
+        if e.id not in aimed_at:
+            aimed_at[e.id] = set()
+            aimed_at[e.id] = set().union(*[targets(g) for how, node, at in binds[e.id] for g in (
+                [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, e.id) if how == "param" else []) if isinstance(g, ast.AST)], set())
+        return aimed_at[e.id]
+
+    def aims(node, f, n, spots) -> set:  # where a write's address comes from: its URL, host or base URL, or the connection it is made on
+        made = f.value if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Call) else next((b.value for how, b, _ in binds.get(
+            getattr(getattr(f, "value", None), "id", None), ()) if how == "assign" and isinstance(b.value, ast.Call)), None)
+        joined = made is not None and named(made.func) in ("HTTPConnection", "HTTPSConnection", "HTTPConnectionPool", "HTTPSConnectionPool")
+        given = [] if joined else [k.value for k in node.keywords if k.arg in ("url", "base_url", "host")] + (  # a connection's path names no host
+            node.args[spots[0] + 1:spots[0] + 2] if spots else [] if n in ("send", "sendall", "endheaders") else node.args[:1])
+        return set().union(*[targets(x) for x in given + (list(made.args) + [k.value for k in made.keywords] if made is not None else [])], set())
+
+    def handed_line(e, q=str) -> str | None:  # a line a program hands a shell (q=shlex.quote: a word of a client it starts), a value it
+        if text_of(kind(e)) is not None:  # cannot read standing as a word the shell fills in
+            return q(text_of(kind(e)))
+        parts = e.values if isinstance(e, ast.JoinedStr) else [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) else None
+        spelled = [q(str(p.value)) if isinstance(p, ast.Constant) else handed_line(p.value if isinstance(p, ast.FormattedValue) else p, q) or (
+            "$ENV_TARGET" if sources(p) else "$UNREAD") for p in parts or ()]
+        return "".join(spelled) if parts else None
+
+    low = any(named(n) in ("HTTPConnection", "HTTPSConnection", "putrequest", "socket", "create_connection") for n in nodes)  # sends by hand
+    modules = {a.asname or a.name.split(".")[0] for n in nodes if isinstance(n, ast.Import) for a in n.names}  # os.open() opens a file
+    bodies, lines, wrote, marked, aimed = [], [], False, False, []
+    for node in nodes:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Attribute) and t.attr in BODY_KEYS for t in node.targets):
+            bodies, wrote = bodies + kind(node.value), True  # request.data = ...
+        elif isinstance(node, (ast.List, ast.Tuple)) and node.elts and isinstance(node.elts[0], ast.Constant) and os.path.basename(
+                str(node.elts[0].value)) in sends.WEB:  # a client it starts: its words, each one it builds read as a body is
+            spelled = [kind(x) for x in node.elts]
+            lines.append(" ".join(handed_line(x, shlex.quote) or ("$ENV_TARGET" if sources(x) else "$UNREAD") for x in node.elts))
+            bodies, wrote = bodies + [x for k in spelled if text_of(k) is None for x in k], True
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.upper() in WRITE_METHODS and id(node) in configured
+              or isinstance(node, ast.Attribute) and node.attr in WRITE_METHODS):  # a write method set where no write found here takes it
+            marked = True
+        elif isinstance(node, ast.Call) and named(node.func) not in LOGGED:
+            f, n = node.func, named(node.func)
+            attr = isinstance(f, ast.Attribute)
+            mine = n in defs and (not attr or named(f.value) in ("self", "cls"))  # a function of the program's own is read where it writes
+            given = [] if mine else [k.value for k in node.keywords if k.arg in BODY_KEYS]
+            spots = [] if mine else [i for i, a in enumerate(node.args) if str(_constant(a, binds, changed)).upper() in WRITE_METHODS]
+            request = n in ("request", "Request", "putrequest", "build_request", "stream", "urlopen")
+            if not mine:  # a library's request call
+                given += (node.args[1:2] if n in ("urlopen", "Request") or (attr and n == "open" and getattr(f.value, "id", None) not in modules)
+                          else node.args[1:3] if attr and n in ("post", "put", "patch")
+                          else node.args[spots[0] + 2:spots[0] + 3] if n == "request" and spots else node.args[:1] if attr and n in (
+                              "send", "sendall", "endheaders") and low else [])
+            if n in SHELLED and node.args and not isinstance(node.args[0], (ast.List, ast.Tuple)) and (attr or n not in binds and n not in defs):
+                handed = handed_line(node.args[0])  # a line it hands a shell, judged as on the line; one it cannot spell that starts a client waits
+                lines += [handed] if handed is not None else []
+                bodies += [None] if handed is None and any(isinstance(k, tuple) and k[0] == "text" and CLIENT_LINE.match(k[1]) for k in kind(node.args[0])) else []
+            if given or spots and (request or len(node.args) + len(node.keywords) > 1) or (attr and n in ("post", "put", "patch", "delete")) or any(
+                    k.arg == "method" and str(_constant(k.value, binds, changed)).upper() in WRITE_METHODS for k in node.keywords):
+                handed = [x for g in given for x in kind(g)] + ([None] if spots and not given and not request else [])  # a write method a call it
+                wrote, bodies, aimed = True, bodies + handed, aimed + [(handed, aims(node, f, n, spots))]  # does not know takes waits
+    return bodies + ([None] if marked and not wrote else []), lines, [(k, s) for k, s in aimed if s and k]
+
+
+def _js_scan(text: str, i: int, stops: str) -> int:
+    """Where a JavaScript expression that starts at i ends: at a character of `stops` outside strings and brackets, at a
+    bracket it did not open, or, when `stops` holds one, at a line's end where no operator carries the expression on."""
+    depth = 0
+    while i < len(text):
+        c = text[i]
+        if c in "'\"`":
+            found = PROGRAM_STRINGS.match(text, i)
+            i = found.end() if found else len(text)
+            continue
+        if depth == 0 and (c in ")]}" or c in stops and (c != "\n" or not (
+                re.search(r"[-+*/%&|^<>=?:,.(]\s*$", text[max(0, i - 80):i]) or re.match(r"\s*[-+*/%&|^<>=?:.]", text[i + 1:i + 80])))):
+            return i
+        depth += (c in "([{") - (c in ")]}")
+        i += 1
+    return i
+
+
+def _js_expr(text: str, i: int) -> str:
+    return text[i:_js_scan(text, i, ",;\n")].strip()
+
+
+def _js_parts(expr: str, sep: str) -> list:
+    """A JavaScript expression's parts at each `sep` outside strings and brackets."""
+    out, i = [], 0
+    while True:
+        j = _js_scan(expr, i, sep)
+        out.append(expr[i:j].strip())
+        if j >= len(expr) or expr[j] != sep:
+            return out
+        i = j + 1
+
+
+def _js_props(expr: str) -> dict | None:
+    """An object literal's properties as {key: its value's expression}, a shorthand name being its own value; None for
+    one with a spread, a computed key or a method, whose contents the guard cannot read."""
+    props = {}
+    for item in filter(str.strip, _js_parts(expr[1:-1], ",")):
+        found = re.match(r"""\s*(['"]?)([\w$/.-]+)\1\s*(:)?""", item)
+        if not found or item.strip().startswith("...") or (not found[3] and item[found.end():].strip()):
+            return None
+        props[found[2]] = item[found.end():].strip() if found[3] else found[2]
+    return props
+
+
+def _js_called(name: str, text: str) -> list:
+    """For each function a JavaScript program defines with `name` among its parameters: (its parameters, the arguments
+    each call of it hands over), a definition's own name being no call. The program's functions are found once a call."""
+    known = _CALL.setdefault("jsf", {})
+    if id(text) not in known:  # each function's name, parameters and place
+        known[id(text)] = [(next(m[g] for g in (1, 3, 5) if m[g]), [p.split("=")[0].strip() for p in next(m[g + 1] for g in (1, 3, 5) if m[g]).split(",")],
+                            m.start(), m.end()) for m in JS_FUNCS.finditer(text)]
+    return [(given, [_js_parts(text[c.end():_js_scan(text, c.end(), "")], ",") for c in re.finditer(rf"(?<![\w$]){re.escape(fn)}\s*\(", text)
+                     if not start <= c.start() < end]) for fn, given, start, end in known[id(text)] if name in given]
+
+
+def _js_values(name: str, text: str) -> list:
+    """The expressions a JavaScript name stands for: what each declaration or assignment gives it, and for a function's
+    parameter what each call hands it there; read once a call."""
+    known = _CALL.setdefault("jsv", {})
+    if (name, id(text)) not in known:
+        found = [_js_expr(text, m.end()) for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*=(?![=>])", text)]
+        known[(name, id(text))] = found + [args[given.index(name)] for given, calls in _js_called(name, text) for args in calls if len(args) > given.index(name)]
+    return known[(name, id(text))]
+
+
+def _js_pairs(method: str, params: str, text: str) -> list:
+    """(method, params) for each request a JavaScript program builds: one pair for each call of the function both are
+    parameters of (a helper's `initialize` call hands no tool name), else the two as written."""
+    for given, calls in _js_called(method, text):
+        if params in given:
+            return [tuple(args[given.index(p)] if len(args) > given.index(p) else "" for p in (method, params)) for args in calls]
+    return [(method, params)]
+
+
+def _js_files(expr: str, text: str, depth: int = 0) -> list:
+    """The file names a JavaScript expression gives: a literal, ARGV for one of its arguments, or None."""
+    expr = expr.strip()
+    if PROGRAM_STRINGS.fullmatch(expr) and not (expr[0] == "`" and "${" in expr) or expr == "0":
+        return [_unquoted(expr) if expr != "0" else 0]
+    if re.match(r"process\s*\.\s*argv\b", expr):
+        return [ARGV]
+    joined = re.fullmatch(r"path\s*\.\s*(?:join|resolve)\s*\(([\s\S]*)\)", expr)
+    parts = [_js_files(p, text, depth + 1) for p in _js_parts(joined[1], ",")] if joined and depth < 6 else []
+    if parts and all(len(p) == 1 and isinstance(p[0], str) for p in parts):
+        return [os.path.join(*[p[0] for p in parts])]
+    if re.fullmatch(r"[A-Za-z_$][\w$]*", expr) and depth < 6:
+        return [f for v in _js_values(expr, text) for f in _js_files(v, text, depth + 1)] or [None]
+    return [None]
+
+
+def _js_kind(expr: str, text: str) -> list:
+    """What a JavaScript expression hands over as a body, read as _py_bodies reads Python's, with ("call", name) for
+    each tools/call it builds, its name read through the program's own names and the calls that hand its functions
+    their parameters. Each expression is read once a program (`_js_bodies` starts the record); one met again while it
+    is read is unknown."""
+    seen = _CALL.setdefault("js", {})
+    if expr not in seen:
+        seen[expr] = [None]
+        found = list(dict.fromkeys(_js_read(expr, text)))
+        seen[expr] = found if len(found) <= KINDS else found[:KINDS] + [None]
+    return seen[expr]
+
+
+def _js_read(expr: str, text: str) -> list:
+    e = re.sub(r"^(?:await|new)\s+", "", (expr or "").strip().rstrip(";").strip())
+    while e[:1] == "(" and _js_scan(e, 1, "") == len(e) - 1:
+        e = e[1:-1].strip()
+    if not e or e in ("undefined", "null"):
+        return []
+    if PROGRAM_STRINGS.fullmatch(e):
+        return [None] if e[0] == "`" and "${" in e else [("text", _unquoted(e))]
+    parts = _js_parts(e, "+")
+    if len(parts) > 1:
+        return _joinings([_js_kind(p, text) for p in parts])
+    inside = re.fullmatch(r"(?:JSON\s*\.\s*(?:stringify|parse)|Buffer\s*\.\s*from|String|new\s+TextEncoder\s*\(\s*\)\s*\.\s*encode)\s*\(([\s\S]*)\)", e) or (
+        re.fullmatch(r"([\s\S]+?)\s*\.\s*(?:toString|trim|valueOf)\s*\(\s*\)", e))
+    if inside:
+        return _js_kind(_js_parts(inside[1], ",")[0], text)
+    read = re.match(r"(?:(?:[\w$]+|require\s*\([^()]*\))\s*\.\s*)*(?:readFileSync|readFile|createReadStream)\s*\(", e)
+    if read:
+        return [("file", tuple(_js_files(_js_parts(e[read.end():_js_scan(e, read.end(), "")], ",")[0], text)))]
+    if re.fullmatch(r"process\s*\.\s*stdin", e):
+        return ["stdin"]
+    if re.match(r"process\s*\.\s*argv\b", e):
+        return ["argv"]
+    if e[0] == "[" and e[-1] == "]":
+        return [x for item in filter(None, _js_parts(e[1:-1], ",")) for x in _js_kind(item, text)] or ["built"]
+    if re.fullmatch(r"[A-Za-z_$][\w$]*", e):  # a name: what it is given, unless the program changes it in place
+        member = r"(?:\s*(?:\.\s*[\w$]+|\[[^\]]*\]))"
+        changed = re.search(rf"(?<![\w$.]){re.escape(e)}(?:{member}+\s*[-+*/]?=(?!=)|{member}*\s*\.\s*(?:push|unshift|splice)\s*\(|\s*[-+]=)"
+                            rf"|Object\s*\.\s*assign\s*\(\s*{re.escape(e)}\b", text)
+        return [None] if changed else [x for v in _js_values(e, text) for x in _js_kind(v, text)] or [None]
+    props = _js_props(e) if e[0] == "{" and e[-1] == "}" else None
+    if props is None:
+        return [None]
+    out = ["built"]
+    for method, given in _js_pairs(props["method"], props.get("params", ""), text) if "method" in props else ():
+        methods = _js_kind(method, text)
+        if not methods or any(not isinstance(m, tuple) or m[0] != "text" for m in methods):
+            return [None]
+        values = (_js_values(given, text) if re.fullmatch(r"[A-Za-z_$][\w$]*", given) else [given]) if "tools/call" in {m[1] for m in methods} else []
+        shapes = [_js_props(v) if v[:1] == "{" and v[-1:] == "}" else None for v in values]
+        tools = [n for p in shapes or [None] for n in (_js_kind(p["name"], text) if p and "name" in p else [None])] if values else []
+        out += [("call", t[1]) if isinstance(t, tuple) and t[0] == "text" else None for t in tools]
+    return out
+
+
+def _js_sources(expr: str, text: str, depth: int = 0) -> set:
+    """Where a JavaScript value comes from: each environment variable it reads (`process.env`; "?" for one it cannot
+    name) and "argv" for the program's arguments, through its own names (round 3's ruling)."""
+    seen = _CALL.setdefault("jss", {})
+    if (expr, depth) not in seen:
+        found = {a or b or "?" for a, b in re.findall(r"process\s*\.\s*env\b(?:\s*\.\s*([A-Za-z_]\w*)|\s*\[\s*['\"]([^'\"]+)['\"]\s*\])?", expr)}
+        found |= {"argv"} if re.search(r"process\s*\.\s*argv\b", expr) else set()
+        for name in set(re.findall(r"(?<![\w$.])[A-Za-z_$][\w$]*", PROGRAM_STRINGS.sub('""', expr))) if depth < 4 else ():
+            found |= set().union(*[_js_sources(v, text, depth + 1) for v in _js_values(name, text) if v != expr], set())
+        seen[(expr, depth)] = found
+    return seen[(expr, depth)]
+
+
+def _js_start(expr: str, text: str, depth: int = 0) -> tuple:
+    """The text a JavaScript address spells before anything it fills in, and whether that is all of it: its strings and
+    templates joined by +, to a template's first ${, through a name that stands for one value."""
+    s, out = expr.strip(), ""
+    while s:
+        m = re.match(r"""(['"])((?:\\.|(?!\1)[^\\])*)\1|`((?:\\.|\$(?!\{)|[^`\\$])*)(`|\$\{)""", s)
+        name = re.match(r"[A-Za-z_$][\w$]*(?![\w$.(\[])", s) if not m and depth < 4 else None
+        values = _js_values(name[0], text) if name else []
+        got, whole = (m[2] if m[1] else m[3], m[4] != "${") if m else _js_start(values[0], text, depth + 1) if len(values) == 1 else ("", False)
+        out, s = out + got, s[(m or name).end():].lstrip() if whole else ""
+        if not whole or not s or s[0] != "+":
+            return out, whole and not s
+        s = s[1:].lstrip()
+    return out, False
+
+
+def _js_targets(expr: str, text: str, depth: int = 0) -> set:
+    """_js_sources for an address, but none from one that spells another host before anything it fills in."""
+    if _away(*_js_start(expr, text)):
+        return set()
+    values = [v for v in _js_values(expr.strip(), text) if v != expr] if depth < 4 and re.fullmatch(r"\s*[A-Za-z_$][\w$]*\s*", expr) else []
+    return set().union(*[_js_targets(v, text, depth + 1) for v in values]) if values else _js_sources(expr, text)
+
+
+def _js_enclosing(masked: str, places: list) -> list:
+    """For each place, in order, in a program's text with its strings and comments blanked: (where the innermost call's
+    bracket opens, where the innermost object's opens), read in one pass."""
+    stack, out, i = [], [], 0
+    for at in places:
+        while i < at:
+            if masked[i] in "([{":
+                stack.append(i)
+            elif masked[i] in ")]}" and stack:
+                stack.pop()
+            i += 1
+        out.append((next((s for s in reversed(stack) if masked[s] == "("), None), next((s for s in reversed(stack) if masked[s] == "{"), None)))
+    return out
+
+
+def _js_bodies(text: str) -> tuple:
+    """(what each HTTP write in a JavaScript program hands over, the command lines it starts, and for each write whose
+    address the environment or the program's arguments give, its bodies and where its address comes from), read as
+    _py_bodies reads Python's: a request's body, data or json; what .write(), .end() or .send() hands a request; the body
+    of a .post(), .put() or .patch(); what it pipes into a request; a client it runs. A write method no write found here
+    takes waits."""
+    _CALL.update(js={}, jss={}, jsv={}, jsf={})  # what this program's readers have read of it
+    masked = re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", lambda m: " " * len(m[0]), PROGRAM_STRINGS.sub(lambda m: m[0][:1] + " " * max(len(m[0]) - 2, 0) + m[0][-1:], text))
+    streams = set(re.findall(r"([\w$]+)\s*=\s*(?:fs\s*\.\s*)?createWriteStream\s*\(", masked)) | {"process.stdout", "process.stderr", "console"}
+    bodies, lines, wrote, aimed = [], [], False, []
+    sites = list(JS_SITES.finditer(masked))
+    around = dict(zip([m.start() for m in sites], _js_enclosing(masked, [m.start() for m in sites])))
+    for m in sites:
+        key, short, verb, post, pipe = m.groups()
+        args = _js_parts(text[m.end():_js_scan(text, m.end(), "")], ",") if verb or post or pipe else []
+        receiver = re.search(r"([\w$.]+)\s*$", masked[:m.start()])
+        if (verb and receiver and receiver[1] in streams) or (pipe and args[0] in streams):
+            continue
+        wrote = True
+        if pipe:
+            source = re.search(r"(?:createReadStream\s*\(([^()]*)\)|process\s*\.\s*(stdin))\s*$", text[:m.start()])
+            handed = [("file", tuple(_js_files(source[1], text)))] if source and source[1] else ["stdin"] if source else [None]
+        else:
+            handed = _js_kind(_js_expr(text, m.end()) if key else short or (args[0] if verb else args[1] if len(args) > 1 else ""), text)
+        if key or short:  # its address: the call the options go to, or their url, host or baseURL
+            paren, brace = around[m.start()]
+            given = [a for a in _js_parts(text[paren + 1:_js_scan(text, paren + 1, "")], ",")[:1] if a[:1] != "{"] if paren is not None else []
+            shape = _js_props(text[brace:_js_scan(text, brace + 1, "") + 1]) if brace is not None else None
+            given += [shape[k] for k in ("url", "host", "hostname", "baseURL") if shape and k in shape]
+        else:  # the request a write or a pipe goes to, as the program makes it, or a .post()'s address
+            given = args[:1] if post else _js_values(receiver[1], text) if verb and receiver else _js_values(args[0], text) if pipe and args else []
+        bodies, aimed = bodies + handed, aimed + [(handed, set().union(*[_js_targets(g, text) for g in given], set()))]
+    for m in JS_RUNS.finditer(masked):  # a client it runs: a shell line, or a program and the array of its arguments
+        args = _js_parts(text[m.end():_js_scan(text, m.end(), "")], ",")
+        first = _js_kind(args[0], text)
+        if len(first) != 1 or not isinstance(first[0], tuple) or first[0][0] != "text":
+            bodies += [None] if CLIENT_LINE.match(args[0]) else []
+            continue
+        items = [_js_kind(x, text) for x in filter(None, _js_parts(args[1][1:-1], ","))] if len(args) > 1 and args[1][:1] == "[" else []
+        spelled = [k[0][1] if len(k) == 1 and isinstance(k[0], tuple) and k[0][0] == "text" else "" for k in items]
+        lines.append(first[0][1] if m[1] in ("exec", "execSync") else shlex.join([first[0][1], *spelled]))
+        bodies += [x for k, s in zip(items, spelled) if not s for x in k]
+        wrote = wrote or bool(CLIENT_LINE.match(first[0][1]))
+    marked = re.search(r"""['"](?:POST|PUT|PATCH|DELETE)['"]""", text, re.I)
+    return bodies + ([None] if marked and not wrote else []), lines, [(k, s) for k, s in aimed if s and k]
+
+
+def _posted_bodies(files: list, head: str, where: str, path: str, args, feed: str, written: set, depth: int = 0, aimed: bool = False,
+                   values: dict | None = None, bare: str | None = None) -> list:
+    """Calls for what a program that names a local MCP endpoint hands over in its HTTP writes (rounds 1 and 3): each body
+    it spells, reads from a file or its input, or takes from its arguments, read as curl's -d @file is; each client it
+    starts, judged as on the line; a body the guard cannot read is an unknown call. One that only reads hands over none.
+    `aimed`: the line hands the program the endpoint (in its arguments, a variable it sets, a file another command writes).
+    A program that names none is judged by the bodies of each write whose address comes from a variable an earlier
+    command exported, or from an argument the shell fills in (`values` and `bare`, the line's own), as curl to an address
+    the shell fills in is (round 3's ruling)."""
+    named, values = aimed or _names_mcp("\n".join(t for _, t in files), head), values or {}
+    if not named and not re.search(r"\b(?:environ|getenv)\b|process\s*\.\s*env\b|\bargv\b|parse_args", "\n".join(t for _, t in files)):
+        return []
+    hit = lambda srcs: any(s == "argv" and any(_unfilled(w, bare) and not _away(re.split(r"[$`]", w)[0]) for w in args) or s != "argv" and (  # noqa: E731
+        s not in values or any(_mcp_endpoint(v) == "mcp" for v in values[s])) for s in srcs)
+    how = f"`{head}` posting a body it reads or builds to " + ("a local MCP server" if named else "an address the environment gives")
+    calls, bodies, lines = [], [], []
+    for _, text in files if named else [(f, t) for f, t in files if HTTP_HINT.search(t)]:  # a file with no request in it posts nothing
+        try:
+            found = _py_bodies(text) if head.startswith("python") else _js_bodies(text) if re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node)$", head) else None
+        except RecursionError:  # nested past what the reader follows: a body it cannot read
+            found = ([None], [], [([None], {"?"})])
+        found = found or (([None] if named and re.search(r"""['"](?:POST|PUT|PATCH|DELETE)['"]|\b(?:data|body|json)\s*[=:]""", text, re.I) else []), [], [])
+        bodies, lines = bodies + (found[0] if named else [k for kinds, srcs in found[2] if hit(srcs) for k in kinds]), lines + found[1]
+    readable = feed.strip() and UNREAD_INPUT not in feed
+    for body in bodies:
+        texts = [body[1]] if isinstance(body, tuple) and body[0] == "text" else [feed if readable else None] if body == "stdin" else [
+            None if "$" in w or "`" in w else w for w in args if not w.startswith("-")] if body == "argv" else [] if body == "built" or isinstance(
+            body, tuple) and body[0] in ("call", "file") else [None]
+        for name in body[1] if isinstance(body, tuple) and body[0] == "file" else ():
+            spots = [w for w in args if not w.startswith("-")] if name == ARGV else [name] if isinstance(name, str) else []
+            found = [p for w in spots if "$" not in w and "`" not in w for p in (os.path.realpath(os.path.join(f, _home(w))) for f in (
+                [os.path.dirname(path)] if path else []) + [where]) if os.path.isfile(p) and p not in written]
+            texts += [feed if readable else None] if name in (0, "/dev/stdin") else [_code_of(p) or (None if os.path.getsize(p) else "") for p in dict.fromkeys(found)][:32] or [None]
+        calls += [(body[1], None, how, where, path)] if isinstance(body, tuple) and body[0] == "call" else []
+        calls += [c for t in texts for c in ([(None, None, how, where, path)] if t is None else [(x, a, how, where, path) for x, a in _rpc_calls(t)])]
+    for line in lines if depth < 2 else []:
+        inner: list = []
+        try:
+            parsed = _parse(line, where, feeds=inner)[0]
+        except (Unreadable, ValueError):
+            calls.append((None, None, how, where, path))
+            continue
+        calls += _mcp_calls(parsed, inner, written, line, "\n".join(f for f in inner if f.strip()), depth + 1)
+    return calls
+
+
+def _json_object(word: str) -> dict | None:
+    try:
+        value = json.loads(word)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _check_mcp(calls: list, command: str, config: dict, session: dict | None) -> str | None:
+    """A call whose tool and arguments are read is judged as that tool's own call; one that may send and cannot be read
+    exactly waits for the principal's code for this exact command and the programs it runs."""
+    from synthesis import sends
+    unsure, seen = [], set()
+    for tool, given, how, where, path in calls:
+        key = (tool, json.dumps(given, sort_keys=True, default=str), where)
+        if key in seen:  # one call read twice (a client's two call sites) is judged once, so one code releases it
+            continue
+        seen.add(key)
+        name = f"mcp__{LOCAL_MCP}__{tool}" if tool else ""
+        if tool and given is not None:
+            reason = _connector(name, given, config, where, session)
+            if reason:
+                return (f"This command calls `{tool}` on a local MCP server ({how}), judged as that tool's own call: "
+                        + reason.replace("make this identical call again", "run the identical command again"))
+        elif not tool or _sends(name, {}, config):
+            unsure.append((tool, how, where, path))
+    if not unsure:
+        return None
+    tools, dirs = sorted({t or "a tool whose name the guard cannot read" for t, _, _, _ in unsure}), sorted({w for _, _, w, _ in unsure})
+    subject = {"command": command, "runs_in": dirs, "tools": tools,
+               "programs": sorted((p, _CALL["ran"].get(os.path.realpath(p), "")) for _, _, _, p in unsure if p)}
+    summary = f"local MCP {', '.join(tools)} (runs in {', '.join(dirs)}): {command[:160]}"
+    with approvals.alone():
+        if approvals.consume("send", subject, session):
+            sends.log(sends.channel(tools[0], {}), "shell", summary, "approval", session)
+            return None
+        code = approvals.request("send", subject, summary)
+    return (f"This command calls {', '.join(tools)} on a local MCP server ({'; '.join(dict.fromkeys(h for _, h, _, _ in unsure))}), "
+            "and the guard cannot read exactly what it sends, so it waits as a send does. Show the principal the exact command "
+            f"and what it sends, and ask them to type {approvals.how(code)}. Then run the identical command again; a changed "
+            "program needs a new code.")
+
+
 @_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
@@ -7386,6 +8423,10 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
+    found_calls = _mcp_calls(commands, feeds, written, command, "\n".join(f for f in feeds if f.strip()))  # `U=…; curl "$U"` read whole
+    reason = _check_mcp(found_calls, command, config, session)  # 5.24.0
+    if reason:
+        return reason
     for window in windows:  # each command spends its own grant (`synthesis sends open` refuses without one)
         try:  # never ask the principal to approve a window the command would refuse
             sends.check_window(window["hours"], window["channels"], window["sends"])
@@ -7434,6 +8475,343 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             "identical command again from any directory: the approval binds where it runs, not where the shell started.")
 
 
+# --- a git command and the programs its configuration names (5.24.0) ----------------------------------------------------
+# `git status`, a read, runs the program a repository's own core.fsmonitor names, and an agent may make the repository:
+# the reviewer's wrote into the state folder (review of the runtime's carried scripts, 2026-11-15, problem D). A git
+# command is judged as running each program the configuration it reads names, as if the line ran it where git does: the
+# repository's own config (with the files it includes and its worktree's) and a file the line points git at, the line's
+# own (-c, --config-env, GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS), and the programs the line's environment gives git. A
+# value the guard cannot read waits, and an alias counts only when it is the command run.
+GIT_PROGRAMS = re.compile(r"core\.(?:fsmonitor|hookspath|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor"
+                          r"|pager\..+|credential\.(?:.+\.)?helper|diff\.(?:external|.+\.(?:command|textconv))|filter\..+\.(?:clean|smudge|process)"
+                          r"|merge\..+\.driver|gpg\.(?:.+\.)?program|gpg\.ssh\.defaultkeycommand|interactive\.difffilter|web\.browser"
+                          r"|remote\..+\.(?:uploadpack|receivepack)|submodule\..+\.update|trailer\..+\.(?:command|cmd)"
+                          r"|(?:difftool|mergetool|man|browser)\..+\.(?:cmd|path)|sendemail\.smtpserver|alias\..+")
+GIT_PROGRAM_ENV = ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS",
+                   "SSH_ASKPASS", "GIT_PROXY_COMMAND")
+GIT_DEPTH = [0]  # how deep one call follows a program a git command's configuration names that itself runs git
+
+
+def _git_config(path: str, depth: int = 0) -> list:
+    """(key, value) for each entry of a git config file and the files it includes, as git reads them; none for a file
+    that is not there or no regular file (a FIFO would stop git, not the guard)."""
+    found = _regular(path, 1 << 20) if depth <= 10 else None
+    lines, section, entries, i = (found[0].decode("utf-8", "replace").replace("\r\n", "\n").split("\n") if found else []), "", [], 0
+    while i < len(lines):
+        line, i = lines[i], i + 1
+        while line.rstrip().endswith("\\") and i < len(lines):  # a value continued on the next line
+            line, i = line.rstrip()[:-1] + lines[i], i + 1
+        head = re.match(r'\s*\[\s*([\w.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]\s*(.*)$', line)
+        if head:
+            section, line = head[1].lower() + ("." + re.sub(r"\\(.)", r"\1", head[2]) if head[2] is not None else ""), head[3]
+        entry = re.match(r"\s*([A-Za-z][\w-]*)\s*(?:=\s*(.*))?$", line)
+        if not entry or not section:
+            continue
+        out, quoted, raw, j = [], False, entry[2] or "", 0
+        while j < len(raw) and (quoted or raw[j] not in "#;"):
+            out.append({"n": "\n", "t": "\t", "b": "\b"}.get(raw[j + 1], raw[j + 1]) if raw[j] == "\\" and j + 1 < len(raw) else "" if raw[j] == '"' else raw[j])
+            quoted, j = quoted != (raw[j] == '"'), j + 1 + (raw[j] == "\\" and j + 1 < len(raw))
+        key, value = f"{section}.{entry[1].lower()}", "".join(out).strip() if entry[2] is not None else "true"
+        entries.append((key, value))
+        if re.fullmatch(r"include(?:if\..+)?\.path", key) and value:
+            entries += _git_config(os.path.join(os.path.dirname(path), os.path.expanduser(value)), depth + 1)
+    return entries
+
+
+def _git_scopes(cwd: str, look, gitdir: str | None = None, deep: bool = False) -> tuple:
+    """(the user's entries: the system file, the global and XDG files or the one GIT_CONFIG_GLOBAL names, with what they
+    include; the repository's own: its config and its worktree's; each submodule's own when `deep`; git dir; top; common
+    dir) for the repository holding cwd, as git reads them (review round 1, S1 and S3). `look` reads a variable from the
+    line, else from this process's environment."""
+    home = look("HOME") or os.path.expanduser("~")
+    system = [] if look("GIT_CONFIG_NOSYSTEM").lower() in ("1", "true", "yes", "on") else [look("GIT_CONFIG_SYSTEM")] if look(
+        "GIT_CONFIG_SYSTEM") else list(SYSTEM_GITCONFIG)
+    mine = [look("GIT_CONFIG_GLOBAL")] if look("GIT_CONFIG_GLOBAL") else [os.path.join(home, ".gitconfig"), os.path.join(
+        look("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config")]
+    user = [e for f in system + mine + [look("GIT_CONFIG")][:bool(look("GIT_CONFIG"))] for e in _git_config(os.path.join(cwd, os.path.expanduser(f)))]
+    top, here = cwd, cwd
+    while not gitdir and here:
+        dot = os.path.join(here, ".git")
+        if os.path.isdir(dot) or os.path.isfile(dot):
+            given = re.match(r"gitdir:\s*(.+)", (_code_of(dot) if os.path.isfile(dot) else "").strip())
+            gitdir, top = (os.path.join(here, given[1].strip()) if given else dot) if os.path.isfile(dot) else dot, here
+        here = "" if os.path.dirname(here) == here else os.path.dirname(here)
+    common = os.path.join(gitdir, _code_of(os.path.join(gitdir, "commondir")).strip() or ".") if gitdir else ""
+    local = _git_config(os.path.join(common, "config")) + _git_config(os.path.join(gitdir, "config.worktree")) if gitdir else []
+    mods = os.path.join(common, "modules") if deep and common else ""
+    found = [os.path.join(mods, n) for n in (sorted(os.listdir(mods)) if mods and os.path.isdir(mods) else [])]  # a submodule's git dir,
+    found += [os.path.join(f, "modules", n) for f in found if os.path.isdir(os.path.join(f, "modules")) for n in sorted(os.listdir(os.path.join(f, "modules")))]
+    subs = [_git_config(os.path.join(f, "config")) for f in found[:16]]  # and one nested in it
+    return user, local, subs, gitdir, top, common
+
+
+def _git_programs(words: list, where: str, line: str) -> list:
+    """(what names it, the command line git runs, the folder it runs in, "repo" when the repository's own config or a
+    submodule's names it, else "user") for each program the configuration a git command reads names; the command line
+    is None for a value the guard cannot read. Hooks count only for a command that runs them, a credential helper or an
+    SSH command only for one that reaches a remote, and synthesis's own installed git-hooks folder never."""
+    given = {m[1]: m[3].strip("'\"") for m in ASSIGNED.finditer(_own_text(line))}  # every variable the line sets (--config-env names any)
+    env = {k: v for k, v in given.items() if k.startswith(("GIT_", "SSH_", "XDG_")) or k == "HOME"}
+    look = lambda name: env.get(name, os.environ.get(name, ""))  # noqa: E731
+    entries, cwd, gitdir, exec_path, i = [], where, env.get("GIT_DIR"), env.get("GIT_EXEC_PATH"), 1
+    while i < len(words) and words[i].startswith("-"):
+        word, after = words[i], (words[i + 1] if i + 1 < len(words) else "")
+        key, eq, value = word.partition("=")
+        if word == "-C":
+            cwd = os.path.normpath(os.path.join(cwd, _home(after)))
+        elif word == "-c":
+            entries.append((after.split("=", 1)[0].lower(), after.split("=", 1)[1] if "=" in after else "true"))
+        elif key == "--config-env":  # a value the line's variable gives; one the guard cannot read is None
+            name, _, var = (value if eq else after).partition("=")
+            entries.append((name.lower(), next((v for v in [given.get(var, os.environ.get(var))] if v is not None and not re.search(r"[$`]", v)), None)))
+        elif key == "--git-dir":
+            gitdir = value if eq else after
+        elif key == "--exec-path" and eq:
+            exec_path = value
+        i += 2 if word in GIT_VALUE_OPTIONS else 1
+    sub = words[i].lower() if i < len(words) else ""
+    count = env.get("GIT_CONFIG_COUNT", "")
+    entries += [((env.get(f"GIT_CONFIG_KEY_{n}") or "").lower(), env.get(f"GIT_CONFIG_VALUE_{n}")) for n in range(int(count) if count.isdigit() else 0)]
+    try:
+        entries += [(p.split("=", 1)[0].lower(), p.split("=", 1)[1] if "=" in p else "true") for p in shlex.split(env.get("GIT_CONFIG_PARAMETERS", ""))]
+    except ValueError:
+        entries.append(("GIT_CONFIG_PARAMETERS", None))
+    unread = [k for k, v in entries if v is None and re.fullmatch(r"include(?:if\..+)?\.path", k)]  # an include whose file it cannot read
+    entries = [e for k, v in entries for e in [(k, v)] + (_git_config(os.path.join(cwd, os.path.expanduser(v)))
+                                                          if v and re.fullmatch(r"include(?:if\..+)?\.path", k) else [])]  # followed as in a file
+    user, local, subs, gitdir, top, common = _git_scopes(cwd, look, os.path.normpath(os.path.join(cwd, _home(gitdir))) if gitdir else None,
+                                                         sub not in GIT_QUIET)
+    found, own = [(f"the file {k} names, a name the line does not give", None, top, "user") for k in unread], os.path.realpath(
+        str(paths.home() / "git-hooks"))
+    for scoped in [[(k, v, "user") for k, v in user] + [(k, v, "repo") for k, v in local] + [(k, v, "user") for k, v in entries]] + [
+            [(k, v, "repo") for k, v in s] for s in subs]:
+        last: dict = {}
+        for key, value, scope in scoped:  # the value git uses: the last one read, all of a helper list since it was emptied
+            last[key] = ([*last.get(key, []), (value, scope)] if value != "" else []) if re.fullmatch(r"credential\.(?:.+\.)?helper", key) else [(value, scope)]
+        for key, values in last.items():
+            if not GIT_PROGRAMS.fullmatch(key) or (key.startswith("alias.") and key[6:] != sub) or (GIT_REMOTE_KEYS.fullmatch(key) and sub not in GIT_NET):
+                continue
+            for value, scope in values:
+                low = (value or "").strip().lower()
+                if value is not None and ((key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and low in BOOLEAN_WORDS
+                                          or key == "core.hookspath" or not value.strip()
+                                          or (key.startswith(("submodule.", "sendemail.")) and not value.startswith(("!", "/")))):
+                    continue
+                text = None if value is None else value[1:] if value.startswith("!") else (
+                    f"git {value} {shlex.join(words[i + 1:])}" if key.startswith("alias.") else
+                    shlex.quote(f"git-credential-{value}") if key.startswith("credential.") and "/" not in value.split()[0] else value)
+                found.append((key, text, top, scope))
+    hooked, chosen = _hook_names(sub), ""
+    path_value, path_scope = next(((v, s) for k, v, s in reversed([(k, v, "user") for k, v in user] + [(k, v, "repo") for k, v in local]
+                                                             + [(k, v, "user") for k, v in entries]) if k == "core.hookspath"), (None, "repo"))
+    folder = os.path.join(top, _home(path_value)) if path_value else os.path.join(common, "hooks") if common else ""
+    if hooked and folder and os.path.realpath(folder) != own:  # git runs the folder's hooks for this command
+        chosen = folder
+    elif hooked and folder:  # synthesis's own: its commit check runs the repository's own hooks after its checks
+        for name in sorted(hooked & {"pre-commit", "pre-merge-commit", "commit-msg"}):
+            for hook in (os.path.join(top, ".githooks", "pre-commit" if name == "pre-merge-commit" else name), os.path.join(common, "hooks", name)):
+                found += [(f"the repository's own {name} hook, which the commit check runs", shlex.quote(hook), top, "repo")] if os.access(hook, os.X_OK) and os.path.isfile(hook) else []
+    for name in sorted(hooked) if chosen else ():
+        hook = os.path.join(chosen, name)
+        found += [(f"core.hooksPath ({name})", shlex.quote(hook), top, path_scope)] if os.path.isfile(hook) and os.access(hook, os.X_OK) else []
+    found += _receiving_hooks(words[i + 1:], local, top, look, own) if sub == "push" else []  # a push to a repository here
+    found += [(var, shlex.quote(env[var]) if var == "GIT_SSH" else env[var], top, "user") for var in GIT_PROGRAM_ENV
+              if env.get(var) and (sub in GIT_NET or var in ("GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF"))]
+    run = os.path.join(cwd, _home(exec_path), f"git-{sub}") if exec_path and sub else ""
+    return found + ([("--exec-path", shlex.quote(run), top, "user")] if run and os.path.isfile(run) else [])
+
+
+RECEIVE_HOOKS = ("pre-receive", "update", "post-receive", "post-update", "proc-receive", "push-to-checkout", "reference-transaction")
+
+
+def _receiving_hooks(rest: list, local: list, top: str, look, own: str) -> list:
+    """The hooks a push to a repository on this disk runs there (round 2): its own hooks folder, or the one its config or
+    the user's names, unless that is synthesis's own installed folder, which holds none of these."""
+    named = next((w for w in rest if not w.startswith("-")), "origin")
+    url = next((v for k, v in reversed(local) if k in (f"remote.{named}.pushurl", f"remote.{named}.url")), named) or named
+    if not url.startswith("file://") and (re.match(r"[\w+.-]+://", url) or re.match(r"[^/]*:", url)):
+        return []  # another host
+    path = os.path.join(top, _home(url[7:] if url.startswith("file://") else url))
+    recv = path if os.path.isfile(os.path.join(path, "HEAD")) else os.path.join(path, ".git")
+    if not os.path.isdir(recv):
+        return []
+    user, theirs, _, _, rtop, common = _git_scopes(path, look, recv)
+    value = next((v for k, v in reversed(user + theirs) if k == "core.hookspath"), None)
+    folder = os.path.join(rtop, _home(value)) if value else os.path.join(common, "hooks")
+    return [] if os.path.realpath(folder) == own else [(f"the receiving repository's {n} hook", shlex.quote(os.path.join(folder, n)), rtop, "repo")
+                                                      for n in RECEIVE_HOOKS if os.path.isfile(os.path.join(folder, n)) and os.access(os.path.join(folder, n), os.X_OK)]
+
+
+def _hook_names(sub: str) -> set:
+    """The hooks a git subcommand may run: none for a read, an index refresh's for status and diff, its own and those of
+    any command that writes the index or a ref for the rest."""
+    if sub in GIT_QUIET:
+        return set()
+    return {"post-index-change"} if sub in ("status", "diff", "ls-files") else set(GIT_HOOKS.get(sub, "").split()) | set(GIT_ANY_HOOKS.split())
+
+
+BOOLEAN_WORDS = {"", "true", "false", "yes", "no", "on", "off", "1", "0", "keep"}
+GIT_NET = frozenset({"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule", "archive", "fetch-pack", "send-pack"})
+GIT_REMOTE_KEYS = re.compile(r"credential\.(?:.+\.)?helper|core\.(?:sshcommand|askpass|gitproxy)|remote\..+\.(?:uploadpack|receivepack)")
+GIT_QUIET = frozenset({"log", "show", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog", "rev-list", "ls-tree", "for-each-ref",
+                       "show-ref", "merge-base", "name-rev", "count-objects", "config", "help", "version", "var", "check-ignore", "check-attr",
+                       "reflog", "whatchanged", "diff-tree", "ls-remote", ""})  # they run no hook and reach no submodule
+GIT_HOOKS = {"commit": "pre-commit prepare-commit-msg commit-msg post-commit post-rewrite", "merge": "pre-merge-commit prepare-commit-msg commit-msg post-merge",
+             "pull": "pre-merge-commit prepare-commit-msg commit-msg post-merge pre-rebase post-rewrite post-checkout",
+             "rebase": "pre-rebase post-rewrite post-checkout pre-commit prepare-commit-msg commit-msg post-commit",
+             "cherry-pick": "pre-commit prepare-commit-msg commit-msg post-commit", "revert": "pre-commit prepare-commit-msg commit-msg post-commit",
+             "am": "applypatch-msg pre-applypatch post-applypatch pre-commit prepare-commit-msg commit-msg post-commit", "checkout": "post-checkout",
+             "switch": "post-checkout", "clone": "post-checkout", "worktree": "post-checkout", "bisect": "post-checkout", "push": "pre-push",
+             "send-email": "sendemail-validate", "merge-ff": "post-merge"}
+GIT_ANY_HOOKS = "post-index-change reference-transaction pre-auto-gc"
+SYSTEM_GITCONFIG = ("/etc/gitconfig", "/opt/homebrew/etc/gitconfig", "/usr/local/etc/gitconfig",
+                    "/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig",
+                    "/Applications/Xcode.app/Contents/Developer/usr/share/git-core/gitconfig")  # each git's own; all are read
+GIT_SCANNERS = {"context_doctor.py": ("status",), "repo_state.py": ("status", "branch", "rev-parse", "rev-list"), "stray_lessons.py": ("diff", "log"),
+                "pr_queue_scan.py": ("remote",), "sharing_scan.py": ("diff", "ls-files", "log"), "portfolio_review.py": ("log",)}
+
+
+def _scanned_folders(words: list, where: str, config: dict | None = None) -> tuple:
+    """(the folders a plugin script that runs git itself reaches, the subcommands it runs there): the context doctor's
+    --project (the repository holding it) and each --root; the rituals' repo_state.py: the paths --workspace-root's
+    .agents/repos.yaml declares (relative to it), and each repository one or two folders under --discover. The doctor
+    run with neither reads roots of its own setting, which the guard does not read."""
+    kind, at, given = _program(words)
+    name = os.path.basename(given) if kind == "file" else ""
+    if name not in GIT_SCANNERS:
+        return [], ()
+    flags, rest, folders = {}, words[at + 1:], []
+    for k, word in enumerate(rest):
+        key, eq, value = word.partition("=")
+        if key in ("--project", "--root", "--workspace-root", "--discover", "--repo", "--repos-yaml", "--workspace", "--index"):
+            flags.setdefault(key, []).append(value if eq else "".join(rest[k + 1:k + 2]))
+        flags.setdefault(word, []) if word in ("--fetch", "--ff") else None
+    folders += [os.path.join(where, _home(f)) for f in flags.get("--project", []) + flags.get("--root", []) + flags.get("--repo", []) if f]
+    folders += [os.path.dirname(os.path.dirname(os.path.join(where, _home(f)))) for f in flags.get("--index", []) if f]  # projects/index.yaml
+    folders += [os.path.join(where, _home(w)) for w in rest[:1] if name == "sharing_scan.py" and not w.startswith("-")]  # its repository
+    home = os.environ.get("SYNTHESIS_WORKSPACES") or os.path.join(os.path.expanduser("~"), "workspaces")
+    yamls = [os.path.join(where, _home(f)) for f in flags.get("--repos-yaml", [])] + [os.path.join(home, w, ".agents", "repos.yaml") for w in flags.get("--workspace", [])]
+    if name in ("context_doctor.py", "portfolio_review.py") and not (flags.get("--project") or flags.get("--root") or flags.get("--index")):
+        import glob  # the knowledge roots its own setting names, as the doctor reads them
+        folders += [os.path.expanduser(str(r)) for r in (config or {}).get("knowledge_roots") or []] or sorted(glob.glob(os.path.join(os.path.expanduser("~"), "workspaces", "*", "ai-knowledge-*")))
+    for space in flags.get("--workspace-root", []) + yamls:
+        from synthesis.yamlish import load
+        root = os.path.join(where, _home(space)) if not space.endswith(".yaml") else os.path.dirname(os.path.dirname(space))
+        try:
+            rows = (load(_code_of(space if space.endswith(".yaml") else os.path.join(root, ".agents", "repos.yaml"))) or {}).get("repos") or []
+        except (ValueError, AttributeError):
+            rows = []
+        rows = [{"name": k, **(v if isinstance(v, dict) else {})} for k, v in rows.items()] if isinstance(rows, dict) else rows
+        folders += [os.path.join(root, os.path.expanduser(str(r.get("path") or r.get("name")))) for r in rows if isinstance(r, dict)]
+    for top in flags.get("--discover", []):
+        import glob
+        base = os.path.join(where, _home(top))
+        folders += sorted({os.path.dirname(g) for depth in ("*", "*/*") for g in glob.glob(os.path.join(base, depth, ".git")) if os.path.isdir(g)})
+    runs = GIT_SCANNERS[name] + (("fetch",) if "--fetch" in flags else ()) + (("merge-ff", "update-ref") if "--ff" in flags else ())  # a fast-forward makes no commit
+    return folders[:64], runs
+
+
+def check_git_programs(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A git command waits as each program its configuration names would, judged where git runs it (see above); a
+    plugin script that runs git itself waits when a repository it reaches names a program of its own (round 1)."""
+    commands = _parse(command, cwd)[0] if re.search(r"(?<![\w.-])git(?![\w.-])|" + "|".join(n[:-3] for n in GIT_SCANNERS), command) else []
+    found = [(what, text, folder, scope) for words, where in commands if words and os.path.basename(words[0]) == "git"
+             for what, text, folder, scope in _git_programs(words, where, command)]
+    reached = []
+    for words, where in commands:
+        folders, runs = _scanned_folders(words, where, config) if words and SCRIPT.match(os.path.basename(words[0])) else ([], ())
+        for folder in folders:
+            for what, text, top, scope in [p for run in runs for p in _git_programs(["git", "-C", folder, run], where, "")]:
+                reached += [(top, what)] if scope == "repo" else []
+                found += [] if scope == "repo" else [(what, text, top, scope)]
+    if reached:
+        subject = {"command": command, "runs_in": os.path.realpath(cwd), "repositories": sorted(set(reached))}
+        if approvals.consume("protected-read", subject, session):
+            return None
+        code = approvals.request("protected-read", subject, f"a scanner reaches a repository whose config names a program: {command[:120]}")
+        top, what = reached[0]
+        return (f"This command runs a plugin script that runs git itself in the repositories it is handed, and {top}'s own "
+                f"configuration names a program git would run there ({what}). Show the principal this exact command and ask them "
+                f"to type {approvals.how(code)}; then run the identical command again.")
+    for what, text, folder, scope in dict.fromkeys(found):
+        if text is None or GIT_DEPTH[0] >= 2:
+            subject = {"command": command, "runs_in": os.path.realpath(cwd), "git": what}
+            if approvals.consume("protected-read", subject, session):
+                return None
+            code = approvals.request("protected-read", subject, f"a git command whose configuration names a program: {command[:120]}")
+            return (f"This git command runs the program its configuration names in {what}, which the guard cannot read"
+                    f"{' (nested past what it follows)' if text else ''}. Show the principal this exact command and ask them to "
+                    f"type {approvals.how(code)}; then run the identical command again.")
+        GIT_DEPTH[0] += 1
+        try:
+            reason = check("Bash", {"command": text}, config, cwd=folder, session=session)
+        finally:
+            GIT_DEPTH[0] -= 1
+        if reason:
+            return (f"This git command runs the program its configuration names in {what} (`{text[:120]}`, in {folder}), so it "
+                    f"is judged as running it there. {reason}")
+    return None
+
+
+# --- a write that plants a hook (5.24.0, review round 1) -----------------------------------------------------------------
+# Writing .git/hooks/pre-commit and committing ran the agent's program with no code (a plain two-step attempt). A write into
+# a repository's .git/hooks or .githooks (the commit check's delegates), or into a folder core.hooksPath names other than
+# synthesis's own installed git-hooks folder, and a `git config` that points core.hooksPath at such a folder, wait for the
+# principal's code, by the file tools and by the shell.
+
+def _hook_folder(path: str) -> str:
+    """The hooks folder a path lies in, or ''."""
+    real = os.path.realpath(path)
+    found = re.match(r"(.*?/(?:\.git/hooks|\.githooks))(?:/|$)", real)
+    if found:
+        return found[1]
+    for mark in re.finditer(r"/hooks(?=/|$)", real):  # a git dir's own hooks: a bare repository's, a common dir's
+        if os.path.isfile(os.path.join(real[:mark.start()], "HEAD")) and os.path.isdir(os.path.join(real[:mark.start()], "objects")):
+            return real[:mark.end()]
+    user, local, _, gitdir, top, common = _git_scopes(os.path.dirname(real), lambda name: os.environ.get(name, ""))
+    value = next((v for k, v in reversed(user + local) if k == "core.hookspath"), None)
+    folder = os.path.realpath(os.path.join(top, _home(value))) if value else ""
+    return folder if folder and paths.inside(real, folder) and folder != os.path.realpath(str(paths.home() / "git-hooks")) else ""
+
+
+def _hooks_pointed(words: list, where: str) -> str:
+    """'key value' for a `git config` that sets a key naming a program git runs (round 2): core.hooksPath not to
+    synthesis's own folder or /dev/null, core.fsmonitor or a pager not to a boolean, an alias only to a shell or options."""
+    sub, place = _git(words, where)
+    rest = words[words.index(sub) + 1:] if sub == "config" else []
+    at = next((k for k, w in enumerate(rest) if not w.startswith("-") and GIT_PROGRAMS.fullmatch(w.lower()) and (k == 0 or rest[k - 1] not in ("--file", "-f"))), None)
+    if at is None or at + 1 >= len(rest) or any(w.startswith(("--get", "--unset", "--list", "-l", "--remove", "--rename")) for w in rest):
+        return ""
+    key, value = rest[at].lower(), rest[at + 1]
+    if key == "core.hookspath" and (value == "/dev/null" or os.path.realpath(os.path.join(place, _home(value))) == os.path.realpath(str(paths.home() / "git-hooks"))):
+        return ""
+    quiet = (key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and value.strip().lower() in BOOLEAN_WORDS
+    plain = key.startswith("alias.") and not re.match(r"\s*!|.*(?:^|\s)(?:-c|--config-env|--exec-path)\b", value)
+    return "" if quiet or plain or not value.strip() else f"{rest[at]} {value}"
+
+
+def check_hook_writes(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A file tool's write, or a shell line's, into a hooks folder, or a line that points core.hooksPath at one, waits for
+    the principal's code for that exact call."""
+    if shell_tool(tool):
+        command = shell_command(tool_input)
+        planted = [t for t in _shell_writes(command, cwd) if _hook_folder(os.path.join(cwd, os.path.expanduser(t)))]
+        planted += [f"git config {v}" for words, where in (_parse(command, cwd)[0] if re.search(r"\bconfig\b", command) else [])
+                    if words and os.path.basename(words[0]) == "git" for v in [_hooks_pointed(words, where)] if v]
+        subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+    else:
+        planted = [t for t in _file_targets(tool, tool_input) if _hook_folder(os.path.join(cwd, os.path.expanduser(t)))]
+        subject = {"tool": tool, "input": tool_input}
+    if not planted:
+        return None
+    if approvals.consume("hook-write", subject, session):
+        return None
+    code = approvals.request("hook-write", subject, f"a hook git will run: {', '.join(planted)[:120]}")
+    return (f"This {'command' if shell_tool(tool) else tool + ' call'} writes {', '.join(planted)[:200]}, a hook git runs on a later "
+            "commit, checkout or push (or points git at one). Show the principal what it writes and ask them to type "
+            f"{approvals.how(code)}; then {'run the identical command' if shell_tool(tool) else 'make this identical call'} again.")
+
+
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
     return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
@@ -7450,7 +8828,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
     if code_mode_script(tool, tool_input, session):
         return None  # it acts only through its nested calls, each judged here as a call of its own
     if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
@@ -7471,9 +8849,11 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                 or check_pr_gate(command, config, cwd, session)
                 or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
                 or check_outgoing(command, config, cwd, session)
-                or check_claimed(_shell_writes(command, cwd), cwd, session))
+                or check_claimed(_shell_writes(command, cwd), cwd, session)
+                or check_hook_writes(tool, tool_input, cwd, session)
+                or check_git_programs(command, config, cwd, session))  # last: it judges each program as a call of its own
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session) or check_hook_writes(tool, tool_input, cwd, session)
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
@@ -7481,9 +8861,13 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
     reason = check_driven(kind, tool, tool_input, config, session) if kind else None
-    if reason:
-        return reason
-    # The account is checked before the send approval, so no approval is spent on the wrong account.
+    return reason or _connector(tool, tool_input, config, cwd, session)
+
+
+def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """A connector's call, judged: the account it acts as first, so no approval is spent on the wrong account, then the
+    travel rule, then the send rules for a call that sends or the upload rule for one that does not. A shell command
+    that calls a local MCP server's tool is judged by this too (5.24.0)."""
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (
         check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else check_upload(tool, tool_input))

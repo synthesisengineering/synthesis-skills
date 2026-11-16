@@ -668,6 +668,18 @@ stay open, and no hook running as that same user can close them:
   was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
+- A program the guard does not know that runs git itself in a folder it is handed runs whatever that repository's
+  configuration names; every carried script that does so is read as a scanner (the context doctor, with the knowledge
+  roots its setting names when it is given no folder; `repo_state.py`, `stray_lessons.py`, `pr_queue_scan.py`,
+  `portfolio_review.py` and `sharing_scan.py`); this is crafted, as it needs a program of the agent's own.
+- A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself, a Python program's asyncio
+  stream, and a request library the guard does not know whose post names no write method and no body keyword (pycurl's
+  `POSTFIELDS` alone) reach the server's tools unread; this is crafted, and 60 days of records hold none.
+- A program that takes its target from the environment and builds its body while it runs, with the JSON-RPC method
+  split across literals (`'tools/' + 'call'`), reaches the server's tools unread: the guard reads such a body as a request
+  the program builds, and finds a tool call only where the program's text spells the method whole, so it reads a body
+  that is no tool call. The strict expected failure `test_a_tool_call_whose_method_is_split_across_literals_waits`
+  names it (review round 4 of 22.17; crafted).
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
@@ -743,6 +755,12 @@ stay open, and no hook running as that same user can close them:
   expected-failure test holds it). Trusting only folders the person cannot write would refuse
   the ordinary install, which lives in `~/.local/bin` or `/opt/homebrew/bin`, and a vendor's
   signature does not fit a program installed as a script.
+- A persona footer written as an object nested under a key the signature check skips as
+  addressing (a `reply_to` given as an object with a note in it, a calendar guest's
+  `comment`) is skipped with that key, so its domain shown in words is not seen. No
+  connector puts a message's text there; the strict expected failure
+  `test_a_footer_nested_under_an_addressing_key_is_refused` names it (review round 1 of
+  22.31; crafted).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

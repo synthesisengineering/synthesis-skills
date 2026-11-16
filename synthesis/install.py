@@ -66,7 +66,8 @@ KEPT = ("HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "LANG", "LANGUAGE", 
         "CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", "CLAUDE_PLUGIN_ROOT", "CLAUDE_PROJECT_DIR", "CODEX_HOME",
         "CODEX_THREAD_ID", "MUSE_SESSION_ID", "MUSE_PLUGIN_ROOT", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME",
         "XDG_CACHE_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "CDPATH", "OLDPWD",  # the last two: where a cd may land
-        "SYNTHESIS_JUDGE_RUN")  # the judge's marker (judge.MARKER): a turn hook inside the judge's own run judges nothing
+        "SYNTHESIS_JUDGE_RUN",  # the judge's marker (judge.MARKER): a turn hook inside the judge's own run judges nothing
+        "SYNTHESIS_WORKSPACES", "WORKSPACE_MCP_PORT")  # the send routes' workspaces root and the local MCP server's port
 GIT_KEPT = ("SYNTHESIS_GIT_HOOK", "GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
             "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_QUARANTINE_PATH", "GIT_PREFIX", "GIT_REFLOG_ACTION", "GIT_AUTHOR_NAME",
             "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE",

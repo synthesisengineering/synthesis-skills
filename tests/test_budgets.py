@@ -1731,10 +1731,139 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.24.0, 22.8's final head (42d21552: round 2 of the combined review, R2-1) merged into release/next at ad371ceb:
 # release/next's ceilings (core 19299, plugin 45916) and R2-1's raise itemized just above (core 3, plugin 3), measured:
 # core 19302 and plugin 45919.
+# 5.24.0, problem A of the review of the runtime's carried scripts (2026-11-15: the meeting skill's client and a curl of
+# the same JSON-RPC called the local workspace server's send_gmail_message with no code, since a write to this machine
+# is no post to another host): core 248 more and plugin 248, all in guards.py. _tools_called 67 (the tools a program's
+# text calls: a call_tool call, a JSON-RPC dict or JSON text, its name a literal, a loop over literals, a function's or
+# a lambda's parameter followed to the calls that pass it, a name taken from its arguments, or unknown; its literal
+# arguments; a module it imports counts only its literals; another language by the names its text gives), _mcp_calls 49
+# (an HTTP client to an address here, a program inline, on its input, in a file or a module with the modules of its own,
+# its arguments read for a name it takes from them, a shell file it runs), _http_body 41 (data words, @file, a file
+# option, its input, cat substitutions, HTTPie's fields; what it cannot read), _check_mcp 35 (judged as the tool's own
+# call, else one code for the exact command and the programs it runs, a call read twice judged once), _rpc_calls 16 (a
+# request or a batch), _mcp_endpoint 10, _json_object 8, the section's note and patterns 15, and _connector 7 (the
+# connector's judgement, which check and the shell route now share).
+# 5.24.0, problems B and D of the same review: core 253 more and plugin 253, all in guards.py. B 94 (an agent's own Python
+# read a script file and handed it to osascript's -e with no code while `osascript <file>` waited; pointed at the
+# local-messaging transport, a Messages send): _osa_files 27 (each script file the program names, or takes from its
+# arguments, judged as `osascript <file>` is; one it writes first, does not name or cannot be read waits; the plugin's own
+# as shipped, and a run the principal approved in this call, judged by their own gates), _osa_cut 20 (how a list that
+# shows no whole script is cut short: a computed script file, a computed -e script or input, a shown file with computed
+# arguments, shown -e lines), _osa_from 13 (a computed script read from a file, in its expression or in what its name is
+# given), _writes_script 13 (a write whose target spells a script file it hands osascript, or a name given one; a log or
+# a record it writes is none), the note and patterns 9 (OSA_EXT, FILE_READS, WRITE_TARGET), _program_acts 9 (the cuts it
+# keeps, osascript's words in an array of their own, a lookup of osascript is no run, a script file it writes, the
+# program's file and words), _acts_outside 2 (the program's file and words) and check_self_grant 1 (the run the
+# principal approved). A's reading 22 more, from replaying 60 days of recorded commands through it: _tools_called 21 (a
+# literal list, a dict's keys, a loop that unpacks, an item's key, a method's own parameter, a JSON-RPC helper called
+# with the method, and a program whose strings only name the method is no call) and MCP_LINE 1 (a program the guard
+# cannot read is an unknown call only where its line names a local server). D 137 (`git status` ran the program a
+# repository's own core.fsmonitor names, which wrote into the state folder): _git_programs 67 (the line's environment,
+# git's options, GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS, a file the line points git at, the repository found upward and
+# its worktree's common folder, the last value read winning and a helper list emptied, each key's command line: a hooks
+# folder's executables, a ! command, an alias run as git, a named credential helper; the environment's programs and the
+# exec path; the boolean words), _git_config 26 (sections and subsections, continued lines, quotes, escapes, comments, and
+# the files include and every includeIf name), check_git_programs 26 (each program judged by the whole shell guard where git
+# runs it; a value it cannot read, and nesting past two levels, held for the protected-folder code), the note and patterns
+# 17 (GIT_PROGRAMS, GIT_PROGRAM_ENV, GIT_DEPTH) and the dispatch 1.
+# Then 13 more in each, all in guards.py, for the guard's own time on what those readings read (a program with 3,000 tool
+# calls took 0.95 s, and a 200,000-character line 0.77 s in the write-target pattern; now 0.08 s and 5 ms): _tools_called
+# 11 (each name's assignments, loops and parameters, each function's calls and each lambda's name, indexed once a program
+# in place of a scan of every node for each name; past 64 calls, one more is unknown) and _writes_script 2 (a write
+# method's receiver read back from its call, and the names given a script file found in one pass).
+# Review round 1 of the send routes (2026-11-15: one line in ~/.gitconfig made every git read run the agent's program; a
+# program posting a body it read from a file, curl to LOCALHOST, a scanner's git and a planted .git/hooks/pre-commit ran
+# with no code): core 188 more and plugin 188, all in guards.py. Git's other scopes 54: _git_scopes 27 (the system file,
+# the global and XDG files or the one GIT_CONFIG_GLOBAL names, with what they include, the repository's and its
+# worktree's, and each submodule's for a command that reaches them), _hook_names 8, _git_programs 5 (each scope's programs
+# apart, a helper or an SSH command only for a command that reaches a remote, hooks only for one that runs them,
+# synthesis's own git-hooks folder never, the commit check's repository hooks for a commit) and the tables 14 (GIT_HOOKS,
+# GIT_QUIET, GIT_NET, GIT_REMOTE_KEYS, GIT_ANY_HOOKS, SYSTEM_GITCONFIG; BOOLEAN_WORDS on one line). The scanners 52:
+# _scanned_folders 33 (the context doctor's --project and --root; repo_state.py's repos.yaml paths and --discover),
+# check_git_programs 16 (a repository a scanner reaches that names a program waits) and GIT_SCANNERS 3. A program's
+# request body 29: _posted_bodies 20, _mcp_calls 4, MCP_POSTS, BODY_GIVEN and STDIN_READ 5. A planted hook 53:
+# check_hook_writes 22, _hook_folder 12, _hooks_pointed 12, the section's note 6 and the dispatch 1. sends.py's LOCAL
+# changes in place (any case, a trailing dot).
+# Then 1 more in each, from the round's replay (a scanner reaching repositories under a hooks folder the user's config
+# names waited 115 times): _git_programs 1 (a hooks folder's hooks take the scope of the setting that names it).
+# Review round 2 (HTTPie's :8765 shorthand, curl's URL in a variable, http.client with host and port apart, stray_lessons.py,
+# git config core.fsmonitor, a bare repository's pre-receive and -c include.path ran with no code): core 66 more and
+# plugin 66, all in guards.py. HTTP forms 27: _curl_config 15 (a config file's url, data and request read as words, or
+# unread), _mcp_calls 6 (the :port shorthand, a URL the shell fills in, input on a redirect), check_outgoing 4 (the
+# line's readings with its variables filled in), BODY_GIVEN 1 and _posted_bodies 1 (host and port apart, a method or a
+# body by position). Scanners and git config 12: _scanned_folders 7 (stray_lessons.py's --repo, pr_queue_scan.py's
+# repos.yaml, sharing_scan.py's repository, portfolio_review.py's --index, the doctor's own knowledge roots),
+# _hooks_pointed 4 (any key that names a program) and GIT_SCANNERS 1. Receiving and bare hooks 25: _receiving_hooks 18,
+# RECEIVE_HOOKS 3, _hook_folder 3 (a git dir's own hooks folder) and _git_programs 1. Line includes 2 (_git_programs).
+# Then 1 more in each, from the round's replay (the line's readings had made 26 programs unknown calls): check_outgoing 1
+# (a reading counts only an HTTP client's call); a request's host and port count only side by side, and `.end()` no body.
+# Review round 3 (node's fetch with a file body, node's http.request with the port in a constant, urlopen's data by
+# position, a helper's reading call beside a file posted, HTTPie's --raw, `curl -d "$BODY"` and an include named by
+# --config-env ran with no code; program posts were read spelling by spelling): core 435 more and plugin 435, all in
+# guards.py. A Python program's bodies 183: _py_bodies 148 (each write it makes: a body keyword, a body by position for
+# urlopen, Request, an opener's open, a library's post, put and patch and http.client's request after its method, send
+# and sendall when it opens a connection by hand, a call handed a write method, a write method set where no write takes
+# it, a .data it sets, a client it starts from a list or a shell line; each body read through literals it joins, a
+# request it builds and that request's method, a file by a name it spells or takes from its arguments or argparse, its
+# input, its own functions' returns, a parameter's every call and default, a name it changes in place; each expression
+# read once, a cycle unknown), the reader's bindings 34 (_bindings 35 and _constant 9, which _tools_called now shares,
+# dropping its own 10: `with` targets, unpacking, names changed in place, a method given by a name only that literal is
+# given, byte literals), the patterns 5 (BODY_KEYS, WRITE_METHODS, SHELLED, LOGGED, CLIENT_LINE) less round 1's 4
+# (MCP_POSTS, BODY_GIVEN, STDIN_READ). A node program's bodies 164: _js_read 44 and _js_kind 10 (a string, a join,
+# JSON.stringify, a file read, a name and what changes it in place, an object literal's method and its tools/call's
+# name), _js_bodies 33 (a body, data or json property, what .write(), .end() or .send() hands a request, a .post()'s
+# body, a pipe into a request, a client it runs, a write method no write takes), _js_scan 16, _js_files 14, _js_called
+# 10, _js_props 10, _js_parts 9, _js_pairs 7, _js_values 5, _js_expr 2, and JS_SITES, JS_RUNS and JS_FUNCS 4. The
+# endpoint named together or apart 11 (_names_mcp 10, LOCAL_IN 1). _posted_bodies 16 (each body by its kind: a file,
+# input, arguments, the lines a program starts; a program nested past what the readers follow waits). The line's
+# variables 17 (_line_values 8, _filled 8 and _unfilled 5, less check_outgoing's 4: a body in a variable the line does
+# not set waits, and one it sets is put into the words that use it whole). Includes by --config-env 3 (_git_programs).
+# The section's note and the blank lines between its 18 new functions 41.
+# Then 3 more in each, from the round's replay (the line's variables now reach a program's own path, so 15 client runs
+# as "$C" with a JSON argument a substitution fills were read, and that argument counted as a possible tool name; and
+# a program whose text names no endpoint is handed it by its line): _mcp_calls 2 (a word the shell fills in names a
+# tool only when it can make a name; the line's port, path or arguments naming the endpoint) and _posted_bodies 1.
+# Round 3's ruling (a program posting to an address an earlier command exported waits, as curl does): core 75 more and
+# plugin 75, all in guards.py. A Python write's address 27 (_py_bodies: where a value comes from, each environment variable
+# it reads or its arguments, through its names 11; a write's URL, host or base URL, or the connection it is made on 7; a
+# line it hands a shell, with what it cannot read standing as a word the shell fills in 8; each such write's bodies 1).
+# A node write's address 31 (_js_sources 11, _js_enclosing 10, _js_bodies 10: the call its options go to, their url,
+# host or baseURL, the request a write or a pipe goes to). _posted_bodies 8 (those bodies judged when the address comes
+# from a variable the line does not set, or an argument the shell fills in). curl's address only 4 (ADDRESSLESS 2 and
+# _mcp_calls 2: a body, a header or an HTTPie field the shell fills in is no address). _line_values 1 (the environment a
+# line gives a program, read with no $ in the line). The blank lines between the two new functions 4.
+# Then 27 more in each, from the ruling's replay (a recorded line running a large program took over a minute, its body's
+# values multiplying through its assignments; and a program's own helper called with a method and a body read as a
+# library's request): _joinings 9 (a body joined from parts is each joining, while there are at most KINDS of them
+# within TEXT_LIMIT), _py_bodies 6 (each name's sources read once, each body expression's kinds counted once, a function
+# of the program's own read where it writes, not where it is called), KINDS 1, HTTP_HINT 3 (with no endpoint named, only
+# a file that may make a request is read), _js_enclosing 3 (every site's brackets in one pass), _js_values 3 and
+# _js_called less 1 (each name and each function read once), _js_bodies 2, _js_kind 1, _js_read less 2, and the blank
+# lines around _joinings 2.
+# Then 69 more in each, all in guards.py, from the ruling's suite on a fresh clone (five of the plugin's own scripts
+# waited when run for their help or a dry run: os.open(path, flags) read as an opener's open(url, data), and a request
+# to a host the Drive publisher spells, its query from the environment, read as an address the environment gives): _away
+# 11 (whether an address's spelled start names a scheme and a host other than this machine, on a port that is not a
+# local MCP server's, closed before anything filled in); _py_bodies 33 (the text an address spells before what it fills
+# in, through a constant, an f-string, a + join, a .format() or a % 14; where an address comes from with none from one
+# spelled for another host, through its names, lists and conditionals, each name read once 13; a connection's path names
+# no host 1; the modules a program imports, whose own open() opens a file 1, and that rule's line 1; the blank lines
+# between them 3); _js_start 16 and _js_targets 8 (the same for a node address, with the blank lines before each);
+# curl's address rule 1 (an address spelled for another host, its path filled in, is that host's).
+# Then each 5 more, all in guards.py, so the signature check reads the message and never its addressing (plan item
+# 22.31: an email the principal had approved was refused because its recipient's address was at a persona domain):
+# UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
+# sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
+# `_strings` taking the fields to leave out, and the check reading through it, change in place.
+# 5.24.0, 22.17 (20255eb0: the local send routes, which carries main's 5.23.2 at 218da465) merged into release/next at
+# c6c8e36a: release/next's ceilings (core 19302, plugin 45919), 22.17's raises itemized above (core 1379, plugin 1379
+# over main at 218da465) and main's 5.23.2 raise just above (core 5, plugin 5), and 1 more each that the merge's own line
+# adds, measured: core 20687 and plugin 47304. install.py 1: SYNTHESIS_WORKSPACES and WORKSPACE_MCP_PORT, which 22.17's
+# send routes read, in the launchers' kept variables. 22.17's first two labels are 5.24.0, the release that carries them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 19302
-PLUGIN_BUDGET = 45919
+CORE_BUDGET = 20687
+PLUGIN_BUDGET = 47304
 
 
 def _lines(files):

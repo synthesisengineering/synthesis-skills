@@ -277,6 +277,132 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the date it proves, and warns, never fails, when it finds no refusal inside a script, or only one from an older Codex
   than the newest to run a script. It reads only a regular file, opened without blocking or following a link, and a first
   line within 1 MB, so a FIFO named as a rollout, which held it until a writer came, or a line with no end never holds it.
+- **A local MCP server's tool, called from the shell, is judged as that tool's own call.** The meeting-transcripts
+  skill's `mcp_client.py` calls any tool of the local workspace-mcp server, whose default tier includes
+  `send_gmail_message`, and a write to this machine was no post to another host: neither the client nor a `curl` POST of
+  the same JSON-RPC waited (the review of the runtime's carried scripts, 2026-11-15, its problem A). A command that calls a
+  local server's tool, by an HTTP client to an address here or by a program that posts its JSON-RPC or calls a client's
+  `call_tool` (the client is one: its first argument names the tool), now takes the connector's own judgement, now one
+  function the dispatch and the shell share: a sending tool waits for the code the connector's identical call takes, a
+  reading tool passes, and a call whose tool or arguments the guard cannot read waits when it may send, for a code bound
+  to the exact command and the programs it runs.
+- **A program that hands osascript a script file is judged by that file.** An agent's own Python that read a script file
+  and passed it to `-e` ran with no code while `osascript <file>` waited; pointed at the local-messaging skill's
+  `messages_transport.js`, a Messages send (problem B). Each script file a program names or takes from its arguments is
+  judged as `osascript <file>` is; one it writes first, does not name or that cannot be read waits. A script built from
+  the program's own strings reads as before, so the plugin's notifications pass. The plugin's own sender as shipped is
+  judged by the send gate inside it, and a run the principal approved by its exact command is not asked about twice.
+- **A git command is judged as running the programs its configuration names.** `git status`, a read, ran the program a
+  repository's own `core.fsmonitor` names, and the reviewer's repository wrote into the state folder (problem D). The
+  repository's config (with what it includes, and its worktree's), a file the line points git at and the line's own
+  `-c`, `--config-env` and `GIT_CONFIG_*` are read, and each program they name (the monitor, the hooks folder's files,
+  the SSH command, credential helpers, pagers, editors, diff and filter drivers, an alias when it is the command run, and
+  more), and each the line's environment gives git, is judged by every shell guard where git runs it; a value the guard
+  cannot read waits.
+- **Review round 1 of the three.** D now reads git's user and system config (the global and XDG files or the one
+  `GIT_CONFIG_GLOBAL` names, the system file, with what each includes) and a submodule's config when the command reaches
+  it: one line in `~/.gitconfig` had made every git read run the agent's program. Hooks count only for a command that
+  runs them, never in synthesis's own installed git-hooks folder (the commit check's repository hooks count for a
+  commit), and a credential helper or an SSH command only for a command that reaches a remote, so the principal's own
+  setup holds no read. The plugin's scripts that run git themselves (the context doctor's `--project` and `--root`, the
+  rituals' `repo_state.py`) wait when a repository they reach names a program of its own. A program posting a request
+  body it reads to a local MCP server is judged by that body, as curl's `-d @file` is, and one built from parts the guard
+  cannot read waits. The local host is read in any case and with its trailing dot. A write into `.git/hooks`,
+  `.githooks` or a folder `core.hooksPath` names, by the file tools or the shell, or a `git config` that points
+  `core.hooksPath` at one, waits for the principal's code: the next commit would run it. Tests first (19 failed). The
+  same 268,723 recorded commands, replayed: the round's first run held 115 scanner runs, under a hooks folder the user's
+  own config names, which now takes that setting's scope; at its end 14 wait that main's guard passed, the 7 above, one
+  program posting a body it builds, and six writes that plant hooks in temporary test repositories.
+- **Review round 2 of the three.** A reads HTTPie's and xh's `:port` shorthand for this machine and a body on a
+  redirect, curl's URL in a variable the line sets or exports and its `-K` config file (read as cheaply as `-d @file`),
+  and a program's request with host and port given apart or its method and body by position (`http.client`, node's
+  `http.request`). Every carried script that runs git in a folder it is handed is a scanner: `stray_lessons.py`,
+  `pr_queue_scan.py`, `sharing_scan.py` and `portfolio_review.py` beside the context doctor and `repo_state.py`, and the
+  doctor given no folder reads the knowledge roots its setting names, as it does. `git config` of any key that names a
+  program git runs waits as `core.hooksPath` does. A write into any git dir's own `hooks` folder (a bare repository's)
+  waits, and a push to a repository on this disk counts its receiving hooks unless the hooks folder is synthesis's own.
+  Includes named on the command line (`-c include.path`, `GIT_CONFIG_COUNT`) are followed as in a file. Tests first (20
+  failed). Replayed: the round's first run held 26 more programs, through the line's readings, which now count only an
+  HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts to a local address
+  that is no MCP endpoint, with a header and a body the shell fills in, read then as an address the shell fills in (they
+  pass since the ruling's address-only reading, as any local app's API does).
+- **Review round 3 of the three.** A program's posts are read by what they hand over, not by how they are spelled. A
+  Python or node program whose text names this machine's MCP endpoint (two of a local host, port 8765 and an `/mcp`
+  path, written together or apart), or whose line hands it one, and makes any HTTP write (a call given a body by keyword
+  or by position, a request's `.write()`, `.end()` or `.send()`, a write method, a client it starts from a list or a
+  shell line) is judged by every body it hands over that the guard can read: what it spells, a request it builds (by its
+  method, its tools by name), a file it reads, its input and its arguments, followed through its names, its own
+  functions and each call of a helper. It waits when any body cannot be read: a value from the environment, the network
+  or a call the guard does not know, a name changed in place, a method or tool name it builds, a file it lacks. A
+  program that only reads (a GET, a liveness check) hands over no body, and a reading tool's call passes as that tool's.
+  HTTPie's and xh's `--raw` carry a body. An HTTP client's body in a variable the line does not set waits, and a
+  variable the line sets is put into the words that use it, so its value is read whole (put into the line's text, a JSON
+  value's quotes had split a reading call, which then waited). `--config-env` includes are followed as `-c`'s, with the
+  variable the line sets or the guard's own environment gives, and one whose variable neither gives waits. Tests first
+  (12 failed). Replayed against main at the merged head: the first run held 15 reading runs of the client given as
+  `"$C"`, now read, whose JSON argument a substitution fills had counted as a possible tool name; a word the shell fills
+  in now names a tool only when it can make a name. At its end 15 wait that main's guard passed: round 2's 16 less two
+  that now read right (a program whose tool call gives its method through a constant, and a liveness read whose `body =`
+  had read as a post), and one program of the day that holds a `send_gmail_message` request in its own text.
+- **A request to an address the environment gives waits as curl's does** (round 3's ruling). A Python or node program
+  whose request target comes from a variable an earlier command exported (`os.environ`, `getenv`, `process.env`, read
+  through its names and through the connection the write is made on) or from an argument the shell fills in is judged by
+  the bodies it hands that write: a send waits, a body the guard cannot read waits, and readable bodies that are no send
+  pass. A GET or a liveness check hands over none, and an address the line itself gives is read as it is, so one for
+  another host passes. An address goes where its host is: one that spells its scheme and a host other than this machine,
+  on a port that is no local MCP server's, before what the environment or the shell fills in (a path, a query) is that
+  host's, and a connection made to a host is that host's whatever path a request names. A module's own `open()`
+  (`os.open`) opens a file and is no request. A line a program hands a shell, or a client it starts from a list of
+  words, is judged as on the line, what it cannot read standing as a word the shell fills in. curl's rule reads only the
+  address: a body, a header or an HTTPie field the shell fills in, sent to an address spelled for another host, is that
+  host's post, judged by the web rule. Tests first (8 failed), and twice more for what the suite on a fresh clone found
+  (21 failed, then 1): five of the plugin's own scripts waited when run for their help or a dry run, through `os.open`
+  and the Drive publisher's query from the environment; a program that started curl from a list for such an address,
+  with a body from the environment or its input, passed; and a host spelled with the server's port, joined from parts,
+  read as another host's. Replayed against round 3's head: the first run stalled on a recorded line that took over a
+  minute, now 0.6 s. At its end 20 more recorded commands wait, on 5 days, 6 distinct programs, each posting a body the
+  guard cannot read to an address from a variable an earlier command exported or an argument the shell fills in: two
+  Codex node scripts run 15 times on one day, a Claude Code Python program run twice and a Codex one run once, and two
+  Claude Code Python programs that start curl, one with a config file the guard cannot read. The suite's corrections let
+  36 commands the ruling's first code held pass (26 whose programs open a file with a module's own `open()`, 10 whose
+  programs post to a host they spell), and the two curl posts above pass.
+- **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
+  osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
+  Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
+  these routes: 251 runs of the client and 113 programs posting the server's JSON-RPC named only reading tools, no HTTP
+  client posted a tool call, no program but the local-messaging sender ran the Messages transport, and no repository a
+  recorded git command ran in (350), nor any under the workspaces (320), names a program in its config. Every distinct
+  recorded command (268,723) then went through main's guard and this one: the first replay held 150 more, mostly
+  programs the line writes or programs that read through the server by names they compute, and each shape it showed was
+  fixed, tests first; 7 still wait, 6 of them programs naming a script file that is no longer on disk and one that runs a
+  program its line writes while naming the server. The review's probes for the three now hold, the meeting fetcher's
+  reads, ordinary osascript and 1,284 git reads in 321 repositories need nothing new, and a program with 3,000 tool
+  calls is read in 0.2 s (its calls in 0.07 s, its bodies in 0.12 s).
+
+## [5.23.2] - 2026-11-15
+
+- **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
+  was refused before it went: the check that a persona signature makes the persona's name the link read every field of
+  the call as the message's text, and the recipient's address was at a persona domain, so the address counted as the
+  domain shown in words. The check now leaves out, at any depth, what addresses a message rather than says it: the
+  recipients and the account the call acts as (`to`, `cc`, `bcc`, `recipient`, `recipients`, `space_id`, `space_name`,
+  `user_google_email`, `from_account`, `from_email`, `account`, `user_email`, `sender`, `calendar`), the sender and reply
+  address (`from`, `from_name`, `fromName`, `fromEmail`, `reply_to`, `replyTo`), the message it answers (`in_reply_to`,
+  `references`, `inReplyTo`, `in_reply_to_id`), the `subject`, and an invitation's guests and calendar (`attendees`,
+  `attendeeEmails`, `addedAttendees`, `addedAttendeeEmails`, `removedAttendeeEmails`, `calendar_id`, `calendarId`),
+  beside the RSVP comment fields it already left out. The marker that starts the check and the domain it looks for are
+  both read only in what remains: a marker found only in a sender field or the subject starts no check, and a domain
+  there is not the signature showing it. Every other field is
+  read as before, so a footer that shows a persona domain as text, in an HTML or plain body, a calendar description, a
+  comment or a chat message, is still refused on a channel that renders links. The message guard's config reference
+  names the fields under `signature.domains`. The second walk of the call costs nothing measurable: an invented 60 KB
+  email takes 12 ms through the whole message check before and after. Replayed, read only, over 60 days of this Mac's
+  records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, and the connector calls
+  a Codex session writes in a code cell, read from their literal arguments; each call counted once): of 1,306 connector
+  sends, the check refused 13 before and 12 after. The one it no longer refuses is a send whose only persona domain was
+  in `to`; the 12 refused for a domain shown as text in the message's own text are all still refused, and none it passed
+  before is refused now. 16 sends written in code cells with arguments that are not literals could not be read, and were
+  not judged.
 
 ## [5.23.1] - 2026-11-15
 
