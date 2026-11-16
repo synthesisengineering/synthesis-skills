@@ -65,7 +65,9 @@ for the code where it, or its command, names a protected folder, as a script wit
 finds the file as the shell would: by the word's own path, or on PATH as the hook's process has it and on any PATH the
 line gives itself. A builtin the shell runs itself (`echo`, `cd`, `test`, `printf` and their like) is not looked up;
 the same name started by `env`, `nohup`, `xargs` or `find -exec` is. A word written as a pattern is the file it
-expands to, and a file the line writes before it runs it is read as the line.
+expands to. A file the line copies or links into place before it runs it is judged as what it copies, and one it
+writes itself (a redirect, `tee`, an edit in place) is read as the line; a change of mode or owner writes nothing it
+runs.
 
 The real commands are compiled programs or links to them, wherever they lie: the system's, Homebrew's `python3` and
 `node`, a venv's `python`. These commands really are scripts, and pass by their name where their installer puts them.

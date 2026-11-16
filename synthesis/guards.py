@@ -1953,8 +1953,8 @@ def _look_alike(word: str, here: str, run_from_path: bool, line: dict) -> tuple:
     it (`_installed`); ("", "") for any other. A word with a slash is that file; any other is looked up on each of
     the line's search paths as the shell looks it up (a builtin the shell runs itself excepted, unless a program that
     starts commands from PATH runs it: `run_from_path`), the first regular file it may run winning. A file the line
-    itself writes there counts as a script, with the line as its text. A word written as a pattern is the first file it
-    names, as the shell expands it (`tools/l?`)."""
+    copies or links there is judged as what it copies; one it writes itself is a script, with the line as its text. A
+    word written as a pattern is the first file it names, as the shell expands it (`tools/l?`)."""
     if re.search(r"[*?\[]", word) and not re.search(r"[$`]", word):
         import glob  # only for a word written as a pattern
         try:
@@ -1974,10 +1974,11 @@ def _look_alike(word: str, here: str, run_from_path: bool, line: dict) -> tuple:
                  for folders in line["paths"]]
     for spots in lists:
         for spot in spots:
-            if written and _real(spot) in written:
+            made = written[_real(spot)] if written and _real(spot) in written else None  # "": its own content; else what it copies
+            if made == "" or (made and _compiled(made) is None):
                 return spot, _real(spot)
-            if "/" in word or _runnable(spot):
-                real = _real(spot)
+            if made or "/" in word or _runnable(spot):
+                real = made or _real(spot)
                 if _compiled(real) is False and not _installed(name, real, spot):
                     return spot, real
                 break  # the first program found is the one that runs
@@ -2015,6 +2016,20 @@ def _as_run(found: str, real: str, words: list, written: bool) -> list:
     return [head] + run[1:]
 
 
+def _made(words: list, here: str) -> list:
+    """(a file a command makes or rewrites, the file it is a copy or a link of, or "" for content of its own): where a
+    copier lands, what tee, dd and truncate write, what sed or perl edit in place. A command that only changes a file's
+    mode, owner or time changes no program it holds."""
+    head = os.path.basename(words[0]) if words else ""
+    if head not in COPIERS:
+        return [(os.path.join(here, os.path.expanduser(t)), "") for t in _landing(words)] if head in ("tee", "dd", "truncate", "sed", "gsed", "perl") else []
+    rest = [w for i, w in enumerate(words) if i and not w.startswith("-") and words[i - 1] not in VALUED.get(head, ())]
+    into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for i, m in enumerate(map(INTO.fullmatch, words)) if m and head != "rsync"] or rest[-1:]
+    sources, soft = [s for s in rest if s not in into], head == "ln" and any(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*|--symbolic", w) for w in words[1:])
+    return [(full, os.path.join(os.path.dirname(full) if soft else here, os.path.expanduser(s))) for d in into for s in sources
+            for full in [os.path.join(here, os.path.expanduser(t)) for t in [d] * (len(sources) == 1) + [os.path.join(d, os.path.basename(s.rstrip("/")))]]]
+
+
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
               feeds: list | None = None, prose: bool = False, line: dict | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
@@ -2028,14 +2043,14 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
     found, outer, upstream, chain, back, stack = [], [], "", object(), cwd, []
-    top, line = line is None, line or {"paths": _search_paths(command, cwd), "written": set(), "names": set(), "later": []}
+    top, line = line is None, line or {"paths": _search_paths(command, cwd), "written": {}, "names": set(), "later": []}
 
     def looked(word: str, rest: list, here: str, from_path: bool, chain, needed: bool, feed) -> bool:
         """Whether a command word is a look-alike: the command its script really is, and the one its `#!` line names
         when that is a look-alike too, three deep, go into what the line runs."""
         look, run, added = _look_alike(word, here, from_path, line), [word] + list(rest), False
         for _ in range(3) if look[0] else ():
-            run, added = _as_run(look[0], look[1], run, look[1] in line["written"]), True
+            run, added = _as_run(look[0], look[1], run, line["written"].get(look[1]) == ""), True
             found.append((run, here))
             if runs is not None:
                 runs.append((chain, needed))
@@ -2080,12 +2095,10 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             head in OPAQUE or head in READERS - WORDS or head in ACTORS)  # a reader may still redirect: `date >> file`; a key press handed to `watch`
         if writes is not None and taken:
             writes += [(t, cwd) for t in targets]
-        if taken:  # what the line writes or edits in place, where a program it then runs may be
-            made = [os.path.join(cwd, os.path.expanduser(t)) for t in targets] + [
-                os.path.join(here, os.path.expanduser(re.sub(r"/\*\*(?:/\*)?$", "", t))) for t in (
-                    _landing(words) if words and (head in WRITERS or head in ("sed", "gsed", "perl")) else ())]
-            line["written"].update(_real(m) for m in made)
-            line["names"].update(os.path.basename(m) for m in made)
+        for target, source in [(os.path.join(cwd, os.path.expanduser(t)), "") for t in targets] + _made(words, here) if taken else ():
+            if line["written"].get(_real(target)) != "":  # where a program it then runs may be; what it writes itself stays its own
+                line["written"][_real(target)] = _real(source) if source else ""
+            line["names"].add(os.path.basename(target))
         if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
             for at, word in enumerate(words[1:], 1):
                 held = ([], [], [])
@@ -2164,7 +2177,7 @@ def _parse(command: str, cwd: str, runs: list | None = None, feeds: list | None 
     try:
         return _commands(command, cwd, runs=runs, feeds=feeds), True
     except (Unreadable, StopIteration, IndexError):
-        found, line = [], {"paths": _search_paths(command, cwd), "written": set(), "names": set()}
+        found, line = [], {"paths": _search_paths(command, cwd), "written": {}, "names": set()}
         for part in SEPARATORS.split(command):
             started: list = []
             words = _bare(part.split(), None, started)[0]

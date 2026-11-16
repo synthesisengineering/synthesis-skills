@@ -17,7 +17,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   (a look-alike `npx` still has the deploy it is handed held). That holds for each wrapper's word (`env`, `nohup`,
   `xargs` and their like), for the command a wrapper or `find -exec` starts from PATH (a builtin's name included:
   `env echo` runs whatever `echo` stands first on PATH), for a PATH the line gives itself, for a word written as a
-  pattern, and for a look-alike the line writes before it runs it. A builtin the shell runs itself is not looked up.
+  pattern, and for a look-alike the line writes before it runs it (a copy or a link is judged as what it copies, so a
+  real interpreter linked into a folder and run there passes). A builtin the shell runs itself is not looked up.
   The commands that really are scripts pass by their name where their installer puts them: under its own name where no
   program of the agent's writes (root's own, as macOS's `/usr/bin/cd`, `shasum` and `irb` and Linux's `which`, `egrep`
   and `zcat`; the runtime's launcher in its protected `bin/`), and in a folder the user writes only under a name that
