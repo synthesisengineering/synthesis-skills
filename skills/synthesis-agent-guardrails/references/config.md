@@ -27,8 +27,9 @@ sourced) as the command lines it holds, three scripts deep, and reads a Python s
 what `uv run`, `poetry run`, `pipx run`, `pdm run` and `uvx` start, as the programs they run; a script that exists but
 cannot be opened waits for the principal's code, and so does a line of Python in a script that reaches synthesis, the
 script's bytes bound to the code (typed on the command, the same line is refused). A `PYTHONPATH` on the line counts
-against a program's proof unless its folders are there when judged, shadow nothing Python imports from elsewhere but a
-`synthesis` package byte for byte the guard's own, and are neither written into by the line nor beside another program on
+against a program's proof unless its folders are there when judged, hide nothing from Python's own installation (its
+standard library and site-packages; a folder with no `__init__.py` hides nothing) but a `synthesis` package byte for byte
+the guard's own, and are neither written into by the line nor beside another program on
 it that may fill them unseen; a module the line writes where the program starts counts as a file already there does. The release's own scripts are trusted: those in the synthesis home's
 `bin`, `current` and `releases`, the plugin's scripts as they shipped, and the CLI's launcher only where the `current`
 it runs is the synthesis home's own. For pytest, the test files it collects and the conftests it loads are read for a

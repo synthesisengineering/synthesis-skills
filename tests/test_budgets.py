@@ -1419,10 +1419,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # program on the line went unseen): _module_path_is_synthesis 3 more (each folder must be there, and the line write
 # nothing inside it), _stand_in 2 more (a module the line writes where the program starts), _self_grant 3 more (the
 # programs on the line that may fill a folder where the guard does not look, which leave a module path untrusted).
+# Then each 11 more, all in guards.py, from the same round (the suite, run whole on a fresh clone, showed that rule judged
+# what a folder hides against the guard process's own path, where a test runner had put a checkout's top-level folders):
+# _found_elsewhere 10 more (with `installed`, only Python's own installation, its standard library and site-packages; with
+# `portion`, a folder with no __init__.py counted only against a namespace package, since it hides no module),
+# _module_path_is_synthesis 1 more (it asks that way, and no longer needs to pass over a conftest).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17234
-PLUGIN_BUDGET = 43306
+CORE_BUDGET = 17245
+PLUGIN_BUDGET = 43317
 
 
 def _lines(files):

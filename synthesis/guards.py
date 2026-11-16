@@ -4813,8 +4813,9 @@ def _module_path_is_synthesis(line: str, where: str, code: str, written: set | f
                 if theirs != ours or any((_regular(os.path.join(path, f), TEXT_LIMIT) or (None,))[0] != (_regular(os.path.join(here, f), TEXT_LIMIT) or (b"",))[0]
                                          for f in ours):
                     return False
-            elif top in tops or top in ("sitecustomize", "usercustomize") or (top != "conftest" and _found_elsewhere(top, _real(entry))):
-                return False  # a module the program imports, or one found elsewhere (pytest alone loads a conftest, from test folders)
+            elif top in tops or top in ("sitecustomize", "usercustomize") or _found_elsewhere(top, _real(entry), True, os.path.isdir(path) and not (
+                    os.path.isfile(os.path.join(path, "__init__.py")))):
+                return False  # a module the program imports, or one it hides from Python's own installation
     return True
 
 
@@ -4891,13 +4892,23 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
 TEXT_LIMIT, OWN_MODULES = 4 << 20, 64
 
 
-def _found_elsewhere(name: str, first: str) -> bool:
-    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with."""
+def _found_elsewhere(name: str, first: str, installed: bool = False, portion: bool = False) -> bool:
+    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with. With
+    `installed`, only in Python's own installation (its standard library and site-packages), as a program the line runs
+    finds it, not in the folders this process was started from or a test runner adds (review round 3 of 22.21: the suite,
+    run whole, found a checkout's top-level folders there); with `portion`, for a folder with no `__init__.py`, which
+    hides no module and only joins a namespace package, only such a package."""
     import importlib.machinery
+    import site
     import sys
+    import sysconfig
+    homes = [os.path.realpath(p) for p in {sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix}] if installed else []
+    places = [p for p in sys.path if p and (not installed or any(paths.inside(os.path.realpath(p), h) for h in homes))] + ([
+        sysconfig.get_paths().get(k, "") for k in ("stdlib", "platstdlib", "purelib", "platlib")] + [site.getusersitepackages()] if installed else [])
     try:
-        return name in sys.builtin_module_names or importlib.machinery.PathFinder.find_spec(name, [
-            p for p in sys.path if p and os.path.realpath(p) != first]) is not None
+        spec = None if name in sys.builtin_module_names else importlib.machinery.PathFinder.find_spec(name, [
+            p for p in places if p and os.path.realpath(p) != first])
+        return name in sys.builtin_module_names or (spec is not None and (not portion or spec.origin in (None, "namespace")))
     except (ImportError, ValueError, OSError):
         return True  # it cannot be told: a file in `first` named so may stand in for it
 

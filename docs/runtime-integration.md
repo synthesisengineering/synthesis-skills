@@ -401,10 +401,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
      package where it runs named like a module it imports, none the line writes there, and no
      `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line, nor a
-     `PYTHONPATH` unless each folder it names is there when judged, shadows nothing Python
-     imports from elsewhere but a `synthesis` package byte for byte the guard's own, and is
-     neither written into by the line nor beside another program on it that may fill it
-     unseen (review round 3 of 22.21). A
+     `PYTHONPATH` unless each folder it names is there when judged, hides nothing from
+     Python's own installation (its standard library and site-packages, not the folders the
+     guard's process was started from; a folder with no `__init__.py` hides nothing) but a
+     `synthesis` package byte for byte the guard's own, and is neither written into by the
+     line nor beside another program on it that may fill it unseen (review round 3 of
+     22.21). A
      script file, or a module run with `-m` from the folder that holds it, is judged by what
      its text shows (after the 30-day replay: proving every expression held about 3,700
      commands a month): read whole up to 4 MB, with each module of its own it imports (a file
