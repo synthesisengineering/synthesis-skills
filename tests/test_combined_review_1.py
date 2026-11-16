@@ -6,7 +6,8 @@ of the agent's named bash, sh or zsh carried the launcher's line, minted the gra
 C10: install.py's `dict | None` annotations had no `from __future__ import annotations`, so the runtime did not load on
 Python 3.9, the oldest interpreter it pins (Apple's Command Line Tools Python). C7a: the guard read the checkout's
 manifest to its end, so a FIFO there stopped it. C1 (crafted, open): a program in the installer's own process that
-replaces install's bound names by names built at run time passes the guard.
+replaces install's bound names by names built at run time passes the guard. C2's remainder (crafted, open): a shell put
+ahead of the system's on the harness's PATH after the line has passed runs in its place.
 """
 
 import json

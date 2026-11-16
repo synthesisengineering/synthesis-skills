@@ -507,9 +507,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      line through, it writes one grant, an install of `v<version>` (the tag the line names,
      or the version its checkout's manifests carry) into this home. The line counts as the
      launcher's only as written, or handed to the system's own shell (`<shell> -c '<line>'`,
-     the shell a file owned by root with every folder above it and writable by no user,
-     first of its name on the harness's PATH with no folder before it a user could write:
-     combined review round 1 of 22.8 with 22.18, C2). `install.install` spends the grant
+     the shell a file owned by root with every folder above it and writable by no user, as
+     named and as resolved, so no link of a user's is on the way; named bare, the first of
+     its name on the harness's PATH: combined review round 1 of 22.8 with 22.18, C2; one put
+     ahead of it after the line has passed is open, below). `install.install` spends the grant
      once, and only for the release tool's fresh clone in the protected releases folder
      whose HEAD is the commit GitHub's tag names (`git ls-remote`), its tracked tree clean,
      and whose staged copy holds exactly that commit's files (C8: the harness commands a
@@ -675,6 +676,14 @@ stay open, and no hook running as that same user can close them:
   `install.install` on a folder of its own: the guard passes it, and the runtime becomes
   the agent's (combined review round 1 of 22.8 with 22.18, C1; crafted). A test holds this
   as an expected failure (`tests/test_combined_review_1.py`), so it is seen when it closes.
+- A launcher line handed to a bare shell (`bash -lc '<line>'`, as Codex's shell tool hands
+  it) passes when the first shell of that name on the harness's PATH is the system's. A
+  shell of the agent's put in a folder this user writes, ahead of the system's, after the
+  guard passed the line and before the harness looks the shell up, runs in its place,
+  unjudged: the guard judges the line, not the harness's later search of PATH (combined
+  review round 1 of 22.8 with 22.18, C2's remainder; crafted, a race). Refusing every PATH
+  with such a folder ahead of the system's shell would refuse the release from Codex on
+  the principal's Mac and on CI's runners. A test holds this as an expected failure.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

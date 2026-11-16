@@ -5146,24 +5146,30 @@ def _grant_release(given: dict, line: str) -> None:
 
 
 def _sealed(path: str) -> bool:
-    """Owned by root with every folder above it, and writable by neither this user nor its groups: the interpreter pin's
-    test (install.interpreter_problems), for a file or a folder."""
-    spot = os.path.realpath(path)
-    while True:
-        try:
-            if os.lstat(spot).st_uid or os.access(spot, os.W_OK):
+    """No user can change what `path` names: as named and as resolved, it and every folder above it are owned by root and
+    writable by neither this user nor its groups. The interpreter pin's test (install.interpreter_problems) without its
+    rule that a path be its own real path, so a link the system put there counts (`/bin` on Linux) and a link of a
+    user's, which can lead elsewhere once the line has passed, does not."""
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        return False  # past a link, `..` is not where the system goes
+    for spot in (path, os.path.realpath(path)):
+        while True:
+            try:
+                if os.lstat(spot).st_uid or os.access(spot, os.W_OK):
+                    return False
+            except OSError:
                 return False
-        except OSError:
-            return False
-        if spot == os.path.dirname(spot):
-            return True
-        spot = os.path.dirname(spot)
+            if spot == os.path.dirname(spot):
+                break
+            spot = os.path.dirname(spot)
+    return True
 
 
 def _system_shell(word: str, cwd: str) -> bool:
     """Whether the shell a wrapped launcher line names is one no user can write (combined review round 1, C2): named by a
     path, that file; named bare, the first of that name on the harness's own PATH (the hook's, less what the hook's
-    launcher put first), with no folder searched before it that a user could put one in."""
+    launcher put first). One put ahead of it after the line has passed is open (crafted), as the guard does not see
+    the harness look it up."""
     if "/" in word:
         found = os.path.join(cwd, os.path.expanduser(word))
         return os.path.isfile(found) and os.access(found, os.X_OK) and _sealed(found)
@@ -5177,8 +5183,6 @@ def _system_shell(word: str, cwd: str) -> bool:
         found = os.path.join(folder, word)
         if os.path.isfile(found) and os.access(found, os.X_OK):
             return _sealed(found)
-        if os.path.isdir(folder) and not _sealed(folder):
-            return False  # a shell of that name put here would be the one that runs
     return False
 
 

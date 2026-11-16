@@ -87,8 +87,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   - **The launcher's shell wrapper is the system's shell or nothing** (C2). `<shell> -c '<line>'` was taken for the
     launcher's line by the shell's name alone, so a program of the agent's named `bash`, `sh` or `zsh` carried the line,
     minted the grant and ran with nothing else judged. Now the shell must be a file owned by root with every folder
-    above it and writable by no user (the interpreter pin's test): named by its path, that file; named bare, the first
-    of that name on the harness's own PATH, with no folder searched before it that a user could put one in.
+    above it and writable by no user, as the interpreter pin requires, both as named and as resolved: named by its
+    path, that file; named bare, the first of that name on the harness's own PATH, so a `bash` of the agent's found
+    first in a folder this user writes is refused, while folders this user writes that hold none may come first, as
+    they do on the principal's Mac and on CI's runners (Codex's shell tool, A7). A link of a user's to the system's
+    shell or to its folder does not count, since it can be pointed elsewhere once the line has passed; the system's
+    own links (`/bin` on Linux) do. Open, crafted: a shell put ahead of the system's on PATH after the line has passed,
+    before the harness looks it up, runs in its place; a strict expected-failure test holds it.
   - **A harness command the release runs cannot choose the runtime** (C8). The release runs each harness's own command
     (`claude`, `codex`, `muse`, `gh`), found where this user writes, after its clone exists, and read the install's
     listing from the clone afterwards: a planted `claude` committed its own runtime in the clone, moved the tag there,

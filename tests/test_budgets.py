@@ -1514,10 +1514,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # its blank line 1 (C10). release.py 27: clone_problems 10 and held_to 5 (the clone held to the verified commit after each
 # harness command), install_and_verify 3 (the check after each harness), main 5 (the listing read before any harness
 # command runs, the checks after gh and before the install) and blank lines 4.
+# C2 completed in the same round: core 4 more and plugin 4. guards.py 4: _sealed 5 (the path held as named as well as
+# resolved, so a link of a user's on the way does not count while the system's own do, and a path with `.` or `..` in
+# it is none), _system_shell 1 fewer (its docstring 1 more, naming the open race; the 2 lines that refused any PATH with
+# a folder a user writes ahead of the system's shell gone, since that refused Codex's shell tool wherever such folders
+# come first, A7).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17939
-PLUGIN_BUDGET = 44199
+CORE_BUDGET = 17943
+PLUGIN_BUDGET = 44203
 
 
 def _lines(files):
