@@ -58,7 +58,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   submit or a dispatched event), not when it sets a value or writes by fetch, and on a local app's page a navigate or a
   click moves nothing, so a click and then a script that clicks Save runs there; a local page that sends the tab on,
   and a page that redirects itself, are on the open list. The sender's ticket reads the system's `/bin/ps` with a clean
-  environment, whatever comes first on PATH, and a hook under shells alone binds to the topmost of them.
+  environment, whatever comes first on PATH.
+- **What review round 7 found** (core). As ruled, a hook whose ancestors hold no harness process of the session's own
+  (shells alone, or a login, a remote login or a multiplexer every program of a terminal shares) files no sender
+  ticket, and each send waits for its code; round 6's binding to the topmost shell, which two sessions under it shared,
+  is gone. An entry spent by a call that is then held is given back, as a per-call grant is: an "undone" line in the
+  spends ledger and the batch's spent mark taken back; a call left with no answer keeps its spend.
 - **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
   request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
   batch`, and a held window or batch code no longer lets the rest of the line through unjudged.

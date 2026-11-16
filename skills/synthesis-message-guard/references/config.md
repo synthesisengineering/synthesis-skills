@@ -573,12 +573,17 @@ run (the sender's real file, its arguments and its real folder); the sender hand
 takes only a ticket of the same run filed in the last minute (review round 4, #6, #11 and #12: a `cat` or a `grep` of
 the sender's file filed one, any run took it, and a line of two sends had one). The ticket names the harness whose hook
 filed it (the hook's nearest ancestor process that is no shell, interpreter or the hook's launcher, by its pid and start
-time; the topmost shell when there are only shells) and the command line the run's process shows; it is taken only by
+time, when that is a harness of the session's own; when it is a process every program of a terminal shares, a login, a
+remote login or a multiplexer, or there are shells alone, no ticket is filed and each send waits, review round 7, #2)
+and the command line the run's process shows; it is taken only by
 a process under that harness whose own command line, as the system's `/bin/ps` shows it, ends so (review rounds 5 and
 6, #4 and #2: an identical run the guard never saw took a ticket, and a `ps` first on PATH could answer for the system).
 A command that only names the file files none; a run under another name or by runpy takes only a ticket whose run its
 own command line shows; identical runs of two sessions in one folder each take their own session's ticket; where `ps`
-cannot answer, none is taken and each send waits for its code. That session's own record must show, each time an
+cannot answer, none is taken and each send waits for its code. An entry is spent at once, under the send lock, and
+given back (an "undone" line in the spends ledger, and the batch's spent mark taken back) when the call that spent it is
+then held, as a per-call grant is; a call left with no answer keeps its spend, since a harness given no answer may have
+run it (review round 7, #3). That session's own record must show, each time an
 entry is spent, the principal typing the batch's
 code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
 digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for

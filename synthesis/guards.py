@@ -705,18 +705,18 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     # or a url holds then), and no meeting on today
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
         _void("send", subject)  # one message, one release: a second copy asks again
-        if entry:  # and a batch's entry for it is spent with it
-            sends.batch_spend(entry, session)
+        if entry:  # and a batch's entry for it is spent with it, given back if the call is held
+            sends.batch_spend(entry, session, after=_after)
         _logged(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
         return timed.replace("{code}", approvals.how(code))
-    how = sends.batch_spend(entry, session) if entry else ""  # after every check above, before the window
-    if how:
-        sends.log(chan, tool, summary, how, session)
-        approvals.void("send", subject)
-        approvals.void("send-time", subject)
+    how = sends.batch_spend(entry, session, after=_after) if entry else ""  # after every check above, before the window
+    if how:  # its records, as the other sends', stand only if the call is let through (review round 7, #3)
+        _logged(chan, tool, summary, how, session)
+        _void("send", subject)
+        _void("send-time", subject)
         return None
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
@@ -6272,7 +6272,7 @@ def _batch_send(tool: str, tool_input: dict, step: tuple, config: dict, session:
     subject, summary = {"tool": tool, "input": tool_input}, f"{tool} on {place}: a batch's Messenger send"
     with approvals.alone():  # each entry goes once, whichever call asks first
         released = timed is not None and approvals.consume("send-time", subject, session)
-        how = sends.batch_spend(match, session, spend=released or not timed)
+        how = sends.batch_spend(match, session, spend=released or not timed, after=_after)
         if how and timed and not released:
             code = approvals.request("send-time", subject, f"{summary}, a time in its words and no calendar read")
             return timed.replace("{code}", approvals.how(code))
@@ -6280,9 +6280,9 @@ def _batch_send(tool: str, tool_input: dict, step: tuple, config: dict, session:
         return ("This send step matches no entry this session can spend (spent, closed, past its 12 hours, opened by another "
                 "session, or its code not in this session's record): a Messenger send outside a batch is the Return after the "
                 "words, on the principal's code.")
-    sends.log("browser", tool, summary, how, session, {"record": str((session or {}).get("transcript_path") or ""),  # what its script did
-                                                       "call": str((session or {}).get("tool_use_id") or ""), "since": time.time()})
-    approvals.void("send-time", subject)
+    _logged("browser", tool, summary, how, session, {"record": str((session or {}).get("transcript_path") or ""),  # what its script did
+                                                     "call": str((session or {}).get("tool_use_id") or ""), "since": time.time()})
+    _void("send-time", subject)
     return None
 
 

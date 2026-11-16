@@ -670,11 +670,13 @@ def describe_batch(data: dict) -> str:
             f"{len(data['entries'])} entries left, each sent once as written; `synthesis sends close` ends it sooner.")
 
 
-def batch_spend(match, session: dict | None = None, spend: bool = True) -> str:
+def batch_spend(match, session: dict | None = None, spend: bool = True, after=None) -> str:
     """The first unspent entry `match` accepts, of an open batch this session's granted command opened, as the ledger
     names it (batch:<digest prefix>:<index>), marked spent unless `spend` is false; "" for none. Each time, the session's
     own record must show the principal typing the batch's code (state alone is never a grant), and an entry the spends
-    ledger holds is spent whatever its state says (the review of 5.23.0). The caller holds approvals.alone()."""
+    ledger holds is spent whatever its state says (the review of 5.23.0). The caller holds approvals.alone(). The spend is
+    written at once, and `after` (the guard's `_after`) is given its undo, so a call then held gives the entry back
+    (review round 7, #3); a call left with no answer keeps it."""
     me, ledger = str((session or {}).get("session_id") or ""), None  # the session the guard is told, never the environment's
     for data in batches() if me else []:
         for i, entry in enumerate(data["entries"] if data["session"] == me else []):
@@ -684,12 +686,26 @@ def batch_spend(match, session: dict | None = None, spend: bool = True) -> str:
             if (data["digest"], i) in ledger or not _backed(data, session):
                 continue
             if spend:
+                mark = os.urandom(8).hex()
                 with _spends_file().open("a", encoding="utf-8") as handle:
-                    handle.write(json.dumps({"digest": data["digest"], "entry": i, "at": time.time(), "session": me}) + "\n")
-                data["spent"][str(i)] = {"at": time.time(), "session": me}
+                    handle.write(json.dumps({"digest": data["digest"], "entry": i, "at": time.time(), "session": me, "mark": mark}) + "\n")
+                data["spent"][str(i)] = {"at": time.time(), "session": me, "mark": mark}
                 paths.write_json(_batch_file(data["digest"]), data)
+                if after:
+                    after(undo=lambda digest=data["digest"], i=i, mark=mark: batch_unspend(digest, i, mark))
             return f"batch:{data['digest'][:12]}:{i}"
     return ""
+
+
+def batch_unspend(digest: str, entry: int, mark: str) -> None:
+    """Give back an entry whose call was held: an "undone" line in the spends ledger, and the batch's spent mark taken back
+    while it is still that spend's."""
+    with _spends_file().open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"undone": mark, "digest": digest, "entry": entry, "at": time.time()}) + "\n")
+    data = paths.read_json(_batch_file(digest))
+    if isinstance(data.get("spent"), dict) and (data["spent"].get(str(entry)) or {}).get("mark") == mark:
+        data["spent"].pop(str(entry))
+        paths.write_json(_batch_file(digest), data)
 
 
 def _spends_file():
@@ -697,13 +713,21 @@ def _spends_file():
 
 
 def _spends() -> set:
-    """(digest, entry) of every batch send there has been: the append-only ledger each state's spent marks yield to."""
-    found = set()
+    """(digest, entry) of every batch send there has been: the append-only ledger each state's spent marks yield to, less
+    a spend an "undone" line gives back."""
+    rows = []
     for line in _spends_file().read_text(encoding="utf-8").splitlines() if _spends_file().is_file() else []:
         try:
-            row = json.loads(line)
-            found.add((str(row["digest"]), int(row["entry"])))
-        except (ValueError, KeyError, TypeError):
+            rows.append(json.loads(line))
+        except ValueError:
+            continue
+    undone = {row.get("undone") for row in rows if isinstance(row, dict) and row.get("undone")}
+    found = set()
+    for row in rows:
+        try:
+            if not row.get("undone") and not (row.get("mark") and row["mark"] in undone):
+                found.add((str(row["digest"]), int(row["entry"])))
+        except (AttributeError, KeyError, TypeError, ValueError):
             continue
     return found
 
@@ -739,6 +763,8 @@ def _run_key(run) -> str:
 # ancestor that is no shell, interpreter or the hook's launcher) and the command line its run's process shows; only a
 # process of that harness whose own command line, as the system shows it, ends so takes it.
 NOT_HARNESS = re.compile(r"-?(?:sh|bash|zsh|dash|fish|ksh|tcsh|csh)|env|python[\d.]*|synthesis-hook", re.I)
+SHARED = re.compile(r"login|sshd.*|tmux.*|screen|launchd|systemd|init|Terminal|iTerm2?|Code( Helper.*)?|gnome-terminal.*|konsole|xterm"
+                    r"|alacritty|kitty|wezterm.*|ghostty", re.I)  # above every program a terminal, a remote login or a multiplexer runs
 
 
 def _table() -> dict:
@@ -762,13 +788,16 @@ def _ancestors() -> set:
 
 
 def _harness() -> list:
-    """[pid, start] of this process's nearest ancestor that is no shell, interpreter or the hook's launcher; [] for none."""
-    table, pid, last = _table(), os.getppid(), []
+    """[pid, start] of this process's nearest ancestor that is no shell, interpreter or the hook's launcher, when that is a
+    harness of the session's own; [] when it is a process every program of a terminal shares (a login, a multiplexer), or
+    there are shells alone up to the system's first process: then no ticket is filed and each send waits (review round 7,
+    #2, as ruled: two sessions under one such process took each other's tickets)."""
+    table, pid = _table(), os.getppid()
     while pid > 1 and pid in table:
         if not NOT_HARNESS.fullmatch(table[pid][2]):
-            return [pid, table[pid][1]]
-        last, pid = [pid, table[pid][1]], table[pid][0]
-    return last  # shells alone up to the system's first process (a run its terminal left): the topmost of them
+            return [] if SHARED.fullmatch(table[pid][2]) else [pid, table[pid][1]]
+        pid = table[pid][0]
+    return []
 
 
 def _own_line() -> str:

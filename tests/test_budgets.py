@@ -1584,10 +1584,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # sends.py 1: _own_line 1 (the system's /bin/ps with a clean environment); _table and _harness keep theirs.
 # Review round 5 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
 # _writes_by_fetch 5 (W4: an init the reader cannot follow is read by a method named anywhere in the script again).
+# Review round 7 of the batch (2026-11-15): core and plugin 29 more, all in sends.py. batch_unspend 9 (an entry given back
+# when its call is held: an "undone" line and the spent mark taken back), _spends 8 (a spend an "undone" line names is
+# none), batch_spend 5 (its mark, and its undo given to the guard's _after), _harness 3 (no harness under a process a
+# terminal shares, or shells alone), SHARED 2 and 2 blank lines; guards.py's call sites keep their counts.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18196
-PLUGIN_BUDGET = 44273
+CORE_BUDGET = 18225
+PLUGIN_BUDGET = 44302
 
 
 def _lines(files):
