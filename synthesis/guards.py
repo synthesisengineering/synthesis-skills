@@ -1441,6 +1441,7 @@ SHIELD = str.maketrans("{},", "\1\2\3")  # a quoted brace or comma takes no part
 UNREAD_INPUT = "\0unread-input"  # stands for a script on a program's input that the guard could not read
 UNKNOWN_CONTENT = "\0unknown content"  # written_contents' value for a file a program writes: what it holds cannot be told
 ANY_FILE = "*"  # written_contents' key where a program on the line may write any file
+UNREAD_WORD = "synthesis-unread-word"  # a word of a command a program starts that the program builds, as written_contents reads it
 PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
@@ -2770,9 +2771,11 @@ RUNS_CODE = re.compile(r"\b(?:exec|eval|compile|execfile|run_path|run_module|run
 STARTS_BY = re.compile(r"system|popen\d?|exec[lv]p?e?|spawn[lv]?p?e?|posix_spawnp?|startfile|create_subprocess_\w+|Popen|check_output|check_call"
                        r"|getoutput|getstatusoutput")  # a Python function that starts a program, whatever holds it
 STARTER_MODULE = re.compile(r"_?(?:subprocess|pty|commands|popen2|pexpect|sh|plumbum|sarge)")  # a module each function of which starts one
-UNSEEN_FLOW = re.compile(r"\b(?:__import__|importlib|ctypes|cffi|c?[pP]ickle|marshal|shelve|dill|cloudpickle|jsonpickle|__builtins__|__dict__"
-                         r"|__getattribute__|putenv|socket|multiprocessing|mmap|mkfifo)\b|\b(?:vars|globals|locals)\s*\(|\bsys\s*\.\s*modules\b"
-                         r"|\bos\s*\.\s*(?:write\w*|pipe\w*|dup2?|fdopen|open)\b|\benviron\s*(?:\[[^\]]*\]\s*=(?!=)|\|=|\.\s*(?:update|setdefault)\b)")
+UNSEEN_RUN = re.compile(r"\b(?:__import__|importlib|ctypes|cffi|c?[pP]ickle|marshal|shelve|dill|cloudpickle|jsonpickle|__builtins__|__dict__"
+                        r"|__getattribute__)\b|\b(?:vars|globals|locals)\s*\(|\bsys\s*\.\s*modules\b|\bos\s*\.\s*(?:write\w*|fdopen|open)\b")  # a run-time
+# lookup, or a file written by its descriptor: what a program starts or writes is not read
+UNSEEN_FLOW = re.compile(r"\b(?:putenv|socket|multiprocessing|mmap|mkfifo)\b|\bos\s*\.\s*(?:pipe\w*|dup2?)\b"
+                         r"|\benviron\s*(?:\[[^\]]*\]\s*=(?!=)|\|=|\.\s*(?:update|setdefault)\b)")  # the environment, a pipe or a socket: where a string goes
 DOCUMENT = re.compile(r"(?i)\.(?:md|markdown|txt|text|rst|log|csv|tsv|adoc)$")  # a plain document, which no program loads unnamed
 RUNS_FILES = re.compile(r"python[\d.]*|node|nodejs|bun|deno|perl|ruby|php|bash|sh|zsh|dash|ksh|fish|csh|tcsh|osascript|xargs|env|eval|exec|source"
                         r"|find|awk|gawk|nawk|sed")  # an interpreter or a shell, which may run any file
@@ -2806,7 +2809,7 @@ def _js_args(text: str, at: int) -> list:
 def _read_once(kind: str, source: str, head: str = ""):
     """A program read once a call, as the rule and written_contents both ask: its syntax tree ("tree", None where it
     does not parse, with Python's own warnings about its escapes unprinted), what reaches a program it starts
-    ("reach"), or the files it writes ("written")."""
+    ("reach"), the shell lines it starts ("started", None where one cannot be read), or the files it writes ("written")."""
     import ast
     import warnings
     if (kind, head, source) not in _CALL["read"]:
@@ -2817,6 +2820,9 @@ def _read_once(kind: str, source: str, head: str = ""):
                     found = ast.parse(source)
             except (SyntaxError, ValueError, RecursionError, MemoryError):
                 found = None
+        elif kind == "started":  # told while its reach is read: a program read no further than that starts what cannot be told
+            _read_once("reach", source, head)
+            found = _CALL["read"].get((kind, head, source))
         else:
             tree = _read_once("tree", source)
             found = _reaching(source, head) if kind == "reach" else _python_written(tree) if tree else [("", "")]
@@ -2883,6 +2889,21 @@ def _reaching(script: str, head: str) -> set | None:
     import ast
     import builtins
     if re.match(r"(?:node|nodejs|bun|deno)$", head):
+        lines = []  # the shell lines it starts: a literal command, or a literal program and a list of literals
+        for m in re.finditer(r"\b(execSync|exec|execFileSync|execFile|spawnSync|spawn|fork)\s*\(", script):
+            args = [script[s:e].strip() for s, e in _js_args(script, m.end() - 1)]
+            listed = args[1] if len(args) > 1 and m[1] not in ("execSync", "exec") else "[]"
+            if not args or m[1] == "fork" or not PROGRAM_STRINGS.fullmatch(args[0]) or not re.fullmatch(r"\[[\s\S]*\]", listed):
+                lines = None
+                break
+            spelled = lambda literal: re.sub(r"\$\{[^}]*\}", UNREAD_WORD, _unquoted(literal))  # a part it builds: UNREAD_WORD
+            items = [x for x in (listed[s:e].strip() for s, e in _js_args(listed, 0)) if x]
+            lines.append(spelled(args[0]) if m[1] in ("execSync", "exec") else shlex.join(
+                [spelled(args[0])] + [spelled(x) if PROGRAM_STRINGS.fullmatch(x) else UNREAD_WORD for x in items]))
+        if lines is not None and (re.search(r"\b(?:execSync|execFileSync|execFile|spawnSync|spawn|fork|exec)\b\s*(?:[:=;)\]]|$)", script) or re.search(
+                r"\bBun\s*\.\s*(?:spawn\w*|\$)|\bDeno\s*\.\s*(?:run|Command)\b|\$\s*`|\brequire\s*\(\s*(?![\"'][\w./@:-]+[\"']\s*\))|\bimport\s*\(|\bprocess\s*\.\s*(?:binding|dlopen)\b", script)):
+            lines = None  # a starter handed on, or a start this reading does not follow
+        _CALL["read"][("started", head, script)] = lines
         if not JS_STARTS.search(script):
             return set()
         printed = set()
@@ -2894,9 +2915,9 @@ def _reaching(script: str, head: str) -> set | None:
         return {_unquoted(m[0]) for m in PROGRAM_STRINGS.finditer(script) if m.start() not in printed}
     if not head.startswith("python"):
         return None
-    tree = _read_once("tree", script)
-    if tree is None or UNSEEN_FLOW.search(re.sub(r"(?m)#.*$", "", PROGRAM_STRINGS.sub('""', script))):
-        return None  # a run-time lookup, the environment, a pipe or a socket: where a string goes is not read
+    tree, code = _read_once("tree", script), re.sub(r"(?m)#.*$", "", PROGRAM_STRINGS.sub('""', script))
+    if tree is None or UNSEEN_RUN.search(code):
+        return None
     nodes, mods, binds, known, budget = list(ast.walk(tree)), {}, {}, set(dir(builtins)), [20000]
     parent = {child: n for n in nodes for child in ast.iter_child_nodes(n)}
     for n in nodes:  # what each imported name stands for
@@ -2966,6 +2987,8 @@ def _reaching(script: str, head: str) -> set | None:
         if not isinstance(x, (ast.Name, ast.Attribute)) or not isinstance(x.ctx, ast.Load) or (isinstance(up, ast.Attribute) and up.value is x):
             continue  # a whole name or chain, as it is read
         d = dotted(x)
+        if d.startswith("platform."):  # platform.system() names the system it runs on
+            continue
         last_part = (d or (x.attr if isinstance(x, ast.Attribute) else x.id)).rsplit(".", 1)[-1]
         if STARTS_BY.fullmatch(last_part) or d and (re.fullmatch(r"_?(?:os|posix|nt)", last_part) or STARTER_MODULE.fullmatch(last_part) or (
                 re.fullmatch(r"[a-z_]\w*|Popen", last_part) and any(STARTER_MODULE.fullmatch(s) for s in d.split(".")[:-1]))):
@@ -2973,8 +2996,51 @@ def _reaching(script: str, head: str) -> set | None:
                 started.append(up)
             elif not (isinstance(up, ast.Assign) and up.value is x):
                 return None  # a starter, or a module of them, handed on or looked up: where its strings go is not read
+
+    def word(x) -> str:  # a word as a started program gets it: a part the program builds is UNREAD_WORD
+        x = resolved(x)
+        if isinstance(x, ast.Constant) and isinstance(x.value, str):
+            return x.value
+        if isinstance(x, (ast.JoinedStr, ast.BinOp)):
+            return "".join(p.value if isinstance(p, ast.Constant) else UNREAD_WORD for p in x.values) if isinstance(
+                x, ast.JoinedStr) else word(x.left) + word(x.right) if isinstance(x.op, ast.Add) else UNREAD_WORD
+        return "python3" if isinstance(x, ast.Attribute) and dotted(x) == "sys.executable" else UNREAD_WORD
+
+    def line_of(c):  # the shell line a started call runs, as written_contents reads one; None where it cannot be read
+        root, name = (dotted(c.func) or "").split(".")[0].lstrip("_"), getattr(c.func, "attr", getattr(c.func, "id", ""))
+        args = [resolved(a) for a in c.args] or [resolved(k.value) for k in c.keywords if k.arg == "args"]
+        if root not in ("subprocess", "os", "posix", "nt", "asyncio", "pty") or any(isinstance(a, ast.Starred) for a in args) or any(
+                k.arg is None or k.arg in ("input", "executable", "preexec_fn") or k.arg == "stdin" and dotted(k.value) != "subprocess.DEVNULL"
+                and not (isinstance(k.value, ast.Constant) and k.value.value is None) for k in c.keywords):
+            return None  # a module whose starts are not read here, or what it hands the program is not read
+        cwd = next((k.value for k in c.keywords if k.arg == "cwd"), None)
+        into = "" if cwd is None else shlex.join(["cd", word(cwd)]) + " && "
+        listed = lambda items: [UNREAD_WORD if isinstance(e, ast.Starred) else word(e) for e in items]
+        if re.fullmatch(r"system|popen\d?|getoutput|getstatusoutput|create_subprocess_shell", name) or any(
+                k.arg == "shell" and not (isinstance(k.value, ast.Constant) and not k.value.value) for k in c.keywords):
+            return into + word(args[0]) if args else None  # a shell line
+        skip = 1 if name.startswith("spawn") else 0  # os.spawn* takes its mode first
+        if re.fullmatch(r"exec[lv]p?e?|spawn[lv]p?e?|posix_spawnp?", name):  # its file, then its arguments after argv[0]
+            rest, vform = args[skip + 1:], name.startswith("posix") or name[len(name.rstrip("lvpe")):][:1] == "v"
+            argv = (list(rest[0].elts) if rest and isinstance(rest[0], (ast.List, ast.Tuple)) else None) if vform else rest[:-1] if name.endswith("e") else rest
+            words = None if argv is None or len(args) <= skip else [word(args[skip])] + listed(argv[1:])
+        elif name == "create_subprocess_exec":
+            words = [word(a) for a in args]
+        elif args and isinstance(args[0], (ast.List, ast.Tuple)):  # subprocess's run, call, Popen, pty.spawn: its argv
+            words = listed(args[0].elts)
+        else:
+            words = [word(args[0])] if args else None  # a program by its name alone
+        return into + shlex.join(words) if words else None
     if not started:
+        _CALL["read"][("started", head, script)] = []
         return set()
+    fed = [n for n in nodes if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and n.func.attr in ("communicate", "write", "writelines", "send")
+           and (n.args or any(k.arg == "input" for k in n.keywords))  # input handed to it; communicate() alone only waits
+           and (base(n.func.value) in started or isinstance(base(n.func.value), ast.Name) and any(v in started for v in binds.get(base(n.func.value).id, [])))]
+    lines = [line_of(c) for c in started]
+    _CALL["read"][("started", head, script)] = None if fed or None in lines else lines
+    if UNSEEN_FLOW.search(code):
+        return None  # the environment, a pipe or a socket: where a string goes is not read
     handed = [n for n in nodes if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute) and base(n.func.value) in started]  # Popen(...).communicate(s)
     held = [ast.Name(id=k, ctx=ast.Load()) for k, vs in binds.items() if any(v in started for v in vs)]  # p = Popen(...); p.communicate(s)
     reach = set()
@@ -5049,13 +5115,15 @@ def _shipped(path: str) -> bool:
 
 def written_contents(line: str, cwd: str, depth: int = 0) -> dict:
     """What a shell line writes to each file, keyed by the file's real path: the text that a `cat >` or `cat >>`
-    heredoc, `tee`, an `echo` or a `printf` redirected, or `dd of=` puts there; UNKNOWN_CONTENT where a program writes
-    it (any other command whose output lands there or that copies or edits onto it; a Python or node program, given
-    inline or as a script, that names it; curl or wget -o), or where the line writes it twice. Where such a program
-    builds the name of a file it writes, starts a program, runs a string as code or unpacks an archive, ANY_FILE is a
-    key and every script the line's other commands run is UNKNOWN_CONTENT. A shell script the line runs writes what its
-    lines write. A file the line only changes the mode or owner of, makes or removes is not written. Empty where the
-    line cannot be read. One reading for each rule that judges a script or a module the line writes before it runs."""
+    heredoc, `tee`, an `echo` or a `printf` redirected, or `dd of=` puts there, and what a `cp` or `mv` from a file that
+    exists and is readable carries; UNKNOWN_CONTENT where a program writes it (any other command whose output lands
+    there or that edits it in place; a Python or node program, given inline or as a script, that names it; curl or
+    wget -o), or where the line writes it twice. A program on the line writes what the commands it starts write, read
+    the same way; where it may write any file (a command it starts or its own text cannot be read, it builds the name of
+    a file it writes, or it runs a string as code), ANY_FILE is a key and every script run after it on the line is
+    UNKNOWN_CONTENT. A shell script the line runs or sources writes what its lines write. A file the line only changes
+    the mode or owner of, makes or removes is not written. Empty where the line cannot be read. One reading for each
+    rule that judges a script or a module the line writes before it runs."""
     writes, contents, feeds = [], {}, []
     try:
         _commands(line, cwd, writes=writes, bodies=contents)
@@ -5065,7 +5133,8 @@ def written_contents(line: str, cwd: str, depth: int = 0) -> dict:
     events = [_real(os.path.join(w, os.path.expanduser(t))) for t, w in writes] + [
         _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)
         if os.path.basename(words[0]) not in ("chmod", "chown", "chgrp", "touch", "mkdir", "rmdir", "rm", "unlink", "shred")]
-    runs, builders, exempt = [], set(), set()  # each command's script; the commands that may write any file; those judged as they stand
+    runs, builders, named = [], {0} if any(UNREAD_WORD in t for t, _ in writes) else set(), []  # each command's script; those that may write
+    # any file (a started command that writes where its program builds the name); a file written where only its name is known
     for at, ((words, where), fed) in enumerate(zip(found, feeds + [""] * len(found))):
         head, (kind, i, given) = os.path.basename(words[0]), _program(words)
         kind, given = ("file", words[1]) if head in (".", "source") and len(words) > 1 else (kind, given)  # a script read into the shell
@@ -5074,36 +5143,63 @@ def written_contents(line: str, cwd: str, depth: int = 0) -> dict:
         runs.append(script)
         names = [w for n, w in enumerate(words[1:], 1) if head in ("curl", "wget") and words[n - 1] in ("-o", "--output", "-O")]
         source = contents.get(script) or _code_of(script) if script else given if kind == "inline" else fed
-        unread = source == UNKNOWN_CONTENT or not source and (os.path.isfile(script) or kind == "file" and bool(re.fullmatch(r"-\w*m", words[i - 1])))
+        module = kind == "file" and bool(re.fullmatch(r"-\w*m", words[i]))  # python -m: a module it cannot read
+        unread = source == UNKNOWN_CONTENT or module or not source and os.path.isfile(script)
         if (head in SHELLS or head in (".", "source")) and kind == "file":  # a shell script writes what its own lines write
             inner = {ANY_FILE: UNKNOWN_CONTENT} if unread or depth >= 3 else written_contents(source, where, depth + 1) if source else {}
-            events += [path for path in inner if path != ANY_FILE]
-            contents.update({path: text for path, text in inner.items() if path != ANY_FILE and path not in contents})
-            names += [""] if ANY_FILE in inner else []
         elif re.match(r"(?:python[\d.]*|node|nodejs|bun|deno)$", head):
-            try:  # one that starts a program or runs a string as code, or whose text cannot be read, may write any file
-                names += [""] if unread or source and (RUNS_CODE.search(source) or _read_once("reach", source, head) != set()) else []
+            try:  # the shell lines it starts; None where they cannot be read, its text cannot be, or it runs a string as code
+                started = None if unread or source and RUNS_CODE.search(source) else _read_once("started", source, head) if source else []
             except RecursionError:
-                names.append("")
-            if not names and source and head.startswith("python"):  # else the files it names in its writes
-                names += [path for path, _ in _read_once("written", source)]
-            elif not names and source:
+                started = None
+            inner = {ANY_FILE: UNKNOWN_CONTENT} if started is None or started and depth >= 3 else {}
+            for text in started or []:  # what a command it starts writes, read the same way
+                more = written_contents(text, where, depth + 1)
+                inner.update({path: UNKNOWN_CONTENT if path in inner else value for path, value in more.items()})
+            for path, name in _read_once("written", source) if started is not None and source and head.startswith("python") else ():
+                if path or not name:  # a file it names in its writes, or one whose name it builds
+                    names.append(path)
+                else:  # a folder it builds, a name it spells: a later script of that name, or ending, cannot be told
+                    named.append((at, name))
+            if started is not None and source and not head.startswith("python"):
                 for m in JS_WRITES.finditer(source):  # the file it writes, or a copy, rename or link lands on: its first argument, else its second
                     spans, dest = _js_args(source, m.end() - 1), 1 if re.match(r"copy|cp|rename|symlink|link", m[1]) else 0
                     arg = source[spans[dest][0]:spans[dest][1]].strip() if len(spans) > dest else ""
                     names.append(_unquoted(arg) if arg and PROGRAM_STRINGS.fullmatch(arg) and "${" not in arg else "")
                 names += [""] if re.search(r"\bBun\s*\.\s*write\b", source) else []
-        if "" in names:
-            builders.add(at)
-            exempt |= {at} if source and not unread else set()  # its own script, as it stands when it starts
+        else:
+            inner = {}
+        if head in ("cp", "mv"):  # a copy or a move from a file that exists, is readable and nothing before it changed: its text
+            operands, folder = [], None
+            for k, w in enumerate(words[1:], 1):
+                if words[k - 1] in ("-t", "--target-directory") or w.startswith("--target-directory="):
+                    folder = w.split("=", 1)[-1]
+                elif not w.startswith("-"):
+                    operands.append(w)
+            dest = folder or (operands.pop() if len(operands) > 1 else None)
+            for src in operands if dest else []:
+                inside = folder or len(operands) > 1 or dest.endswith("/") or os.path.isdir(os.path.join(where, os.path.expanduser(dest)))
+                origin = _real(os.path.join(where, os.path.expanduser(src)))
+                target = _real(os.path.join(where, os.path.expanduser(dest), os.path.basename(src) if inside else ""))
+                held = origin in contents or origin in events or bool(builders) or not os.path.isfile(origin)
+                text = "" if held else _code_of(origin)
+                contents[target] = text if not held and (text or not os.path.getsize(origin)) else UNKNOWN_CONTENT
+        events += [path for path in inner if path != ANY_FILE]
+        contents.update({path: text for path, text in inner.items() if path != ANY_FILE and path not in contents})
+        if "" in names or ANY_FILE in inner or UNREAD_WORD in words[0] + script or re.search(r"[$`]", words[0]) or any(
+                UNREAD_WORD in t for t in [*_landing(words), *inner]):
+            builders.add(at)  # it may write any file, or runs a program or writes a file whose name a program builds
         events += [_real(os.path.join(where, os.path.expanduser(n))) for n in names if n]
     for path in events:  # a program wrote it, or the line wrote it twice: what it holds cannot be told
         if path not in contents or events.count(path) > 1:
             contents[path] = UNKNOWN_CONTENT
     builders |= {at for at, run in enumerate(runs) if run and contents.get(run) == UNKNOWN_CONTENT}  # a script whose text cannot be told
     if builders:
-        contents.update({ANY_FILE: UNKNOWN_CONTENT, **{run: UNKNOWN_CONTENT for at, run in enumerate(runs) if run and at not in exempt}})
-    return contents
+        contents.update({ANY_FILE: UNKNOWN_CONTENT, **{run: UNKNOWN_CONTENT for at, run in enumerate(runs) if run and at > min(builders)}})
+    for b, name in named:
+        contents.update({run: UNKNOWN_CONTENT for at, run in enumerate(runs) if run and at > b and (
+            os.path.basename(run) == name or name.startswith(".") and run.endswith(name))})
+    return {path: text for path, text in contents.items() if UNREAD_WORD not in path}
 
 
 def _unread(words: list, where: str, written: set, line: str, bodies: dict | None = None) -> tuple:

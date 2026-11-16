@@ -1389,10 +1389,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # reaching one, an f-string by its text, no program for a script's arguments), _self_grant 4, and the constants 21
 # (STARTS_BY 2, STARTER_MODULE 1, UNSEEN_FLOW 3, DOCUMENT 1, RUNS_FILES 2, FILE_MOVES 2, JS_STARTS 2, JS_PRINTS 1 with its
 # 2 blank lines, JS_WRITES 2, RUNS_CODE 1, UNKNOWN_CONTENT 1, ANY_FILE 1), less RUNS_STRINGS 3.
+# 22.22's review round 2, on the coordinator's rulings: core 96 more and plugin 96, measured, all in guards.py. _reaching 60
+# (the shell lines a program starts: in Python each started call's command or argv, with the folder it runs in, a word the
+# program builds read as UNREAD_WORD and sys.executable as python3, none where its module, its input or what it hands the
+# program after cannot be read, though waiting for its output hands it nothing; in node a literal command, or a literal
+# program and list, a template's built part as UNREAD_WORD; platform.system() no start; the environment, a pipe or a socket
+# no bar to reading those lines), written_contents 30 (a program on the line writes what the commands it starts write, read
+# the same way, and may write any file where a word it builds, or one the line leaves unexpanded, names the program, a
+# script it runs or a file it writes; only scripts run after it are held; a built folder with a spelled name holds only
+# later scripts of that name or ending; a cp or mv from a file that exists and is readable carries its text; python -m read
+# as a module it cannot read), _read_once 3 (the lines a program starts, read once a call), UNSEEN_RUN 3 (a run-time lookup
+# or a write by descriptor, split from UNSEEN_FLOW, which is 1 shorter), UNREAD_WORD 1.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17217
-PLUGIN_BUDGET = 43289
+CORE_BUDGET = 17313
+PLUGIN_BUDGET = 43385
 
 
 def _lines(files):

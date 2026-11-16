@@ -26,12 +26,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `execSync('npm test')` is prose; perl and ruby, where a string may be a command (a backtick), keep every string. A
   program that starts `synthesis sends open` is refused as one that opens the window.
 - **A script the same line writes and then runs is judged by what is written, whatever the writer** (22.22, review
-  round 2): a `cat >` or `cat >>` heredoc, `tee`, a redirected `echo` or `printf`, or `dd of=`. Where the guard cannot
-  tell what is written, the run waits: a program writes the file (a Python or node program that names it, another
-  command's output, a copy, curl -o), the line writes it twice, or a program on the line may write any file (one that
-  builds the name it writes, starts a program or runs a string as code). One reading does this,
-  `guards.written_contents(line, cwd)`, the content each file gets or `UNKNOWN_CONTENT`, which 22.21's program reach
-  shares; a shell script the line runs writes what its own lines write.
+  round 2): a `cat >` or `cat >>` heredoc, `tee`, a redirected `echo` or `printf`, `dd of=`, or a `cp` or `mv` from a
+  file that exists and is readable. Where the guard cannot tell what is written, the run waits: an edit in place,
+  another command's output, a Python or node program that names the file, curl -o, the line writing it twice, or a
+  program before it on the line that may write any file (a command it starts or its own text cannot be read, it builds
+  the name of a file it writes, or it runs a string as code). A program writes what the commands it starts write, read
+  the same way, so one that starts `git status` writes nothing and one that starts `cp` writes its target; only scripts
+  run after such a program wait. One reading does this, `guards.written_contents(line, cwd)`, the content each file
+  gets or `UNKNOWN_CONTENT`, with `ANY_FILE` among its keys where a program on the line may write any file, which
+  22.21's program reach shares; a shell script the line runs or sources writes what its own lines write.
 - Replayed over 60 days of this Mac's records, each guard from its installed runtime. Of 253 commands the self-grant
   rule could fire on, main refused 153 for this reason and this head 49: 93 now pass, 11 wait on another rule, and 14
   that passed now wait for a code (9 of them run code that calls the approval or send-window functions). Of the 87 that
