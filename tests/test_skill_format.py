@@ -7,6 +7,21 @@ import pytest
 
 SKILLS = Path(__file__).resolve().parents[1] / "skills"
 
+# Rules 9, 18 and 20 in the parts a test can check with no false alarm on any skill today. Words in quotes or a code
+# span are a user's words or an example of what not to write, not the skill's own voice; a reasoning tag or field is
+# read with its quotes, since a template that asks for one quotes it.
+QUOTED = re.compile(r"""(?<!\w)'.+?'(?!\w)|".+?"|`.+?`|‘.+?’|“.+?”""")
+FIRST_OR_SECOND_PERSON = re.compile(
+    r"^\s*(I|We|My|Our)\b|\b(I can|I will|I'll|I help|we can|we will|we'll|you|your|yours)\b", re.I)
+LIMITS_TOOLS_OR_UPDATES = re.compile(
+    r"minimi[sz]e (the number of )?tool calls|fewest (possible )?tool calls|only use tools when|use tools only when"
+    r"|tools? (only )?when strictly necessary|hold (all |every )?(the )?(findings|results) (for|until)"
+    r"|do(n't| not) narrate|no interim (updates|messages)", re.I)
+REASONING_TAG_OR_FIELD = re.compile(r"""<(thinking|reasoning|scratchpad)>|["'`](reasoning|thinking)["'`]\s*:""", re.I)
+REASONING_REQUEST = re.compile(
+    r"think step[- ]by[- ]step|(show|write out) (your|its) (reasoning|thinking)|log of (your|its) (reasoning|thinking)",
+    re.I)
+
 
 def _frontmatter(text):
     match = re.match(r"---\n(.*?)\n---\n", text, re.S)
@@ -25,6 +40,20 @@ def _check(skill_md: Path) -> list[str]:
     description = re.search(r'^description:\s*"?(.*?)"?\s*$', front, re.M)
     if not description or len(description.group(1)) > 300:
         problems.append("description missing or over 300 characters")
+    voice = description and FIRST_OR_SECOND_PERSON.search(QUOTED.sub(" ", description.group(1)))
+    if voice:
+        problems.append(f"description is in the first or second person ({voice.group(0).strip()!r}): write it about "
+                        "the skill, quoting any words a user would type (docs/skill-format.md, rule 20)")
+    body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.S)
+    limit = LIMITS_TOOLS_OR_UPDATES.search(QUOTED.sub(" ", body))
+    if limit:
+        problems.append(f"SKILL.md limits tools or updates in general ({limit.group(0)!r}): say when to use a tool or "
+                        "send an update instead (docs/skill-format.md, rule 9)")
+    reasoning = REASONING_TAG_OR_FIELD.search(body) or REASONING_REQUEST.search(QUOTED.sub(" ", body))
+    if reasoning:
+        problems.append(f"SKILL.md asks for the model's reasoning in its output ({reasoning.group(0)!r}): ask for a "
+                        "short explanation; current Claude models can refuse the request "
+                        "(docs/skill-format.md, rule 18)")
     for field in ("name", "license"):
         if not re.search(rf"^{field}:", front, re.M):
             problems.append(f"frontmatter lacks {field}")

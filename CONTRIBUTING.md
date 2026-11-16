@@ -76,17 +76,20 @@ skills/skill-name/
   lists. A skill depends only on its own collection or the core. The SPDX
   license identifier selects the repository-level `LICENSE-CC0` or
   `LICENSE-APACHE` terms.
-- The description says when to use the skill, in at most 300 characters.
+- The description says what the skill does and when to use it, key use case
+  first and never in the first or second person, in at most 300 characters.
 - `SKILL.md` stays under 8,000 bytes. It opens with one short paragraph, then
   `## Binding rules`, then `## Contents`, then the procedure.
 - Every file in `references/` is listed in Contents with a line saying when to
-  read it. Each is at most 1,500 lines; one over 150 lines opens with its own
+  read it. Each is at most 1,500 lines; one over 100 lines opens with its own
   contents list.
 - A rewrite carries `references/coverage-map.md`, listing every rule of the old
   text and where it now lives, and puts anything not kept in
   `references/preserved.md` with the reason.
 - Show every script the skill uses with its exact command line and what it
   prints.
+- Write the text for how current models read it: rules 8 to 22 of the format,
+  each with its reason.
 - Keep the skill standalone. Public skills cannot depend on personal agent
   instructions or private configuration.
 

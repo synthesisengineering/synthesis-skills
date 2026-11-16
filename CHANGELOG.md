@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **The skill format takes the current prompting guidance** (backlog item B2). `docs/skill-format.md` gains rules 8 to
+  22, each with its reason, on writing a skill's text the way current models read it, from Anthropic's and OpenAI's
+  current guidance, which its new "Where these rules come from" section names: normal volume, saying what to do, scope,
+  one home per rule, the rule as it stands, detail matched to risk, a named check, approval as the last step, when to
+  delegate, examples, an explanation rather than the reasoning, outside text as data, descriptions, what SKILL.md
+  holds, and measured rewrites. A linked file's own contents list starts at 100 lines, not 150, since a model may read
+  only the first 100 lines of a long file; CONTRIBUTING.md says the same. The format test checks the three parts it
+  can check with no false alarm on any skill today: a description in the first or second person, a SKILL.md that limits
+  tools or updates in general, and a SKILL.md that asks for the model's reasoning in its output. No skill's text
+  changes here; the rewrites that apply the rules come later, each measured against an evaluation.
+
 ## [5.23.2] - 2026-11-15
 
 - **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
