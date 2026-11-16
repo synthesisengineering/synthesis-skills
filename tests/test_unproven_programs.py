@@ -1407,3 +1407,22 @@ def test_a_module_the_line_puts_where_python_looks_first_still_waits(world, name
 @pytest.mark.parametrize("line", ["{py}", "PYTHONPATH=empty {py}", "cd {work} && ls && PYTHONPATH=empty {py}"])
 def test_a_module_path_nothing_on_the_line_can_fill_passes(world, line):
     assert _verdict(world, line.format(py=_reads_state(world), work=world["work"])) is None, line
+
+
+def test_a_module_path_is_judged_against_python_s_own_installation_not_this_process_s_path(world, monkeypatch):
+    """What a module-path folder hides is what the program's own Python would find: built in, in its standard library or
+    in site-packages, not in folders a test runner or a launcher put on this process's path (the suite, run whole, found
+    a checkout's own top-level folders among them). A folder with no `__init__.py` hides no module or package."""
+    runner = world["work"] / "runner-path"
+    for name in ("docs", "hooks", "skills", "tests", "tools"):
+        (runner / name).mkdir(parents=True)
+        (runner / name / "__init__.py").write_text("", encoding="utf-8")
+    monkeypatch.syspath_prepend(str(runner))
+    body = READS_ANOTHER_WAY["a submodule under another name"]
+    for how in ("script file", "line program"):
+        assert _another_way(world, body, how) == "", how
+    (world["work"] / "hides" / "re").mkdir(parents=True)
+    (world["work"] / "hides" / "re" / "__init__.py").write_text("", encoding="utf-8")  # the standard library's re, hidden
+    (world["work"] / "joins" / "re").mkdir(parents=True)  # no __init__.py: it hides nothing
+    assert HELD in _another_way(world, body, "line program", world["work"] / "hides")
+    assert _another_way(world, body, "line program", world["work"] / "joins") == ""
