@@ -152,6 +152,78 @@ def test_an_rsvp_comment_may_show_the_domain_since_it_is_plain_text():
     assert any("must be the link" in p for p in guards.message_problems("mcp__workspace-mcp__manage_event", described, CONFIG))
 
 
+# 2026-11-15: an email the principal had approved was refused before it went. Its recipient's address was at a persona
+# domain, and the signature check read every field of the call as the message's text, so that address counted as the
+# domain shown in words. The check reads the message's own text, never its addressing: not its recipients, its sender,
+# the account it goes from, where replies go, the message it answers, its subject, or an invitation's guests.
+CONNECTOR_SEND = "mcp__workspace_mcp__send_gmail_message"
+LINK_RULE = "persona name itself must be the link"
+LINKED_FOOTER = ("<p>The notes from Tuesday are attached.</p><p>🤖 <em>Sent by the principal's "
+                 '<a href="https://helperbot.example/">Helperbot</a>, under standing direction</em></p>')
+SHOWN_FOOTER = "<p>The notes from Tuesday are attached.</p><p>🤖 <em>Helperbot, for the principal · helperbot.example</em></p>"
+REPORTED = {"user_google_email": "me@personal.example", "from_email": "me@personal.example", "from_name": "Pat Example",
+            "to": "desk@helperbot.example", "subject": "Notes from Tuesday", "body": LINKED_FOOTER, "body_format": "html",
+            "include_signature": False}
+
+
+def _link_rule(tool: str, call: dict) -> list:
+    """The signature check's verdict alone: with the example's other rules, a register rule's refusal comes first."""
+    return [p for p in guards.message_problems(tool, call, {"signature": CONFIG["signature"]}) if LINK_RULE in p]
+
+
+def test_a_recipient_at_a_persona_domain_is_not_a_signature_that_shows_it():
+    assert not _link_rule(CONNECTOR_SEND, REPORTED)
+    assert "approval" in guards.check(CONNECTOR_SEND, REPORTED, CONFIG)
+
+
+@pytest.mark.parametrize("field", ["cc", "bcc", "from_email", "reply_to", "user_google_email"])
+def test_a_persona_domain_in_an_addressing_field_is_not_signature_text(field):
+    call = {**REPORTED, "to": "reader@other.example", field: "desk@helperbot.example"}
+    assert not _link_rule(CONNECTOR_SEND, call)
+    assert "approval" in guards.check(CONNECTOR_SEND, call, CONFIG)
+
+
+@pytest.mark.parametrize("tool,call", [
+    # a list of recipients
+    (DRAFT, {"to": ["reader@other.example"], "cc": ["desk@helperbot.example"], "subject": "Notes", "htmlBody": LINKED_FOOTER}),
+    # the subject, which renders no link
+    (CONNECTOR_SEND, {**REPORTED, "to": "reader@other.example", "subject": "Notes from the helperbot.example launch"}),
+    # the message it answers
+    (CONNECTOR_SEND, {**REPORTED, "to": "reader@other.example", "in_reply_to": "<a1b2@helperbot.example>",
+                      "references": "<a1b2@helperbot.example>"}),
+    # an invitation's guests, as addresses or as entries
+    ("mcp__workspace-mcp__manage_event", {"action": "create", "user_google_email": "me@personal.example", "summary": "Planning",
+                                          "attendees": ["reader@other.example", {"email": "desk@helperbot.example"}],
+                                          "description": LINKED_FOOTER}),
+    ("mcp__gcal__update_event", {"eventId": "e1", "description": LINKED_FOOTER,
+                                 "addedAttendees": [{"email": "desk@helperbot.example", "displayName": "The desk"}]}),
+    # the calendar it writes to
+    ("mcp__gcal__update_event", {"eventId": "e1", "calendarId": "desk@helperbot.example", "description": LINKED_FOOTER}),
+])
+def test_a_persona_domain_anywhere_else_in_the_addressing_is_not_signature_text(tool, call):
+    assert not _link_rule(tool, call)
+
+
+@pytest.mark.parametrize("body", ["<p>The notes from Tuesday are attached.</p>",
+                                  "<p>The notes are on the team page, helperbot.example/notes.</p>"])
+def test_a_marker_only_in_the_sender_name_does_not_start_the_signature_check(body):
+    call = {**REPORTED, "from_name": "🤖 Helperbot", "from_email": "helperbot@helperbot.example", "body": body}
+    assert not _link_rule(CONNECTOR_SEND, call)
+
+
+@pytest.mark.parametrize("tool,call", [
+    (CONNECTOR_SEND, {**REPORTED, "body": SHOWN_FOOTER}),
+    (CONNECTOR_SEND, {**REPORTED, "body_format": "plain",
+                      "body": "The notes from Tuesday are attached.\n\n🤖 Helperbot, for the principal · helperbot.example"}),
+    (DRAFT, {"to": ["desk@helperbot.example"], "subject": "Notes", "htmlBody": SHOWN_FOOTER}),
+    (SLACK, {"channel_id": "C0EXAMPLE", "message": "The notes are up.\n\n🤖 Helperbot, for the principal · helperbot.example"}),
+    (SLACK, {"channel_id": "C0EXAMPLE", "text": "The notes are up.\n\n🤖 Helperbot, for the principal · helperbot.example"}),
+])
+def test_a_footer_that_shows_a_persona_domain_as_text_is_still_refused(tool, call):
+    reason = guards.check(tool, call, CONFIG)
+    assert LINK_RULE in reason and "approve" not in reason, reason
+
+
 def test_session_to_session_messages_are_not_correspondence():
     assert guards.check("mcp__ccd_session_mgmt__send_message", {"session_id": "local_1", "message": "Line one\nline two"}, CONFIG) is None
 
