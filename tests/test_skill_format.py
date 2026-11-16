@@ -63,3 +63,33 @@ def test_checker_catches_each_rule(tmp_path):
     found = " | ".join(_check(skill / "SKILL.md"))
     for expected in ("over 300", "lacks license", "Binding rules then Contents", "orphan.md is not listed"):
         assert expected in found
+
+
+def _demo_skill(root: Path, description: str, procedure: str) -> Path:
+    skill = root / "demo"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text(
+        f"---\nname: demo\ndescription: {description}\nlicense: CC0-1.0\nmetadata:\n  format: v5\n---\n\n"
+        "What the demo is for.\n\n## Binding rules\n\n1. **One rule,** with its reason.\n\n"
+        f"## Contents\n\n- Procedure: the steps.\n\n## Procedure\n\n{procedure}\n", encoding="utf-8")
+    return skill / "SKILL.md"
+
+
+def test_checker_catches_the_wording_rules(tmp_path):
+    """The parts of rules 9, 18 and 20 a test can check without a false alarm on any skill today."""
+    found = " | ".join(_check(_demo_skill(
+        tmp_path, "You can use this to sync files.",
+        "Minimize tool calls, and hold all findings for the final report.\n"
+        'Write your reasoning in <thinking> tags, then return {"reasoning": "..."}.')))
+    for expected in ("first or second person", "limits tools or updates in general", "asks for the model's reasoning"):
+        assert expected in found
+
+
+def test_quoted_phrases_and_explanations_pass(tmp_path):
+    """Words quoted as a user would type them, or as text not to write, are not the skill's own voice."""
+    skill_md = _demo_skill(
+        tmp_path,
+        "Arm a watcher before a turn ends. Use when a reply would say 'I'll pick it up once' or \"you can stop\".",
+        'Use a search when a fact may have changed since training, not "minimize tool calls".\n'
+        "Ask for a short explanation of the result and the evidence behind it.")
+    assert _check(skill_md) == []
