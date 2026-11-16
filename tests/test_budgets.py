@@ -1367,10 +1367,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# Then each 5 more, all in guards.py, so the signature check reads the message and never its addressing (plan item
+# 22.31: an email the principal had approved was refused because its recipient's address was at a persona domain):
+# UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
+# sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
+# `_strings` taking the fields to leave out, and the check reading through it, change in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16881
-PLUGIN_BUDGET = 42953
+CORE_BUDGET = 16886
+PLUGIN_BUDGET = 42958
 
 
 def _lines(files):
