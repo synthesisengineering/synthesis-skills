@@ -1158,6 +1158,80 @@ def test_an_ordinary_shell_script_passes_however_it_is_run(world, name, how):
     assert _verdict(world, "bash -n run.sh") is None  # read for its syntax, it runs nothing
 
 
+# Homebrew's own `brew` is a bash script, read since 22.21 when a command runs it by its full path. 22.15's HOME rule read
+# it as giving HOME a value: a comment names HOME, and an array lists HOME among the variables brew keeps from the
+# environment; neither writes HOME (the coordinator, 2026-11-16: `/opt/homebrew/bin/brew ...` and `eval "$(... shellenv)"`
+# are ordinary). This script has the same lines.
+BREW_SHAPED = """#!/bin/bash
+# Fail fast with concise message when HOME is unset
+if [[ -z "${HOME:-}" ]]
+then
+  echo "Error: \\$HOME must be set to run brew." >&2
+  exit 1
+fi
+HOMEBREW_PREFIX="${0%/bin/brew}"
+FILTERED_ENV=()
+ENV_VAR_NAMES=(
+  BAT_CONFIG_PATH BAT_THEME
+  HOME SHELL PATH TERM TERMINFO TERMINFO_DIRS COLUMNS DISPLAY LOGNAME USER CI SSH_AUTH_SOCK SUDO_ASKPASS
+)
+for VAR in "${ENV_VAR_NAMES[@]}" "${!HOMEBREW_@}"
+do
+  [[ -z "${!VAR:-}" ]] && continue
+  FILTERED_ENV+=("${VAR}=${!VAR}")
+done
+if [[ "${1:-}" == "shellenv" ]]
+then
+  echo "export HOMEBREW_PREFIX=\\"${HOMEBREW_PREFIX}\\";"
+  exit 0
+fi
+echo "Homebrew 4.6.0"
+"""
+BREW_RUNS = {
+    "by its path": "{brew} --version",
+    "its shellenv evaluated": 'eval "$({brew} shellenv)"',
+    "from a program's list": "python3 - <<'EOF'\nimport subprocess\nsubprocess.run(['{brew}', '--version'], check=True)\nEOF",
+    "its shellenv from a program's list": ("python3 - <<'EOF'\nimport subprocess\n"
+                                           "subprocess.run(['bash', '-c', 'eval \"$({brew} shellenv)\"'], check=True)\nEOF"),
+}
+
+
+def _brew(world, body: str = BREW_SHAPED) -> Path:
+    brew = _script(world["work"] / "opt" / "homebrew" / "bin", "brew", body)
+    brew.chmod(0o755)
+    return brew
+
+
+@pytest.mark.parametrize("how", sorted(BREW_RUNS))
+def test_homebrew_run_by_its_full_path_passes(world, how):
+    assert _verdict(world, BREW_RUNS[how].format(brew=_brew(world))) is None, how
+
+
+@pytest.mark.skipif(not os.path.isfile("/opt/homebrew/bin/brew"), reason="no Homebrew at /opt/homebrew on this machine")
+@pytest.mark.parametrize("how", sorted(BREW_RUNS))
+def test_this_macs_own_homebrew_run_by_its_full_path_passes(world, how):
+    assert _verdict(world, BREW_RUNS[how].format(brew="/opt/homebrew/bin/brew")) is None, how
+
+
+BREW_WRITES = {  # the positive controls: the same script, with a line that really gives HOME a value or writes
+    "HOME read": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nread HOME <<< /tmp/brew-home\nls ~/.ssh\n"),
+    "HOME as the loop's variable": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nfor HOME in /tmp/brew-home; do ls ~; done\n"),
+    "HOME by printf -v": BREW_SHAPED.replace("FILTERED_ENV=()\n", "FILTERED_ENV=()\nprintf -v HOME %s /tmp/brew-home\nls ~\n"),
+}
+
+
+@pytest.mark.parametrize("name", sorted(BREW_WRITES))
+@pytest.mark.parametrize("how", ["by its path", "from a program's list"])
+def test_a_script_that_really_gives_home_a_value_still_waits(world, name, how):
+    assert HELD in (_verdict(world, BREW_RUNS[how].format(brew=_brew(world, BREW_WRITES[name]))) or ""), (name, how)
+
+
+def test_a_script_that_really_writes_into_the_protected_folders_is_still_not_let_through(world):
+    brew = _brew(world, BREW_SHAPED.replace("FILTERED_ENV=()\n", f"FILTERED_ENV=()\necho granted > '{paths.state()}/approvals/x.json'\n"))
+    for how in ("by its path", "from a program's list"):
+        assert _verdict(world, BREW_RUNS[how].format(brew=brew)), how
+
+
 # --- runners whose program the guard did not read (review round 1 of 22.19, finding 1, folded into 22.21): pytest on a
 # test file, `ipython -c`, and `uv run`, `poetry run`, `pipx run` and their like. A test pytest runs is read as a script
 # file, unless every test runs under a conftest whose code puts the synthesis home at a temporary path for every test --
