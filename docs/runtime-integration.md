@@ -568,6 +568,12 @@ stay open, and no hook running as that same user can close them:
   itself reads at a file it wrote, and so grant itself what such a check releases: a send a
   script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
   approval fix; crafted, the same before that release).
+- A persona footer written as an object nested under a key the signature check skips as
+  addressing (a `reply_to` given as an object with a note in it, a calendar guest's
+  `comment`) is skipped with that key, so its domain shown in words is not seen. No
+  connector puts a message's text there; the strict expected failure
+  `test_a_footer_nested_under_an_addressing_key_is_refused` names it (review round 1 of
+  22.31; crafted).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

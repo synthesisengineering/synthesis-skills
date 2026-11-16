@@ -1486,10 +1486,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # no host 1; the modules a program imports, whose own open() opens a file 1, and that rule's line 1; the blank lines
 # between them 3); _js_start 16 and _js_targets 8 (the same for a node address, with the blank lines before each);
 # curl's address rule 1 (an address spelled for another host, its path filled in, is that host's).
+# Then each 5 more, all in guards.py, so the signature check reads the message and never its addressing (plan item
+# 22.31: an email the principal had approved was refused because its recipient's address was at a persona domain):
+# UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
+# sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
+# `_strings` taking the fields to leave out, and the check reading through it, change in place.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18260
-PLUGIN_BUDGET = 44332
+CORE_BUDGET = 18265
+PLUGIN_BUDGET = 44337
 
 
 def _lines(files):
