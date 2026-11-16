@@ -79,9 +79,11 @@ def test_c2_a_program_named_as_a_shell_is_not_the_launchers_line(world, form):
     assert said is not None and not _grants(world), said
 
 
-def test_c2_a_bare_shell_with_a_folder_a_user_writes_searched_before_it_is_not_the_launchers_line(world, monkeypatch):
-    tools = world["tmp"] / "tools"  # this user's own, first on the harness's PATH: a `bash` put there would run first
+def test_c2_a_bare_shell_found_first_in_a_folder_a_user_writes_is_not_the_launchers_line(world, monkeypatch):
+    tools = world["tmp"] / "tools"  # this user's own, first on the harness's PATH, with a `bash` of the agent's in it
     tools.mkdir()
+    (tools / "bash").write_text("#!/bin/sh\nexit 0\n")
+    (tools / "bash").chmod(0o755)
     monkeypatch.setenv("PATH", f"{tools}:/usr/bin:/bin:/usr/sbin:/sbin")
     said, = world["judge"](f"bash -lc '{_line(world)}'")
     assert said is not None and not _grants(world), said
@@ -90,6 +92,40 @@ def test_c2_a_bare_shell_with_a_folder_a_user_writes_searched_before_it_is_not_t
 def test_c2_control_the_systems_shell_carrying_the_launchers_line_passes_and_mints(world):
     assert world["judge"](f"/bin/bash -c '{_line(world)}'", f"bash -lc '{_line(world)}'") == [None, None]
     assert len(_grants(world)) == 1
+
+
+def test_c2_control_folders_a_user_writes_first_on_path_leave_the_line_to_the_systems_shell(world, monkeypatch):
+    """As on the principal's Mac and CI's runners: folders this user writes come first on the harness's PATH, and the
+    first `bash` on it is the system's. Codex's shell tool hands the launcher's line to that `bash` (A7)."""
+    mine = world["tmp"] / "mine"
+    mine.mkdir()
+    monkeypatch.setenv("PATH", f"{mine}:/usr/bin:/bin:/usr/sbin:/sbin")
+    assert world["judge"](f"bash -lc '{_line(world)}'") == [None] and len(_grants(world)) == 1
+
+
+@pytest.mark.xfail(strict=True, reason="open, crafted (C2's remainder): a shell put in a folder a user writes, ahead of "
+                   "the system's on PATH, after the line passed and before the harness looks the shell up, runs instead")
+def test_c2_open_no_shell_of_the_agents_can_be_put_ahead_of_the_systems_once_the_line_has_passed(world, monkeypatch):
+    mine = world["tmp"] / "mine"
+    mine.mkdir()
+    monkeypatch.setenv("PATH", f"{mine}:/usr/bin:/bin:/usr/sbin:/sbin")
+    said, put = world["judge"](f"bash -lc '{_line(world)}'", f"cp /bin/sh {mine}/bash")  # the race's two steps
+    assert said is not None or put is not None, "the line passed, and a bash of the agent's may then be put ahead"
+
+
+def test_c2_a_link_this_user_can_repoint_is_not_the_systems_shell(world, monkeypatch):
+    """A link of this user's that leads to the system's shell, or to the folder it is in, passes the test of the file it
+    leads to; but this user can point it at a program of the agent's once the line has passed, before the shell runs."""
+    links = world["tmp"] / "links"
+    links.mkdir()
+    (links / "bash").symlink_to("/bin/bash")
+    said, = world["judge"](f"{links}/bash -c '{_line(world)}'")
+    assert said is not None and not _grants(world), said
+    system = world["tmp"] / "system"
+    system.symlink_to("/bin")
+    monkeypatch.setenv("PATH", f"{system}:/usr/bin:/bin")
+    said, = world["judge"](f"bash -lc '{_line(world)}'")
+    assert said is not None and not _grants(world), said
 
 
 # --- C10: every runtime module loads on the oldest Python the runtime pins ---------------------------------------------
