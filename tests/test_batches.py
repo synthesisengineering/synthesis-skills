@@ -1940,6 +1940,18 @@ def test_a_script_that_can_navigate_is_a_move_on_any_page(mover, page):
     assert reason and "may have moved" in reason and not held(reason), (mover, reason)
 
 
+@pytest.mark.parametrize("mover", ["location.href &&= 'https://m.me/patexample'", "location.pathname &&= '/messages/t/1000000001/'",
+                                   "const l = location; l.href &&= 'https://m.me/patexample'", "const l = location; l.search ||= '?ref=1'"],
+                         ids=["the-address", "a-part", "an-alias", "an-alias-part"])
+def test_a_script_that_navigates_by_any_assignment_operator_is_a_move(mover):
+    # Review round 7 of the page rule (Y3's class): every assignment operator sets the address, not `=` alone.
+    listed(SHOP, tab=9)
+    control = sent(_then_send(("javascript_tool", {"action": "javascript_exec", "text": mover.replace("&&=", "=").replace("||=", "=")})))
+    assert control and "may have moved" in control, ("control: the = form", control)
+    reason = sent(_then_send(("javascript_tool", {"action": "javascript_exec", "text": mover})))
+    assert reason and "may have moved" in reason and not held(reason), (mover, reason)
+
+
 def test_a_form_value_still_moves_the_tab_since_a_select_can_navigate():
     listed("https://admin.example.com/settings", tab=9)
     reason = sent(_batch_on(9, ("form_input", {"ref": "ref_4", "value": "Weekly"}), ("javascript_tool", {"action": "javascript_exec", "text": SAVE})))
