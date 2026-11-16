@@ -1140,8 +1140,8 @@ ORDINARY_SCRIPTS = {  # build, test and setup scripts that never name synthesis'
 
 # Read as the command lines they hold, these wait as the same lines typed on the command do: the rule for a change of
 # folder the guard cannot follow (22.8, round 4 of 5.23.1, Q1) holds the sourced build and release scripts, which change
-# folder, setup's lines and an environment's ~/.secrets, which this home lacks.
-HELD_AS_ON_THE_LINE = {("build", "source"), ("release", "source"), ("setup", "bash"), ("setup", "its path"), ("setup", "source"),
+# folder, and an environment's ~/.secrets, which this home lacks.
+HELD_AS_ON_THE_LINE = {("build", "source"), ("release", "source"),
                        ("an environment", "bash"), ("an environment", "its path"), ("an environment", "source")}
 
 
@@ -1247,6 +1247,65 @@ BREW_WRITES = {  # the positive controls: the same script, with a line that real
 @pytest.mark.parametrize("how", ["by its path", "from a program's list"])
 def test_a_script_that_really_changes_home_or_its_folder_still_waits(world, name, how):
     assert HELD in (_verdict(world, BREW_RUNS[how].format(brew=_brew(world, BREW_WRITES[name]))) or ""), (name, how)
+
+
+# A virtual environment made and activated in one line, as an honest agent types it (the coordinator, 2026-11-16): the
+# activate script is not there yet when the guard reads the line, and 22.8's rule held any sourced file it could not read.
+# The venv tool writes its own activate script, which changes no folder. And a line that sources a venv and also sets a
+# variable and runs Python waited from a reading the guard makes of the line from no folder, for the programs it hands on.
+SETUP_LINES = "python3 -m venv .venv\n. .venv/bin/activate\npip install -r requirements.txt\nexport PATH=\"$HOME/.local/bin:$PATH\"\n"
+VENV_LINES = {
+    "made and activated": "python3 -m venv .venv && source .venv/bin/activate",
+    "made, activated and installed into": "python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt",
+    "made and dotted, then tested": "python3 -m venv .venv && . .venv/bin/activate && python -m pytest -q",
+    "in a repository, made and activated": "cd repo && python3 -m venv .venv && source .venv/bin/activate",
+    "made by uv": "uv venv && source .venv/bin/activate",
+    "made by virtualenv": "virtualenv venv && source venv/bin/activate",
+    "the setup lines": SETUP_LINES,
+    "the setup lines with semicolons": SETUP_LINES.strip().replace("\n", "; "),
+    "the setup script": "bash setup.sh",
+}
+VENV_THERE = {
+    "activated in a repository": "cd repo && source .venv/bin/activate",
+    "activated, a variable set and Python run": "source .venv/bin/activate && export PATH=\"$HOME/.local/bin:$PATH\" && python -m pytest -q",
+    "the setup lines": SETUP_LINES,
+    "the setup script": "bash setup.sh",
+}
+ACTIVATE = "export VIRTUAL_ENV=\"$PWD/.venv\"\nexport PATH=\"$VIRTUAL_ENV/bin:$PATH\"\n"
+
+
+def _venv_world(world, there: bool):
+    (world["work"] / "repo").mkdir(exist_ok=True)
+    _script(world["work"], "setup.sh", "#!/bin/bash\n" + SETUP_LINES)
+    for base in ((world["work"], world["work"] / "repo") if there else ()):
+        _script(base / ".venv" / "bin", "activate", ACTIVATE)
+
+
+@pytest.mark.parametrize("name", sorted(VENV_LINES))
+def test_a_virtual_environment_made_and_activated_in_one_line_passes(world, name):
+    _venv_world(world, there=False)
+    assert _verdict(world, VENV_LINES[name]) is None, name
+
+
+@pytest.mark.parametrize("name", sorted(VENV_THERE))
+def test_a_virtual_environment_activated_where_it_is_passes(world, name):
+    _venv_world(world, there=True)
+    assert _verdict(world, VENV_THERE[name]) is None, name
+
+
+def test_a_sourced_file_that_changes_folder_or_cannot_be_read_still_waits(world):
+    """22.8's rule stands wherever no venv tool on the line makes the venv it activates."""
+    _venv_world(world, there=False)
+    state = paths.state()
+    held = [f"printf 'cd %s\\n' '{state}' > env.sh && source env.sh && touch made.txt",  # a sourced file the line writes
+            "source ./missing.sh && touch made.txt",  # one that is not there and nothing on the line makes
+            "python3 -m venv other && source .venv/bin/activate && touch made.txt"]  # a venv the line does not make
+    for line in held:
+        assert _verdict(world, line), line
+    _script(world["work"] / "moving" / "bin", "activate", f"cd '{state}'\n")
+    assert _verdict(world, "source moving/bin/activate && touch made.txt")  # an activate script there that changes folder
+    _script(world["work"], "venv.py", "print('a venv module of the folder its line runs in')\n")
+    assert _verdict(world, "python3 -m venv .venv && source .venv/bin/activate && touch made.txt")  # venv's stand-in
 
 
 def test_a_script_that_really_writes_into_the_protected_folders_is_still_not_let_through(world):
