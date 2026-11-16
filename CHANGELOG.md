@@ -113,14 +113,23 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   through its names and through the connection the write is made on) or from an argument the shell fills in is judged by
   the bodies it hands that write: a send waits, a body the guard cannot read waits, and readable bodies that are no send
   pass. A GET or a liveness check hands over none, and an address the line itself gives is read as it is, so one for
-  another host passes. A line a program hands a shell is judged as on the line, what it cannot read standing as a word
-  the shell fills in. curl's rule reads only the address: a body, a header or an HTTPie field the shell fills in, sent
-  to an address spelled for another host, is that host's post, judged by the web rule. Tests first (8 failed). Replayed
-  against round 3's head: the first run stalled on a recorded line that took over a minute, now 0.6 s. At its end 55
-  more recorded commands wait, on 13 days, each running a program that posts a body the guard cannot read to an address
-  from a variable an earlier command exported or an argument the shell fills in (20 distinct programs run in them:
-  Claude Code's and Codex's Python, and two Codex node scripts run 15 times on one day), and the two curl posts above
-  pass.
+  another host passes. An address goes where its host is: one that spells its scheme and a host other than this machine,
+  on a port that is no local MCP server's, before what the environment or the shell fills in (a path, a query) is that
+  host's, and a connection made to a host is that host's whatever path a request names. A module's own `open()`
+  (`os.open`) opens a file and is no request. A line a program hands a shell, or a client it starts from a list of
+  words, is judged as on the line, what it cannot read standing as a word the shell fills in. curl's rule reads only the
+  address: a body, a header or an HTTPie field the shell fills in, sent to an address spelled for another host, is that
+  host's post, judged by the web rule. Tests first (8 failed), and twice more for what the suite on a fresh clone found
+  (21 failed, then 1): five of the plugin's own scripts waited when run for their help or a dry run, through `os.open`
+  and the Drive publisher's query from the environment; a program that started curl from a list for such an address,
+  with a body from the environment or its input, passed; and a host spelled with the server's port, joined from parts,
+  read as another host's. Replayed against round 3's head: the first run stalled on a recorded line that took over a
+  minute, now 0.6 s. At its end 20 more recorded commands wait, on 5 days, 6 distinct programs, each posting a body the
+  guard cannot read to an address from a variable an earlier command exported or an argument the shell fills in: two
+  Codex node scripts run 15 times on one day, a Claude Code Python program run twice and a Codex one run once, and two
+  Claude Code Python programs that start curl, one with a config file the guard cannot read. The suite's corrections let
+  36 commands the ruling's first code held pass (26 read a file a module opens as a request, 10 post to a host the
+  program spells), and the two curl posts above pass.
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by

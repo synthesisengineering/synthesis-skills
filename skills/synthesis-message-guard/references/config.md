@@ -662,8 +662,10 @@ not send), with the server named `workspace-mcp`:
   set, outside single quotes) waits when the address is a local MCP server's endpoint (port 8765 or the one
   `WORKSPACE_MCP_PORT` names, or a path ending `/mcp`, `/sse` or `/messages`) or an address the shell fills in from a
   variable the line does not set, which may be one; a body, a header or an HTTPie field the shell fills in is no
-  address, so a post to an address spelled for another host is that host's, judged by the web rule. A liveness read,
-  `initialize`, `tools/list` and any other local app's API pass.
+  address, and neither is an address that spells its scheme and a host other than this machine, on a port that is no
+  local MCP server's, before what the shell fills in (`https://api.example.com/v1/$ID`), so a post to an address spelled
+  for another host is that host's, judged by the web rule. A liveness read, `initialize`, `tools/list` and any other
+  local app's API pass.
 - **A program that posts the JSON-RPC or calls a client's `call_tool`**, given inline, on its input, in a file or as a
   module (in Python with the modules of its own it imports, which count only their literal names): its tool name read as
   a literal, an item of a literal list, tuple or dict a loop walks (a part it unpacks or a key it takes included), a
@@ -684,21 +686,27 @@ not send), with the server named `workspace-mcp`:
   a socket by hand), a call handed a write method, and a `.data` (or `.body`, `.json`) it sets; in node, a `body`,
   `data` or `json` property, what `.write()`, `.end()` or `.send()` hands anything but `process.stdout`,
   `process.stderr` or a file stream, the body of a `.post()`, `.put()` or `.patch()`, and what it pipes into a request.
-  A client it starts (a list such as `['curl', …]`, a line handed to a shell, node's `exec` and `spawn`) is judged as on
-  the line. The body is read through what the program spells (strings joined from literals and names that hold them), a
-  JSON-RPC request it builds (its method read through the names and the parameters that give it, its `tools/call` read
-  as above), a file it reads (`open`, `Path`, `json.load`, `readFileSync`, `createReadStream`) by a name it spells or
-  takes from its arguments (argparse's included), its input, and its own arguments; in Python through what its own
-  functions return, and in node through each call of the helper that builds it. A body it cannot read waits: a value
-  from the environment, the network or a call the guard does not know, a name the program changes in place (an item or
-  attribute it sets, an `append` or `update`), a method or tool name it builds, a file it lacks or the line writes, a
-  write method handed to a call the guard does not know as a request or set where no write takes it, and, in another
-  language or in a program that does not parse, a write method or a body word in its text. A program that only reads (a
-  GET, a liveness check) hands over no body and passes. A program whose text and line name no endpoint is judged the
-  same way by the bodies of each write whose address comes from a variable an earlier command exported (`os.environ`,
-  `getenv`, `process.env`, read through its names and through the connection the write is made on) or from an argument
-  the shell fills in, as curl to an address the shell fills in is (round 3's ruling): a send waits, a body it cannot
-  read waits, and readable bodies that are no send pass; an address the line itself gives is read as it is.
+  A module's own `open()`, as `os.open`, opens a file and is no write. A client it starts (a list such as `['curl', …]`,
+  a line handed to a shell, node's `exec` and `spawn`) is judged as on the line, what it cannot read standing as a word
+  the shell fills in. The body is read through what the program spells (strings joined from literals and names that hold
+  them), a JSON-RPC request it builds (its method read through the names and the parameters that give it, its
+  `tools/call` read as above), a file it reads (`open`, `Path`, `json.load`, `readFileSync`, `createReadStream`) by a
+  name it spells or takes from its arguments (argparse's included), its input, and its own arguments; in Python through
+  what its own functions return, and in node through each call of the helper that builds it. A body it cannot read
+  waits: a value from the environment, the network or a call the guard does not know, a name the program changes in
+  place (an item or attribute it sets, an `append` or `update`), a method or tool name it builds, a file it lacks or the
+  line writes, a write method handed to a call the guard does not know as a request or set where no write takes it, and,
+  in another language or in a program that does not parse, a write method or a body word in its text. A program that
+  only reads (a GET, a liveness check) hands over no body and passes. A program whose text and line name no endpoint is
+  judged the same way by the bodies of each write whose address comes from a variable an earlier command exported
+  (`os.environ`, `getenv`, `process.env`, read through its names and through the connection the write is made on) or
+  from an argument the shell fills in, as curl to an address the shell fills in is (round 3's ruling): a send waits, a
+  body it cannot read waits, and readable bodies that are no send pass; an address the line itself gives is read as it
+  is. An address goes where its host is: one whose spelled start names a scheme and a host other than this machine, on a
+  port that is no local MCP server's, closed by `/`, `?` or `#` before anything filled in (a constant, an f-string, a
+  `+` join, `.format()`, `%`, a template), is that host's whatever the environment fills in after it, while a local host
+  with its port or path filled in, or a host left open to what follows, is not; a connection made to a host
+  (`http.client`, urllib3's pools) is that host's whatever path a request names.
 - **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
   the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
   program runs, and a call whose tool name the guard cannot read (one the shell fills in, one built or read while it
