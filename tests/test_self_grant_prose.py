@@ -282,3 +282,24 @@ def test_a_copied_script_and_one_after_a_program_that_starts_git_are_judged_as_w
     assert "this same line writes with a program" not in _said(after, tmp_path)
     two = "cat > a2.py <<'EOF'\nimport subprocess\nsubprocess.run(['ls'])\nEOF\ncat > b3.py <<'EOF'\nprint(1)\nEOF\npython3 a2.py && python3 b3.py"
     assert "this same line writes with a program" not in _said(two, tmp_path)
+
+
+@pytest.mark.parametrize("program, held", [  # a word the program builds is read where it lands: in a message it changes nothing
+    ("import subprocess, sys; subprocess.run([sys.executable, '-c', 'print(1)'])", False),
+    ("import subprocess, sys; m = sys.argv[1]; subprocess.run(['git', 'commit', '-m', m])", False),
+    ("import subprocess, sys; repo = sys.argv[1]; subprocess.run(f'git -C {repo} status', shell=True)", False),
+    ("import subprocess, sys; subprocess.run(['git', 'status'], cwd=sys.argv[1])", False),
+    ("import subprocess, sys; dst = sys.argv[1]; subprocess.run(['cp', 'a.py', dst])", True),           # where it writes is built
+    ("import subprocess, sys; subprocess.run([sys.argv[1], 'x'])", True),                              # the program it runs is built
+    ("import subprocess, sys; subprocess.run([sys.executable, sys.argv[1]])", True),                   # the script it runs is built
+    ("import os, sys; open(os.path.join(sys.argv[1], 'report.md'), 'w').write('x')", False),         # a built folder, a spelled name
+    ("import os, sys; open(os.path.join(sys.argv[1], f'{sys.argv[2]}.py'), 'w').write('x')", True),  # a name ending as the script's
+])
+def test_a_built_word_is_read_where_it_lands(tmp_path, program, held):
+    line = "python3 -c " + shlex.quote(program) + " x y && python3 s.py"
+    assert (guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) == guards.UNKNOWN_CONTENT) is held, program
+
+
+def test_a_node_template_s_built_part_is_read_where_it_lands(tmp_path):
+    line = "node -e " + shlex.quote("const r = process.argv[1]; require('child_process').execSync(`git -C ${r} status`)") + " x && python3 s.py"
+    assert guards.written_contents(line, str(tmp_path)).get(_at(tmp_path, "s.py")) is None
