@@ -280,6 +280,7 @@ def test_a_release_builds_pushes_and_installs_from_a_fresh_clone_never_the_check
     repo = checkout(tmp_path / "work" / "synthesis-skills", "5.23.1", True)
     bare = _github(tmp_path, repo)
     monkeypatch.setattr(release, "CANONICAL_URL", str(bare))
+    monkeypatch.setattr(install, "RELEASE_URL", str(bare))  # the install asks it which commit the tag names (C8)
     monkeypatch.setattr(release, "ci_state", green)
     monkeypatch.setattr(release, "floor_problems", no_floor)
     _forge(repo, git(repo, "rev-parse", "HEAD:skills/demo/SKILL.md"), b"What no CI saw.\n")  # the checkout's own store
