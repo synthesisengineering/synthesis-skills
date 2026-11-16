@@ -166,3 +166,57 @@ def test_a_note_handed_to_a_program_that_does_not_run_it_is_prose(tmp_path, line
     """A plain document the program writes is prose unless a started program can run it: an interpreter or a shell, or
     the document named as the program itself."""
     assert APPROVAL_CODE not in _said(line, tmp_path), line
+
+
+# The reading the rule and 22.21's program reach share: what a line writes to each file, by its real path (review round 2).
+def _at(where, name: str) -> str:
+    return guards._real(str(where / name))
+
+
+@pytest.mark.parametrize("line, text", [
+    ("cat > s.py <<'EOF'\nprint(1)\nEOF", "print(1)"),
+    ("cat >> s.py <<'EOF'\nprint(1)\nEOF", "print(1)"),
+    ("tee s.py > /dev/null <<'EOF'\nprint(1)\nEOF", "print(1)"),
+    ("echo 'print(1)' > s.py", "print(1)"),
+    ("printf '%s\\n' 'print(1)' > s.py", "print(1)"),
+    ("dd of=s.py status=none <<'EOF'\nprint(1)\nEOF", "print(1)"),
+])
+def test_written_contents_reads_what_a_shell_writer_puts_in_a_file(tmp_path, line, text):
+    assert text in guards.written_contents(line, str(tmp_path))[_at(tmp_path, "s.py")]
+
+
+@pytest.mark.parametrize("line", [
+    "python3 -c \"open('s.py', 'w').write('print(1)')\"",            # a program names it
+    "python3 make.py > s.py",                                        # another program's output lands there
+    "cp a.py s.py",                                                  # a copy lands there
+    "curl -so s.py https://example.invalid/s.py".replace("-so", "-s -o"),
+    "node -e \"require('fs').writeFileSync('s.py', 'print(1)')\"",
+    "echo 'print(1)' > s.py; echo 'print(2)' > s.py",                # written twice
+])
+def test_written_contents_cannot_tell_what_a_program_writes(tmp_path, line):
+    assert guards.written_contents(line, str(tmp_path))[_at(tmp_path, "s.py")] == guards.UNKNOWN_CONTENT
+
+
+@pytest.mark.parametrize("line", [
+    "python3 -c \"import os; open(os.environ['P'], 'w').write('x')\" && python3 s.py",          # a name it builds
+    "python3 -c \"import subprocess; subprocess.run(['cp', 't.txt', 's.py'])\" && python3 s.py",  # a program it starts
+    "node -e \"require('fs').writeFileSync(process.argv[1], 'x')\" s.py && python3 s.py",
+])
+def test_written_contents_holds_every_other_script_where_a_program_may_write_any_file(tmp_path, line):
+    written = guards.written_contents(line, str(tmp_path))
+    assert written[guards.ANY_FILE] == guards.UNKNOWN_CONTENT and written[_at(tmp_path, "s.py")] == guards.UNKNOWN_CONTENT
+
+
+def test_written_contents_reads_a_shell_script_the_line_runs_and_leaves_what_is_not_written(tmp_path):
+    (tmp_path / "w.sh").write_text("echo 'print(5)' > s5.py\n")
+    assert guards.written_contents("bash w.sh && python3 s5.py", str(tmp_path))[_at(tmp_path, "s5.py")] == "print(5)"
+    assert guards.written_contents("chmod +x s.py && touch t.py && rm -f u.py && mkdir d", str(tmp_path)) == {}
+
+
+def test_a_script_another_program_may_have_written_waits_and_a_shell_script_s_writes_are_read(tmp_path):
+    (tmp_path / "s.py").write_text("print(1)\n")
+    started = "python3 -c \"import subprocess; subprocess.run(['cp', 't.txt', 's.py'])\" && python3 s.py"
+    assert "approve followed by the code" in _said(started, tmp_path)
+    (tmp_path / "w.sh").write_text("echo " + shlex.quote(CALL) + " > s5.py\n")
+    said = _said("bash w.sh && python3 s5.py", tmp_path)
+    assert said.startswith("Refused") or "approve followed by the code" in said, said
