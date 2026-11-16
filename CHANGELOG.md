@@ -22,11 +22,37 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   program of the agent's writes (root's own, as macOS's `/usr/bin/cd`, `shasum` and `irb` and Linux's `which`, `egrep`
   and `zcat`; the runtime's launcher in its protected `bin/`), and in a folder the user writes only under a name that
   installer provides there (an npm package's bin such as `npx`, an interpreter's version manager shim, a Homebrew
-  formula's script in Homebrew's Cellar), the list in the guardrails' config reference, "Commands judged by name". Measured first, read only, on 60 days of records (2026-09-16 to 2026-11-15: 265,897 shell runs, 252,649
-  distinct commands): no such word led to any other script; 6,211 led to the synthesis launcher, 2,050 to npm's `npx`
-  and 535 to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled
-  look-alike (a program built, copied or linked under such a name) is judged by its name, on the open list as crafted
+  formula's script in Homebrew's Cellar), the list in the guardrails' config reference, "Commands judged by name".
+  Measured first, read only, on 60 days of records (2026-09-16 to 2026-11-15: 265,897 shell runs, 252,649 distinct
+  commands): no such word led to any other script; 6,211 led to the synthesis launcher, 2,050 to npm's `npx` and 535
+  to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled look-alike (a
+  program built, copied or linked under such a name) is judged by its name, on the open list as crafted
   (`docs/runtime-integration.md`).
+
+## [5.23.2] - 2026-11-15
+
+- **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
+  was refused before it went: the check that a persona signature makes the persona's name the link read every field of
+  the call as the message's text, and the recipient's address was at a persona domain, so the address counted as the
+  domain shown in words. The check now leaves out, at any depth, what addresses a message rather than says it: the
+  recipients and the account the call acts as (`to`, `cc`, `bcc`, `recipient`, `recipients`, `space_id`, `space_name`,
+  `user_google_email`, `from_account`, `from_email`, `account`, `user_email`, `sender`, `calendar`), the sender and reply
+  address (`from`, `from_name`, `fromName`, `fromEmail`, `reply_to`, `replyTo`), the message it answers (`in_reply_to`,
+  `references`, `inReplyTo`, `in_reply_to_id`), the `subject`, and an invitation's guests and calendar (`attendees`,
+  `attendeeEmails`, `addedAttendees`, `addedAttendeeEmails`, `removedAttendeeEmails`, `calendar_id`, `calendarId`),
+  beside the RSVP comment fields it already left out. The marker that starts the check and the domain it looks for are
+  both read only in what remains: a marker found only in a sender field or the subject starts no check, and a domain
+  there is not the signature showing it. Every other field is
+  read as before, so a footer that shows a persona domain as text, in an HTML or plain body, a calendar description, a
+  comment or a chat message, is still refused on a channel that renders links. The message guard's config reference
+  names the fields under `signature.domains`. The second walk of the call costs nothing measurable: an invented 60 KB
+  email takes 12 ms through the whole message check before and after. Replayed, read only, over 60 days of this Mac's
+  records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, and the connector calls
+  a Codex session writes in a code cell, read from their literal arguments; each call counted once): of 1,306 connector
+  sends, the check refused 13 before and 12 after. The one it no longer refuses is a send whose only persona domain was
+  in `to`; the 12 refused for a domain shown as text in the message's own text are all still refused, and none it passed
+  before is refused now. 16 sends written in code cells with arguments that are not literals could not be read, and were
+  not judged.
 
 ## [5.23.1] - 2026-11-15
 

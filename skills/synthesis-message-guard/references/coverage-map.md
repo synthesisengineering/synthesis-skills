@@ -94,6 +94,7 @@ Section 3 of the guards evaluation, scenarios 21 to 30:
 | 28 session-to-session `send_message` is not email | `test_session_to_session_messages_are_not_correspondence` |
 | 30 CI without `~/.synthesis` uses the example config | `tests/test_send_guard.py` loads `config.example.json` and says so |
 | Persona signature must be a link (2026-08-30) | `test_a_persona_signature_is_a_link_on_channels_that_render_links` |
+| The signature check reads the message, never its addressing (2026-11-15) | `test_a_recipient_at_a_persona_domain_is_not_a_signature_that_shows_it`, `test_a_persona_domain_in_an_addressing_field_is_not_signature_text`, `test_a_persona_domain_anywhere_else_in_the_addressing_is_not_signature_text`, `test_a_marker_only_in_the_sender_name_does_not_start_the_signature_check`, `test_a_footer_that_shows_a_persona_domain_as_text_is_still_refused` |
 | Unreadable config blocks sends | `tests/test_guards.py::test_unreadable_config_blocks_sends_and_bash_but_not_other_tools` |
 
 ## Frontmatter before v5 (verbatim)

@@ -1367,6 +1367,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# Then each 5 more, all in guards.py, so the signature check reads the message and never its addressing (plan item
+# 22.31: an email the principal had approved was refused because its recipient's address was at a persona domain):
+# UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
+# sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
+# `_strings` taking the fields to leave out, and the check reading through it, change in place.
 # Then each 214 more, all in guards.py, for 22.32 (a review's C9: a script of the agent's named like a command the guard
 # judges by name, run by its path or found first on PATH, was judged by that name and never read, and replaced the
 # runtime's guard in nine forms of nine): _look_alike 35 (a command word found as the shell finds it: by its path, on
@@ -1384,8 +1389,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # it takes off, kept), _self_grant 2 more (the hold's words for a look-alike).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17095
-PLUGIN_BUDGET = 43167
+CORE_BUDGET = 17100
+PLUGIN_BUDGET = 43172
 
 
 def _lines(files):

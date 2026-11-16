@@ -89,16 +89,16 @@ def is_send_tool(tool: str, config: dict) -> bool:
     return any(fnmatch.fnmatchcase(tool, p) for p in patterns)
 
 
-def _strings(value, key: str = ""):
-    """(field, text) for every populated string in a call, nested parts included. Attachment
-    payloads are bound by the approval digest but are not prose to scan."""
+def _strings(value, key: str = "", leave: frozenset = frozenset()):
+    """(field, text) for every populated string in a call, nested parts included, and none under a field in `leave`.
+    Attachment payloads are bound by the approval digest but are not prose to scan."""
     if isinstance(value, dict):
         for k, v in value.items():
-            if k not in ("attachments", "attachment"):
-                yield from _strings(v, k)
+            if k not in ("attachments", "attachment") and k not in leave:
+                yield from _strings(v, k, leave)
     elif isinstance(value, list):
         for v in value:
-            yield from _strings(v, key)
+            yield from _strings(v, key, leave)
     elif isinstance(value, str) and value.strip():
         yield key, value
 
@@ -322,7 +322,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
                      "paragraphs with a blank line" for k, t in strings if k in BODY_FIELDS and k not in html_keys
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
-    rendered = "\n".join(t for k, t in strings if k not in PLAIN_FIELDS)
+    rendered = "\n".join(t for _, t in _strings(tool_input, leave=UNSIGNED))
     if any(m and m in rendered for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
             fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send", "desktop_type"]
             + signature.get("plain_url_tools", [])):
@@ -1059,6 +1059,11 @@ ADDRESSED = ("to", "cc", "bcc", "recipient", "recipients", "space_id", "space_na
 # account by calendar name, so `calendar` counts; a Google calendar id does not (the connector's
 # own account is still the organizer).
 ACCOUNT_KEYS = ("user_google_email", "from_account", "from_email", "account", "user_email", "sender", "calendar")
+# What the signature check never reads, at any depth: fields that never render a link, and those that address a message
+# rather than say it (its recipients and account, above; its sender, reply address, the message it answers and subject; an
+# invitation's guests and calendar). 2026-11-15: an approved email was refused for its recipient's address, at a persona domain.
+UNSIGNED = PLAIN_FIELDS | frozenset(ADDRESSED + ACCOUNT_KEYS + THREAD_HEADERS + ("from", "from_name", "fromName", "fromEmail", "reply_to",
+    "replyTo", "subject", "attendees", "attendeeEmails", "addedAttendees", "addedAttendeeEmails", "removedAttendeeEmails", "calendar_id", "calendarId"))
 
 
 def routed(tool: str, tool_input: dict) -> bool:
