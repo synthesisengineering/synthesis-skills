@@ -2035,9 +2035,10 @@ def test_an_entry_spent_by_a_call_that_is_then_held_is_given_back(monkeypatch):
     _failing_log_once(monkeypatch)
     with pytest.raises(OSError):
         guards.check(SLACK, SAID, CONFIG, session=me)  # held after its entry was spent: the day's ledger failed
-    assert (data["digest"], 0) not in sends._spends() and "0" not in next(b for b in sends.batches() if b["digest"] == data["digest"])["spent"]
+    assert (data["digest"], 0) not in sends._spends(net=True) and "0" not in next(b for b in sends.batches() if b["digest"] == data["digest"])["spent"]
+    assert (data["digest"], 0) in sends._spends()  # the ledger keeps the spend's own line, beside the line that gives it back
     assert guards.check(SLACK, SAID, CONFIG, session=me) is None  # the identical retry spends it
-    assert (data["digest"], 0) in sends._spends() and [r["how"] for r in today()] == [f"batch:{data['digest'][:12]}:0"]
+    assert (data["digest"], 0) in sends._spends(net=True) and [r["how"] for r in today()] == [f"batch:{data['digest'][:12]}:0"]
 
 
 @pytest.mark.parametrize("answer", ["held", "none"])
@@ -2053,4 +2054,4 @@ def test_under_the_hook_a_held_answer_gives_the_entry_back_and_no_answer_keeps_i
             guards.hook_answers()  # the next call: the earlier one, never answered, may have run
     finally:
         guards.answered(True)
-    assert ((data["digest"], 0) in sends._spends()) is (answer == "none"), answer
+    assert ((data["digest"], 0) in sends._spends(net=True)) is (answer == "none"), answer

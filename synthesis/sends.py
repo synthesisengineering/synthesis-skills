@@ -664,7 +664,7 @@ def close_batches() -> int:
 
 
 def describe_batch(data: dict) -> str:
-    done = {int(i) for i in data["spent"]} | {i for d, i in _spends() if d == data["digest"]}  # the ledger's spends count too
+    done = {int(i) for i in data["spent"]} | {i for d, i in _spends(net=True) if d == data["digest"]}  # the ledger's spends count too
     return (f"Batch {data['digest'][:12]} ({_shown(data['batch'])}, project {_shown(data['project'])}) open until "
             f"{time.strftime('%H:%M', time.localtime(data['until']))}: {len(data['entries']) - len(done)} of "
             f"{len(data['entries'])} entries left, each sent once as written; `synthesis sends close` ends it sooner.")
@@ -682,7 +682,7 @@ def batch_spend(match, session: dict | None = None, spend: bool = True, after=No
         for i, entry in enumerate(data["entries"] if data["session"] == me else []):
             if str(i) in data["spent"] or not match(entry):
                 continue
-            ledger = _spends() if ledger is None else ledger
+            ledger = _spends(net=True) if ledger is None else ledger
             if (data["digest"], i) in ledger or not _backed(data, session):
                 continue
             if spend:
@@ -712,9 +712,9 @@ def _spends_file():
     return paths.state() / "sends" / "batch-spends.jsonl"
 
 
-def _spends() -> set:
-    """(digest, entry) of every batch send there has been: the append-only ledger each state's spent marks yield to, less
-    a spend an "undone" line gives back."""
+def _spends(net: bool = False) -> set:
+    """(digest, entry) of every spend the append-only ledger holds, each state's spent marks yielding to it; with `net`, less
+    a spend an "undone" line gave back (its call held), as a spend is decided."""
     rows = []
     for line in _spends_file().read_text(encoding="utf-8").splitlines() if _spends_file().is_file() else []:
         try:
@@ -725,7 +725,7 @@ def _spends() -> set:
     found = set()
     for row in rows:
         try:
-            if not row.get("undone") and not (row.get("mark") and row["mark"] in undone):
+            if not row.get("undone") and not (net and row.get("mark") and row["mark"] in undone):
                 found.add((str(row["digest"]), int(row["entry"])))
         except (AttributeError, KeyError, TypeError, ValueError):
             continue
