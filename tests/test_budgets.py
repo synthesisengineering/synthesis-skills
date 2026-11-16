@@ -1646,10 +1646,69 @@ ROOT = Path(__file__).resolve().parents[1]
 # plugin 79 and 4), less 2 each: 22.8's install.py 7 counts `from __future__ import annotations` and its blank line
 # (C10), the same two lines the Python 3.9 paragraph above counts, and the merge holds them once. Measured: core 18748
 # and plugin 45365.
+# 5.24.0, round 4 of the batch approval's review, findings 1 (its plain form) and 3, both on 5.23.0 (2026-11-15: the
+# navigate tool alone was never judged and a `javascript:` address was read as written; on a messaging site's page a
+# script clicked Send by a name built as it ran): core 101 more and plugin 101, all in guards.py: _refused_scripts 20 (on a
+# messaging site's page, or a page a driven browser's record does not show, only the shipped readers' scripts run; a
+# javascript: address is such a script), _tabs 20 (each browser's own newest list: the pane's `tab-N` ids, its own
+# tabs_context and its navigate's result), _read_only_scripts 17 (the extractors as their commands print them, read from
+# the release), _script_address 6 and _url_read 5 (an address as a URL parser reads it, and the code a javascript: one
+# runs), _browser_item 4 (a javascript: navigate is a script step), check_desktop 3, _steps 2 (a navigate read as a
+# parser reads it; a javascript: one runs on the page it is on), _driven_steps 2 (a driven browser's javascript:
+# navigate), _puts 1, BROWSER_STEPS 1 (the navigate tool), desktop_tool 1, PAGE_READERS 1, the comments 8 (the rule and
+# the 60 days it was decided by; the pane's ids) and 10 blank lines.
+# The coordinator's ruling on round 4's measurement (2026-11-15): on a messaging site's page a script the guard cannot
+# read is refused, one that acts waits, a read passes, in place of refusing every script but the plugin's own: core 30
+# more and plugin 30, all in guards.py. _unread_script 7 (a call by a name built as it runs, code in a string the page
+# runs, text never closed), _script_acts 5 (the acts rule over the code too, and its new spellings), _refused_scripts 2
+# (a javascript: address refused there whatever it runs), UNREAD_SCRIPT 2, SCRIPT_ACTS_MORE 2, PAGE_CODE 1, the comment
+# 5 and 6 blank lines.
+# Review round 1 of that rule (2026-11-15): core 60 more and plugin 60, all in guards.py. _writes_by_fetch 15 (a fetch,
+# Request or XHR writes unless its method is a literal GET or HEAD, in any spelling), _unread_script 8 (the form named in
+# fixed words; code only where it reaches a sink), _script_code 7 (an optional call read as a call, X.call( as a call of
+# a dotted X), _record 6 (a sub-agent's own record), UNREAD_FORMS 4, _script_acts 4 (PAGE_ACTS for a page's script; a
+# GET by XHR reads), CODE_SINKS 3, SCRIPT_ACTS_MORE 3 (optional, bare and destructured calls; other parts of the
+# address), _steps 3 (a page no list shows is unknown; the pane's first page), PAGE_ACTS 2, _driver_events 2 (a call a
+# hook refused left out), _refused_scripts 1, HANDLERS 1, SERVER_CODE 1, _osa_code 1 (`/` after `++` or `--` divides),
+# _driver_page 1 (a javascript: navigate is no page), _driven_steps 1 and 6 blank lines; less PAGE_CODE 1,
+# UNREAD_SCRIPT 2 and 6 lines of comment.
+# Review round 2 of that rule (2026-11-15): core 69 more and plugin 69, all in guards.py. _writes_by_fetch 37 (method
+# and body read in the init of fetch or Request alone, or in the object a variable given there holds and what is set
+# on it; an init the reader cannot follow is a write), _tabs 9 (preview_start's answer places the pane; one that names
+# no address changes no page), check_desktop 9 (a call that sends only if a page no result shows is a messaging site's
+# is told to read the page first, with no code asked, in a browser whose reads show its page), _defined_names 8 (a name
+# the script defines is no page's send), SHOWS_PAGE 1, BARE_SENDS 1, _script_code 1 (`[].x.call(` is a call of x),
+# _script_acts 1 and 2 blank lines.
+# Review round 3 of that rule (2026-11-15): core 83 more and plugin 83, all in guards.py. _shared_tabs 26 (Claude in
+# Chrome's tab at the newest list that names it across the session's record and its sub-agents'), _writes_by_fetch 14
+# (an init the reader cannot follow is read by a method or a body anywhere in the script, so a read through a fetch
+# wrapper passes; keyed by a name built as it runs, it waits), _listed 12 (each record's newest list, read once per
+# version of the file), _when 6 (a list's line's time), _script_acts 6 (a call by a method the script defines, on `this`
+# or an object it defines, is no page's send), _defined_names 4 (an object's or a class's method, a property or a field
+# given a function), MEMBER_SENDS 2, _tab_list 8 less _tabs 6 (the list's time, split as on the batch), _LISTS 1 and 10
+# blank lines.
+# Review round 4 of that rule (2026-11-15): core 22 more and plugin 22, all in guards.py. _bracketed 8 (a balanced group,
+# for the init reader and the IIFE rule), _writes_by_fetch 5 (U1: an init not followed is read by a method or a body in
+# what the script passes to a call, not in what a callback returns or names), _shared_tabs 4 (a sub-agent record whose
+# last 8 MB name no tab list is not parsed: a busy session's 70 records), _script_acts 3 (U4: the object an IIFE of the
+# script's own returns) and 2 blank lines.
+# Merged with main's 5.23.1 (2026-11-15): main's ceilings above, plus this branch's notes since: core 101, 30, 60,
+# 69, 83 and 22 more, plugin the same (the path note's 10 was main's already).
+# Review round 5 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (W4: an init
+# the reader cannot follow is read by a method named anywhere in the script again, as before round 4).
+# Review round 6 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (a method
+# read only as an object key, a shorthand by its const's one literal, or a member assignment: a parameter or a property
+# read named method held a read through a wrapper).
+# Review round 7 of the page rule (2026-11-15): core and plugin 1 more, in guards.py: ASSIGN 1 (every assignment
+# operator, for each assignment the rule reads: Y3's `o.method ??= 'POST'` passed as a read).
+# 5.24.0, 22.12 (fd332225: the messaging-site page rule, from main at b8efb5ee) merged into release/next at 56302819:
+# release/next's ceilings (core 18748, plugin 45365) and 22.12's raises itemized just above (101, 30, 60, 69, 83, 22, 5,
+# 5 and 1, core and plugin alike: 376 each), measured: core 19124 and plugin 45741. 22.12 named its release 5.23.2; its
+# first paragraph's label is 5.24.0, the release that carries it.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18748
-PLUGIN_BUDGET = 45365
+CORE_BUDGET = 19124
+PLUGIN_BUDGET = 45741
 
 
 def _lines(files):

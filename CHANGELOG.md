@@ -214,6 +214,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   bill), a command line missing or too old, print mode not using the sign-in (as when `-p` runs bare), a model the plan
   does not offer, no verdict, or a time that would pass the judge's deadline is a warn with its fix, so the fall back to
   the word list is never silent.
+- **On a messaging site's page a script the guard cannot read is refused** (core; `synthesis-message-guard` 2.12.1,
+  references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
+  as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
+  code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
+  waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
+  not define, a move by the address or another part of it, set by any assignment, and a fetch or Request whose init
+  has a method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by such a
+  method set anywhere in the script, as an object key or by a member assignment, or a body in an object it passes to a
+  call or one a variable it passes holds; an XHR's method too; every assignment operator counts, `??=` and `||=`
+  included); a read passes,
+  `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
+  or a method of an object or class the script defines, included. Its
+  first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused
+  navigate taken as a driven browser's page; its second, the pane's page after `preview_start` read as unknown, so a
+  local app's click waited for a code; its third, a sub-agent judged by its own list after its session moved the tab
+  they share. Each is read rightly now: Claude in Chrome's tab is read at the newest list across the session's record
+  and its sub-agents', and a call that sends only if a page no result shows is a messaging site's is told to read the
+  page first, with no code asked, in a browser whose reads show its page. Over 60 days of records it refuses none of the
+  seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before, and passes 176, and
+  neither later round changes the guard's verdict on any of Claude Code's 3,708 browser calls there. Spellings made to
+  beat the reader are on the runtime doc's open list.
+- **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
+  navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
+  characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from
+  Claude in Chrome, the built-in pane or a driven browser, alone or in a batch, is now read that way, and one to a
+  `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
+  the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
+  each browser's tab ids are its own.
 
 ## [5.23.1] - 2026-11-15
 

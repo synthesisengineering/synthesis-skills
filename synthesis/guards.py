@@ -1368,7 +1368,8 @@ def _puts(step: str, given: dict) -> bool:
     kind = step.rpartition("__")[2]
     chords = [[MODIFIERS.get(part, part) for part in chord.split("+")] for chord in str(given.get("text") or "").lower().split()]
     quiet = bool(chords) and all(chord[-1].replace("_", "") in QUIET_KEYS or "+".join(chord) in QUIET_CHORDS for chord in chords)
-    return kind in PUTS or kind == "computer" and (given.get("action") == "type" or given.get("action") == "key" and not quiet)
+    return kind in PUTS or kind == "computer" and (given.get("action") == "type" or given.get("action") == "key" and not quiet) or (
+        kind == "navigate" and _script_address(str(given.get("url") or "")) is not None)  # a javascript: address is a script
 
 
 def _account_hold(name: str, tool_input: dict, named: list, config: dict, device: str, label: str, session: dict | None) -> str | None:
@@ -1379,7 +1380,7 @@ def _account_hold(name: str, tool_input: dict, named: list, config: dict, device
     steps = tool_input.get("actions") if name == "browser_batch" else [{"name": name, "input": tool_input}]
     if not any(_puts(str(s.get("name", "")), s["input"]) for s in steps or [] if isinstance(s, dict) and isinstance(s.get("input"), dict)):
         return None  # a call that puts nothing reads no record
-    for step, given, address in _steps(name, tool_input, session):
+    for step, given, address in _steps(name, tool_input, session, tool=BROWSER + name):
         if not _puts(step, given):
             continue
         if not address:  # a tab no list of tabs in the record names, or one a step sent where no host is named
@@ -5858,7 +5859,8 @@ APP_NAMES = {"whatsapp": "net.whatsapp.WhatsApp", "messages": "com.apple.MobileS
 CLICKS = {"click", "left_click", "double_click", "triple_click", "right_click", "middle_click", "left_mouse_down", "left_mouse_up"}
 DESKTOP_TOOLS = CLICKS | {"batch", "teach_step", "teach_batch", "app_batch", "app_click", "app_key", "app_type", "app_menu",
                           "key", "hold_key", "type", "request_access", "request_teach_access"}
-BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_input": "browser_form", "javascript_tool": "browser_script"}
+BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_input": "browser_form", "javascript_tool": "browser_script",
+                 "navigate": "browser_navigate"}  # a javascript: address runs a page script (round 4 of 5.24.0's review, #1)
 RETURNS = {"return", "enter", "kp_enter", "kp_return", "numpadenter"}  # the last as Playwright names it
 MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl", "controlormeta": "cmd"}
 SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
@@ -5885,12 +5887,13 @@ NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|
 # site's page one that clicks, submits, sends a key or an event, writes by fetch, sets a value or moves the tab (a chat's
 # address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
 # fetch or clicks a control that publishes, unless it searches or signs in.
+ASSIGN = r"(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])"  # every assignment operator (review round 7 of 5.23.1, Y3)
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*=(?!=)|\bwindow\s*\.\s*open\s*\("
+MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*" + ASSIGN + r"|\bwindow\s*\.\s*open\s*\("
 # A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
 DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
 PRESSES_ENTER = r"\.press\s*\(\s*['\"`](?:[^'\"`]*\+)?(?:Enter|Return|NumpadEnter)['\"`]"
-SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
+SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
                          + WRITES + "|" + MOVES + "|" + DRIVES, re.I)
 SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
@@ -5921,7 +5924,8 @@ def _submits(actions: list) -> bool:
 def desktop_tool(tool: str) -> str:
     """The computer-use action a tool performs ("batch", "app_click"...), or "" for any other tool: the desktop
     app's computer-use server by any id, a linked device's computer_* tools, or a browser's computer, browser_batch,
-    form_input and javascript_tool tools ("browser", "browser_batch", "browser_form", "browser_script")."""
+    form_input, javascript_tool and navigate tools ("browser", "browser_batch", "browser_form", "browser_script",
+    "browser_navigate")."""
     server, _, name = tool.rpartition("__")
     if tool.startswith("mcp__") and name in BROWSER_STEPS and re.search(r"browser|chrome", server, re.I):
         return BROWSER_STEPS[name]
@@ -5959,10 +5963,259 @@ def _desktop_actions(name: str, tool_input: dict) -> list:
 
 def _browser_item(step: str, given: dict) -> dict:
     """A browser step as a computer-use action: a form's value is text typed into the page, and a page script is a
-    script, which reached no send rule until the second review."""
+    script, which reached no send rule until the second review; so is a navigate to a javascript: address, as the
+    code it runs (round 4 of 5.24.0's review, #1). Any other navigate does nothing to anyone."""
+    if step.endswith("navigate"):
+        code = _script_address(str(given.get("url") or ""))
+        return {**given, "action": "script", "text": code} if code is not None else {}
     return ({**given, "action": "type", "text": str(given.get("value", ""))} if step.endswith(("form_input", "browser_form"))
             else {**given, "action": "script", "text": str(given.get("text") or "")} if step.endswith(("javascript_tool", "browser_script"))
             else given)
+
+
+def _url_read(url: str) -> str:
+    """An address as a URL parser reads it (WHATWG, as a browser does): C0 controls and spaces stripped from both ends,
+    every tab and line break removed (round 4 of 5.24.0's review, #1: `java\\tscript:` and `\\x01javascript:` ran as
+    scripts while the guard read them as written)."""
+    return re.sub(r"[\t\n\r]", "", str(url).strip("".join(map(chr, range(0x21)))))
+
+
+def _script_address(url: str):
+    """The code a javascript: address runs, percent-decoded as the browser decodes it before running it; None for any
+    other address."""
+    import urllib.parse
+    read = _url_read(url)
+    return urllib.parse.unquote(read[len("javascript:"):]) if read[:len("javascript:")].lower() == "javascript:" else None
+
+
+# The page scripts the plugin ships to read a page (5.23.0's extractors) pass on a messaging site's page as they are.
+PAGE_READERS = (("synthesis-daily-rituals", "messenger_messages.py"), ("synthesis-message-exports", "chat_page.py"))
+
+
+def _read_only_scripts() -> set:
+    """The page scripts the plugin ships that only read a page, as their own commands print them: 5.23.0's extractors
+    (messenger_messages.py prints one for each inbox it names), read from the release beside this guard."""
+    import ast
+    found = set()
+    for skill, name in PAGE_READERS:
+        try:
+            tree = ast.parse(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", skill,
+                                               "scripts", name), encoding="utf-8").read())
+            kept = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                    and [getattr(t, "id", "") for t in n.targets] in (["EXTRACTOR"], ["GRIDS"])}
+        except (OSError, SyntaxError, ValueError):
+            continue
+        grids = kept.get("GRIDS") if isinstance(kept.get("GRIDS"), dict) else {}
+        if isinstance(kept.get("EXTRACTOR"), str):
+            found |= {kept["EXTRACTOR"].replace("__GRID__", json.dumps(g)) for g in grids.values()} if grids else {kept["EXTRACTOR"]}
+    return {script.strip() for script in found}
+
+
+def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | None) -> str | None:
+    """Why a page script this browser call runs is refused: on a messaging site's page (by this call's own navigates or
+    its browser's newest list of tabs) and on a page no record shows, a navigate to a javascript: address as a URL parser
+    reads it, or a script the guard cannot read (_unread_script); the plugin's own readers pass, and any other script is
+    judged by what it does (_script_acts)."""
+    readers = None
+    for kind, given, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool):
+        text = (str(given.get("text") or "") if kind.endswith(("javascript_tool", "browser_script")) else
+                _script_address(str(given.get("url") or "")) if kind.endswith("navigate") else None)
+        if text is None or not _web_app(address):
+            continue
+        where = ("a page the browser's record does not show, which may be a messaging site's (take a snapshot so its page "
+                 "shows)" if address == UNKNOWN_PAGE else f"a messaging site's page ({address})")
+        if kind.endswith("navigate"):  # no ordinary work used one in 60 days
+            return (f"This navigate to a javascript: address runs a page script on {where}, where none runs that way: run "
+                    "the script with the javascript tool, which the guard reads, or read the page with get_page_text, read_page or find.")
+        readers = _read_only_scripts() if readers is None else readers
+        unread = "" if text.strip() in readers else _unread_script(text)
+        if unread:
+            return (f"This page script runs on {where} and {unread}, so the guard cannot read what it does there, where a "
+                    "click or a key sends in the principal's name. Write each call out by its own name, or read the page with "
+                    "get_page_text, read_page or find.")
+    return None
+
+
+# On a messaging site's page a page script is read as code, its strings, comments and patterns out (_osa_code), an
+# optional call read as a call and `X.call(` as a call of X where X is a dotted name: one that calls what it names only
+# as it runs (UNREAD_FORMS) or puts code where the page runs it (CODE_SINKS) is refused; one that acts waits for the code
+# (PAGE_ACTS, SCRIPT_ACTS_MORE, a write by fetch, Request or XHR); a read passes (the coordinator's ruling on round 4's
+# measurement, 2026-11-15, and review round 1 of 5.23.1: a release refuses no ordinary read, and leaves no ordinary way).
+UNREAD_FORMS = (("a member named as it runs", r"\]\s*\)?\s*(?:\(|\0)"), ("Reflect", r"\bReflect\s*\."),
+                ("call, apply or bind", r"\.\s*(?:call|apply|bind)\s*\("), ("eval", r"\beval\s*\("), ("Function", r"\bFunction\s*\("),
+                ("with", r"\bwith\s*\("), ("import()", r"\bimport\s*\("), ("a timer given a string", r"\b(?:setTimeout|setInterval)\s*\(\s*\0"),
+                ("a name written in escapes", r"\\u[0-9a-fA-F{]"))
+CODE_SINKS = re.compile(r"\bcreateElement\s*\(\s*\0(\d+)\0|(?:\bsetAttribute|\bsetAttributeNS)\s*\(\s*\0(\d+)\0|(?:innerHTML|outerHTML"
+                        r"|srcdoc)\s*" + ASSIGN + r"\s*\0(\d+)\0|(?:insertAdjacentHTML|\bwrite(?:ln)?|\bBlob)\s*\(([^()]*)"
+                        r"|(?:\blocation(?:\s*\.\s*href)?|\.\s*(?:href|src))\s*" + ASSIGN + r"\s*\0(\d+)\0|\blocation\s*\.\s*(?:assign|replace)\s*\(\s*\0(\d+)\0")
+HANDLERS = r"on(?:click|dblclick|submit|keydown|keyup|keypress|input|change|mousedown|mouseup|pointerdown|pointerup|touchstart|touchend)"
+PAGE_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
+                       + WRITES + "|" + MOVES, re.I)  # SCRIPT_ACTS but a browser server's own calls, which no page script makes (#8)
+SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
+                              r"|\.\s*on[a-z]+\s*\(|\.\s*" + HANDLERS + r"\b(?!\s*=[^=])|(?<![\w$.])" + HANDLERS + r"\b"
+                              r"|\.\s*postMessage\s*\("
+                              r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*navigate\s*\("
+                              r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
+SHOWS_PAGE = re.compile(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
+BARE_SENDS = re.compile(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
+MEMBER_SENDS = re.compile(r"(?:\bnew\s+([A-Za-z_$][\w$]*)\s*\([^()]*\)|(?<![\w$.])([A-Za-z_$][\w$]*))?\s*\.\s*((?:send|post|submit|publish|reply"
+                          r"|share|tweet)\w*)\s*\(", re.I)  # (a class the receiver is made by, the receiver, the method)
+SERVER_CODE = "/* the browser server's own code */ "
+
+
+def _script_code(text: str) -> tuple:
+    """(code, literals, whole) of a page script as the rules read it: _osa_code's, with `x?.(` and `x?.[` read as `x(`
+    and `x[` (#2), and `X.call(`, `.apply(` or `.bind(` read as `X(` where X is a dotted name (#5) or an empty array's
+    method (review round 2, #4: `[].slice.call(`)."""
+    code, literals, whole = _osa_code(text, True)
+    code = re.sub(r"\?\.\s*(?=[(\[\0])", "", code).replace("?.", ".")
+    code = re.sub(r"((?:\[\s*\]|[A-Za-z_$][\w$]*)(?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*\.\s*(?:call|apply|bind)\s*\(", r"\1(", code)
+    return code, literals, whole
+
+
+def _unread_script(text: str) -> str:
+    """What makes a page script one the guard cannot read, named in fixed words; "" for none."""
+    code, literals, whole = _script_code(text)
+    if not whole:
+        return "holds a string, a comment or a pattern it never closes"
+    form = next((name for name, pattern in UNREAD_FORMS if re.search(pattern, code)), "")
+    if form:
+        return f"calls what it names only as it runs ({form})"
+    for found in CODE_SINKS.finditer(code):
+        n = next(i for i, g in enumerate(found.groups()) if g is not None)
+        values = [literals[int(i)] for i in re.findall(r"\0(\d+)\0", found[n + 1])] if n == 3 else [literals[int(found.groups()[n])]]
+        if any(n == 0 and v.strip().lower() == "script" or n == 1 and v.strip().lower().startswith("on")
+               or n in (2, 3) and re.search(r"(?i)<\s*script\b|\bon[a-z]+\s*=", v) or n >= 4 and _script_address(v) is not None for v in values):
+            return "puts code where the page runs it (a script element, an inline handler, a javascript: address)"
+    return ""
+
+
+def _bracketed(code: str, at: int) -> str:
+    """The bracketed text that opens at `at`, to its closing bracket (the rest of the code when it never closes)."""
+    depth = 0
+    for j in range(at, len(code)):
+        depth += (code[j] in "([{") - (code[j] in ")]}")
+        if not depth:
+            return code[at:j + 1]
+    return code[at:]
+
+
+def _writes_by_fetch(code: str, literals: list) -> bool:
+    """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
+    given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
+    name built as it runs; an init the reader cannot follow otherwise (spread into, a variable set again or handed on, a
+    parameter, any other expression) when the script sets such a method as an object key or a member assignment, or puts
+    a body in an object it passes to a call or one a variable it passes holds (review rounds 3 to 6 of 5.23.1, T1, U1,
+    W4); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2: a `body` read from a response is no write)."""
+    def group(at: int) -> str:
+        return _bracketed(code, at)
+
+    def given(name: str) -> int:  # where the one value a variable is ever given starts, else -1
+        sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*{ASSIGN}", code)]
+        declared = re.search(rf"\b(?:const|let|var)\s+{re.escape(name)}\s*=(?!=)", code)
+        return len(code) - len(code[sets[0]:].lstrip()) if len(sets) == 1 and declared else -1
+
+    def reads(value: str) -> bool:  # one literal GET or HEAD, whole
+        found = re.match(r"\s*\0(\d+)\0\s*(?:[,;)}\]]|$)", value)
+        return bool(found) and literals[int(found[1])].strip().upper() in ("GET", "HEAD")
+
+    def writes(init: str) -> bool:  # an init written out as an object
+        for key in re.finditer(r"[{,]\s*(?:([A-Za-z_$][\w$]*)|\0(\d+)\0)\s*(?=([:,}]))", init):
+            name, at = key[1] or literals[int(key[2])], given("method") if key[3] != ":" else -1
+            if name == "body" or name == "method" and not reads(init[key.end() + 1:] if key[3] == ":" else code[at:] if at >= 0 else ""):
+                return True
+        return False
+
+    def arguments(at: int) -> list:  # the arguments of the call whose `(` is at `at`
+        args, depth, start, inner = [], 0, 0, group(at)[1:-1]
+        for j, c in enumerate(inner + ","):
+            depth += (c in "([{") - (c in ")]}")
+            if c == "," and not depth:
+                args, start = args + [inner[start:j].strip()], j + 1
+        return args
+
+    def anywhere() -> bool:  # a method that is no literal GET or HEAD, as an object key (a shorthand by the one literal its
+        # const holds) or a member assignment anywhere in the script (rounds 5 and 6, W4: an init its own helper returned
+        # passed, then a parameter or a property read named method held a read), or a body in an object it passes to a call
+        # or one a variable passed or spread into one holds or is given (round 4, U1: not in what a callback returns or names)
+        for found in re.finditer(r"[{,]\s*(method)\b(?=\s*(?::|[,}]|=(?!=)))|\.\s*(method)\b(?=\s*" + ASSIGN + r")|\0(\d+)\0(?=\s*\]?\s*(?::|" + ASSIGN + r"))", code):
+            if found[3] is not None and literals[int(found[3])] != "method":
+                continue
+            rest, at = code[found.end():], given("method")
+            value = ((code[at:] if at >= 0 else "") if found[1] and re.match(r"\s*[,}]", rest) else re.sub(r"^\s*\]?\s*(?::|=)", "", rest, count=1)
+                     if re.match(r"\s*\]?\s*(?::|=(?!=))", rest) else "")
+            if not reads(value):
+                return True
+        passed = set()
+        for call in re.finditer(r"(?:(?<![\w$])(?!(?:if|for|while|switch|catch|with|function|return|typeof)\b)[A-Za-z_$][\w$]*|[)\]])\s*\(", code):
+            for arg in arguments(call.end() - 1):
+                if arg.startswith("{") and writes(arg):
+                    return True
+                passed |= set(re.findall(r"\.\.\.\s*([A-Za-z_$][\w$]*)", arg) if arg.startswith("{") else re.findall(r"^[A-Za-z_$][\w$]*$", arg))
+        for name in map(re.escape, passed):
+            if any(writes(group(m.end())) for m in re.finditer(rf"(?<![\w$.]){name}\s*=\s*(?=\{{)", code)):
+                return True
+            for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*(method|body)\b|\[\s*\0(\d+)\0\s*\])\s*{ASSIGN}", code):
+                prop = member[1] or literals[int(member[2])]
+                if prop == "body" or prop == "method" and not reads(code[member.end():]):
+                    return True
+        return False
+
+    inits = [(lambda args: args[1] if len(args) > 1 else "")(arguments(call.end() - 1)) for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code)]
+    for init in filter(None, inits):
+        name = re.escape(init)
+        at = -1 if init.startswith("{") or not re.fullmatch(r"[A-Za-z_$][\w$]*", init) else given(init)
+        held = init if init.startswith("{") else group(at) if at >= 0 and code[at:at + 1] == "{" else ""
+        members = list(re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:\0(\d+)\0\s*(?=\]))?)", code)) if at >= 0 else []
+        if re.search(r"\]\s*:", held) or any(not (m[1] or m[2]) for m in members):  # keyed by a name built as it runs
+            return True
+        if not held or "..." in held or not init.startswith("{") and len(re.findall(rf"(?<![\w$.]){name}\b(?!\s*[.\[])", code)) != 1 + inits.count(init):
+            if anywhere():  # not followed: the script's own words decide
+                return True
+            continue
+        if writes(held):
+            return True
+        for member in members:
+            prop, set_ = member[1] or literals[int(member[2])], re.match(r"\s*\]?\s*=(?!=)", code[member.end():])
+            if prop == "body" or prop == "method" and not (set_ and reads(code[member.end() + set_.end():])):
+                return True
+    opened = re.findall(r"\.\s*open\s*\(\s*(\0(\d+)\0)?", code) if "XMLHttpRequest" in code else []
+    return any(not lit or literals[int(lit)].strip().upper() not in ("GET", "HEAD") for _, lit in opened)
+
+
+def _defined_names(code: str) -> set:
+    """The names a script defines itself: a function, a parameter, an object's or a class's method, a property or a field
+    given a function (review rounds 2 and 3 of 5.23.1, #3 and T2: a read helper named for what it reads). A name bound
+    from another object (`const {sendMessage} = TS.client.ui`) is none, and a method's head is on one line, so a call and
+    a block after it are none."""
+    fn = r"\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"
+    found = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=" + fn + r"|(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>"
+                       r"|(?:^|[{,;}\n])\s*(?:(?:static|async|get|set)\s+)*\*?\s*([A-Za-z_$][\w$]*)\s*\([^()]*\)[ \t]*\{"
+                       r"|(?:[{,]\s*|\.\s*|(?:^|[;{}\n])\s*(?:static\s+)?)([A-Za-z_$][\w$]*)\s*[:=]" + fn, code)
+    params = re.findall(r"\bfunction\s*[A-Za-z_$]*\s*\(([^()]*)\)|\(([^()]*)\)\s*=>", code)
+    return {n for row in found for n in row if n} | {n for row in params for part in row for n in re.findall(
+        r"(?:^|,)\s*[{\[]?\s*(?:\.\.\.)?\s*([A-Za-z_$][\w$]*)", part)}
+
+
+def _script_acts(text: str) -> bool:
+    """A page script that acts on a messaging site's page: PAGE_ACTS over its text or its code (`el['click']()` is
+    `el.click()` there; a browser server's own code is read with SCRIPT_ACTS), SCRIPT_ACTS_MORE over its code, a call
+    whose name says it sends (a page's own: by a bare name the script does not define, or by a method unless the script
+    defines it and calls it on `this` or on an object it defines; review round 3 of 5.23.1, T2), or a write by fetch,
+    Request or XHR. `.send(` on an XHR opened only with GET or HEAD is a read."""
+    code, literals, _ = _script_code(text)
+    acts = SCRIPT_ACTS if text.startswith(SERVER_CODE) else PAGE_ACTS
+    xhr_read = "XMLHttpRequest" in code and not _writes_by_fetch(code, literals) and not re.search(r"\bWebSocket\b|\bRTCDataChannel\b", code)
+    read = re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code
+    defined, classes = _defined_names(code), set(re.findall(r"\bclass\s+([A-Za-z_$][\w$]*)", code))
+    objects = {"this"}
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*)|(\())", code):
+        iife = _bracketed(code, m.start(4)) if m[4] else ""  # round 4, U4: what an IIFE of its own returns, an object it writes
+        if m[2] or m[3] in classes or iife and re.match(r"\s*\(", code[m.start(4) + len(iife):]) and re.search(r"=>\s*\(\s*\{|\breturn\s*\{", iife):
+            objects.add(m[1])
+    member = any(not (m[3] in defined and (m[1] in classes or m[2] in objects)) for m in MEMBER_SENDS.finditer(read))
+    bare = {found[1] for found in BARE_SENDS.finditer(code)} - defined
+    return bool(acts.search(text) or acts.search(code) or SCRIPT_ACTS_MORE.search(read) or member or bare or _writes_by_fetch(code, literals))
 
 
 def _messaging(config: dict) -> dict:
@@ -6000,7 +6253,8 @@ WEB_MESSAGING = (  # (site, and every host under it; path prefix, or * for every
     ("fb.me", "*", "facebook+messenger", "shift"), ("instagram.com", "*", "instagram", "shift"), ("instagr.am", "*", "instagram", "shift"),
     ("linkedin.com", "*", "linkedin", "shift"), ("x.com", "*", "x", "shift"), ("twitter.com", "*", "x", "shift"),
 )
-TAB_LINE = re.compile(r'tabId (\d+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until August 2026
+TAB_LINE = re.compile(r'tabId ([\w-]+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until
+# August 2026 and the built-in pane writes it still; Chrome's tab ids are numbers, the pane's `tab-N` as well (round 4 of 5.24.0's review, #5)
 
 
 def _web_app(url: str):
@@ -6023,41 +6277,144 @@ def _browser_call(lines: list, i: int, ident: str) -> dict | None:
     return call if call and re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I) else None
 
 
-def _tabs(transcript: str) -> tuple:
-    """({tab id: address}, the tab the newest call ran on), from the newest browser result's tab list."""
-    lines = _tail(transcript)
+def _record(session: dict | None) -> str:
+    """The record that shows this call's own earlier calls: a sub-agent's own when the hook names one (its reads and
+    pages are kept out of its session's record), else the session's (review round 1 of 5.23.1, #3)."""
+    main, agent = str((session or {}).get("transcript_path") or ""), str((session or {}).get("agent_id") or "")
+    name = agent if agent.startswith("agent-") else f"agent-{agent}"
+    return os.path.join(os.path.splitext(main)[0], "subagents", f"{name}.jsonl") if main and agent else main
+
+
+def _tabs(transcript: str, server: str = "") -> tuple:
+    return _tab_list(transcript, server)[:2]
+
+
+def _tab_list(transcript: str, server: str = "") -> tuple:
+    """({tab id: address}, the tab the newest call ran on, when its line was written), from the newest result of this browser server (of any
+    browser server when none is named) that shows its tabs: a list of tabs (Claude in Chrome's, and the built-in pane's),
+    the pane's own tabs_context (each tab's origin, the active one in front), or a navigate's or the pane's preview_start's
+    own result, `navigated to`, `opened` or `Opened tab "..." at` and the address; `Browser pane opened` names none and
+    changes no page, so an earlier result's page stands, else a new pane's blank one (review round 2 of 5.23.1, #1). Each
+    browser has tab ids of its own (round 4 of 5.24.0's review, #5: the pane's results were read as none, and its tab 1
+    could be read as Chrome's)."""
+    lines, blank = _tail(transcript), None
     for i in range(len(lines) - 1, -1, -1):
-        for block in reversed(_blocks(lines[i]) if "Tab Context" in lines[i] else []):
+        marked = any(m in lines[i] for m in ("Tab Context", "browserOpen", "avigated to ", "pened ", "pane opened"))
+        for block in reversed(_blocks(lines[i]) if marked else []):
             text = _said(block) if block.get("type") == "tool_result" else ""
-            if "Tab Context" in text and _browser_call(lines, i, str(block.get("tool_use_id") or "")):
+            call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if text else None
+            named = str((call or {}).get("name", ""))
+            if not call or server and named.rpartition("__")[0] != server:
+                continue
+            if "Tab Context" in text:
                 context = text[text.rindex("Tab Context"):]
-                front = re.search(r"Executed on tabId: (\d+)", context)
-                return {tab: address or "about:blank" for tab, address in TAB_LINE.findall(context)}, front.group(1) if front else ""  # a new tab's address is empty
-    return {}, ""
+                front = re.search(r"Executed on tabId: ([\w-]+)", context)
+                return {tab: address or "about:blank" for tab, address in TAB_LINE.findall(context)}, front.group(1) if front else "", _when(lines[i])  # a new tab's address is empty
+            if named.endswith("tabs_context") and "browserOpen" in text:
+                try:
+                    shown = json.JSONDecoder().raw_decode(text.lstrip())[0]["tabs"]
+                    return ({str(t["tabId"]): str(t.get("origin") or "") for t in shown},
+                            next((str(t["tabId"]) for t in shown if t.get("isActive")), ""), _when(lines[i]))
+                except (ValueError, KeyError, TypeError, IndexError):
+                    continue
+            went = re.match(r"\s*(?:navigated to|opened) (\S+)", text, re.I) if named.endswith(("navigate", "preview_start")) else None
+            if named.endswith("preview_start") and not went:
+                shown, tab = re.search(r'Opened tab "[^"\n]*" at (\S+?)\.?(?:\s|$)', text), (re.search(r'"tabId":\s*"([^"]+)"', text) or ["", ""])[1]
+                if shown:
+                    return {tab: shown[1]}, tab, _when(lines[i])
+                if blank is None and "Browser pane opened" in text:
+                    blank = {tab: "about:blank"}, tab, _when(lines[i])
+                continue  # an error opens no page
+            if went:
+                tab = str((call.get("input") or {}).get("tabId") or "")
+                return {tab: went[1]}, tab, _when(lines[i])
+    return blank or ({}, "", 0.0)
 
 
-def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False):
+def _when(line: str) -> float:
+    try:
+        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
+
+
+_LISTS: dict = {}
+
+
+def _listed(record: str, server: str) -> tuple:
+    """A record's newest list of this browser's tabs, (tabs, front, when), read once per version of the file; `when` is the
+    list's line's time, else the file's."""
+    try:
+        state = os.stat(record)
+    except OSError:
+        return {}, "", 0.0
+    key = (record, server, state.st_size, state.st_mtime_ns)
+    if key not in _LISTS:
+        tabs, front, when = _tab_list(record, server)
+        _LISTS[key] = tabs, front, when or (state.st_mtime if tabs else 0.0)
+    return _LISTS[key]
+
+
+def _shared_tabs(session: dict | None, server: str) -> tuple:
+    """({tab: address}, the tab this call's own record ran on last). Claude in Chrome is one browser, whose tab ids a
+    session shares with its sub-agents, so each tab is read at the newest list that names it across the session's record
+    and its sub-agents' records of the last 12 hours, as the batch reads other sessions' lists (review round 3 of 5.23.1,
+    T3: a sub-agent was judged by its own list after its session moved the tab; round 1's #3 the other way). Any other
+    browser is read by the call's own record."""
+    main, own = str((session or {}).get("transcript_path") or ""), _record(session)
+    tabs, front, when = _listed(own, server)
+    if "claude-in-chrome" not in server or not main:
+        return tabs, front
+    folder, newest = os.path.join(os.path.splitext(main)[0], "subagents"), {tab: (when, address) for tab, address in tabs.items()}
+    try:
+        others = [os.path.join(folder, n) for n in os.listdir(folder) if n.startswith("agent-") and n.endswith(".jsonl")]
+    except OSError:
+        others = []
+    for record in dict.fromkeys([main] + others):
+        try:
+            if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
+                continue  # nothing in it is newer than this call's own list
+            with open(record, "rb") as handle:  # one whose last 8 MB name no tab list is not parsed (round 4: a busy
+                handle.seek(max(0, os.path.getsize(record) - TRANSCRIPT_TAIL))  # session's 70 records, 0.9 s of the 4)
+                if b"Tab Context" not in handle.read():
+                    continue
+        except OSError:
+            continue
+        listed, _, at = _listed(record, server)
+        for tab, address in listed.items():
+            if at > newest.get(tab, (-1.0, ""))[0]:
+                newest[tab] = at, address
+    return {tab: address for tab, (_, address) in newest.items()}, front
+
+
+def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False, tool: str = ""):
     """(step, its input, the address of the page it acts on) for a browser call, or for each step of a batch: its
-    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to. With `keep`, a
-    navigate that names no host leaves a messaging site's page as it was, since the page it opens may be that site's."""
-    tabs, front = _tabs(str((session or {}).get("transcript_path") or ""))
+    tab's address in the newest list of tabs of the browser `tool` belongs to, or the one a navigate step earlier in the
+    batch went to, read as a URL parser reads it. With `keep`, a navigate that names no host leaves a messaging site's
+    page as it was, since the page it opens may be that site's. One to a javascript: address runs on the page it is on,
+    and what its code does to the page after is not known."""
+    tabs, front = _shared_tabs(session, tool.rpartition("__")[0]) if keep else _tabs(str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])
+    unknown = keep and bool(re.search(r"claude-in-chrome|claude[_-]browser", tool, re.I))  # its own lists show its pages (round 1 of 5.23.1, #3)
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
         if isinstance(s, dict) and isinstance(s.get("input"), dict)]
     for step, given in steps:
-        tab = str(given.get("tabId") or front)
+        tab, before = str(given.get("tabId") or front), None
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
-            url = str(given.get("url") or "").strip().replace("\\", "/")
+            url, before = _url_read(given.get("url") or "").replace("\\", "/"), tabs.get(tab, "")
             tabs[tab] = url if given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
-                tabs.get(tab, "") if keep and _web_app(tabs.get(tab, "")) else "")
-        yield step, given, tabs.get(tab, "")
+                before if keep and _web_app(before) else "")
+        address = before if before is not None and _script_address(str(given.get("url") or "")) is not None else (
+            tabs.get(tab) or (tabs[""] if set(tabs) == {""} else ""))  # the pane's first page, which no list files under its tab (#7)
+        yield step, given, address or (UNKNOWN_PAGE if unknown else "")
 
 
-def _pages(name: str, tool_input: dict, session: dict | None) -> tuple:
+def _pages(name: str, tool_input: dict, session: dict | None, tool: str = "") -> tuple:
     """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, whether a box on every
     one of them may be a search, and whether every page it acts on is the principal's own app on a local host."""
     reached, search, local = {}, True, True
-    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True):
+    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool):
         page, host = _web_app(address), _where(address)[0]
         local = local and (host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test")))
         if page:
@@ -6111,24 +6468,32 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             asked = {_bundle(a, apps) for a in tool_input["apps"]} - {""}
             paths.write_json(record, {"apps": sorted(set(paths.read_json(record).get("apps", [])) | asked), "at": time.time()})
         return None
+    refused = _refused_scripts(name, tool, tool_input, session) if name.startswith("browser") else None
+    if refused:
+        return refused
     actions = _desktop_actions(name, tool_input)
     if not actions:
         return None
     seen = paths.read_json(record) if record else {}
     unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
-    pages, search, local = _pages(name, tool_input, session) if name.startswith("browser") else ({}, False, False)
+    pages, search, local = _pages(name, tool_input, session, tool) if name.startswith("browser") else ({}, False, False)
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
                else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
     said = " ".join(s for _, _, s in actions)  # the second review: words, then Return, Tab and Space or a line break, submit a form
-    formed = bool(name.startswith("browser") and not reached and typed and not local and NAMES_POST.search(said)
+    formed = bool(name.startswith("browser") and typed and not local and NAMES_POST.search(said)
                   and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
+
+    def goes(kind: str, v: str, s: str, pages: dict) -> bool:  # an action that sends, with these messaging pages reached
+        return bool(SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
+            _script_acts(v) if pages else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
+            or pages and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
+                          or kind == "key" and _sends_key(v, pages) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", pages)))
     sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
-               if SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
-                   SCRIPT_ACTS.search(v) if reached else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
-               or reached and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
-                               or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
-    sending += ["a key that submits the form after the typed words"] * (formed and not sending)
+               if goes(kind, v, s, reached)]
+    sending += ["a key that submits the form after the typed words"] * (formed and not reached and not sending)
+    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) for k, v, s in actions) and bool(
+        SHOWS_PAGE.search(tool))  # another browser's results may never show its page: its call keeps the code
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
         c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
     if problems and search and not sending and all(k == "type" for k, _, _ in actions) and not temporary_addresses(typed, config):
@@ -6163,6 +6528,10 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             _logged(chan, tool, summary, "approval", session)
             _released(session, list(reached), drop=True)
             return None
+        if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
+            return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
+                    "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
+                    "make this call again.")
         code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
@@ -6271,7 +6640,8 @@ def _osa_code(text: str, jxa: bool) -> tuple:
             out.append("name")
             i = j + 1
             continue
-        if jxa and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase)\s*$", "".join(out[-40:])):
+        if jxa and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase)\s*$", "".join(out[-40:])) and not re.search(
+                r"(?:\+\+|--)\s*$", "".join(out[-40:])):  # after `++` or `--` it divides (review round 1 of 5.23.1, #5)
             j, cls = i + 1, False
             while j < n and (text[j] != "/" or cls) and text[j] not in "\n\r":
                 cls = (cls or text[j] == "[") and text[j] != "]"
@@ -6661,18 +7031,20 @@ def _line_events(line: str) -> list:
 
 
 def _driver_events(transcript: str, server: str) -> list:
-    """(call or result, the tool's name, its input, its text) for this server's own calls and results, newest first."""
-    calls, events = {}, []
+    """(call or result, the tool's name, its input, its text) for this server's own calls and results, newest first; a
+    call a hook refused, and its result, are left out (review round 1 of 5.23.1, #4)."""
+    calls, events, refused = {}, [], set()
     for line in _tail(transcript):
         if server + "__" not in line and not any(m in line for m in PAGE_MARKS):
             continue
         for kind, ident, name, data in _line_events(line):
             if kind == "call" and name.startswith(server + "__"):
                 calls[ident] = name
-                events.append(("call", name, data, ""))
+                events.append((ident, "call", name, data, ""))
             elif kind == "result" and ident in calls:
-                events.append(("result", calls[ident], {}, data))
-    return events[::-1]
+                refused |= {ident} if str(data).lstrip().startswith("PreToolUse:") else set()
+                events.append((ident, "result", calls[ident], {}, data))
+    return [event[1:] for event in events[::-1] if event[0] not in refused]
 
 
 def _driver_page(events: list) -> str:
@@ -6686,7 +7058,8 @@ def _driver_page(events: list) -> str:
         if kind == "call" and driven_tool(name) == "navigate" and not (bare == "tabs" and given.get("action") == "list"):
             if bare in ("navigate_back", "go_back") or (bare == "tabs" and given.get("action") != "new"):
                 return ""  # a step back or a tab change whose result shows no page
-            return str(given.get("url") or "")
+            if _script_address(str(given.get("url") or "")) is None:  # a javascript: address runs on the page; it is none
+                return str(given.get("url") or "")
     return ""
 
 
@@ -6704,7 +7077,7 @@ def _driver_ref(events: list, page: str, ref: str) -> tuple | None:
 def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) -> list:
     """The steps a browser tool performs, as a browser batch reads them, after a navigate step to the page they act on."""
     server, name = tool.rpartition("__")[0], tool.rpartition("__")[2]
-    events = _driver_events(str((session or {}).get("transcript_path") or ""), server)
+    events = _driver_events(_record(session), server)
     page = _driver_page(events) or UNKNOWN_PAGE
     urls = [v for v in tool_input.values() if isinstance(v, str) and _web_app(v)] if kind == "unknown" else []
     page = urls[0] if urls else page
@@ -6733,10 +7106,13 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
         steps = [step(action="type", text=str(v)) for v in (tool_input.get("data") or {}).values()] if isinstance(tool_input.get("data"), dict) else []
     elif kind == "script":
         code = str(tool_input.get("function") or tool_input.get("code") or tool_input.get("script") or tool_input.get("expression") or "")
-        steps = [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": code + (f" /* on {on} */" if on else "")}}]
+        own = SERVER_CODE if tool.endswith(("run_code", "run_code_unsafe")) else ""  # the server's own code drives its page (#8)
+        steps = [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": own + code + (f" /* on {on} */" if on else "")}}]
     elif kind == "unknown":
         given = [str(tool_input[k]) for k in ("text", "value", "keys", "message") if isinstance(tool_input.get(k), str)]
         steps = [step(action="type", text=t) for t in given] + [step(action="left_click", action_summary="")]
+    elif kind == "navigate":  # to a javascript: address, which runs on the page it is on (round 4 of 5.24.0's review, #1)
+        steps = [{"name": "navigate", "input": {"url": str(tool_input.get("url") or "")}}]
     else:
         steps = []
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
@@ -6744,7 +7120,7 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
 
 @_entry
 def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
-    if kind in ("read", "navigate"):
+    if kind == "read" or kind == "navigate" and _script_address(str(tool_input.get("url") or "")) is None:
         return None
     if tool.endswith("run_code_unsafe"):  # code for the server's own process: from a file it reads, or starting commands
         acts = "runs code from a file the guard does not read" if tool_input.get("filename") else _program_acts(str(tool_input.get("code") or ""), "node")

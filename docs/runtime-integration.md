@@ -569,6 +569,48 @@ harness that gives no transcript cannot carry approved sends or deploys until it
 
 ### What remains open
 
+- **A page script's call whose name says nothing of what it does** (5.24.0). On a messaging site's page the guard
+  reads a script's code: a call by a name built as it runs is refused and one that acts waits, but a library's own
+  event call (jQuery's `.trigger('click')`) or an app's own function under a name that does not say it sends passes as
+  a read, since nothing in the script shows its effect. Tests: `test_open_a_call_whose_name_says_nothing_of_what_it_does`,
+  marked to fail until it is closed.
+- **Spellings made to beat that reader** (review round 1 of 5.23.1, #13), each a case of
+  `test_open_a_spelling_made_to_beat_the_reader` or `test_open_a_blob_document_made_on_the_sites_own_origin`, expected to
+  fail until closed: a member named by an escaped string (`el['\u0063lick']()`, `el['\x63lick']()`); a method called in
+  parentheses (`(el.click)()`); a plain name as a template tag (`` el.click`` ``); an alias of a built name; a call by
+  `forEach(Function.prototype.call, ...)`; a getter; an indirect `eval` (`(0, eval)(...)`); a timer given a string in a
+  variable; `open` through a window alias (`const w = window; w.open(...)`); HTML decoded at run time
+  (`insertAdjacentHTML(..., atob(...))`); a `blob:` document made on the site's own origin and then navigated to; an
+  HTML-like comment (`<!-- '`), whose quote the reader takes for a string; and an object divided (`{} / x / 1`), whose
+  `/` the reader takes for a pattern. A batch whose `javascript:` navigate moves the tab was closed by reading the page
+  after it as unknown.
+- **Two more spellings** (review round 2 of 5.23.1, #5 and #6), cases of
+  `test_open_a_fetch_or_a_method_reached_under_another_name`, expected to fail until closed: `fetch` reached under
+  another name with its method quoted (`const {fetch: f} = window` or `const f = window.fetch`, then
+  `f(url, {"method": "POST", ...})`), and a method that names what it does read as a value and called under another
+  name (`const o = {c: HTMLElement.prototype.click}; o.c.call(el)`; `el.go = HTMLElement.prototype.click; el.go()`).
+  A third came with closing #3: the reader keeps no scopes, so a page's own send called by a bare name the script also
+  defines elsewhere, as a function or a parameter (`[0].map(sendMessage => sendMessage); sendMessage(...)`), passes (a
+  case of the same test). A fourth came with review round 3's T1: an init the reader cannot follow is read by the
+  script's own words, so one that a page's own function returns (`fetch(url, options())`) passes when the script names
+  no method and no body, a case of the first item above (a call whose name says nothing of what it does) and of the
+  same test.
+- **Two more from review round 4 of 5.23.1** (C1 and C2), cases of
+  `test_open_an_init_from_a_string_or_a_pages_send_under_the_scripts_own_name`, expected to fail until closed: an init
+  parsed from a string (`fetch(url, JSON.parse('{"method":"POST",...}'))`), whose method and body the reader sees only
+  as a string; and a page's send under a method name the script defines, by `this` at the script's top level (where it
+  is the page's window) or by a receiver the script sets to the page's object (`let o = {sendMessage() {}}; o =
+  window.app; o.sendMessage(...)`), the member-call form of the item above on scopes. Review round 5 adds W5, a case of
+  `test_open_an_iife_that_writes_a_decoy_object_and_returns_the_pages`: an IIFE that writes any object literal (a
+  `=> ({i})` callback inside it) and returns the page's object counts as the script's own, so a page's send through it,
+  under a method name the script defines elsewhere, passes.
+- **Three more from review round 7 of 5.23.1** (Y4), cases of `test_open_a_method_set_another_way`, expected to fail
+  until closed: a method set by `Object.defineProperty`, by `Object.fromEntries`, or as a class field after another
+  field (`class O { credentials = 'include'; method = 'POST' }`, with `new O()` as the init). The cost on the other side
+  (Y5): a read whose own result mapping has a `method` key (`d.items.map(p => ({id: p.id, method: p.paymentMethod}))`)
+  waits for a code, since the reader counts that key wherever it is written. It is rare, and it fails closed
+  (`test_a_read_whose_own_result_maps_a_method_key_waits`).
+
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
 

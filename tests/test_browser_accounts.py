@@ -377,19 +377,31 @@ def test_a_put_on_a_tab_whose_page_the_record_does_not_show_waits_for_a_list_of_
     through on a site whose last read had shown another account."""
     reason = call(*TYPE, tab=7)
     assert reason and "which page" in reason and "tab 7" in reason and "misconfiguration" not in reason
-    for tool, given in READS:
-        assert call(tool, given, tab=7) is None                           # what puts nothing never waits
+    for tool, given in READS:                                             # what puts nothing never waits for the account
+        reason = call(tool, given, tab=7)                                 # (the send guard holds a click with no summary on a
+        assert reason is None or "read the page first" in reason, reason  # page no list shows: round 1 of 5.23.1, #3)
     ran("computer", {"action": "screenshot", "tabId": 7}, "", front=7, tabs={7: "https://mail.example/"})
     assert call(*TYPE, tab=7) is None
     assert call(*TYPE, tab=7, using=config({})) is None and call(*TYPE, tab=9, using=config({})) is None   # and only where a site is named
 
 
-@pytest.mark.parametrize("url", ["back", "forward", "/new", "", "javascript:void(0)", "about:blank"])
+@pytest.mark.parametrize("url", ["back", "forward", "/new", "", "about:blank"])
 def test_a_batch_step_that_goes_nowhere_the_guard_can_name_leaves_the_tabs_page_unknown(url):
     ran("navigate")
     reason = batch(("navigate", {"url": url}), TYPE)
     assert reason and "which page" in reason
     assert batch(("navigate", {"url": url}), ("get_page_text", {})) is None
+
+
+def test_a_javascript_address_is_a_script_on_the_page_it_is_on():
+    """Round 4 of 5.24.0's review, #1: a navigate to a javascript: address runs its code on the tab's page, as a page
+    script does, so on a named site's page it waits for the account like one; what it leaves the page on is unknown."""
+    ran("navigate")
+    for after in (TYPE, ("get_page_text", {})):
+        assert unread(batch(("navigate", {"url": "javascript:void(0)"}), after)), after
+    ran("navigate", tabs={1: "https://mail.example/"})
+    reason = batch(("navigate", {"url": "java\tscript:void(0)"}), TYPE)
+    assert reason and "which page" in reason
 
 
 @pytest.mark.parametrize("url", ["back", "forward", "/new", "javascript:void(0)"])
