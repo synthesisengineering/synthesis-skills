@@ -233,6 +233,9 @@ SUBMIT = (PW + "browser_type", {"element": "Message box", "ref": "e12", "text": 
 ])
 def test_a_playwright_step_that_can_send_on_a_messaging_page_waits(tmp_path, tool, tool_input):
     reason = driven(tool, tool_input, _on(tmp_path, MESSENGER))
+    if tool.endswith(("browser_run_code_unsafe", "browser_evaluate")):  # a page script on a Messenger site's page: none
+        assert "shipped" in (reason or ""), (tool, tool_input, reason)  # runs but the plugin's own (5.24.0's batch)
+        reason = driven(tool, tool_input, _on(tmp_path, "https://www.linkedin.com/messaging/thread/1/"))
     assert held(reason) and "sends in the browser (" in reason, (tool, tool_input, reason)
 
 
@@ -245,7 +248,8 @@ def test_a_playwright_step_that_can_send_on_a_messaging_page_waits(tmp_path, too
     (PW + "browser_press_key", {"key": "Shift+Enter"}),                                         # a line break in the box
 ])
 def test_reading_and_typing_on_a_messaging_page_need_no_code(tmp_path, tool, tool_input):
-    assert driven(tool, tool_input, _on(tmp_path, MESSENGER)) == "", (tool, tool_input)
+    page = "https://www.linkedin.com/messaging/thread/1/" if tool.endswith("browser_evaluate") else MESSENGER  # on a
+    assert driven(tool, tool_input, _on(tmp_path, page)) == "", (tool, tool_input)  # Messenger site a script is refused
 
 
 @pytest.mark.parametrize("tool, tool_input", [

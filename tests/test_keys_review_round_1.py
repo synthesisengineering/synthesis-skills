@@ -219,7 +219,9 @@ def test_code_that_starts_osascript_in_the_server_process_waits(url):
 
 def test_control_a_page_key_press_in_code_waits_on_messenger():
     code = "async (page) => { await page.keyboard.press('Enter'); }"
-    assert held(browse(PW + "browser_run_code_unsafe", {"code": code}, on(at(MESSENGER))))
+    code = "async (page) => { await page.keyboard.press('Enter'); }"  # refused outright on a Messenger site (5.24.0's batch)
+    assert "shipped" in (browse(PW + "browser_run_code_unsafe", {"code": code}, on(at(MESSENGER))) or "")
+    assert held(browse(PW + "browser_run_code_unsafe", {"code": code}, on(at("https://www.linkedin.com/messaging/thread/1/"))))  # it acts: it waits
 
 
 # --- driven_target_field -------------------------------------------------------------------------------------------

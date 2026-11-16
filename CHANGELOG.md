@@ -419,6 +419,67 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   - On a Mac that runs the workspace-mcp server under launchd or systemd, its doctor now runs from the runtime and
     reports a unit installed from anywhere else; running the runtime's `install-autostart.sh` once points the unit at
     the runtime's stable path, which plugin upgrades no longer move.
+- **One approval for a reviewed batch of sends** (core, synthesis-message-guard 2.13.0). `synthesis sends batch <file>` opens a
+  batch of 1 to 50 exact sends on the principal's code for its digest: the hold carries the whole listing, each text
+  quoted with every hidden character as its code, and the command spends the code itself, from any terminal. Each
+  entry then goes once, as written, within 12 hours, from the session that ran the granted command, whose own record
+  must show at every spend the principal typing the code the guard filed for that digest, which it records itself;
+  spent marks yield to an append-only spends ledger. An entry is a connector call (its tool and whole input, never one
+  whose connector fetches, reads or carries a file, one entry to a conversation), a send by the local messages sender
+  (its handle, or its members, service and chat, and its text, spent on the one-use ticket the guard files for the
+  session whose command runs the sender; it names no session of its own) or a Messenger send. Every listing prints as it
+  is only what draws a glyph, with every other character, the file's path, the batch's name and its project escaped. Every other check
+  runs first (the register scan, the format rules, an address that can change, a fresh calendar read for a time, and a
+  meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
+  code per call.
+- **A batch's Messenger send is one step that reads and sends in the same run** (core). One browser_batch on a tab
+  this session made with tabs_create (no page holds a handle to it) and navigated to the conversation, untouched since by
+  any other session or any page script, loads its address there again, types the words, and last runs the entry's send
+  script (`synthesis sends script`), which finds the one message box (labelled `Write to ...` or for a message, with the
+  placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
+  the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks
+  the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
+  no typist, other session or later script acts between the read and the send. On a Messenger site's tab (a page of
+  facebook.com or messenger.com, or of m.me, fb.com, fb.me or Business Suite's inbox), on one whose page no list of tabs
+  names, and on one a step earlier in the same call may have moved onto or from such a page, no page script runs but
+  the shipped read-only ones and that send script, whichever browser tool runs it, a navigate to a `javascript:`
+  address included. A step that may move a tab is a navigate, a click, a key, a drag, words typed with a line break, a
+  form value, an upload or a page script that acts or cannot be read, on any page, a local app's included; after any
+  other move a read runs, and a script that acts or cannot be read runs in a call of its own, as protection against a
+  redirect onto a chat (one more call, and no code). On every other messaging site's page main's rule judges a script:
+  a read runs, one that acts waits for the code (`window?.open(` among them), and one the guard cannot read is refused.
+  A time's code binds the exact step. The four Messenger
+  address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
+  `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
+- **What review round 4 found** (core). The messages sender's ticket is filed for each run of the sender a command
+  makes (its program resolved as the write rules resolve one, through links), bound to that run's file, arguments and
+  folder, and taken only by that run: by a process of the harness whose hook filed it whose own command line, as the
+  system shows it, is that run's (round 5: a ticket filed for a run that never ran was taken by an identical run the
+  guard never saw), so a `cat` or a `grep` of the sender files none and two sends in one line take one each. Another session's call voids a send step only in the same browser, on its tab or naming none, when it can
+  change the page and no hook refused it, and only the extension's `Created new tab. Tab ID: N` makes a tab this
+  session's. The newest list of tabs across sessions decides a tab's page. A batch closes 12 hours after its code was
+  typed, as `sends status` says. The day's ledger reads a Messenger send's own report, so `synthesis sends log` names
+  one its script declined as not sent. A listing prints as its code any character whose name says it is a blank,
+  filler, joiner, subjoiner, conjoiner or selector.
+- **What review round 5 found** (core). The moved rule counts every step that may move a tab (above), honours `exact`
+  only on the guard's own steps for a driven browser, never on an agent's call, and on a Messenger site's page names
+  that page's rule (the read tools) rather than a second call that rule refuses too. A sub-agent's send step reads its
+  own record for the tab list and the tabs_create that make its tab its own. Two moves made to beat the reader are on
+  the runtime doc's open list.
+- **What review round 6 found** (core). As ruled, a page script moves a tab only when it can navigate (a location
+  change, by an alias or `Object.assign(location, ...)` too, `open`, a history step, and off a local app a click, a
+  submit or a dispatched event), not when it sets a value or writes by fetch, and on a local app's page a navigate or a
+  click moves nothing, so a click and then a script that clicks Save runs there; a local page that sends the tab on,
+  and a page that redirects itself, are on the open list. The sender's ticket reads the system's `/bin/ps` with a clean
+  environment, whatever comes first on PATH.
+- **What review round 7 found** (core). As ruled, a hook whose ancestors hold no harness process of the session's own
+  (shells alone, or a login, a remote login or a multiplexer every program of a terminal shares) files no sender
+  ticket, and each send waits for its code; round 6's binding to the topmost shell, which two sessions under it shared,
+  is gone. An entry spent by a call that is then held is given back, as a per-call grant is: an "undone" line in the
+  spends ledger and the batch's spent mark taken back; a call left with no answer keeps its spend.
+- **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
+  request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
+  batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
 
 ## [5.23.2] - 2026-11-15
 

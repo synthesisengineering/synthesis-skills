@@ -22,6 +22,11 @@ text is in [preserved.md](preserved.md).
 python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to +15551234567 --text-file reply.txt [--account ACCOUNT_ID]
 ```
 
+The sender names no session. When the guard lets a command that runs `messages_send.py` by name through, it files a
+one-use ticket for the session its hook names, and only on the granting session's ticket, taken within a minute, can
+a send spend an entry of a reviewed batch (synthesis-message-guard, references/config.md, "Batches"). A run the guard
+did not see as the sender's (a link, `runpy`) finds no ticket, and its send waits for its own code as before.
+
 1. It refuses at once when an earlier attempt with this recipient and text
    exists, unless that attempt is known not to have reached the send call.
 2. It finds the one existing one-to-one iMessage chat with the handle through

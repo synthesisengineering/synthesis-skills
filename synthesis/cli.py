@@ -179,9 +179,27 @@ def cmd_inbox(args) -> int:
 
 
 def cmd_sends(args) -> int:
-    """The send window and the day's send ledger. A window opens only on the principal's code for exactly that
-    window, read from the session's own transcript, whoever runs the command and from any terminal."""
+    """The send window, batches and the day's send ledger. A window or a batch opens only on the principal's code for
+    exactly it, read from the session's own transcript, whoever runs the command and from any terminal."""
     from synthesis import approvals, sends
+    if args.file and args.action != "batch":  # the review of 5.23.0: `sends open -- -h` took -h as a file and opened
+        print("a file goes only with `synthesis sends batch`", file=sys.stderr)
+        return 2
+    if args.action == "batch":
+        return _batch(args)
+    if args.action == "composer-check":  # what a Messenger entry's send reads of the page, read only
+        print(sends.COMPOSER_CHECK)
+        return 0
+    if args.action == "script":  # the page script that sends one Messenger entry, last in its send step
+        prefix, _, number = args.entry.partition(":")
+        found = [d for d in sends.batches() if prefix and d["digest"].startswith(prefix.lower())] if number.isdigit() else []
+        entries = found[0]["entries"] if len(found) == 1 else []
+        entry = entries[int(number) - 1] if 0 < (int(number) if number.isdigit() else 0) <= len(entries) else {}
+        if entry.get("channel") != "messenger":
+            print("name a Messenger entry of one open batch: --entry <digest prefix>:<its number in the listing>", file=sys.stderr)
+            return 2
+        print(sends.send_script(entry))
+        return 0
     if args.action == "open":
         window = sends.asked(args.hours, args.channels, args.project, args.sends)
         try:
@@ -201,13 +219,45 @@ def cmd_sends(args) -> int:
             print(sends.window_refusal(window), file=sys.stderr)
             return 2
         print(sends.describe(sends.open_window(window["hours"], window["channels"], window["project"], window["sends"])))
-    elif args.action == "close":
+    elif args.action == "close":  # the principal's stop: the window and every open batch
         print("send window closed" if sends.close_window() else "no send window was open")
+        ended = sends.close_batches()
+        print(f"{ended} batch{'es' if ended != 1 else ''} ended" if ended else "no batch was open")
     elif args.action == "status":
         print(sends.describe(sends.window()) if sends.window() else "no send window is open")
+        print("\n".join(sends.describe_batch(b) for b in sends.batches()) or "no batch is open")
     else:
-        for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):
-            print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {e['summary']}")
+        for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):  # a Messenger send step by what its script did
+            said = {False: "not sent (its send script declined): ", None: "unconfirmed (no report from its send script yet): "}.get(
+                e.get("sent"), "") if "sent" in e else ""
+            print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {said}{e['summary']}")
+    return 0
+
+
+def _batch(args) -> int:
+    """`synthesis sends batch <file>` prints what the principal approves (with --show every text too, and nothing
+    opens). It opens only on their code for exactly the digest of the file as it reads it, typed in this session, from
+    any terminal (the review of 5.23.0: a terminal of the principal's own was one an agent could fake), and spends that
+    code itself; the entries are copied into the state with this session and the code, so the file no longer matters."""
+    from synthesis import approvals, sends
+    try:
+        batch = sends.read_batch(args.file)
+    except (OSError, ValueError) as exc:
+        print(f"This batch can't open: {exc}", file=sys.stderr)
+        return 2
+    print(sends.batch_listing(batch, show=args.show))
+    if args.show:
+        return 0
+    me, digest = _session(args), sends.batch_digest(batch)
+    grant = approvals.grant("send-batch", digest)
+    try:  # a shell acts only as its own session, so its own transcript must show the code
+        if not approvals.consume("send-batch", digest, {"session_id": me}):
+            print(sends.batch_refusal(batch, args.file), file=sys.stderr)
+            return 2
+        print(sends.describe_batch(sends.open_batch(batch, grant, me)))
+    except (approvals.Unverified, ValueError) as exc:  # no prompt of theirs backs it, or an earlier grant's state is unreadable
+        print(exc, file=sys.stderr)
+        return 2
     return 0
 
 
@@ -445,8 +495,12 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--peek", action="store_true", help="show unread messages and mark none")
     sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
     s.set_defaults(fn=cmd_inbox)
-    s = sub.add_parser("sends", help="open, close or show the send window; list the day's sends")
-    s.add_argument("action", choices=["open", "close", "status", "log"])
+    s = sub.add_parser("sends", help="open, close or show the send window and batches; list the day's sends")
+    s.add_argument("action", choices=["open", "batch", "close", "status", "log", "composer-check", "script"])
+    s.add_argument("file", nargs="?", default="", help="batch: the batch file to show (--show) or open")
+    s.set_defaults(late="file")
+    s.add_argument("--show", action="store_true", help="batch: also print every text in full, and open nothing")
+    s.add_argument("--entry", default="", help="script: <digest prefix>:<entry number>, a Messenger entry of an open batch")
     s.add_argument("--hours", type=float, default=0, help="how long the window stays open, at most 12")
     s.add_argument("--channels", default="", help="comma-separated: slack,email,chat,calendar,jira,confluence,"
                    "bitbucket,github,docs,notion,web, or all")
@@ -524,9 +578,14 @@ def command_at(argv: list[str]) -> int:
     return next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
 
 
-def parsed(argv: list[str]) -> argparse.Namespace:
-    """The namespace a command other than wait, worktree and doctor runs with; SystemExit for help and for words the CLI
-    refuses. The guard reads `install` and `uninstall` with it, so what waits for the principal is what would run."""
+def parsed(argv: list[str]) -> argparse.Namespace | None:
+    """The words as the CLI reads them, argparse's own exit on an error or for help included; None for `wait`, `worktree`
+    and `doctor`, whose words their own parsers read. The guard reads `install` and `uninstall` with it, so what waits
+    for the principal is what would run, and `synthesis sends ...`, so the two never read one command two ways (the
+    review of 5.23.0)."""
+    split = command_at(argv)
+    if "".join(argv[split:split + 1]) in ("wait", "worktree", "doctor"):
+        return None
     made = parser()
     args, rest = made.parse_known_args(argv)
     late = getattr(args, "late", "")  # the one name a command may leave out: after an option, argparse has already taken it as left out

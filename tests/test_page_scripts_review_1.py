@@ -104,7 +104,8 @@ def test_a_page_no_list_shows_is_an_unknown_page(tmp_path, tool):
     _ran(record, "Bash", {"command": "ls"}, "notes.md")
     session = {"session_id": "S-principal", "transcript_path": str(record)}
     assert _refused(_check(tool, _script(BUILT, tab=5), session))
-    assert _check(tool, _script("document.title", tab=5), session) is None  # a read there still passes
+    read = _check(tool, _script("document.title", tab=5), session)  # a read there passes; the batch takes none there (Messenger may be it)
+    assert (read and "no list of tabs" in read) if hasattr(guards, "_send_step") else read is None, read
 
 
 # --- 4: a refused navigate is never a driven browser's page --------------------------------------------------------

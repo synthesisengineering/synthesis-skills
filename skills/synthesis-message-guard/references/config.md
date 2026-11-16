@@ -424,6 +424,211 @@ signature, and is written to the day's ledger with the sends approved by code; `
 [--date]` prints it for the daily plan's "On your behalf". Exact-text sends (the principal's own words) are
 outside every window: list only the signatures of lanes the principal allows.
 
+## Batches (2026-11-14)
+
+A seat that drafts replies in the principal's own words sends them in batches of about twenty: the principal reads
+every text and recipient in one sitting and types one code, and fifty replies no longer need fifty codes. Over the 26
+days to 2026-11-14 the guard let through 442 sends, 358 on a code per call, as many as 16 of those within one hour.
+A batch binds each exact text and recipient, so it is stronger than a window and may carry what a window must not.
+
+**The file,** written by the seat that drafted it, in its own project, with 1 to 50 entries of four kinds, each
+with nothing else:
+
+```json
+{"batch": "replies-2026-11-14", "project": "inbox-backlog", "entries": [
+  {"tool": "mcp__slack__slack_send_message", "input": {"channel_id": "D0123", "message": "Thanks, Tuesday works."}},
+  {"channel": "messenger", "to": "facebook.com/messages/e2ee/t/1000000001", "text": "Thanks, Tuesday works."},
+  {"channel": "messages", "to": "+15550100", "text": "On my way."},
+  {"channel": "messages", "members": ["+15550101", "+15550102"], "service": "SMS", "chat": "chat-9", "text": "Landed."}]}
+```
+
+A connector call is the tool's exact name and its exact input. A browser send on Messenger is the conversation's
+address in its one canonical form (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`,
+`messenger.com/t/<id>` or `messenger.com/e2ee/t/<id>`, with nothing before or after it) and the exact text. A send by
+the local messages sender (`messages_send.py`) is the handle `--to` takes and the text, or for `--members` each
+member's handle once, the chat's service and its chat id, as the sender's own approval names them, and the text; a
+connector entry never names the sender's own tools (`imessage_send`, `messages_send`), which would carry its photo. One
+entry goes to each conversation (an address, a handle, a chat, or for a connector call the recipient fields its input
+names: `to`, `channel_id`, a thread and their kin). Anything else is refused with what is wrong, and so
+are a control character other than a newline, or half of a surrogate pair, anywhere in the file (the review of 5.23.0:
+an escape code hid words in a listing, and a carriage return printed one line over another), a connector entry's tool
+name holding more than letters, digits and `_ . : -` (its third round: the listing prints a name as it is, and a line
+separator in one drew a line of the agent's own), a key given twice, a number JSON does not have, a repeated entry and
+a file over 1 MB.
+
+**Asking.** `synthesis sends batch <file>` prints the digest (SHA-256 of the batch's canonical JSON: sorted keys, no
+spaces, UTF-8), the count and each entry's channel and recipient; `--show` also prints every text in full and opens
+nothing, so it needs no code. Every listing quotes each text as JSON and prints as it is a letter, mark, digit,
+punctuation or symbol, a plain space and a line break; every other character (a control, format, separator, private
+or unassigned one, every other space) is written as its code, and so is any character of those kinds that is one of
+the listed fillers, blanks and variation selectors (U+1D159 and U+16FE4 among them, the third round) or whose name says
+it is a blank, filler, joiner, subjoiner, conjoiner or selector (U+13441, U+2D7F, U+1107F, U+11A47 and U+1BC9D among
+them, review round 4, #8). The
+file's path, the batch's name and its project are shown the same way (the review of 5.24.0), and a connector call's
+input prints one field to a line. The command opens a batch only on the principal's code for exactly that
+digest, typed in the session that runs it, from any terminal: an agent could fake a terminal of the principal's own, so
+there is no such shortcut. It spends the code itself, so a file changed after the hold has another digest and gets
+nothing. The guard holds the command with the code and the whole listing, texts included, so the principal reads in the
+hold exactly what the code grants; a packet built from the same file is a convenience, never the record. The guard
+reads every `synthesis sends` in a command line with the CLI's own parser; one it cannot read as the CLI would (a word
+the shell changes first, or one the CLI refuses) waits for a code of its own, and a file goes only with `sends batch`.
+At the grant the entries are copied into the synthesis state with the digest, the project, the grant's time, the
+session that ran the command and the code the principal typed in it, so editing the file afterwards changes nothing.
+
+**What an entry covers.** Exactly that entry, compared after each string's line endings are written as `\n`, and
+nothing else is overlooked: a trailing space, a lookalike letter, another case or one more character is another
+send. A connector entry binds the whole call, every field of its input, compared as JSON (`true` is not `1`); a call
+whose input names anything its connector fetches, reads or carries when it runs (a key naming a url, a uri, a link, a
+path, a file, an attachment, an upload, a download, media, an image, a photo, a picture, video, audio, a voice clip, a
+blob, a sticker, a thumbnail or an avatar) is never covered, since a batch binds words, not what a url, a path or a
+file holds when the call runs. A messages entry binds what the sender's own approval binds; a photo beside it
+is outside every batch. A Messenger entry is sent in one step, a single `browser_batch` (the review's third round: a
+check read in one call and a Return pressed in another left room between them for a page script that rewrote what the
+check reported, a typist the guard could not see, and another session):
+
+1. **A navigate** on a tab it names, which this session made with the browser's own `tabs_create` (the guard reads the
+   new tab's id from that call's result in this session's record) and which this session's newest list of tabs already
+   shows on the entry's conversation, to that conversation's https address with no query or fragment (`https://www.<its
+   address>/`). A page gets a handle to another window only by opening it, so no page holds one to a tab the browser tool
+   made (the review's third round: a script on a page the guard read as the agent's own `data:` page, after that page
+   had moved itself to facebook.com, opened the chat and patched it through every load; the coordinator's ruling of
+   2026-11-15). Since the tab was made, any action on it in another session's record, or one there that names no tab,
+   and any page script but the shipped ones run on it in this session's record or its sub-agents' (a window a script
+   opens keeps a handle to the tab) void it; a tab the guard did not see this session make is refused with that word:
+   open a fresh tab with `tabs_create` and navigate it to the conversation. The navigate loads the page again, so
+   whatever an earlier script did to it goes with it; since the tab already showed that conversation, no session's guard
+   reads another address for it while the step runs.
+2. **The words typed** on that tab, and nothing else: typing with no line break, shift+Return for each line break,
+   select-all with Delete or Backspace to clear, and waits. No click and no other key: Return sends the box as it stands,
+   and the composer's neighbours are send controls themselves (`Send a like` sends a thumbs-up; the coordinator's live
+   read of 2026-11-14).
+3. **Last, the send script**, exactly as `synthesis sends script --entry <digest prefix>:<its number>` prints it for
+   the entry, run with the JavaScript tool on that tab. It holds the conversation and the SHA-256 of the entry's words,
+   and in one synchronous run, so nothing can act between the read and the send, it:
+   - finds **the box**: the one contenteditable textbox whose `aria-label` starts with `Write to` or names a message,
+     whose `aria-placeholder` is `Aa`, or that is a Lexical editor (`data-lexical-editor`); two such boxes, or none,
+     send nothing;
+   - reads **its words**, its `innerText` with the one line break Lexical ends it with left off (an empty box is a
+     single line break; a shift+Enter break is one line break inside), and compares their SHA-256 with the entry's,
+     each line ending written as `\n`: past that one break the comparison is exact;
+   - reads **the composer**, the box's nearest ancestor that also holds a control whose `aria-label` names sending
+     (`Press enter to send`, `Send`) or a file or attachment (`Attach a file`), and outside the box, in it or in any other
+     child of its parent (in plain mode the composer is its parent's only child, live 2026-11-15): **what is staged**
+     (images, video, audio, canvases, objects, frames, pictures, an svg outside a control such as a file's icon, and a
+     control labelled to remove, close, cancel, delete or discard), and **its mode** (text that opens with `Replying
+     to`, `Edit`, `Editing`, `Cancel reply` or `Cancel edit`, a control labelled for a reply or an edit, a quotation, and
+     a heading, `role="heading"` or `h1` to `h6`, outside the composer whatever it reads; inside it a heading counts
+     only by those words, since Messenger's composer always holds a visually hidden `Compose` heading), with the images
+     inside the box, which `innerText` leaves out. Reply mode was read live on 2026-11-15; edit mode and a staged file
+     have not been;
+   - checks that **the page** is the entry's conversation, by its site and path;
+   - and only when all of that holds, clicks the one control in the composer labelled exactly `Press enter to send` or
+     `Send`. It returns one JSON report: the address, whether the conversation and the words matched, the counts, the
+     controls it found, whether it sent, and the box's text right after (empty when Messenger took the words at once).
+
+`synthesis sends composer-check` prints the same reading as a script that sends nothing, for a look at the page. On a
+Messenger site's tab (a page of facebook.com or messenger.com or a host under them, which share the chat's origin, or
+of a host the guard counts as Messenger's, where the browser lands on a chat: m.me, fb.com, fb.me and Business Suite's
+inbox), by this call's own navigates, this session's newest list of tabs, or another active session's list when that
+is the newest of all that name the tab, no page script runs but the shipped read-only ones (the composer check, and the
+extractors `messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any
+other, whichever browser tool runs it (Claude in Chrome's, the built-in pane's, and a driven browser's
+`browser_evaluate` and `browser_run_code_unsafe`), and a navigate to a `javascript:` address too, read as a URL parser
+reads it, from any of them, alone or in a batch, is refused at its own call, since it can change what the send reads or
+what a click sends, then or later. A page no list of tabs names (a tab not listed yet, one a navigate sent where no host
+is named, or a page a driven browser's record does not show) takes none either, since it may be a Messenger site's (the
+third round's opener ran on such a tab), and the refusal says to read the page first, by a list of tabs or a snapshot
+(main's word for such a page since its review round 2). A step that may move a tab is a navigate, a click, a key, a
+drag, words typed with a line break, a form value or an upload, but not one on a local app's page or a navigate to one
+(review round 6, #4, as ruled: a local page that sends the tab on is on the open list, so a click and then a script
+that clicks Save in the principal's own app runs); and a page script that can navigate, on any page: a location change
+by any assignment operator (by name, by an alias such as `const l = location`, or by `Object.assign(location, ...)`),
+`open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event, or one the
+guard cannot read. A
+script that sets a value or writes by fetch moves nothing (a write by fetch waits for its own code as a send)
+(review round 4, #2: a short link or a followed link landed on a chat; round 5, #1: a script or a form value moved it
+unseen; round 6, #1 and #4). The guard's own first step for a driven browser, marked
+`exact`, moves nothing; an agent's call so marked does. After such a step earlier in the same call, a script there
+takes nothing but the plugin's own when the move was onto or from a Messenger site's page or one no list shows, and on
+a Messenger site's page the refusal names that page's rule and its read tools (round 5, #3); after any other move a
+read runs, and a script that acts or cannot be read waits for a call of its own, once a list of tabs shows where the
+tab landed. That split is protection, by the coordinator's ruling of 2026-11-15: a redirect onto a chat shows no sign
+before it lands, so a script that acts after an ordinary move costs one more call, and no code. Each browser keeps its
+own tab ids and lists. Over the 60 days to 2026-11-15, of 146 batches with a page script the rule refused 114 as first
+written and refuses 8 in its own words now, all scripts that act after an ordinary move, in both workspaces: the
+protection above. 19 more are refused in a Messenger page's rule's words (15 reads after a move onto a Messenger page,
+which round 4's fix refused in the moved rule's words, and 4 scripts on a Messenger tab), 27 in all, as before round 5.
+A pane batch on a local app that clicks and then reads runs. Of the 3,708 browser calls in the Claude Code records of
+those days, the guard with these rules refuses 57 (49 scripts on a Messenger site's tab, none of them the plugin's own,
+and those 8 batches) and tells 1 to read its page first, where main's rule alone refuses none (above).
+The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
+nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
+conversation is a page's site and path, its trailing slash and query left off: the
+four forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and
+a send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
+12 hours of the principal typing the batch's code (what `synthesis sends status` names as its end); and only from the
+session that ran the granted command, as the guard is told it (a hook's payload). The messages sender names no session
+(its third round: a link or runpy kept a `--session` naming another): for each run of the sender a command the guard
+lets through makes, its program resolved as the write rules resolve one (an interpreter's file or module, a script run
+by its path, each through its links), the guard files a one-use ticket for the session its hook names, bound to that
+run (the sender's real file, its arguments and its real folder); the sender hands its guard call its own run, which
+takes only a ticket of the same run filed in the last minute (review round 4, #6, #11 and #12: a `cat` or a `grep` of
+the sender's file filed one, any run took it, and a line of two sends had one). The ticket names the harness whose hook
+filed it (the hook's nearest ancestor process that is no shell, interpreter or the hook's launcher, by its pid and start
+time, when that is a harness of the session's own; when it is a process every program of a terminal shares, a login, a
+remote login or a multiplexer, or there are shells alone, no ticket is filed and each send waits, review round 7, #2)
+and the command line the run's process shows; it is taken only by
+a process under that harness whose own command line, as the system's `/bin/ps` shows it, ends so (review rounds 5 and
+6, #4 and #2: an identical run the guard never saw took a ticket, and a `ps` first on PATH could answer for the system).
+A command that only names the file files none; a run under another name or by runpy takes only a ticket whose run its
+own command line shows; identical runs of two sessions in one folder each take their own session's ticket; where `ps`
+cannot answer, none is taken and each send waits for its code. An entry is spent at once, under the send lock, and
+given back (an "undone" line in the spends ledger, and the batch's spent mark taken back) when the call that spent it is
+then held, as a per-call grant is; a call left with no answer keeps its spend, since a harness given no answer may have
+run it (review round 7, #3). That session's own record must show, each time an
+entry is spent, the principal typing the batch's
+code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
+digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for
+it, since the agent writes those (the review's third round: its own sentence naming a digest and a code tied them, and
+repeating both after the principal typed the code held a granted batch). A code typed for anything else backs
+nothing, so batch state alone is never a grant. Each send is
+written to an append-only spends ledger and to the day's ledger as `batch:<digest prefix>:<index>`, so `synthesis
+sends log` shows it for "On your behalf". A Messenger send step's line is read with its send script's own report from
+the session's record: `synthesis sends log` names one whose script declined as not sent, and one with no report yet as
+unconfirmed (review round 4's notes: the line named a message the script then declined to send). Another session's
+call voids a send step only when it went to the same browser, names the step's tab or none, can change the page (not
+a screenshot, a scroll, a wait or a hover) and no hook refused it, and a tab is this session's only by the extension's
+own `Created new tab. Tab ID: N` (the words every one of 89 such results in 60 days of records used, each naming in
+`Executed on tabId` the tab it made).
+
+**Every other check runs first.** The register scan, the format rules, an address that can change
+(`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message, a Messenger
+entry's words included: an entry that names a clock time still needs a fresh calendar read when it goes, or the
+hold's own code, which spends the entry with the send. For a Messenger entry that code binds the exact send step: its
+conversation's address, and its script, which holds the words' digest. A meeting placed on today is never covered
+(`same_day_meetings`). No shell post is a batch's entry: the messages sender asks the guard itself.
+
+**The window and the batch never combine.** The batch is looked at after every check and before the window; a send
+it covers is not counted against a window's planned sends, and a call is covered whole or not at all.
+
+**What tampering with the state does.** The file tools and the shell writes the guard reads cannot write the state,
+and a script that names a batch's opening or spending code is refused as the window's is; 5.22.1 closes the
+interpreter writes the review of 5.23.0 found, and the guard reads `sends._batch_file`, `sends._spends_file`,
+`sends._requests_file` and `sends._window_file` as leading into the state, so a program that names one is judged as
+one that names the state folder. A path a program builds at run time is still unseen (the review of 5.24.0, #6, a sandbox's to close, not this
+batch's). Behind that: state that cannot be read, whose entries no longer hash to
+its digest and its file's name, that marks entries it does not have as spent, or whose life runs past 12 hours from
+its grant is no batch, and its sends fall back to the code per call; the same batch granted again is then refused
+rather than guessing which entries went. A spent mark taken out of the state reopens nothing, since the spends ledger
+keeps every spend. A grant time moved later keeps nothing open past 12 hours from the principal's own prompt, which each
+spend reads in the session's record, and another session's name put in the state spends nothing, since that session's
+record holds no code for it. These fields are not signed: what holds the line is that only the guard and the CLI write
+the state, and that the principal's typed code is read from the harness's record at every spend. A batch granted again
+with readable state keeps the spent marks of its earlier grant.
+
+**Ending.** `synthesis sends close` ends the window and every open batch at once, with no code, and `synthesis sends
+status` shows each open batch with its entries left and when it ends.
+
 ## Computer use and the browser (2026-10-22)
 
 On 2026-10-22 a photo with a caption went out on WhatsApp through `computer_batch`, a click on the app's Send
@@ -534,7 +739,8 @@ words and then presses Return or Enter (without shift), Space or Return after Ta
 code when its summaries name a message, comment, review, post, reply or tweet: most forms submit on Return, and those
 are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
 typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
-site's page one the guard cannot read is refused and one that acts waits (below, since 5.24.0); elsewhere one that submits
+site's page one the guard cannot read is refused and one that acts waits (below, since 5.24.0; on a Messenger site's tab none runs but the plugin's own read-only ones and a batch's send script in its
+send step, "Batches"); elsewhere one that submits
 a form, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or `sendBeacon`), or clicks with a word
 that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet, done) waits, unless it
 names a search, a sign-in, a password or a query as a whole word; on a local app none waits.

@@ -1127,6 +1127,54 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
+# M37 part 4, one approval for a reviewed batch of sends (2026-11-14): core 410 more, plugin 410, each function counted
+# with the two blank lines before it. sends.py 251. The file's checks: read_batch 13 (a key given twice, a number JSON
+# does not have and a file over 1 MB refused), _unique 8, _no_number 4, checked 16 (one shape, 1 to 50 entries, none
+# repeated) and _entry_problem 19 (the three kinds, each with nothing else). conversation 12 with CONVERSATIONS 2 (a
+# Messenger chat's page: its encrypted and plain forms and the two sites four conversations). batch_digest 5. The
+# state: _batch_file 4, _whole 13 (its digest its name and its hash, its spent marks its own, at most 12 hours), batches
+# 10, open_batch 20 (a batch granted again keeps what it sent, an earlier state that cannot be read is refused, records
+# a month past their grant pruned), close_batches 10 and batch_spend 14 (under the guard's lock, each entry once). The
+# matching: _plain 9, _same 5, call_entry 13 (a connector call whole; the messages sender's handle or members and text)
+# and browser_entry 5. Asking: batch_asked 11 with VALUED 3, _cli_words 11 with window_asked 4 fewer (one reader of the
+# CLI's words for both), batch_refusal 11, batch_listing 15 with ADDRESS_KEYS 2, and describe_batch 6. HANDLE 1, KINDS 2,
+# the section's notes 10 and the hashlib import 1. cli.py 38: _batch 30 (prints; --show opens nothing; the command spends
+# the grant itself), cmd_sends 5 (close ends every batch, status lists them) and parser 3 (the file, its late name and
+# --show). guards.py 121: check_desktop 26 (the batch looked at after every check and before the window, a time in its
+# words held as in any message, the code that releases a matched call spending its entry, the box's record kept),
+# _talks 28 (a browser call's steps read in order: one focus click, the clearing, the words with their line breaks, one
+# send last, and any scroll, script or navigation between), _unsent 13 and _box 10 (a file, a drop or a paste a call left
+# on a conversation's page, forgotten when a send goes from that one page), _chord 5, the constants LOOKS, CLEARS,
+# LINE_BREAK, PASTES and FOCUSES 5 with UNSENT 6 and their note 4, _judged_send 10 (the batch after every check and
+# before the window, never for a file's bytes or a meeting on today, its entry spent with the code for a time),
+# check_outgoing 10 (`synthesis sends batch` held for exactly its digest; a held window or batch code no longer lets the
+# rest of the line through unjudged), check 3 (an upload into a conversation's box recorded) and SELF_GRANT_CALLS 1
+# (open_batch, batch_spend and _batch_file).
+# The batch's review round 1 (2026-11-14), 18 findings: core 110 more, plugin 110. sends.py 94: cli_calls 27 (every
+# `synthesis sends` of a command's words read with the CLI's own parser) in place of window_asked 13, batch_asked 11,
+# _cli_words 11 and VALUED 3; composer 21 (the composer check's own report in a result, quoted or not, exactly one),
+# COMPOSER_CHECK 7 and COMPOSER_MARK 1 with their note 2, KINDS 1 more (the members kind); checked 8 more (a control
+# character other than a newline refused, one entry for each conversation), _controls 9, _escaped 4 and _shown 6 (every
+# listing quotes each text, each hidden character as its code), _entry_problem 5 more (canonical addresses only; the
+# members kind with its service and chat), batch_listing 2 more; the grant and the spend: _whole 1 and open_batch 2
+# more (the granting session, the code and when it was asked), batch_spend 8 more (the granting session alone, the
+# spends ledger, the principal's code in the session's record each time), _spends 12, _spends_file 4 and _backed 12;
+# call_entry 2 fewer (the sender's own approval, whole); describe_batch 1 (the ledger's spends in its count); the
+# unicodedata import 1. guards.py 4 fewer: _checked_box 44
+# with CHECK_SECONDS 3 and its note 1 longer (the box read by the composer check, then one plain Return or Send click
+# on that tab of that browser within 60 seconds), _fetches 8 and FETCHES 3 (nothing a connector fetches or reads is
+# covered), check_outgoing 10 more (each sends command of a line, the unreadable one's code, a file only with `sends
+# batch`), _judged_send 1; less the one-call matcher, _talks 28, _unsent 13, _box 10, _chord 5, UNSENT 6 and LOOKS,
+# CLEARS, LINE_BREAK, PASTES and FOCUSES 5, with check_desktop 4 fewer and check 3 fewer (the record of earlier pastes
+# and uploads). cli.py 14: parsed 17 (the parser the guard reads with), _main 6 fewer, _batch 3 fewer (no own-terminal
+# shortcut: the code from any terminal), cmd_sends 6 more (a file only with `sends batch`; composer-check). approvals.py
+# 6: grant (a live grant's code and when it was asked, which the batch keeps).
+# The composer check on Messenger's live box (2026-11-14): core 7 more, plugin 7. sends.py 6: COMPOSER_CHECK 3 longer (the
+# one box by its label, placeholder or Lexical editor, `ambiguous` for two; the composer placed by its send or attach
+# control, `unknown` without one) and its note 3. guards.py 1: _checked_box reads the box's text as Lexical writes it.
+# The click form of a batch's browser send gone (2026-11-14; the composer's neighbours send too): core 2 more, plugin 2.
+# sends.py 3: batch_refusal says how a Messenger entry goes (one plain Return after the check; a click waits for its own
+# code). guards.py 1 fewer: _checked_box 2 fewer (the click form gone) and the note above it 1 longer.
 # 5.22.1 (2026-11-14): core 209 more and plugin 209, after a review wrote the principal's prompt into a transcript and
 # the grant into the state with one line of Perl's File::Copy, which the guard's list of writing calls did not know, and
 # opened a send window from a faked terminal. guards.py 210: the section's comment 7 and its constants 8 (UNREAD 2, the
@@ -1220,6 +1268,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # whose place cannot be read with certainty or whose spelled-out text does not parse, is not spelled out), _ancestors 7
 # with its 2 blank lines (the nodes that hold a node), less _synthesis_own's 2 (only a name a module imports leads
 # elsewhere, so a value it makes by a tuple, a dunder or a name it no longer has does not).
+# 5.22.1 merged into the batch (2026-11-15): the ceilings are 5.22.1's (core 15,840, plugin 41,083) with the batch's four
+# paragraphs above summed onto them (529 each). In check_outgoing, 5.22.1's 3 lines that ask a code for every window
+# request of a line become the batch's loop over every sends command, which gathers each waiting code (a window, a
+# batch or a command it cannot read) and returns them together: `waiting` 1 and its return 2, in place of those 3. And 1
+# more to both: SYNTHESIS_WRITES names the batch's writers (open_batch, batch_spend, close_batches and batch_refusal in
+# sends, _batch in the CLI), as 5.22.1's test of that list reads them from the source, on a line of their own.
 # 5.23.0, the Messenger surface and a chat saved from its page (2026-11-14): plugin 602 more, the core as it was.
 # messenger_messages.py 274 (synthesis-daily-rituals): parse 56 (rows to chats, the owed and nudged ones, unread marks
 # and the coverage line; a wall, another inbox's grid, an empty list without --empty and --end off the list's bottom
@@ -1267,6 +1321,54 @@ ROOT = Path(__file__).resolve().parents[1]
 # statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
 # only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
 # and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
+# 5.23.0 merged into the batch (2026-11-15): the ceilings are 5.23.0's (core 15,886, plugin 41,958) with the batch's
+# 530 summed onto them (its four paragraphs and the writers' line); the two merged with no line changed.
+# The batch's review round 2 (2026-11-15, 11 findings, #6 a sandbox's to close): core 119 more, plugin 122. guards.py 77:
+# _checked_box 15 more (the newest call that could type is the check; back to the tab's last load, no page script but
+# the shipped read-only ones; marks and inline read; when it was checked), _typed_elsewhere 21 (another session's record,
+# where its prompt hook put it, showing a call that could type since the check), _read_only_scripts 20 (the composer
+# check and 5.23.0's extractors, read from their scripts as their commands print them), _types 7 and TYPERS 3 (any
+# browser or computer-use call, a shell's osascript keystrokes and their kin), PAGE_READERS 1, CHECK_SECONDS 2 fewer and
+# its note 1 longer (15 seconds), check_desktop 3 more (a time's code binds the checked conversation and words, a check
+# made after it releases it, the hold says so), check_outgoing 5 more (the session messages_send.py names is the one
+# running it), FETCHES 1 more (photos and the fields that carry files), SYNTHESIS_PLACES 1 and _synthesis_reach 1 more
+# (the batch's and the window's state files lead into the state, never spelled out). sends.py 42: _when 10 (a record
+# line's time), _conversation_of 9 (a connector entry's conversation by the recipient fields it names), INVISIBLE 2 with
+# its note 3 and 2 blank lines, _escaped 2 more (every invisible or variation character as its code), COMPOSER_CHECK 4
+# more with its note 2 (the composer's mode, images in the box), _backed 6 more (the hold that named this digest with the
+# code, and the code typed after it), _entry_problem 2 more (the sender's own tools are no connector entry); read_batch,
+# batch_refusal, describe_batch and batch_spend change lines in place (the path, name and project escaped; the session
+# the guard is told). messages_send.py 3 (plugin): main 2 (--session) and _send 1 (the session given to the guard).
+# Reply mode read live (2026-11-15): core 3 more, plugin 3. sends.py 3: COMPOSER_CHECK 1 longer (its marks read every
+# other child of the composer's parent, where the reply banner sits, and count a heading and a `Cancel reply` named by
+# its text) and its note 2 longer.
+# A plain composer read live (2026-11-15): core 1 more, plugin 1. sends.py 1: COMPOSER_CHECK's note 1 longer (a heading
+# inside the composer counts only by its words, since the composer always holds a hidden `Compose` heading); the check
+# changes in place.
+# The batch's review round 3 (2026-11-15, 9 findings, #8 fixed on main): core 69 more, plugin 67. sends.py 48: the
+# Messenger send step (#1, #2, #3, #6) 3 net: _READ 15 (the composer read the check and the send share, staged and
+# marks across the composer's parent), _SHA 11 with its note 1 (SHA-256 in one synchronous run), SEND_MARK and
+# SEND_SCRIPT 10 with their note 4 (read, compare and click in one run), send_script 7, batch_refusal 2 more (the step
+# in the hold); COMPOSER_CHECK 11 fewer (built on _READ), composer 21, browser_entry 5 and _when 10 gone (the
+# check-then-Return path). The sender's ticket (#5) 30: its note 3, TICKET_SECONDS 1, _ticket_file 4, sender_ticket 5 and
+# ticket 15, with their blank lines. The code tied to the guard's own request (#4) 10: _requests_file 4, batch_refusal 3
+# more (it records the request), _backed 3 more (it reads that record, never the session's). What a listing prints
+# (#7, #9) 5: _controls and checked 1 more each (a lone surrogate refused), _escaped 1 more (only what draws a glyph
+# prints as it is), _entry_problem 2 more (a tool name holds only letters, digits and _ . : -). guards.py 10: the send
+# step 7 net (_send_step 35 with its own urllib import, _batch_send 32, _refused_scripts 25, _listed_on_messenger 16,
+# _messenger_site 5, STEP_KEYS 3, MOVES 1 more for open( by any name; _checked_box 58, _typed_elsewhere 21, _types 7, TYPERS 3
+# and CHECK_SECONDS 1 gone, check_desktop 20 fewer); the sender's ticket 2 (check 4 more: it files the ticket for a
+# command it lets run; _judged_send 2 more: the sender's tools take it; check_outgoing 4 fewer: the --session check
+# gone); the requests ledger 1 (the coarse places). cli.py 11: the `script` action 10 and --entry 1. messages_send.py 2
+# fewer (plugin): --session gone.
+# Round 3's probes on that head (#2: an opener script on a tab no list of tabs had named yet passed): core 8 more,
+# plugin 8. guards.py 8: _refused_scripts 8 more (a page no list of tabs names takes no page script 4, the page a
+# javascript: address runs on 3, its note 1).
+# The send step runs only on a tab this session made (the coordinator's ruling on the opener, 2026-11-15): core 63
+# more, plugin 63. guards.py 63: _made_here 43 (the tab's id from this session's own tabs_create result; since then any
+# page script but the shipped ones in its record or its sub-agents', and any action on it, or naming no tab, in another
+# session's record, void it), _send_template 12 (the shipped send script, for some conversation and digest, opens no
+# window) and _when 8 (a record line's time), each with its blank lines; _send_step changes in place.
 # 5.23.0, round 3 of the batch review, finding 8, and that fix's own review round 1 (2026-11-15: words typed into a
 # Messenger box with the browser tool, then Return pressed through osascript, and the Playwright plugin's browser tools,
 # sent with no code; the review found 15 more ways through and 16 false holds): core 611 more and plugin 611. guards.py
@@ -1296,6 +1398,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
 # place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
 # tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
+# Main's key and browser-tool fix (e783606f) merged into the batch (2026-11-15): the ceilings are main's (core 16,497,
+# plugin 42,569) with the batch's 793 and 794 since 5.23.0 summed onto them (the paragraphs above from "5.23.0 merged
+# into the batch"); the two merged with no line changed (MOVES keeps the batch's open( by any name beside main's DRIVES
+# and PRESSES_ENTER; check_outgoing keeps the batch's reading of every sends command and main's skip of a key or app).
+# The message guard's skill move (binding rule 18, the principal's ruling of 2026-11-15) moves prose only: no code line.
 # 5.23.1: core and plugin each 10 more, all in guards.py: _real 7 (where a path leads, asked once a call: the recorded
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
@@ -1657,12 +1764,37 @@ ROOT = Path(__file__).resolve().parents[1]
 # parser reads it; a javascript: one runs on the page it is on), _driven_steps 2 (a driven browser's javascript:
 # navigate), _puts 1, BROWSER_STEPS 1 (the navigate tool), desktop_tool 1, PAGE_READERS 1, the comments 8 (the rule and
 # the 60 days it was decided by; the pane's ids) and 10 blank lines.
+# Main's 5.23.1 page-script fix merged into the batch (2026-11-15): core 59 more and plugin 59 on the batch's own ceilings.
+# Of main's 101, its _refused_scripts, _read_only_scripts, PAGE_READERS and their comment fold into the batch's own (the
+# batch's _refused_scripts 7 more: every other messaging site's page, and a page a driven browser's record does not show,
+# takes only the shipped readers, and a javascript: address is named as one; its comment 5 more, with the 60 days the rule was decided by). What stays of main's:
+# _tabs 20, _script_address 6, _url_read 5, _browser_item 4, _steps 2, _driven_steps 2, _puts 1, BROWSER_STEPS 1,
+# desktop_tool 1, TAB_LINE's comment 1 and 4 blank lines.
+# Review round 4 of the batch approval (2026-11-15): core 109 more and plugin 113. guards.py 66: _sender_runs 15 (the
+# messages sender's run a command makes, its program resolved as the write rules resolve one: its real file, arguments
+# and folder), _moves 10 (a step that may leave its tab on a page no list shows yet), _refused_scripts 12 (a script after
+# such a step, another session's newer list unless an earlier step went to an address), _made_here 7 (only this browser's calls that name the tab or none and can
+# change the page, none a hook refused, and the extension's own `Created new tab` words), _messenger_site 4 (every host
+# the guard counts as Messenger's), _listed_on_messenger 4 (the newest list across sessions decides), _tab_list and _tabs
+# 2 (a list's time), check_send 1, QUIET_ACTIONS 1, _batch_send 1 (where its script's report will be), check 1 and 8
+# blank lines. sends.py 41: _reported 13 (whether a Messenger send's script sent, from its report), _run_key 7, ledger 4,
+# ticket 2, sender_ticket 1 (a ticket bound to a run, one for each run, taken by that run alone), _escaped 2 and
+# BLANK_NAMES 1 (a blank by its name), open_batch 1 (closed 12 hours after its code was typed), log 1, the comments 3 and
+# 6 blank lines. cli.py 2: `sends log` names a send its script declined, or one not yet confirmed. In the plugin,
+# messages_send.py 4 more: it hands the guard its own run (its file, the arguments it was run with, its folder).
+# Main's guard path cache (82412084, its 5.23.1 note above) merged into the batch (2026-11-15): core and plugin 10 more,
+# _real 7 and its 3 blank lines, as on main; the batch's per-call reset names it beside the sender runs.
 # The coordinator's ruling on round 4's measurement (2026-11-15): on a messaging site's page a script the guard cannot
 # read is refused, one that acts waits, a read passes, in place of refusing every script but the plugin's own: core 30
 # more and plugin 30, all in guards.py. _unread_script 7 (a call by a name built as it runs, code in a string the page
 # runs, text never closed), _script_acts 5 (the acts rule over the code too, and its new spellings), _refused_scripts 2
 # (a javascript: address refused there whatever it runs), UNREAD_SCRIPT 2, SCRIPT_ACTS_MORE 2, PAGE_CODE 1, the comment
 # 5 and 6 blank lines.
+# Main's rule merged into the batch (2026-11-15): core and plugin 32 more. Main's 30 less its _refused_scripts 2, which the
+# batch's own takes in 1 line: every other messaging site's page takes main's rule, and a javascript: address there is
+# refused whatever it runs; the batch's Messenger rule (only the plugin's own scripts) stays as built.
+# And 3 for round 4's #9 in the batch's own words: a page a driven browser's record does not show takes no script but the
+# plugin's own, since main's rule there no longer refuses every script.
 # Review round 1 of that rule (2026-11-15): core 60 more and plugin 60, all in guards.py. _writes_by_fetch 15 (a fetch,
 # Request or XHR writes unless its method is a literal GET or HEAD, in any spelling), _unread_script 8 (the form named in
 # fixed words; code only where it reaches a sink), _script_code 7 (an optional call read as a call, X.call( as a call of
@@ -1672,6 +1804,33 @@ ROOT = Path(__file__).resolve().parents[1]
 # hook refused left out), _refused_scripts 1, HANDLERS 1, SERVER_CODE 1, _osa_code 1 (`/` after `++` or `--` divides),
 # _driver_page 1 (a javascript: navigate is no page), _driven_steps 1 and 6 blank lines; less PAGE_CODE 1,
 # UNREAD_SCRIPT 2 and 6 lines of comment.
+# Review round 1 of main's rule merged into the batch (2026-11-15): core and plugin 66 more. Main's 60, less its
+# _refused_scripts 1 (the batch keeps its own), plus 6 lines of comment main took from a block the batch never carried
+# (the new block's comment lands whole), and 1 for the batch's refusal on a page no list shows, now named for every
+# browser (a tab not listed yet, a sub-agent's, a driven browser's after a tab change).
+# The batch's moved rule, before its round 5 (2026-11-15: a pane batch on localhost that clicked and then read was
+# refused, ordinary work): core and plugin 11 more, all in guards.py. _refused_scripts 6 (a move is strict onto or from a
+# Messenger site's page or one no list shows, else ordinary, where a read runs and only what acts or
+# cannot be read waits for its own call; a navigate to an address places the page anew), _local 3 (a local app's host,
+# where a click, a key or a typed line break moves nothing) and its 2 blank lines; _moves keeps its line count.
+# Review round 2 of main's rule merged into the batch (2026-11-15): core 69 more and plugin 69, all in guards.py, as on
+# main. _writes_by_fetch 37 (method and body read in the init of fetch or Request alone, or in the object a variable
+# given there holds and what is set on it; an init the reader cannot follow is a write), _tab_list 9 (preview_start's
+# answer places the pane; one that names no address changes no page), check_desktop 9 (a call that sends only if a page
+# no result shows is a messaging site's is told to read the page first, with no code asked, in a browser whose reads show
+# its page), _defined_names 8 (a name the script defines is no page's send), SHOWS_PAGE 1, BARE_SENDS 1, _script_code 1
+# (`[].x.call(` is a call of x), _script_acts 1 and 2 blank lines; the batch's MOVES and its message on a page no list
+# shows keep their line counts.
+# Review round 3 of main's rule merged into the batch (2026-11-15): core and plugin 71 more, all in guards.py, as on
+# main less what the batch had: _shared_tabs 26, _writes_by_fetch 14, _listed 12, _script_acts 6, _defined_names 4,
+# MEMBER_SENDS 2, _LISTS 1 and 6 blank lines; the batch's _when and its _tab_list with the list's time stand.
+# Review round 5 of the batch (2026-11-15): core and plugin 56 more. sends.py 50: _table 10 (the system's process table,
+# one `ps`), _harness 8 (the hook's harness: its nearest ancestor that is no shell, interpreter or the hook's launcher),
+# _own_line 7 (a process's command line as the system shows it), _ancestors 6, ticket 3 (taken only by a process of
+# that harness whose command line is the run's), sender_ticket 1, NOT_HARNESS 1, the comment 4 and 10 blank lines (#4).
+# guards.py 6: _refused_scripts 6 (a Messenger page's own rule named after a move; every kind of move in the refusal),
+# _moves 3 (a page script that acts, a form value, an upload; `exact` the guard's own word), _steps 1, _sender_runs 1
+# (the line its process shows), less _local 3 and its 2 blank lines (a local app's page moves too) (#1, #3).
 # Review round 2 of that rule (2026-11-15): core 69 more and plugin 69, all in guards.py. _writes_by_fetch 37 (method
 # and body read in the init of fetch or Request alone, or in the object a variable given there holds and what is set
 # on it; an init the reader cannot follow is a write), _tabs 9 (preview_start's answer places the pane; one that names
@@ -1910,10 +2069,42 @@ ROOT = Path(__file__).resolve().parents[1]
 # skill's files by the rule _stable_skill_files walks them with, so a release's staged copy and its tag's listing
 # agree) and the carried list's comment 1 (the release tool rides along for the launcher, never the plugin's own).
 # guards.py 1 fewer: one _shipped holds both rules, the release it runs from (22.15) and never its kit (22.8).
+# Main's 5.23.1 and the page rule's round 4, merged into the batch (2026-11-15): the batch's ceilings above
+# plus core and plugin 396: main's approval spend order (5.23.1, 374 beyond the path note the batch had; its notes
+# above) and the page rule's round 4 (22: _bracketed 8, _writes_by_fetch 5, _shared_tabs 4, _script_acts 3, 2 blank
+# lines). The batch's send paths keep their own records; main's decorator wraps the checks it wraps on main.
+# Review round 6 of the batch (2026-11-15): core and plugin 22 more. guards.py 21: _navigates 8 (a page script moves a
+# tab only when it can navigate; a location alias and Object.assign(location, ...) do), _local 3 again (a navigate or a
+# click on a local app moves nothing, as ruled), NAVIGATES 2 and its comment 2, 6 blank lines; _moves keeps its count.
+# sends.py 1: _own_line 1 (the system's /bin/ps with a clean environment); _table and _harness keep theirs.
+# Review round 5 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
+# _writes_by_fetch 5 (W4: an init the reader cannot follow is read by a method named anywhere in the script again).
+# Review round 7 of the batch (2026-11-15): core and plugin 29 more, all in sends.py. batch_unspend 9 (an entry given back
+# when its call is held: an "undone" line and the spent mark taken back), _spends 8 (a spend an "undone" line names is
+# none), batch_spend 5 (its mark, and its undo given to the guard's _after), _harness 3 (no harness under a process a
+# terminal shares, or shells alone), SHARED 2 and 2 blank lines; guards.py's call sites keep their counts.
+# Review round 6 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
+# _writes_by_fetch 5 (a method read only as an object key, a shorthand by its const's one literal, or a member
+# assignment: a parameter or a property read named method held a read through a wrapper).
+# Review round 7 of the page rule, merged into the batch (2026-11-15): core and plugin 1 more, as on main: ASSIGN 1
+# (every assignment operator, for each assignment the rule reads: Y3's `o.method ??= 'POST'` passed as a read).
+# 5.24.0, the batch approval (5f486d2f: one approval for a reviewed batch of sends, M37 part 4, with 22.12's fd332225,
+# which release/next carries, and main's 5.23.1) merged into release/next at 9d80ab27: release/next's ceilings (core
+# 20838, plugin 47455), the batch's raises over fd332225 (core 974, plugin 979) and 5 fewer each that the merge's own
+# lines take away, measured: core 21807 and plugin 48429. The batch's 974 and 979 are its own paragraphs, from "M37 part
+# 4" above to "Review round 7 of the batch" just above (410, 110, 7, 2, the writers' line 1, 119 and 122, 3, 1, 69 and
+# 67, 8, 63, 109 and 113, 11, 56, 22 and 29: core 1020, plugin 1025), less 46 each of main's 5.23.1 and 22.12's lines
+# that its own code folds in (main's 101 as 59, its rule's 30 as 32, round 1's 60 as 66, round 3's 83 as 71); its
+# paragraphs on main's and 22.12's work merged into it count those lines once. cli.py 6 fewer: each side moved _main's
+# parsing into a parsed of its own, so one stands, with release/next's command_at and the batch's None for wait,
+# worktree and doctor, its docstring naming both readings (the batch's call and return in _main, its def line and two
+# blank lines, and a line of its docstring counted once). guards.py 1: the shell dispatch keeps the sender runs
+# check_outgoing found before check_git_programs judges each git program as a call of its own, which starts the call's
+# state anew, so a sender run beside such a git command still takes its ticket.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 20838
-PLUGIN_BUDGET = 47455
+CORE_BUDGET = 21807
+PLUGIN_BUDGET = 48429
 
 
 def _lines(files):

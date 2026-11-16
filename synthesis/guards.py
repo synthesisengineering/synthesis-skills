@@ -673,21 +673,24 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
 
 
 @_entry
-def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
-    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none). One
+def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None, run: dict | None = None) -> str | None:
+    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none); run: the
+    messages sender's own run (its file, its arguments, its folder), which takes the ticket its command filed. One
     send is judged at a time: the code that lets a message go spends its other code before an identical call is
     looked at."""
     with approvals.alone():
-        return _judged_send(tool, tool_input, config, session)
+        return _judged_send(tool, tool_input, config, session, run)
 
 
-def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None) -> str | None:
+def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None, run: dict | None = None) -> str | None:
+    from synthesis import sends
+    if tool in ("imessage_send", "messages_send"):  # the messages sender's: the session whose guard let it run, never one it names
+        session = sends.ticket(run)
     files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
     # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
     problems = message_problems(tool, tool_input, config, session=session) or _unread_files(tool, tool_input, files)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
-    from synthesis import sends
     subject, chan = {"tool": tool, "input": tool_input, **({"files": files} if files else {})}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
@@ -697,13 +700,24 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     timed = _time_without_calendar([t for _, t in _strings(tool_input)], config, session) if to_a_person(tool, tool_input, config) else None
     if timed and timed.startswith("fresh_calendar"):
         return timed
+    entry = None if files or others or _fetches(tool_input) else (lambda e: sends.call_entry(e, tool, tool_input))  # what
+    # a batch may cover: nothing the connector fetches or reads when the call runs (a batch binds words, not what a path
+    # or a url holds then), and no meeting on today
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
         _void("send", subject)  # one message, one release: a second copy asks again
+        if entry:  # and a batch's entry for it is spent with it, given back if the call is held
+            sends.batch_spend(entry, session, after=_after)
         _logged(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
         return timed.replace("{code}", approvals.how(code))
+    how = sends.batch_spend(entry, session, after=_after) if entry else ""  # after every check above, before the window
+    if how:  # its records, as the other sends', stand only if the call is let through (review round 7, #3)
+        _logged(chan, tool, summary, how, session)
+        _void("send", subject)
+        _void("send-time", subject)
+        return None
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
         _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
@@ -729,6 +743,18 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
             f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
             + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
                "principal too: one changed before the call needs a new code." if files else ""))
+
+
+FETCHES = re.compile(r"(?i)url|uri|link|path|file|attach|upload|download|media|image|photo|picture|video|audio|voice|blob"
+                     r"|sticker|thumb|avatar")  # a key naming what a call fetches, reads or carries (a photo: 5.24.0's review)
+
+
+def _fetches(value) -> bool:
+    """Whether a call's input names, at any depth, something its connector fetches or reads when the call runs: a url,
+    a path, an attachment (the review of 5.23.0: a mail's attachment fetched from a url hours after the batch was read)."""
+    if isinstance(value, dict):
+        return any(FETCHES.search(str(k)) or _fetches(v) for k, v in value.items())
+    return isinstance(value, list) and any(_fetches(v) for v in value)
 
 
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
@@ -1385,7 +1411,7 @@ def _account_hold(name: str, tool_input: dict, named: list, config: dict, device
     steps = tool_input.get("actions") if name == "browser_batch" else [{"name": name, "input": tool_input}]
     if not any(_puts(str(s.get("name", "")), s["input"]) for s in steps or [] if isinstance(s, dict) and isinstance(s.get("input"), dict)):
         return None  # a call that puts nothing reads no record
-    for step, given, address in _steps(name, tool_input, session, tool=BROWSER + name):
+    for step, given, address, _ in _steps(name, tool_input, session, tool=BROWSER + name):
         if not _puts(step, given):
             continue
         if not address:  # a tab no list of tabs in the record names, or one a step sent where no host is named
@@ -2996,9 +3022,10 @@ SCRIPTED_WRITE = re.compile(
     r"|\.(?:write|append)File\w*\(|\.(?:rm|unlink|rename|mkdir|copyFile|truncate|chmod|symlink)Sync\("
     r"|\bFile\.(?:write|rename|delete|unlink)|\bFileUtils\b|\bunlink\b|\brename\s*\("
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
-# A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
-# window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
+# A script that opens a send window or a batch, grants or spends an approval or a batch's entry, or writes into
+# synthesis state. Reading the window, a batch, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
+SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|open_batch|batch_spend|batch_unspend|grant_from_prompt|consume|put_back|_window_file|_batch_file)\b"
+                              r"|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
 HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
 ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
@@ -4850,7 +4877,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
-    ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
+    ("cli", "_batch _main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
     ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
@@ -4858,12 +4885,14 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
                 "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
-    ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
+    ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
+    ("sends", "_note batch_refusal batch_spend batch_unspend close_batches close_window log open_batch open_window sender_ticket settle ticket undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
-                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
+                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
+                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file"})
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -5598,7 +5627,9 @@ def _synthesis_reach(text: str) -> tuple:
             places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
             plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
-            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in ("old_board", "transcript_roots", "desktop_agent_roots", "line_allowances")
+            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
+                "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
+                "_requests_file", "_ticket_file")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
@@ -6032,7 +6063,8 @@ NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|
 # fetch or clicks a control that publishes, unless it searches or signs in.
 ASSIGN = r"(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])"  # every assignment operator (review round 7 of 5.23.1, Y3)
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*" + ASSIGN + r"|\bwindow\s*\.\s*open\s*\("
+MOVES = (r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*" + ASSIGN + r"|(?:\b(?:window|globalThis|self|top|"
+         r"parent|frames)\s*(?:\.\s*open|\[\s*['\"`]open['\"`]\s*\])|(?<![\w$.])open)\s*\(")  # open( by any name (5.24.0)
 # A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
 DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
 PRESSES_ENTER = r"\.press\s*\(\s*['\"`](?:[^'\"`]*\+)?(?:Enter|Return|NumpadEnter)['\"`]"
@@ -6129,54 +6161,6 @@ def _script_address(url: str):
     import urllib.parse
     read = _url_read(url)
     return urllib.parse.unquote(read[len("javascript:"):]) if read[:len("javascript:")].lower() == "javascript:" else None
-
-
-# The page scripts the plugin ships to read a page (5.23.0's extractors) pass on a messaging site's page as they are.
-PAGE_READERS = (("synthesis-daily-rituals", "messenger_messages.py"), ("synthesis-message-exports", "chat_page.py"))
-
-
-def _read_only_scripts() -> set:
-    """The page scripts the plugin ships that only read a page, as their own commands print them: 5.23.0's extractors
-    (messenger_messages.py prints one for each inbox it names), read from the release beside this guard."""
-    import ast
-    found = set()
-    for skill, name in PAGE_READERS:
-        try:
-            tree = ast.parse(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", skill,
-                                               "scripts", name), encoding="utf-8").read())
-            kept = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
-                    and [getattr(t, "id", "") for t in n.targets] in (["EXTRACTOR"], ["GRIDS"])}
-        except (OSError, SyntaxError, ValueError):
-            continue
-        grids = kept.get("GRIDS") if isinstance(kept.get("GRIDS"), dict) else {}
-        if isinstance(kept.get("EXTRACTOR"), str):
-            found |= {kept["EXTRACTOR"].replace("__GRID__", json.dumps(g)) for g in grids.values()} if grids else {kept["EXTRACTOR"]}
-    return {script.strip() for script in found}
-
-
-def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | None) -> str | None:
-    """Why a page script this browser call runs is refused: on a messaging site's page (by this call's own navigates or
-    its browser's newest list of tabs) and on a page no record shows, a navigate to a javascript: address as a URL parser
-    reads it, or a script the guard cannot read (_unread_script); the plugin's own readers pass, and any other script is
-    judged by what it does (_script_acts)."""
-    readers = None
-    for kind, given, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool):
-        text = (str(given.get("text") or "") if kind.endswith(("javascript_tool", "browser_script")) else
-                _script_address(str(given.get("url") or "")) if kind.endswith("navigate") else None)
-        if text is None or not _web_app(address):
-            continue
-        where = ("a page the browser's record does not show, which may be a messaging site's (take a snapshot so its page "
-                 "shows)" if address == UNKNOWN_PAGE else f"a messaging site's page ({address})")
-        if kind.endswith("navigate"):  # no ordinary work used one in 60 days
-            return (f"This navigate to a javascript: address runs a page script on {where}, where none runs that way: run "
-                    "the script with the javascript tool, which the guard reads, or read the page with get_page_text, read_page or find.")
-        readers = _read_only_scripts() if readers is None else readers
-        unread = "" if text.strip() in readers else _unread_script(text)
-        if unread:
-            return (f"This page script runs on {where} and {unread}, so the guard cannot read what it does there, where a "
-                    "click or a key sends in the principal's name. Write each call out by its own name, or read the page with "
-                    "get_page_text, read_page or find.")
-    return None
 
 
 # On a messaging site's page a page script is read as code, its strings, comments and patterns out (_osa_code), an
@@ -6474,14 +6458,6 @@ def _tab_list(transcript: str, server: str = "") -> tuple:
     return blank or ({}, "", 0.0)
 
 
-def _when(line: str) -> float:
-    try:
-        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
-    except (ValueError, TypeError, AttributeError):
-        return 0.0
-    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
-
-
 _LISTS: dict = {}
 
 
@@ -6532,13 +6508,14 @@ def _shared_tabs(session: dict | None, server: str) -> tuple:
 
 
 def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False, tool: str = ""):
-    """(step, its input, the address of the page it acts on) for a browser call, or for each step of a batch: its
-    tab's address in the newest list of tabs of the browser `tool` belongs to, or the one a navigate step earlier in the
-    batch went to, read as a URL parser reads it. With `keep`, a navigate that names no host leaves a messaging site's
+    """(step, its input, the address of the page it acts on, its tab) for a browser call, or for each step of a batch:
+    its tab's address in the newest list of tabs of the browser `tool` belongs to, or the one a navigate step earlier in
+    the batch went to, read as a URL parser reads it. With `keep`, a navigate that names no host leaves a messaging site's
     page as it was, since the page it opens may be that site's. One to a javascript: address runs on the page it is on,
     and what its code does to the page after is not known."""
     tabs, front = _shared_tabs(session, tool.rpartition("__")[0]) if keep else _tabs(str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])
     unknown = keep and bool(re.search(r"claude-in-chrome|claude[_-]browser", tool, re.I))  # its own lists show its pages (round 1 of 5.23.1, #3)
+    own = bool(driven_tool(tool))  # the guard's own steps for a driven browser; an agent's `exact` places nothing (round 5, #1)
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
         if isinstance(s, dict) and isinstance(s.get("input"), dict)]
@@ -6546,18 +6523,18 @@ def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False
         tab, before = str(given.get("tabId") or front), None
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
             url, before = _url_read(given.get("url") or "").replace("\\", "/"), tabs.get(tab, "")
-            tabs[tab] = url if given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
+            tabs[tab] = url if own and given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
                 before if keep and _web_app(before) else "")
         address = before if before is not None and _script_address(str(given.get("url") or "")) is not None else (
             tabs.get(tab) or (tabs[""] if set(tabs) == {""} else ""))  # the pane's first page, which no list files under its tab (#7)
-        yield step, given, address or (UNKNOWN_PAGE if unknown else "")
+        yield step, given, address or (UNKNOWN_PAGE if unknown else ""), tab
 
 
 def _pages(name: str, tool_input: dict, session: dict | None, tool: str = "") -> tuple:
     """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, whether a box on every
     one of them may be a search, and whether every page it acts on is the principal's own app on a local host."""
     reached, search, local = {}, True, True
-    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool):
+    for _, _, address, _ in _steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool):
         page, host = _web_app(address), _where(address)[0]
         local = local and (host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test")))
         if page:
@@ -6602,6 +6579,317 @@ def _sends_key(chords: str, apps: dict) -> bool:
     return False
 
 
+# A batch's Messenger entry goes in one step (the third round of 5.24.0's review, #1, #2, #3 and #6: a check read in one
+# call and a Return pressed in another left room for a page script, a typist or another session between them): one
+# browser_batch on a tab already showing the conversation, which loads its address there again (what any earlier script
+# did to the page goes with it), types the words, and last runs the entry's send script (sends.send_script), which reads
+# the composer and sends in the same synchronous run. On a Messenger site's tab, whose pages share the chat's origin, no
+# page script runs but the shipped read-only ones and that send script: any other can change what the send reads or
+# sends, then or later. On every other messaging site's page none runs but the shipped read-only ones (5.24.0, round 4
+# of this review, #3: `el['cli' + 'ck']()` clicked Send on Slack, WhatsApp, LinkedIn, Gmail and X, where a script was read
+# for a click, a submit or a key). Refused, not held: the 60 days to 2026-11-15 held 178 other scripts on those pages, all
+# in 4 sessions, 173 of which the old rule passed, so a code for each would have asked the principal 173 times about
+# scripts no one can read for what they do; the browser's own read tools (get_page_text, read_page, find) read a page
+# with no code, and a click goes through the computer tool with a summary that says what it does.
+PAGE_READERS = (("synthesis-daily-rituals", "messenger_messages.py"), ("synthesis-message-exports", "chat_page.py"))
+STEP_KEYS = {"shift+return", "shift+enter", "cmd+a", "ctrl+a", "delete", "backspace"}  # a line break, and clearing the box
+
+
+def _read_only_scripts() -> set:
+    """The page scripts the plugin ships that only read a page, as their own commands print them: the composer check, and
+    5.23.0's extractors (messenger_messages.py prints one for each inbox it names)."""
+    import ast
+    from synthesis import sends
+    found = {sends.COMPOSER_CHECK}
+    for skill, name in PAGE_READERS:
+        try:
+            tree = ast.parse(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", skill,
+                                               "scripts", name), encoding="utf-8").read())
+            kept = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                    and [getattr(t, "id", "") for t in n.targets] in (["EXTRACTOR"], ["GRIDS"])}
+        except (OSError, SyntaxError, ValueError):
+            continue
+        grids = kept.get("GRIDS") if isinstance(kept.get("GRIDS"), dict) else {}
+        if isinstance(kept.get("EXTRACTOR"), str):
+            found |= {kept["EXTRACTOR"].replace("__GRID__", json.dumps(g)) for g in grids.values()} if grids else {kept["EXTRACTOR"]}
+    return {script.strip() for script in found}
+
+
+def _messenger_site(address: str) -> bool:
+    """A page of facebook.com or messenger.com (a host under them included), or of a host WEB_MESSAGING counts as
+    Messenger's, where the browser lands on a chat (m.me, fb.com, fb.me, Business Suite's inbox; round 4, #2)."""
+    from synthesis import sends
+    page = _web_app(address) if address and address != UNKNOWN_PAGE else None
+    return bool(address) and (any(_on_site(address, site) for site, _, _ in sends.CONVERSATIONS)
+                              or bool(page and "messenger" in page[1][0].split("+")))
+
+
+def _local(address: str) -> bool:
+    host = _where(_url_read(address or ""))[0]
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
+
+
+# A page script that can move its tab (round 6, #4, as ruled): a location change, by name, alias or Object.assign (#1),
+# `open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event.
+NAVIGATES = re.compile(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*"
+                       r"navigate\s*\(|\bhistory\s*\.\s*(?:go|back|forward)\s*\(|\bObject\s*\.\s*assign\s*\(\s*(?:\w+\s*\.\s*)?location\b", re.I)
+
+
+def _navigates(text: str, local: bool = False) -> bool:
+    code = _script_code(text)[0]
+    names = {a or b for a, b in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\w+\s*\.\s*)?location\b(?!\s*\.)"
+                                          r"|\{\s*location\s*:\s*([A-Za-z_$][\w$]*)\s*\}\s*=", code)}
+    aliased = any(re.search(rf"(?<![\w$.]){re.escape(n)}\s*\.\s*(?:(?:href|pathname|search|hash|host|hostname|port|protocol)\s*{ASSIGN}"
+                            r"|(?:assign|replace)\s*\()", code) for n in names)
+    return bool(_unread_script(text) or NAVIGATES.search(code) or aliased
+                or not local and re.search(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent", code))
+
+
+def _moves(kind: str, given: dict, own: bool = False, address: str = "") -> bool:
+    """Whether a browser step may leave its tab on a page no list of tabs shows yet (round 4, #2: a batch that reached a
+    Messenger chat by a short link or a followed link ran its script there): a navigate, but the guard's own first step
+    for a driven browser (`exact`, never an agent's word) or one to a local app; a click, a key, a drag, words typed with
+    a line break, a form value or an upload, but on a local app's page (round 6, #4, as ruled: a local page that sends the
+    tab on is on the open list); a page script that can navigate (`_navigates`), on any page."""
+    if kind.endswith("navigate"):
+        return not (own and given.get("exact")) and not _local(str(given.get("url") or ""))
+    if kind.endswith(("javascript_tool", "browser_script")):
+        return _navigates(str(given.get("text") or ""), _local(address))
+    action = str(given.get("action") or "")
+    return not _local(address) and (kind.endswith(("form_input", "upload_image", "file_upload")) or kind.endswith("computer") and (
+        action in CLICKS or action in ("key", "left_click_drag") or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or "")))))
+
+
+def _when(line: str) -> float:
+    try:
+        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def _send_template(text: str) -> bool:
+    """Whether a page script is the shipped send script for some conversation and digest, and nothing more."""
+    from synthesis import sends
+    head, _, tail = sends.SEND_SCRIPT.partition("__WANT__")
+    try:
+        want = json.loads(text[len(head):len(text) - len(tail)]) if text.startswith(head) and text.endswith(tail) else None
+    except ValueError:
+        return False
+    return isinstance(want, dict) and set(want) == {"to", "digest"} and isinstance(want["to"], str) and bool(
+        re.fullmatch(r"[0-9a-f]{64}", str(want["digest"])))
+
+
+QUIET_ACTIONS = {"screenshot", "zoom", "scroll", "scroll_to", "wait", "hover", "mouse_move", "cursor_position"}  # they change no page
+
+
+def _made_here(tab: str, session: dict | None, server: str) -> str:
+    """"" when this session made the tab with this browser's tabs_create (that call's own result in its record, worded as
+    the extension words it: `Created new tab. Tab ID: N`, read over 60 days of records) and, since, no page script but the
+    shipped ones ran on it in its record or its sub-agents' (a window a script opens keeps an opener's handle to the tab)
+    and no other session's record, Claude Code's or a Codex rollout, shows a call to this browser that names the tab or
+    no tab and can change its page; a call a hook refused counts for nothing (round 4, #10: another session's screenshot
+    in the built-in pane voided the step). Else why the send step may not run there (the coordinator's ruling on the
+    opener, 2026-11-15: a page holds a handle to another window only by opening it, and none opened a tab the browser
+    tool made)."""
+    from pathlib import Path
+    record, made, readers = str((session or {}).get("transcript_path") or ""), 0.0, _read_only_scripts()
+    for i, line, lines in ((i, line, lines) for path in dict.fromkeys([_record(session), record]) if path  # a sub-agent's own
+                           for lines in [_tail(path)] for i, line in enumerate(lines)):  # tabs_create too (round 5, #5)
+        for block in _blocks(line) if '"tool_result"' in line and "Created new tab" in line else ():
+            call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if block.get("type") == "tool_result" else None
+            named = str((call or {}).get("name", ""))
+            if call and named.rpartition("__")[0] == server and named.endswith(("__tabs_create_mcp", "__tabs_create")) and not block.get(
+                    "is_error") and re.search(rf"\bCreated new tab\. Tab ID: {re.escape(tab)}\b", _said(block)):
+                made = max(made, _when(line))
+    if not made:
+        return ("This send step's tab was not made by this session's tabs_create, so a page may hold a handle to it: open a "
+                "fresh tab with tabs_create, navigate it to the conversation, then run the send step there.")
+    others = [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
+    mine = [record, *map(str, Path(os.path.splitext(record)[0], "subagents").glob("*.jsonl"))]
+    for path in mine + [p for p in others if p and os.path.isfile(p) and not os.path.samefile(p, record)
+                        and time.time() - os.path.getmtime(p) <= 12 * 3600]:
+        tail = [line for line in _tail(path) if _when(line) >= made]
+        refused = {ident for line in tail if "PreToolUse:" in line for kind, ident, _, said in _line_events(line)
+                   if kind == "result" and said.lstrip().startswith("PreToolUse:")}
+        for line in tail:
+            for event, ident, name, given in _line_events(line) if "tool_use" in line or "function_call" in line else ():
+                if event != "call" or ident in refused or name.rpartition("__")[0] != server:
+                    continue
+                short = name.rpartition("__")[2]
+                for kind, step in ([(str(s.get("name", "")), s.get("input")) for s in given.get("actions") or [] if isinstance(s, dict)]
+                                   if short == "browser_batch" else [(short, given)]):
+                    step = step if isinstance(step, dict) else {}
+                    here = str(step.get("tabId") or "") in (tab, "")
+                    text = (str(step.get("text") or "") if kind == "javascript_tool" else
+                            _script_address(str(step.get("url") or "")) if kind == "navigate" else None)
+                    if path in mine and here and text is not None and not (text.strip() in readers or _send_template(text)):
+                        return ("A page script ran on this send step's tab since this session made it, and a window it opened "
+                                "keeps a handle to the tab: open a fresh tab with tabs_create and navigate it to the conversation.")
+                    if path not in mine and here and (kind in ("navigate", "javascript_tool", "form_input", "upload_image", "file_upload")
+                                                      or kind == "computer" and str(step.get("action") or "") not in QUIET_ACTIONS):
+                        return ("Another session's record shows a call that can change this send step's tab, on it or naming no "
+                                "tab, since this session made it: open a fresh tab with tabs_create and navigate it to the conversation.")
+    return ""
+
+
+def _listed_on_messenger(tab: str, server: str, session: dict | None) -> str:
+    """The Messenger page another session's list of this browser's tabs shows this tab on, when that list is the newest
+    of every session active in the last 12 hours that names the tab, this one's included: sessions share one browser and
+    its tab ids, so the newest list decides (round 4, #13: an older list of another session's refused a script on the
+    document this session's newer list showed); '' for any other (each record is where 5.22.1's prompt hook recorded it)."""
+    mine = str((session or {}).get("transcript_path") or "")
+    records = [mine] + [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
+    newest, shown, whose = -1.0, "", ""
+    for record in dict.fromkeys(r for r in records if r):
+        try:
+            if record != mine and time.time() - os.path.getmtime(record) > 12 * 3600:
+                continue
+        except OSError:
+            continue
+        tabs, _, when = _tab_list(record, server)
+        if tab in tabs and when > newest:
+            newest, shown, whose = when, tabs[tab], record
+    return shown if whose != mine and _messenger_site(shown) else ""
+
+
+def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | None, step) -> str | None:
+    """Why a page script this browser call runs is refused: on a Messenger site's tab, by this call's own navigates, this
+    session's newest list of tabs or another active session's, only the shipped read-only scripts run, and a send script
+    only last in its send step (`step`); on every other messaging site's page main's rule refuses one the guard cannot
+    read (5.24.0); a navigate to a javascript: address, as a URL parser reads it, is such a script. A page no list of tabs
+    names may be a Messenger site's, so it takes none (the third round's opener ran on a tab no list had named yet). After
+    a step earlier in the call that may have moved the tab (`_moves`), a script there runs in a call of its own unless it
+    only reads and the move was from and onto pages that are no Messenger site's (round 4, #2; round 5, #1 and #2, kept
+    as protection by the coordinator's ruling: one more call, and no code)."""
+    from synthesis import sends
+    readers, steps = None, list(_steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool))
+    own = bool(driven_tool(tool))
+
+    def on_messenger(kind: str, where: str) -> str:
+        return (f"This {'navigate to a javascript: address runs a page script' if kind.endswith('navigate') else 'page script runs'}"
+                f" on a Messenger site's tab ({where}), where only the plugin's shipped read-only scripts run (the composer check "
+                "and the extractors) and a batch's send script in its send step: any other can change what those read or what a "
+                "send sends, then or later. Read the page with the browser's own read tools (get_page_text, read_page, find) instead.")
+    moved, went = {}, set()  # tab: "strict" or "ordinary", by the page a step of this call may have moved it from or to; tabs it navigated
+    for n, (kind, given, address, tab) in enumerate(steps):
+        text = (str(given.get("text") or "") if kind.endswith(("javascript_tool", "browser_script")) else
+                _script_address(str(given.get("url") or "")) if kind.endswith("navigate") else None)
+        text = text.strip() if text is not None else None
+        other = text and not (step and n == len(steps) - 1) and sends.SEND_MARK not in text and text not in (
+            readers := _read_only_scripts() if readers is None else readers)
+        if text and sends.SEND_MARK in text and not (step and n == len(steps) - 1):
+            return ("This page script is a batch's Messenger send, which runs only as the last step of its send step: one "
+                    "browser_batch that navigates its tab, already on the entry's conversation, to that address, types the words "
+                    "there and runs the script `synthesis sends script` prints.")
+        if other and tab in moved and (moved[tab] == "strict" or _unread_script(text) or _script_acts(text)):  # a read after a
+            # move from a page that is no messaging site's runs (the principal's bar: no ordinary work refused)
+            if _messenger_site(address):  # that page's own rule says what runs there (round 5, #3)
+                return on_messenger(kind, address)
+            return (f"This page script follows a step in this call that may have moved tab {tab or 'in front'} to another page "
+                    "(a navigate, a click, a key, a form value, an upload or a page script that can navigate), and no list of tabs shows "
+                    "where it landed, which may be a Messenger chat: run the script in a call of its own, once a list of tabs "
+                    "shows the page.")
+        earlier = tab in went  # an address an earlier step of this call went to decides the page, not any session's list
+        if kind.endswith("navigate") and text is None:  # an address places the page anew
+            moved.pop(tab, None)
+        if _moves(kind, given, own, address):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
+            # messaging site's page takes main's rule by itself, and a read there runs)
+            strict = not address or address == UNKNOWN_PAGE or _messenger_site(address) or moved.get(tab) == "strict"
+            moved[tab] = "strict" if strict else "ordinary"
+        went = went | ({tab} if kind.endswith("navigate") and text is None else set())  # a javascript: one goes nowhere
+        if not other:
+            continue
+        if address == UNKNOWN_PAGE:  # round 4, #9; review round 1 of 5.23.1, #3: it may be a Messenger site's
+            return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names or the record does not "
+                    "show (a tab not listed yet, a sub-agent's, a driven browser's after a tab change), and which may be a "
+                    "Messenger site's: read the page first (list the tabs, or take a snapshot), then run it again.")
+        if not address:
+            return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names (a tab not listed yet, "
+                    "or one a navigate sent where no host is named), and which may be a Messenger site's: list the tabs or "
+                    "navigate to an address first.")
+        listed = "" if earlier or _messenger_site(address) else _listed_on_messenger(tab, tool.rpartition("__")[0], session)
+        if _messenger_site(address) or listed:
+            return on_messenger(kind, f"tab {tab}, which another session's newer list of tabs shows on {listed}" if listed else address)
+        if _web_app(address):  # every other messaging site's page: main's rule (5.24.0)
+            where = ("a page the browser's record does not show, which may be a messaging site's (take a snapshot so its page "
+                     "shows)" if address == UNKNOWN_PAGE else f"a messaging site's page ({address})")
+            unread = "runs it as a javascript: address" if kind.endswith("navigate") else _unread_script(text)
+            if unread:
+                return (f"This page script runs on {where} and {unread}, so the guard cannot read what it does there, where a "
+                        "click or a key sends in the principal's name. Write each call out by its own name, or read the page with "
+                        "get_page_text, read_page or find.")
+    return None
+
+
+def _send_step(tool: str, tool_input: dict, session: dict | None):
+    """(channel, conversation, its send script) when this browser_batch is a batch's Messenger send step: first a navigate,
+    on a tab it names, to a conversation's https address with no query or fragment, which loads the page again; then on
+    that tab only words typed with no line break, the keys of STEP_KEYS and waits; last a page script there. The tab must
+    already show that conversation in this session's newest list of tabs, so the load changes no address any session's
+    guard reads. None where no step holds the send mark; else why the step is refused."""
+    import urllib.parse
+    from synthesis import sends
+    steps = [(str(s.get("name", "")), s.get("input")) for s in tool_input.get("actions") or [] if isinstance(s, dict)]
+    if not any(isinstance(given, dict) and sends.SEND_MARK in str(given.get("text") or "") for _, given in steps):
+        return None
+    refused = ("This browser_batch runs a batch's Messenger send script, but not as its send step: first a navigate, on the "
+               "tab that already shows the entry's conversation, to that conversation's https address (no query or fragment); "
+               "then on that tab only the words typed (shift+Return for a line break, select-all and Delete to clear) and "
+               "waits; last, exactly the script `synthesis sends script` prints for the entry.")
+    if len(steps) < 2 or not all(isinstance(given, dict) for _, given in steps):
+        return refused
+    (first, go), (last, run) = steps[0], steps[-1]
+    tab, url, place = str(go.get("tabId") or ""), str(go.get("url") or ""), sends.conversation(str(go.get("url") or ""))
+    try:
+        split = urllib.parse.urlsplit(url)
+        loads = first == "navigate" and bool(tab) and "#" not in url and split.scheme == "https" and not split.query
+    except ValueError:
+        loads = False
+    typing = all(kind == "computer" and str(given.get("tabId") or "") == tab and (
+        given.get("action") == "type" and not re.search(r"[\r\n]", str(given.get("text") or "")) or given.get("action") == "wait"
+        or given.get("action") == "key" and str(given.get("text") or "").strip() != "" and all(
+            chord in STEP_KEYS for chord in str(given.get("text") or "").lower().split())) for kind, given in steps[1:-1])
+    shown = _shared_tabs(session, tool.rpartition("__")[0])[0].get(tab, "")  # a sub-agent's own list too (round 5, #5)
+    if not (loads and place and typing and last == "javascript_tool" and run.get("action") == "javascript_exec"
+            and str(run.get("tabId") or "") == tab and sends.conversation(shown) == place):
+        return refused
+    return _made_here(tab, session, tool.rpartition("__")[0]) or (*place, str(run.get("text") or ""))
+
+
+def _batch_send(tool: str, tool_input: dict, step: tuple, config: dict, session: dict | None) -> str | None:
+    """A send step: the entry its script names (the conversation, and its words' digest) passes every check a message
+    passes, then is spent once; a time in its words asks for the code of this exact call, which is the conversation's
+    address and the words' digest."""
+    from synthesis import sends
+    chan, place, script = step
+    match = lambda e: "to" in e and sends.conversation(e["to"]) == (chan, place) and sends.send_script(e) == script  # noqa: E731
+    entry = next((e for data in sends.batches() for e in data["entries"] if match(e)), None)
+    if entry is None:
+        return "This send step's script matches no entry of an open batch: run, unchanged, the one `synthesis sends script` prints."
+    problems = message_problems("desktop_type", {"message_text": entry["text"]}, config, {chan}, session)
+    if problems:
+        return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
+    timed = _time_without_calendar([entry["text"]], config, session)
+    if timed and timed.startswith("fresh_calendar"):
+        return timed
+    subject, summary = {"tool": tool, "input": tool_input}, f"{tool} on {place}: a batch's Messenger send"
+    with approvals.alone():  # each entry goes once, whichever call asks first
+        released = timed is not None and approvals.consume("send-time", subject, session)
+        how = sends.batch_spend(match, session, spend=released or not timed, after=_after)
+        if how and timed and not released:
+            code = approvals.request("send-time", subject, f"{summary}, a time in its words and no calendar read")
+            return timed.replace("{code}", approvals.how(code))
+    if not how:
+        return ("This send step matches no entry this session can spend (spent, closed, past its 12 hours, opened by another "
+                "session, or its code not in this session's record): a Messenger send outside a batch is the Return after the "
+                "words, on the principal's code.")
+    _logged("browser", tool, summary, how, session, {"record": str((session or {}).get("transcript_path") or ""),  # what its script did
+                                                     "call": str((session or {}).get("tool_use_id") or ""), "since": time.time()})
+    _void("send-time", subject)
+    return None
+
+
 @_entry
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     from synthesis import sends
@@ -6611,9 +6899,11 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             asked = {_bundle(a, apps) for a in tool_input["apps"]} - {""}
             paths.write_json(record, {"apps": sorted(set(paths.read_json(record).get("apps", [])) | asked), "at": time.time()})
         return None
-    refused = _refused_scripts(name, tool, tool_input, session) if name.startswith("browser") else None
-    if refused:
-        return refused
+    if name.startswith("browser"):  # a batch's Messenger send step, and the page scripts a page takes (5.24.0)
+        step = _send_step(tool, tool_input, session) if name == "browser_batch" else None
+        refused = step if isinstance(step, str) else _refused_scripts(name, tool, tool_input, session, step)
+        if refused or step:
+            return refused or _batch_send(tool, tool_input, step, config, session)
     actions = _desktop_actions(name, tool_input)
     if not actions:
         return None
@@ -8529,14 +8819,33 @@ def _check_mcp(calls: list, command: str, config: dict, session: dict | None) ->
             "program needs a new code.")
 
 
+def _sender_runs(words: list, where: str) -> list:
+    """The messages sender's run a command makes, as its program is resolved for the write rules (an interpreter's file or
+    module, a script run by its path, each through its links): its real file, its arguments and its real folder; [] when
+    the program is anything else (round 4, #6: `cat`, `grep` or `git diff` of the sender's file filed a ticket)."""
+    head = os.path.basename(words[0])
+    if SCRIPT.match(head) and head.startswith("python"):
+        kind, at, name = _program(words)
+        module = words[at:at + 1] == ["-m"]
+        program = (_module_file(name, "" if _isolated(words) else os.path.realpath(where)) if module else name) if kind == "file" else ""
+        args = words[at + 1 + module:]
+    else:
+        program, args = (words[0], words[1:]) if "/" in words[0] else ("", [])
+    real = os.path.realpath(os.path.join(where, os.path.expanduser(program))) if program else ""
+    shown = [os.path.expanduser(w) if w.startswith("~") else w for w in (words[1:] if SCRIPT.match(head) and head.startswith("python") else words)]
+    return [{"program": real, "argv": [os.path.expanduser(a) if a.startswith("~") else a for a in args],
+             "cwd": os.path.realpath(where), "line": " ".join(shown)}] if os.path.basename(real) == "messages_send.py" else []
+
+
 @_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
     opening a send window needs it too. The register scan reads the message the command sends (its text words and
-    any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule)."""
+    any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule). Opening a batch needs the
+    principal's code for its digest; no shell post is a batch's entry (the local messages sender asks check_send itself)."""
     import hashlib
     from synthesis import sends
-    posts, windows, writes = [], [], []
+    posts, calls, writes = [], [], []
     try:  # files this command writes, so a body file it rewrites before posting is not read stale (2026-10-13)
         _commands(command, cwd, writes=writes)
     except (Unreadable, StopIteration, IndexError):
@@ -8550,8 +8859,8 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     acts = [a[1] for _, _, a in found]
     posts += [(a[0], a[2], where) for _, where, a in found]
     for words, where in commands:
-        window = sends.window_asked(words)
-        windows += [window] if window and window not in windows else []  # every request in the line, each with its own code
+        calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
+        _CALL.setdefault("senders", []).extend(_sender_runs(words, where))  # check() files a ticket for each
         if any(words == w and where == h for w, h, _ in found):
             continue
         chan = sends.command_send(words, where, config)
@@ -8564,14 +8873,34 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     reason = _check_mcp(found_calls, command, config, session)  # 5.24.0
     if reason:
         return reason
-    for window in windows:  # each command spends its own grant (`synthesis sends open` refuses without one)
-        try:  # never ask the principal to approve a window the command would refuse
-            sends.check_window(window["hours"], window["channels"], window["sends"])
-        except ValueError as exc:
-            return f"This send window can't open: {exc}."
-    waiting = [sends.window_refusal(w) for w in windows if not approvals.held("send-window", w)]
+    waiting = []  # every request of the line, read as the CLI reads it (the review of 5.23.0), each with its own code (5.22.1)
+    for args, argv, where in calls:
+        if args is None:
+            if not approvals.held("sends-command", argv):
+                code = approvals.request("sends-command", argv, "a sends command the guard cannot read: " + " ".join(argv)[:120])
+                waiting.append(f"This command runs `synthesis {' '.join(argv)}`, which the guard cannot read as the CLI reads it (a "
+                               "word the shell changes first, or one the CLI refuses). Write it out in full, or show the principal "
+                               f"the exact command and ask them to type {approvals.how(code)}; then run the identical command again.")
+        elif args.file and args.action != "batch":
+            return "This command can't run as written: a file goes only with `synthesis sends batch`."
+        elif args.action == "open":  # each command spends its own grant (`synthesis sends open` refuses without one)
+            window = sends.asked(args.hours, args.channels, args.project, args.sends)
+            try:  # never ask the principal to approve a window the command would refuse
+                sends.check_window(window["hours"], window["channels"], window["sends"])
+            except ValueError as exc:
+                return f"This send window can't open: {exc}."
+            if not approvals.held("send-window", window):  # held, the rest of the line is still judged below
+                waiting.append(sends.window_refusal(window))
+        elif args.action == "batch" and not args.show:  # so does `sends batch`, for exactly the digest of the file it reads
+            file = os.path.join(where, os.path.expanduser(args.file))
+            try:
+                asked = sends.read_batch(file)
+            except (OSError, ValueError) as exc:
+                return f"This batch can't open: {exc}."
+            if not approvals.held("send-batch", sends.batch_digest(asked)):
+                waiting.append(sends.batch_refusal(asked, file))
     if waiting:
-        return " ".join(waiting)
+        return " ".join(dict.fromkeys(waiting))  # one request asked twice in the line is one code
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
@@ -8965,7 +9294,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
     if code_mode_script(tool, tool_input, session):
         return None  # it acts only through its nested calls, each judged here as a call of its own
     if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
@@ -8981,14 +9310,20 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))  # where the kernel puts it (round 2, N1)
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
-                or check_self_grant(command, cwd, config, session)
-                or check_pr_gate(command, config, cwd, session)
-                or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
-                or check_outgoing(command, config, cwd, session)
-                or check_claimed(_shell_writes(command, cwd), cwd, session)
-                or check_hook_writes(tool, tool_input, cwd, session)
-                or check_git_programs(command, config, cwd, session))  # last: it judges each program as a call of its own
+        verdict = (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
+                   or check_self_grant(command, cwd, config, session)
+                   or check_pr_gate(command, config, cwd, session)
+                   or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
+                   or check_outgoing(command, config, cwd, session)
+                   or check_claimed(_shell_writes(command, cwd), cwd, session)
+                   or check_hook_writes(tool, tool_input, cwd, session))
+        senders = list(_CALL.get("senders") or [])  # before the check below judges each git program as a call of its own
+        verdict = verdict or check_git_programs(command, config, cwd, session)  # last: it judges each program as a call of its own
+        if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
+            from synthesis import sends
+            for run in senders:
+                sends.sender_ticket(paths.session_id(session), run)
+        return verdict
     if tool in FILE_TOOLS:
         return check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session) or check_hook_writes(tool, tool_input, cwd, session)
     if tool.startswith(BROWSER):
