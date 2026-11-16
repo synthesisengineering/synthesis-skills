@@ -913,3 +913,62 @@ def test_a_program_whose_values_multiply_is_read_quickly_and_waits_past_what_it_
         began = time.monotonic()
         assert held(shell("python3 - <<'EOF'\n" + program + "EOF", cwd=str(tmp_path)))
         assert time.monotonic() - began < 5
+
+
+# --- from the ruling's suite on a fresh clone (2026-11-15): an address is its host, and a file a program opens is no request
+# Five of the plugin's own scripts waited when run for their help or a dry run: `os.open(path, flags, mode)` read as an
+# opener's `open(url, data)`, and the Drive publisher's request to the host it spells, with a query from the environment,
+# read as an address the environment gives. An address whose scheme and host the program or the line spells, for a host
+# other than this machine, goes to that host whatever is filled in after them; a client a program starts with values it
+# cannot read is judged with them standing as words the shell fills in, as a line it hands a shell is.
+
+OWN_SCRIPTS = [(script, rest) for script in ("skills/synthesis-onboarding/scripts/setup.py", "skills/synthesis-onboarding/scripts/workspace.py",
+                                             "skills/synthesis-local-model-runtime/scripts/local_model_runtime.py", "synthesis/commit_check.py")
+               for rest in ("", "--help", "--dry-run")] + [("skills/synthesis-kb-distribution/scripts/publish_drive.py", rest) for rest in (
+                   "--help", "--dry-run --tree build")]
+
+
+@pytest.mark.parametrize("script,rest", OWN_SCRIPTS)
+def test_the_plugins_own_scripts_that_open_files_or_post_to_a_host_they_spell_run_without_a_code(tmp_path, script, rest):
+    assert shell(f"python3 {shlex.quote(str(ROOT / script))} {rest}".strip(), cwd=str(tmp_path)) == "", (script, rest)
+
+
+SPELLED_OR_OPENED = {
+    "a file it opens": "import os, sys, subprocess; fd = os.open(os.environ['OUT'], os.O_WRONLY | os.O_CREAT, 0o600); os.write(fd, sys.stdin.buffer.read())",
+    "a host it spells, a query the environment fills in": "import os, sys, urllib.request as u; "
+                                                          "u.urlopen(f\"https://api.example.com/v1/items?folder={os.environ['FOLDER']}\", data=sys.stdin.buffer.read())",
+    "a helper handed the host it spells": "import os, sys, urllib.request as u\nAPI = 'https://api.example.com/v1'\n"
+                                          "def call(url, body):\n    return u.urlopen(u.Request(url, data=body, method='POST'))\n"
+                                          "call(API + '/items/' + os.environ['ID'], sys.stdin.buffer.read())\n",
+    "a connection to a host it spells, a path from the environment": "import os, sys, http.client\nc = http.client.HTTPSConnection('api.example.com')\n"
+                                                                     "c.request('POST', '/v1/' + os.environ['ID'], sys.stdin.buffer.read())\n",
+    "a client it starts for a host it spells": "import os, subprocess; subprocess.run(['curl', '-X', 'POST', "
+                                               "f\"https://api.example.com/v1/{os.environ['ID']}\", '-d', os.environ['BODY']])",
+}
+
+
+@pytest.mark.parametrize("name", sorted(SPELLED_OR_OPENED))
+def test_a_host_the_program_spells_or_a_file_it_opens_is_no_address_the_environment_gives(tmp_path, name):
+    assert shell("python3 - <<'EOF'\n" + SPELLED_OR_OPENED[name] + "\nEOF", cwd=str(tmp_path)) == "", name
+
+
+def test_a_host_spelled_on_the_line_or_in_nodes_text_is_that_hosts_too(tmp_path):
+    poster = "import sys, urllib.request as u; u.urlopen(sys.argv[1], data=sys.stdin.buffer.read())"
+    for line in ("python3 -c " + shlex.quote(poster) + ' "https://api.example.com/v1/$ID"',
+                 "node -e " + shlex.quote("fetch(`https://api.example.com/v1/${process.env.ID}`, {method: 'POST', body: process.env.BODY})"),
+                 "node -e " + shlex.quote("const API = 'https://api.example.com/v1'; fetch(API + '/items/' + process.env.ID, {method: 'POST', body: process.env.BODY})")):
+        assert shell(line, cwd=str(tmp_path)) == "", line
+    assert "local MCP server" not in shell('curl -s -X POST "https://api.example.com/v1/items/$ID" -d @body.json', cwd=str(tmp_path))
+
+
+@pytest.mark.parametrize("program", [
+    "python3 -c " + shlex.quote("import os, sys, urllib.request as u; opener = u.build_opener(); opener.open(os.environ['MCP_URL'], sys.stdin.buffer.read())"),
+    "python3 -c " + shlex.quote("import os, sys, urllib.request as u; u.urlopen(f\"http://localhost:{os.environ['PORT']}/rpc\", data=sys.stdin.buffer.read())"),
+    "python3 -c " + shlex.quote("import os, sys, urllib.request as u; u.urlopen(f\"https://api.example.com{os.environ['REST']}\", data=sys.stdin.buffer.read())"),
+    "python3 -c " + shlex.quote("import os, subprocess; subprocess.run(['curl', '-X', 'POST', os.environ['MCP_URL'], '-d', os.environ['BODY']])"),
+    "python3 -c " + shlex.quote("import os, sys, subprocess; b = sys.stdin.read(); subprocess.run(['curl', '-X', 'POST', os.environ['MCP_URL'], '-d', b])"),
+    "node -e " + shlex.quote("fetch(`http://localhost:${process.env.PORT}/rpc`, {method: 'POST', body: process.env.BODY})"),
+    'curl -s -X POST "http://localhost:$PORT/rpc" -d "$BODY"',
+])
+def test_a_local_host_an_unclosed_one_an_opener_or_a_client_started_for_an_address_the_environment_gives_waits(tmp_path, program):
+    assert held(shell(program, cwd=str(tmp_path))), program
