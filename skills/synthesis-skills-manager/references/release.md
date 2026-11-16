@@ -88,8 +88,11 @@ give. The stable runtime is installed from that clone, its staged copy checked a
 listing before `current` moves, and the release refuses a version older than the running runtime
 or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
 `install.install` replaces an installed runtime only on the principal's code for exactly the
-staged copy, or on the release launcher's own run with none; a release older than the running one
-is a rollback, which needs his code on every route, and no keyword passes that. One install runs
+staged copy, or with the one grant the hook writes when it lets the release launcher's line
+through: an install of that tag, spent once, only for the tool's fresh clone at the tag whose
+staged copy holds the tag's files (it trusts no main program or interpreter flag). A release
+older than the running one is a rollback, which needs his code on every route, and no keyword
+passes that. One install runs
 at a time in a synthesis home, under a lock (its file is one this user may only write, so no
 program that only reads can hold it). Review rounds 1 to 4 of 5.23.1 found and closed the rest
 (A1 to A3, N2, N3, N7, N8, N10, M2, M4, Q4).

@@ -4829,8 +4829,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
     ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_install_lock _install_locked _merge _stage _write_exec approval install move_board refresh_launchers register_git_hooks "
-                "uninstall"), ("paths", "note_wait write_json"),
+    ("install", "_install_lock _install_locked _merge _spend_release _stage _write_exec approval grant_release install move_board "
+                "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
@@ -5076,10 +5076,10 @@ def release_checkout(repo: str) -> list:
         [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
 
 
-def _release_tool(command: str, cwd: str, session: dict | None = None) -> bool:
-    """Whether a command line is exactly the release launcher install wrote, on the canonical checkout or naming a tag
-    to install (above). Its paths are absolute, so no folder the command runs from moves them (A5), and a session it
-    names is the one asking (A9)."""
+def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
+    """The options of a command line that is exactly the release launcher install wrote, on the canonical checkout or
+    naming a tag to install (above); {} for any other. Its paths are absolute, so no folder the command runs from moves
+    them (A5), and a session it names is the one asking (A9)."""
     try:
         argv = shlex.split(command)
     except ValueError:
@@ -5117,10 +5117,24 @@ def _release_tool(command: str, cwd: str, session: dict | None = None) -> bool:
             return False
         given[name], at = place(value, not joined) if name == "--repo-root" else value, at + 1
     if "--session" in given and given["--session"] != paths.session_id(session):
-        return False  # another session's id would take or drop that session's hold on the release train
+        return {}  # another session's id would take or drop that session's hold on the release train
     if "--install-only" in given:
-        return "--tag" in given and "--repo-root" not in given
-    return "--tag" not in given and bool(given.get("--repo-root")) and not release_checkout(given["--repo-root"])
+        return given if "--tag" in given and "--repo-root" not in given else {}
+    return given if "--tag" not in given and given.get("--repo-root") and not release_checkout(given["--repo-root"]) else {}
+
+
+def _grant_release(given: dict, line: str) -> None:
+    """The one install the release launcher's line may make with no code: of `v<version>`, the tag it names or the version
+    its checkout's manifests carry, into this home, written for `install` to spend (review round 2 of 22.18, K1). A dry
+    run installs nothing; a version that cannot be read is granted nothing, and that install waits for the code."""
+    if "--dry-run" in given:
+        return
+    from pathlib import Path
+    from synthesis import install
+    version = given["--tag"][1:] if "--install-only" in given else str(paths.read_json(
+        Path(given["--repo-root"]) / ".claude-plugin" / "plugin.json").get("version") or "")
+    if re.fullmatch(r"\d+\.\d+\.\d+", version):
+        install.grant_release(version, line)
 
 
 def _shipped(path: str) -> bool:
@@ -5554,9 +5568,11 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
     only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
-    if hold and _release_tool(command, cwd, session):  # never for a command a program starts: that program is judged
+    given = _release_tool(command, cwd, session) if hold else {}  # never for a command a program starts: it is judged
+    if given:
         codes = approvals.pending()
         if not (codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command)):
+            _grant_release(given, command)  # the one install this line's run may make with no code (22.18, K1)
             return None
     home = os.path.expanduser("~")
     if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too

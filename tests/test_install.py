@@ -19,8 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 def the_principal_approves_each_change_of_the_runtime(monkeypatch):
     """An install over an installed runtime spends the principal's code inside install itself (review round 4 of 5.23.1,
     Q4), which tests/test_runtime_boundary.py holds to; these tests are about what an install lays out, so it is given.
-    A test that runs install in a process of its own meets the real check (the command line test below)."""
-    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)
+    A test that runs install in a process of its own meets the real check (the command line test below). Install calls
+    the check it bound when it loaded, so that is the one given (review round 2 of 22.18, K1)."""
+    monkeypatch.setattr(install, "_approve", lambda *args, **kwargs: None)
 
 
 def _plugin_copy(tmp_path, name="plugin-v1"):

@@ -1496,10 +1496,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # rollback kind is the floor; `traces` reads a releases folder holding only the release tool's clone, a staged copy or
 # install's lock as no release; install's docstring and its locked half joined), guards.py 1 more (the writers list),
 # cli.py 1 fewer (the install call joined).
+# 22.18's review round 2, K1, as 22.8 closes it (the coordinator's direction of 2026-11-15): core 57 more and plugin 57.
+# install.py 41: _spend_release 28 (the hook's grant spent once, for the release tool's fresh clone in the protected
+# releases folder at the tag `v<version>`, its staged copy holding exactly that tag's tree), grant_release 9 (what the
+# hook writes for the launcher's line), _grant_file 3 and RELEASE_GRANT_SECONDS 1, the check and the grant bound when
+# the module loads 1 with its comment 4 (a function put in `install.approval` changes nothing), install's docstring 1,
+# and the blank lines 6, less release_route 11 and RELEASE_TOOL 1 (no main program or interpreter flag trusted).
+# guards.py 16: _grant_release 12 (the version of the tag the line names or its checkout's manifests carry; a dry run
+# granted nothing), check_self_grant 2 (the grant written where the launcher's line passes) and blank lines 2;
+# _release_tool hands on the options it read in place of a yes.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17830
-PLUGIN_BUDGET = 44063
+CORE_BUDGET = 17887
+PLUGIN_BUDGET = 44120
 
 
 def _lines(files):

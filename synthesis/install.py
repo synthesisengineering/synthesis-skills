@@ -245,20 +245,53 @@ def change(home, staged: Path, source, digest: str, git_hooks: bool = False) -> 
             said + (", and points git's global hooks at its commit check" if git_hooks else ""))
 
 
-RELEASE_TOOL = os.path.join("skills", "synthesis-skills-manager", "scripts", "release.py")
+RELEASE_GRANT_SECONDS = 2 * 3600  # a release installs after it builds, pushes, publishes its notes and opens the tap's PR
 
 
-def release_route() -> bool:
-    """Whether this process is the release tool running from the protected runtime: its main program is that tool inside
-    a release under this home, started isolated (-I -S, as the release launcher starts it), so no code of an agent's runs
-    in it. Its install of a fresh clone's merged tag needs no code (the principal's ruling of 2026-11-15); a rollback
-    still does. It trusts the process's main program, which a program in the same process can set (a module of its own
-    put in as `__main__`), so such a program is held only by the guard's reading of it (review round 2 of 22.18, K1);
-    22.8's launcher replaces this with a grant the hook issues when it lets the launcher's line through."""
-    import __main__
-    main = os.path.realpath(getattr(__main__, "__file__", "") or os.devnull)
-    return bool(sys.flags.isolated and sys.flags.no_site) and main.endswith(os.sep + RELEASE_TOOL) and paths.inside(
-        main, os.path.realpath(_home() / "releases"))
+def _grant_file(home: Path, version: str) -> Path:
+    key = hashlib.sha256((os.path.realpath(home) + "\0" + version).encode("utf-8")).hexdigest()[:32]
+    return paths.state() / "release-grants" / f"{key}.json"
+
+
+def grant_release(version: str, line: str = "") -> Path:
+    """The hook's grant of one install, with no code, of the release `v<version>` into this home, written when the guard
+    lets the release launcher's line through (the principal's ruling of 2026-11-15: a release installs from the protected
+    tool with no code). It replaces trusting the process's main program and the interpreter's flags, which a program in
+    the same process can set (review round 2 of 22.18, K1). `install` spends it (`_spend_release`)."""
+    path = _grant_file(_home(), version)
+    paths.write_json(path, {"home": os.path.realpath(_home()), "version": version, "tag": f"v{version}", "at": time.time(),
+                            "line": line[:300]})
+    return path
+
+
+def _spend_release(home: Path, version: str, plugin_root: Path, staging: Path) -> bool:
+    """Spend the hook's grant of installing `v<version>` into `home`, once, and only from the release tool's fresh clone
+    in the protected releases folder, at its tag `v<version>`, whose staged copy holds exactly the files of that tag's
+    tree: the bytes the grant names are the tag's. False, spending nothing, where any of that does not hold."""
+    path, clone = _grant_file(home, version), os.path.realpath(plugin_root)
+    data = paths.read_json(path)
+    if (data.get("home") != os.path.realpath(home) or data.get("version") != version or time.time() - float(data.get("at") or 0) >
+            RELEASE_GRANT_SECONDS or not os.path.basename(clone).startswith(".clone-") or os.path.dirname(clone) != os.path.realpath(home / "releases")):
+        return False
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+
+    def git(*args) -> str:
+        done = subprocess.run(["git", "--no-replace-objects", "-C", clone, "-c", "core.hooksPath=/dev/null", *args],
+                              capture_output=True, text=True, env=env, timeout=120)
+        return done.stdout if done.returncode == 0 else ""
+    head = git("rev-parse", "--verify", "HEAD^{commit}").strip()
+    if not head or git("rev-parse", "--verify", f"refs/tags/v{version}^{{commit}}").strip() != head:
+        return False
+    tree = {rel: meta.split()[2] for meta, _, rel in (entry.partition("\t") for entry in git("ls-tree", "-r", "-z", head).split("\0"))
+            if rel and meta.split()[1:2] == ["blob"] and takes(rel)}
+    if not tree or _differences(staging, tree):
+        return False
+    try:
+        os.replace(path, path.with_suffix(".spent"))  # once: another caller that took it first leaves nothing here
+    except FileNotFoundError:
+        return False
+    path.with_suffix(".spent").unlink(missing_ok=True)
+    return True
 
 
 def approval(wanted: dict, said: str, session: dict | None) -> None:
@@ -276,6 +309,13 @@ def approval(wanted: dict, said: str, session: dict | None) -> None:
                      f"them this exact install and ask them to type {approvals.how(code)}; then run the identical command "
                      "again, with the folder it installs from left as it is now." + ("" if paths.session_id(session) else
                      " This shell names no session: pass --session with the one the principal types it in."))
+
+
+# What install and uninstall call, bound when this module loads: a program in the same process that puts a function of
+# its own in `install.approval` (by name, or by a name built at run time) changes neither (review round 2 of 22.18, K1).
+# Code in that process can still rewrite these, or the runtime's files themselves; only the guard's reading of it, and
+# the sandbox, hold such a program.
+_approve, _released = approval, _spend_release
 
 
 def _stable_skill_files(plugin_root: Path):
@@ -446,9 +486,10 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
     or one that was removed, is never replaced from it (the principal's sandbox rulings of 2026-11-15). A home that
     shows a runtime but has none whole is refused (RuntimeError), loudly, rather than kept. Into a home that shows a
     runtime, every other install spends the principal's code for exactly the staged copy, or raises Unapproved and
-    nothing moves, whoever calls it (review round 4 of 5.23.1, Q4): the release tool's own install from the protected
-    runtime (release_route) needs none unless it rolls back, and a release older than the running one is a rollback,
-    which always needs the code (round 1, A1). One install at a time in a home, from that check to the switch of
+    nothing moves, whoever calls it (review round 4 of 5.23.1, Q4). The release launcher's install needs none: it spends
+    the one grant the hook wrote for its line, of that tag's fresh clone (`_spend_release`; review round 2 of 22.18, K1).
+    A release older than the running one is a rollback, which always needs the code (round 1, A1). One install at a
+    time in a home, from that check to the switch of
     `current` (round 3, M2). `expected` ({path: blob id}, every file the runtime takes, as the release read it from its
     fresh clone): the staged copy must hold exactly those bytes, or nothing moves (A3). git_hooks binds that the caller
     points git's hooks at it."""
@@ -505,8 +546,8 @@ def _install_locked(plugin_root: Path, home: Path, python: str, found: list, git
         wanted = digest[:16]
         if found:
             wanted_change, said = change(home, staging, plugin_root, digest, git_hooks)
-            if wanted_change["action"] == "rollback" or not release_route():
-                approval(wanted_change, said, session or {"session_id": paths.session_id()})
+            if wanted_change["action"] == "rollback" or not _released(home, wanted_change["to"], plugin_root, staging):
+                _approve(wanted_change, said, session or {"session_id": paths.session_id()})
         release = home / "releases" / wanted
         if wanted != current_hash():
             if not release.is_dir():
@@ -674,7 +715,7 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
                     "it stays: run setup.py uninstall, which takes out what setup declared there, or remove those hooks, "
                     "then this again; nothing was removed")
     if not dry_run and traces(home or _home()):
-        approval(subject("uninstall", home or _home()), f"removes the installed synthesis runtime under {home or _home()} "
+        _approve(subject("uninstall", home or _home()), f"removes the installed synthesis runtime under {home or _home()} "
                  "(`current`, its launchers and its releases)", session or {"session_id": paths.session_id()})
     home, report, (verb, kept) = home or _home(), [], ("would remove", "would keep") if dry_run else ("removed", "kept")
     registered = _registrations(home).get("git_hooks_path")

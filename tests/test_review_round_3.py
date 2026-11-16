@@ -42,7 +42,7 @@ def _check(line, cwd, config=None):
 @pytest.fixture
 def approved(monkeypatch):
     """The principal's code given for each install over the runtime these tests set up (22.18: install spends it)."""
-    monkeypatch.setattr(install, "approval", lambda *args, **kwargs: None)
+    monkeypatch.setattr(install, "_approve", lambda *args, **kwargs: None)
 
 
 def test_m1_a_physical_cd_through_current_never_reaches_the_runtime(home):
@@ -81,7 +81,7 @@ def _plugin(tmp_path, name, version):
 def test_m2_the_change_is_read_under_the_lock_against_the_runtime_current_moves_from(home, tmp_path, monkeypatch):
     old, mid, new = _plugin(tmp_path, "old", "98.0.0"), _plugin(tmp_path, "mid", "98.5.0"), _plugin(tmp_path, "new", "99.0.0")
     asked = []
-    monkeypatch.setattr(install, "approval", lambda wanted, said, session: asked.append(wanted["action"]))  # each code asked for, given
+    monkeypatch.setattr(install, "_approve", lambda wanted, said, session: asked.append(wanted["action"]))  # each code asked for, given
     install.install(old)  # the runtime the older install starts from
     released = paths.home() / "releases" / "release-99"  # what the overlapping release installs
     shutil.copytree(new / "synthesis", released / "synthesis")

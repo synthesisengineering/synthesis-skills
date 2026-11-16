@@ -17,8 +17,9 @@ PLUGIN_ID = "synthesis-skills@synthesis-engineering"
 @pytest.fixture(autouse=True)
 def the_principal_approves_each_change_of_the_runtime(monkeypatch):
     """A setup run over an installed runtime spends the principal's code inside install itself (review round 4 of 5.23.1,
-    Q4), which tests/test_runtime_boundary.py holds to; these tests are about setup's other steps, so it is given."""
-    monkeypatch.setattr(setup.install, "approval", lambda *args, **kwargs: None)
+    Q4), which tests/test_runtime_boundary.py holds to; these tests are about setup's other steps, so it is given (the
+    check install bound when it loaded: review round 2 of 22.18, K1)."""
+    monkeypatch.setattr(setup.install, "_approve", lambda *args, **kwargs: None)
 
 
 def fake_cli(tmp_path, name, responses):

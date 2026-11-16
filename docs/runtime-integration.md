@@ -502,19 +502,24 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      and H2; review round 4 of 5.23.1, Q4). Replacing or removing an installed runtime waits
      for the principal's code for exactly that change, and `install.install` and
      `install.uninstall` themselves spend it, so every route that starts the CLI, setup.py or
-     the release script as a process of its own ends at that check. A program that runs in
-     the installer's own process (imports it and calls it, puts its own function in place of
-     the check, or poses as the release tool) is held only by the guard's reading of that
-     program: where it spells synthesis's installer the guard holds it; where it builds the
-     names at run time it passes, the documented residual below (review round 2 of 22.18,
-     K1). A release older than the running one is a subject of its own (`rollback`), named
-     to the principal as a downgrade with both versions. The release tool running from the
-     protected runtime, started isolated (`-I -S`, as its launcher starts it), installs a
-     merged tag with no code, and never a rollback (`install.release_route`); that test
-     trusts the process's main program, which a program in the same process can set, until
-     22.8's launcher replaces it with a grant the hook issues when it lets the launcher's
-     line through. Run from a checkout, the release script's install stage waits for the
-     code. `synthesis install` (with or without
+     the release script as a process of its own ends at that check. The release launcher's
+     install needs no code because the hook grants it: when the guard lets the launcher's
+     line through, it writes one grant, an install of `v<version>` (the tag the line names,
+     or the version its checkout's manifests carry) into this home. `install.install` spends
+     it once, and only for the release tool's fresh clone in the protected releases folder,
+     at that tag, whose staged copy holds exactly the tag's files; it trusts no main
+     program, interpreter flag or module's `__file__`, so a program that poses as the
+     release tool (a forged `__main__` under `-I -S`) is asked for the code like any other
+     (review round 2 of 22.18, K1). A release older than the running one is a subject of its
+     own (`rollback`), named to the principal as a downgrade with both versions, and needs
+     his code on every route, the launcher's too. Install calls the check it bound when it
+     loaded, so a program in the installer's own process that puts its own function in
+     `install.approval`, by name or by a name built at run time, changes nothing. Such a
+     program can still rewrite those bindings, or the runtime's files themselves: it is held
+     only by the guard's reading of it, which holds it where it spells synthesis's installer
+     and passes it where it builds the names at run time, the documented residual below.
+     Run from a checkout, the release script's install stage waits for the code.
+     `synthesis install` (with or without
      a folder, and `--git-hooks`, which also points git's global hooks at the commit check)
      and `synthesis uninstall` refuse wherever the home shows a runtime (`install.traces`)
      unless a live grant the principal's prompt backs names that change; otherwise they file

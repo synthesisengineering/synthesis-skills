@@ -58,10 +58,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   the principal approves before the run and the install spends it. Where no runtime runs the prompt hook (after an
   uninstall), the session's own record showing the code is enough (`approvals.answered`). The first install, help, a dry
   run and words the CLI refuses need no code. That holds for every route that starts the CLI, setup.py or the release
-  script as a process of its own. A program that runs in the installer's own process (imports it and calls it, or puts
-  its own function in place of the check) is held only by the guard's reading of that program, which holds it where it
-  spells the installer and passes it where it builds the names at run time, the guard's documented residual (review
-  round 2 of 22.18, K1). setup.py takes `--session` for the session the principal types the code in, from his own
+  script as a process of its own. Install calls the check it bound when it loaded, so a program in its own process that
+  puts its own function in `install.approval`, by name or by a name built at run time, changes nothing (review round 2
+  of 22.18, K1); a program that rewrites those bindings or the runtime's files itself is held only by the guard's
+  reading of it, which holds it where it spells the installer and passes it where it builds the names at run time, the
+  guard's documented residual. setup.py takes `--session` for the session the principal types the code in, from his own
   terminal, where no harness gives one, and passes it to the install and the uninstall (K2).
 - **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
   the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
@@ -70,11 +71,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   copy in the protected releases folder, hashes the copy, checks it and installs from it. `synthesis install` with no
   folder binds the CLI's own folder the same way, and a bare `synthesis` that PATH resolves to anything but the stable
   launcher is not read as the CLI. A release older than the running one is a subject of its own, `rollback`, named to
-  the principal as a downgrade with both versions. The release tool's own install needs no code only where the process
-  is that tool inside the protected runtime, started isolated (`-I -S`), and never for a rollback
-  (`install.release_route`); run from a checkout, as main runs it, its install stage waits for the code. That test trusts
-  the process's main program, which a program in the same process can set, until 22.8's launcher replaces it with a grant
-  the hook issues when it lets the launcher's line through (K1).
+  the principal as a downgrade with both versions, and needs his code on every route.
+- **The hook grants the release launcher one install of its tag** (review round 2 of 22.18, K1). 22.18's release route
+  trusted the process's main program and the interpreter's flags (`__main__.__file__` inside a release, `-I -S`), which
+  a program in the same process can set: a forged `__main__` replaced the runtime with no code, as did a function put in
+  `install.approval`. Now, when the guard lets the release launcher's line through, it writes one grant: an install of
+  `v<version>` (the tag the line names, or the version its checkout's manifests carry; a dry run is granted nothing)
+  into this home. `install.install` spends it once, and only for the release tool's fresh clone in the protected
+  releases folder, at that tag, whose staged copy holds exactly the files of that tag's tree; any other folder, version,
+  home or a second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it,
+  the release script's install stage waits for the code.
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
   approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
