@@ -274,7 +274,8 @@ def test_a_copy_of_a_file_that_exists_carries_its_text_and_an_edit_in_place_cann
 
 def test_a_copied_script_and_one_after_a_program_that_starts_git_are_judged_as_written(tmp_path):
     (tmp_path / "a.py").write_text(CALL + "\n")
-    assert APPROVAL_CODE in _said("cp a.py b.py && python3 b.py", tmp_path)
+    copied = _said("cp a.py b.py && python3 b.py", tmp_path)  # judged by what it copies: it reaches synthesis's code, as a.py would
+    assert "this same line writes with a program" not in copied and "approve followed by the code" in copied, copied
     (tmp_path / "ok.py").write_text("print(1)\n")
     assert _said("cp ok.py b2.py && python3 b2.py", tmp_path) == ""
     after = "cat > s.py <<'EOF'\nprint(1)\nEOF\npython3 -c \"import subprocess; subprocess.run(['git', 'status'])\" && python3 s.py"
