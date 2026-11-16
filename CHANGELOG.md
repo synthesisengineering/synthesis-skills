@@ -128,8 +128,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   guard cannot read to an address from a variable an earlier command exported or an argument the shell fills in: two
   Codex node scripts run 15 times on one day, a Claude Code Python program run twice and a Codex one run once, and two
   Claude Code Python programs that start curl, one with a config file the guard cannot read. The suite's corrections let
-  36 commands the ruling's first code held pass (26 read a file a module opens as a request, 10 post to a host the
-  program spells), and the two curl posts above pass.
+  36 commands the ruling's first code held pass (26 whose programs open a file with a module's own `open()`, 10 whose
+  programs post to a host they spell), and the two curl posts above pass.
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
