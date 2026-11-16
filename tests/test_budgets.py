@@ -1588,10 +1588,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # when its call is held: an "undone" line and the spent mark taken back), _spends 8 (a spend an "undone" line names is
 # none), batch_spend 5 (its mark, and its undo given to the guard's _after), _harness 3 (no harness under a process a
 # terminal shares, or shells alone), SHARED 2 and 2 blank lines; guards.py's call sites keep their counts.
+# Review round 6 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
+# _writes_by_fetch 5 (a method read only as an object key, a shorthand by its const's one literal, or a member
+# assignment: a parameter or a property read named method held a read through a wrapper).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18225
-PLUGIN_BUDGET = 44302
+CORE_BUDGET = 18230
+PLUGIN_BUDGET = 44307
 
 
 def _lines(files):

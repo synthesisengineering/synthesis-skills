@@ -5632,9 +5632,9 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
     """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
     given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
     name built as it runs; an init the reader cannot follow otherwise (spread into, a variable set again or handed on, a
-    parameter, any other expression) when the script names such a method anywhere, or puts a body in an object it passes
-    to a call or one a variable it passes holds (review rounds 3 to 5 of 5.23.1, T1, U1, W4); an XHR opened with a method
-    that is not one (rounds 1 and 2, #1 and #2: a `body` read from a response is no write)."""
+    parameter, any other expression) when the script sets such a method as an object key or a member assignment, or puts
+    a body in an object it passes to a call or one a variable it passes holds (review rounds 3 to 6 of 5.23.1, T1, U1,
+    W4); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2: a `body` read from a response is no write)."""
     def group(at: int) -> str:
         return _bracketed(code, at)
 
@@ -5662,12 +5662,17 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
                 args, start = args + [inner[start:j].strip()], j + 1
         return args
 
-    def anywhere() -> bool:  # a method that is no literal GET or HEAD anywhere in the script (round 5, W4: an init its own
-        # helper returned passed), or a body in an object it passes to a call or one a variable passed or spread into one
-        # holds or is given (round 4, U1: not in what a callback returns or names)
-        for found in re.finditer(r"(?<![\w$])method\b|\0(\d+)\0(?=\s*\]?\s*[:=](?!=))", code):
-            set_ = re.match(r"\s*\]?\s*[:=](?!=)", code[found.end():])
-            if (found[1] is None or literals[int(found[1])] == "method") and not (set_ and reads(code[found.end() + set_.end():])):
+    def anywhere() -> bool:  # a method that is no literal GET or HEAD, as an object key (a shorthand by the one literal its
+        # const holds) or a member assignment anywhere in the script (rounds 5 and 6, W4: an init its own helper returned
+        # passed, then a parameter or a property read named method held a read), or a body in an object it passes to a call
+        # or one a variable passed or spread into one holds or is given (round 4, U1: not in what a callback returns or names)
+        for found in re.finditer(r"[{,]\s*(method)\b(?=\s*(?::|[,}]|=(?!=)))|\.\s*(method)\b(?=\s*[-+]?=(?!=))|\0(\d+)\0(?=\s*\]?\s*[:=](?!=))", code):
+            if found[3] is not None and literals[int(found[3])] != "method":
+                continue
+            rest, at = code[found.end():], given("method")
+            value = ((code[at:] if at >= 0 else "") if found[1] and re.match(r"\s*[,}]", rest) else re.sub(r"^\s*\]?\s*(?::|=)", "", rest, count=1)
+                     if re.match(r"\s*\]?\s*(?::|=(?!=))", rest) else "")
+            if not reads(value):
                 return True
         passed = set()
         for call in re.finditer(r"(?:(?<![\w$])(?!(?:if|for|while|switch|catch|with|function|return|typeof)\b)[A-Za-z_$][\w$]*|[)\]])\s*\(", code):
