@@ -118,7 +118,7 @@ def test_a_line_typed_into_a_shell_is_judged_in_the_folder_its_session_started_i
 def test_a_typed_line_is_judged_by_every_shell_guard(codex):
     codex["started"]("bash", workdir=codex["work"])
     assert _typed(codex, f"echo x > {paths.state() / 'approvals' / 'forged.json'}\n").startswith("Refused")
-    assert "Refused" in _typed(codex, "rm -rf ~\n")
+    assert "refusing a recursive delete" in _typed(codex, "rm -rf ~\n")
     assert _held(_typed(codex, "gh pr comment 5 -R someone-else/app --body 'Looks good to me.'\n"))
     assert _held(_typed(codex, "echo x > ~/.synthesis/v5/config.json\n"), SETTINGS)
 
@@ -172,7 +172,8 @@ def test_a_claude_record_names_no_codex_session(codex, tmp_path):
 
 
 @pytest.mark.parametrize("earlier", ["cd ~/.synthesis/v5\n", "pushd ~/.synthesis/v5\n", "D=~/.synthesis/v5\n",
-                                     "export D=~/.synthesis/v5\n", "alias e='echo'\n", "source ~/x.sh\n"])
+                                     "export D=~/.synthesis/v5\n", "alias e='echo'\n", "source ~/x.sh\n",
+                                     "~/.synthesis/v5\n"])  # a bare folder name, which zsh takes as cd
 def test_a_shell_whose_folder_or_variables_a_typed_line_changed_is_judged_conservatively(codex, earlier):
     codex["started"]("bash", workdir=codex["work"])
     codex["typed_before"](earlier)
@@ -188,10 +189,17 @@ def test_a_line_split_across_calls_is_judged_whole(codex):
 
 
 @pytest.mark.parametrize("chars", ["echo x > ~/.synthesis/v5/config.jsonX\x7f\n", "echo x > ~/.synth\t\n", "\x1b[A\n",
-                                   "echo x > ~/.synthesis/v5/config.json\x1b[D\x1b[Dx\n"])
+                                   "echo x > ~/.synthesis/v5/config.json\x1b[D\x1b[Dx\n", "!!\n", "!echo\n", "^git^gzip\n",
+                                   "fc -s\n", "r\n"])
 def test_keys_that_edit_complete_or_recall_a_line_wait(codex, chars):
     codex["started"]("bash", workdir=codex["work"])
     assert _held(_typed(codex, chars)), repr(chars)
+
+
+@pytest.mark.parametrize("chars", ["echo 'done!'\n", "[ a != b ] && echo differ\n", "git log -1 --format='%h!'\n"])
+def test_an_exclamation_mark_that_recalls_nothing_needs_no_code(codex, chars):
+    codex["started"]("bash", workdir=codex["work"])
+    assert _typed(codex, chars) is None, repr(chars)
 
 
 def test_the_principals_code_lets_that_typed_line_through_once(codex):
