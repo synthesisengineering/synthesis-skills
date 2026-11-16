@@ -720,8 +720,50 @@ def test_the_crafted_ways_past_the_count_are_on_the_open_list():
     found = (ROOT / "docs" / "runtime-integration.md").read_text(encoding="utf-8").split("\n### What remains open\n")[1]
     found = " ".join(found.split("\n### ")[0].split())
     for words in ("The autopilot count reads only the plan file", "`origin: principal`", "close again at a later time",
-                  "split one of the principal's items", "year 9999", "the check stays on"):
+                  "split one of the principal's items", "year 9999", "the check stays on",
+                  # review round 2: what remains, said rather than built
+                  "names work only when its item is stamped", "items 1.1 and 1.2 both as 1",
+                  "old checked items with no close time", "A principal request recorded during a stop counts as work",
+                  "up to five minutes ahead of a later alert"):
         assert words in found, words
+
+
+def test_the_stop_holds_past_its_window_while_the_count_blocker_waits_for_an_answer(tmp_path, capsys):
+    """Review round 2: the stop was recomputed from the 24-hour window alone, so a principal away for a day came back to
+    a run that had freed itself: at 25 hours cycle was silent and the brief named one of the run's own items as next.
+    The stop now holds while an alerted count blocker is open with no answer after it, and its line says so."""
+    for hours in (1, 23, 25):
+        minutes = hours * 60
+        path = tagged(tmp_path / str(hours), closed=(minutes + 90,), added=(minutes + 60, minutes + 30), asked=minutes,
+                      header={"Status": "blocked"})
+        engage("S1", path)
+        capsys.readouterr()
+        assert run("--session", "S1", "cycle", "--plan", path, "--waiting-on", "the principal's answer") == 0
+        out = capsys.readouterr().out
+        assert out.startswith("the count stops this run: start nothing new until the principal answers."), hours
+        assert "waiting for the principal's answer" in autopilot.brief({"session_id": "S1"}), hours
+        assert stop("S1") is None, hours  # blocked, asked and alerted, nothing moved since: the turn may end
+    assert "migrate endpoints: it is still waiting for your answer to the count's question of " in out
+    edit(path, f"- [ ] {ASKED}", f"- [x] {ASKED}")
+    edit(path, "Status: blocked", f"Status: running\nPrincipal answer: {reply(1)}")
+    assert autopilot.tally(autopilot.load(path))["stop"] is False  # answered after the alert: the run goes on
+
+
+def test_a_reply_that_opens_with_yes_is_quoted_from_its_keyword_and_the_pages_say_so(tmp_path):
+    """Review round 2: the principal's replies open with "Yes,"; quoted word for word, "Yes, continue." was read as
+    "yes", so the run was stopped and the principal asked again. The first-word rule stays, and both pages say to quote
+    the reply from the word continue, narrow or stop, keep the whole reply on the checked blocker, and ask again only
+    when the reply holds none of the three words."""
+    for i, (words, refused) in enumerate((("Yes, continue.", 1), ("continue.", 0), ("continue, but skip the re-reviews", 0))):
+        path = tagged(tmp_path / str(i), closed=(90,), added=(60, 30), asked=20, answer=reply(5, words))
+        engage("S1", path)
+        assert advance(path) == refused, words
+    for page in ("plan-file.md", "procedure.md"):
+        said = " ".join((SKILL / "references" / page).read_text(encoding="utf-8").split())
+        for words in ('from the word continue, narrow or stop that they used ("Yes, continue, but skip X" becomes '
+                      '"continue, but skip X")', "keep their whole reply on the checked blocker",
+                      "ask again only when the reply holds none of the three words"):
+            assert words in said, (page, words)
 
 
 # ---- scenarios 10 to 14: an honest close ----------------------------------------
