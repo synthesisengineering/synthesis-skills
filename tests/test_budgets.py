@@ -1422,15 +1422,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # 1 (a root's real path asked once a call, and the variables that hold a protected path found once, each value spelled
 # once rather than once for every root). In place: _self_grant asks once a target whether it is the agent's own, not
 # once for every protected path.
-# Then each 2 more, both in guards.py, from the 60-day replay of 22.26: _self_grant 1 (a harness's own variables that
-# name its program or a startup file, CLAUDE_CODE_EXECPATH and BASH_ENV, hold no program that reads the environment:
-# every such program that writes and that the reader could not follow waited in Claude Code), _settings_map 1 (the
+# Then each 3 more, all in guards.py, from the 60-day replay of 22.26: _self_grant 1 and _python_writes 1 (a harness's
+# own variables that name its program or a startup file, CLAUDE_CODE_EXECPATH and BASH_ENV, hold no program that reads
+# the environment or hands it to a child: every such program that writes and that the reader could not follow waited
+# in Claude Code), _settings_map 1 (the
 # ChatGPT and Codex apps held at the folder that keeps their Codex CLI, which KEPT no longer takes as the whole app). In
 # place: _self_grant's names are whole paths, so muse-bin-<version> or ghostscript no longer names muse or gh.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17337
-PLUGIN_BUDGET = 43409
+CORE_BUDGET = 17338
+PLUGIN_BUDGET = 43410
 
 
 def _lines(files):

@@ -3531,8 +3531,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     keyed |= {id(n.func.value) for n in nodes if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "update"} | {id(v) for t, v in pairs if isinstance(t, ast.Name) and getattr(v, "attr", getattr(v, "id", "")) == "environ"} | {
         id(c) for n in nodes if isinstance(n, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops) for c in n.comparators}  # given a value, kept under a name, asked for a name: each read as the table it is
     wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
+    inherited = [r for r in roots if not _kinds_at(r) & {"startup", "snapshots", "program"}]  # a harness's own variables name these (22.26)
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
-        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
+        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in inherited)))
 
     def source(node):  # what an open call opens: its first argument, or the path whose own open() it is; None for any other node
         if not (isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open"):
@@ -4084,7 +4085,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         seen += (id(c),)
         if c is ENV:
             made = [(env[key], ())] if key in env and not re.search(r"[$`]", env[key]) else [] if key is not None else [(None, ())] + [
-                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in roots))]  # any of them: one may name a protected path
+                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in inherited))]  # any of them: one may name a protected path
         elif isinstance(c, ast.Dict):
             made = [x for k, v in zip(c.keys, c.values) for x in (
                 [y for o in resolve(v, seen) or [None] for y in part(o, sel, None, seen)] if k is None else [(v, ())] * (key is None or key_at(k) in (key, None)))]
