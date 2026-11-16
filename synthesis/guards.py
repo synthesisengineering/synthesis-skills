@@ -3021,10 +3021,13 @@ def _protected_roots(config: dict | None) -> list[str]:
     store, mode = paths.line_allowances(config or {}), _CALL.get("settings")
     if mode == "only":
         return _settings()
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
-                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
-                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
-                             *([store] if store else [])]] + (_settings() if mode else [])
+    key = (_env_key(), str(store), bool(mode))  # read once for the environment: they are paths, not the files at them
+    if key not in ROOTS_MEMO:
+        ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
+                                            *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
+                                            paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
+                                            *([store] if store else [])]] + (_settings() if mode else [])
+    return list(ROOTS_MEMO[key])
 
 
 # The guard's own settings and the global commit check's entry points (22.20). What an approval means rests on both: a
@@ -3060,6 +3063,7 @@ HARNESS = ("claude", "codex", "muse", "gh")
 KEPT = re.compile(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[^/]+|[^/]+\.app)(?=/|$)")  # the folder its installer keeps a file in
 ZDOTDIR_SET = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?ZDOTDIR=([\"']?)([^\"'\s;#]+)\1")
 SETTINGS_MAPS: dict = {}  # the environment it is read from: each path the settings hold covers, with its kind
+ROOTS_MEMO: dict = {}  # the environment, the approved lines' store and whether the settings are among them: the protected paths
 
 
 def _settings() -> list[str]:
@@ -3068,15 +3072,22 @@ def _settings() -> list[str]:
     return list(_settings_map())
 
 
+def _env_key() -> tuple:
+    """What the protected paths are read from: the variables that name a home, a harness's folder or a shell's files."""
+    if len(SETTINGS_MAPS) + len(ROOTS_MEMO) > 512:
+        SETTINGS_MAPS.clear()
+        ROOTS_MEMO.clear()
+    return tuple(os.environ.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
+                                                 "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
+
+
 def _settings_map() -> dict:
     """Each path `_settings` names, with its kind and program: read once for the environment the guard runs in. A harness
     program is held at each folder on PATH and in the vendors' known places, whether or not a file is there (one there
     runs instead), through each link to the file it ends at, with the folder its installer keeps it in (Claude Code's
     versions, the desktop app's, Codex's app-server CLI, a Homebrew keg or cask, an npm package, an app) and, beside a
     launcher, the files it keeps there (muse: muse-bin-<version> and .muse-version)."""
-    env = os.environ
-    key = tuple(env.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
-                                         "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
+    env, key = os.environ, _env_key()
     if key in SETTINGS_MAPS:
         return SETTINGS_MAPS[key]
     home = os.path.expanduser("~")
@@ -4746,6 +4757,7 @@ EXTRACTS = {**dict.fromkeys(("tar", "bsdtar", "gtar"), r"-?[A-Za-z]*x[A-Za-z]*|-
             **dict.fromkeys(("7z", "7za", "ar"), r"-?[a-z]*[xe][a-z]*")}  # the word that says it unpacks where it stands
 CANDIDATE = re.compile(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
 SPELLINGS: dict = {}  # (home, roots, anchors): the pattern of every way a program's text spells a protected folder
+ANCHORS: dict = {}  # (roots, the variables that hold a path): those whose folder holds a protected one or lies in one
 
 
 class Unproven(str):
@@ -5265,13 +5277,18 @@ def _spellings(raw: list, env: dict) -> tuple:
     """(each part's pattern, each spelling of a protected folder as the parts it needs, the folders between each
     protected one and the home folder or a variable's folder that holds it, the protected folders as compared). A
     folder's parts count wherever they stand in one program, however they are joined (finding 14)."""
-    home = os.path.realpath(os.path.expanduser("~"))
-    roots = sorted({form for r in raw for form in (os.path.normpath(r), os.path.realpath(r))})
-    low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
-    anchors = tuple(sorted((name, os.path.normpath(os.path.expanduser(value))) for name, value in env.items() if name not in (
-        "HOME", "PWD", "OLDPWD", "_") and isinstance(value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value
-        and any(v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for r in low_roots
-                for v in [paths.spelled(os.path.normpath(os.path.expanduser(value))).rstrip(os.sep)])))
+    home = _real(os.path.expanduser("~"))
+    roots = sorted({form for r in raw for form in (os.path.normpath(r), _real(r))})
+    values = tuple(sorted((name, value) for name, value in env.items() if name not in ("HOME", "PWD", "OLDPWD", "_") and isinstance(
+        value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value))
+    if (tuple(roots), values) not in ANCHORS:  # a variable's folder that holds a protected one, or lies in one: its value read once
+        low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
+        if len(ANCHORS) > 256:
+            ANCHORS.clear()
+        ANCHORS[(tuple(roots), values)] = tuple((name, os.path.normpath(os.path.expanduser(value))) for name, value in values if any(
+            v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for v in [paths.spelled(os.path.normpath(
+                os.path.expanduser(value))).rstrip(os.sep)] for r in low_roots))
+    anchors = ANCHORS[(tuple(roots), values)]
     key = (home, tuple(roots), anchors)
     if key not in SPELLINGS:
         spellings = []
@@ -5634,8 +5651,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:
         return f"Refused: this command writes {owned}"
-    if not why and any(paths.inside(t, _real(r)) for t in real for r in raw
-                       if t in links or not (_own(t) or (t in made and _own(t, True)))):
+    landing = [t for t in real if t in links or not (_own(t) or (t in made and _own(t, True)))]  # each target asked once (22.26)
+    if not why and any(paths.inside(t, _real(r)) for t in landing for r in raw):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     # A target outside every protected folder may still change one. The approved lines are one file in a working
     # repository: removing or moving its folder removes it, while a search or a copy across that folder is judged by

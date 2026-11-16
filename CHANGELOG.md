@@ -79,7 +79,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   launcher's text may name where its program is kept), and installing other tools need no code. The vendors' known
   places now live in `paths`, which the doctor and the guard both read. A protected path outside the home folder had a
   `~` spelling that matched any `~` a program holds (reached only by these paths); a program's text is looked through
-  only for the protected parts it holds, so judging stays inside its time with some 60 more paths; a variable given a
+  only for the protected parts it holds, and the protected paths, their real paths and the variables that hold one are
+  read once, so judging a command takes about as long as before with some 60 more paths (1,500 recorded commands: a
+  median of 2.3 ms against 2.0, 8.1 s in all against 7.5; 3.8 ms and 12.3 s without this); a variable given a
   value (`XDG_DATA_HOME=…`) is no longer read as a path built from that variable; and a command that waits whatever is
   protected (it names synthesis's own writers, or runs input the guard cannot read) waits for the protected folders'
   code in those words, not as a settings hold that lists every kind of setting first. Measured first, read only, over

@@ -148,10 +148,19 @@ def note_wait(name: str, change, home_: Path | None = None, wait: bool = True) -
             write_json(file, {"seen": seen if new == "drop" else {**seen, name: {**new, "version": __version__}}})
 
 
+SPELLED: dict = {}  # each path as compared, kept: the guard compares the same few protected paths many times a call (22.26)
+
+
 def spelled(path: str) -> str:
     """A path as a Mac's file system compares it: neither the case of a letter nor the form an accent is written in
     makes it another file (2026-11-11: a protected file named in capitals was written)."""
-    return unicodedata.normalize("NFD", str(path)).casefold()
+    key = str(path)
+    found = SPELLED.get(key)
+    if found is None:
+        if len(SPELLED) > 1 << 16:
+            SPELLED.clear()
+        found = SPELLED[key] = unicodedata.normalize("NFD", key).casefold()
+    return found
 
 
 def inside(path: str, root: str) -> bool:

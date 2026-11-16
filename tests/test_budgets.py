@@ -1413,10 +1413,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # has no `~` spelling in _self_grant (one matched any `~` in a program); _spellings keeps each part's text beside its
 # pattern and reads no variable a statement gives a value; check_self_grant makes no settings hold of a wait that the
 # settings alone do not change.
+# Then each 26 more, so that judging a recorded command with some 60 more protected paths takes about as long as before
+# (the same 1,500 recorded commands, two rounds each: without these a median of 3.8 ms and 12.3 s in all, against 2.0 ms
+# and 7.5 s on the head before 22.26; with them 2.3 ms and 8.1 s): paths.py 9 (spelled keeps each path as compared, 6,
+# and SPELLED 1, with 2 blank lines); guards.py 17:
+# _protected_roots 3 more and ROOTS_MEMO 1 (the protected paths read once for the environment), _env_key 7 with 2 blank
+# lines (the variables they are read from, which _settings_map now asks, 2 fewer there), _spellings 5 more and ANCHORS
+# 1 (a root's real path asked once a call, and the variables that hold a protected path found once, each value spelled
+# once rather than once for every root). In place: _self_grant asks once a target whether it is the agent's own, not
+# once for every protected path.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17309
-PLUGIN_BUDGET = 43381
+CORE_BUDGET = 17335
+PLUGIN_BUDGET = 43407
 
 
 def _lines(files):
