@@ -7,6 +7,21 @@ import pytest
 
 SKILLS = Path(__file__).resolve().parents[1] / "skills"
 
+# Rules 9, 18 and 20 in the parts a test can check with no false alarm on any skill today. Words in quotes or a code
+# span are a user's words or an example of what not to write, not the skill's own voice; a reasoning tag or field is
+# read with its quotes, since a template that asks for one quotes it.
+QUOTED = re.compile(r"""(?<!\w)'.+?'(?!\w)|".+?"|`.+?`|‘.+?’|“.+?”""")
+FIRST_OR_SECOND_PERSON = re.compile(
+    r"^\s*(I|We|My|Our)\b|\b(I can|I will|I'll|I help|we can|we will|we'll|you|your|yours)\b", re.I)
+LIMITS_TOOLS_OR_UPDATES = re.compile(
+    r"minimi[sz]e (the number of )?tool calls|fewest (possible )?tool calls|only use tools when|use tools only when"
+    r"|tools? (only )?when strictly necessary|hold (all |every )?(the )?(findings|results) (for|until)"
+    r"|do(n't| not) narrate|no interim (updates|messages)", re.I)
+REASONING_TAG_OR_FIELD = re.compile(r"""<(thinking|reasoning|scratchpad)>|["'`](reasoning|thinking)["'`]\s*:""", re.I)
+REASONING_REQUEST = re.compile(
+    r"think step[- ]by[- ]step|(show|write out) (your|its) (reasoning|thinking)|log of (your|its) (reasoning|thinking)",
+    re.I)
+
 
 def _frontmatter(text):
     match = re.match(r"---\n(.*?)\n---\n", text, re.S)
@@ -25,6 +40,20 @@ def _check(skill_md: Path) -> list[str]:
     description = re.search(r'^description:\s*"?(.*?)"?\s*$', front, re.M)
     if not description or len(description.group(1)) > 300:
         problems.append("description missing or over 300 characters")
+    voice = description and FIRST_OR_SECOND_PERSON.search(QUOTED.sub(" ", description.group(1)))
+    if voice:
+        problems.append(f"description is in the first or second person ({voice.group(0).strip()!r}): write it about "
+                        "the skill, quoting any words a user would type (docs/skill-format.md, rule 20)")
+    body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.S)
+    limit = LIMITS_TOOLS_OR_UPDATES.search(QUOTED.sub(" ", body))
+    if limit:
+        problems.append(f"SKILL.md limits tools or updates in general ({limit.group(0)!r}): say when to use a tool or "
+                        "send an update instead (docs/skill-format.md, rule 9)")
+    reasoning = REASONING_TAG_OR_FIELD.search(body) or REASONING_REQUEST.search(QUOTED.sub(" ", body))
+    if reasoning:
+        problems.append(f"SKILL.md asks for the model's reasoning in its output ({reasoning.group(0)!r}): ask for a "
+                        "short explanation; current Claude models can refuse the request "
+                        "(docs/skill-format.md, rule 18)")
     for field in ("name", "license"):
         if not re.search(rf"^{field}:", front, re.M):
             problems.append(f"frontmatter lacks {field}")
@@ -63,3 +92,33 @@ def test_checker_catches_each_rule(tmp_path):
     found = " | ".join(_check(skill / "SKILL.md"))
     for expected in ("over 300", "lacks license", "Binding rules then Contents", "orphan.md is not listed"):
         assert expected in found
+
+
+def _demo_skill(root: Path, description: str, procedure: str) -> Path:
+    skill = root / "demo"
+    skill.mkdir()
+    (skill / "SKILL.md").write_text(
+        f"---\nname: demo\ndescription: {description}\nlicense: CC0-1.0\nmetadata:\n  format: v5\n---\n\n"
+        "What the demo is for.\n\n## Binding rules\n\n1. **One rule,** with its reason.\n\n"
+        f"## Contents\n\n- Procedure: the steps.\n\n## Procedure\n\n{procedure}\n", encoding="utf-8")
+    return skill / "SKILL.md"
+
+
+def test_checker_catches_the_wording_rules(tmp_path):
+    """The parts of rules 9, 18 and 20 a test can check without a false alarm on any skill today."""
+    found = " | ".join(_check(_demo_skill(
+        tmp_path, "You can use this to sync files.",
+        "Minimize tool calls, and hold all findings for the final report.\n"
+        'Write your reasoning in <thinking> tags, then return {"reasoning": "..."}.')))
+    for expected in ("first or second person", "limits tools or updates in general", "asks for the model's reasoning"):
+        assert expected in found
+
+
+def test_quoted_phrases_and_explanations_pass(tmp_path):
+    """Words quoted as a user would type them, or as text not to write, are not the skill's own voice."""
+    skill_md = _demo_skill(
+        tmp_path,
+        "Arm a watcher before a turn ends. Use when a reply would say 'I'll pick it up once' or \"you can stop\".",
+        'Use a search when a fact may have changed since training, not "minimize tool calls".\n'
+        "Ask for a short explanation of the result and the evidence behind it.")
+    assert _check(skill_md) == []
