@@ -523,6 +523,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   `test_open_an_iife_that_writes_a_decoy_object_and_returns_the_pages`: an IIFE that writes any object literal (a
   `=> ({i})` callback inside it) and returns the page's object counts as the script's own, so a page's send through it,
   under a method name the script defines elsewhere, passes.
+- **Three more from review round 7 of 5.23.1** (Y4), cases of `test_open_a_method_set_another_way`, expected to fail
+  until closed: a method set by `Object.defineProperty`, by `Object.fromEntries`, or as a class field after another
+  field (`class O { credentials = 'include'; method = 'POST' }`, with `new O()` as the init). The cost on the other side
+  (Y5): a read whose own result mapping has a `method` key (`d.items.map(p => ({id: p.id, method: p.paymentMethod}))`)
+  waits for a code, since the reader counts that key wherever it is written. It is rare, and it fails closed
+  (`test_a_read_whose_own_result_maps_a_method_key_waits`).
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:

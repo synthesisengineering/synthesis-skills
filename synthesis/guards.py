@@ -5432,12 +5432,13 @@ NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|
 # site's page one that clicks, submits, sends a key or an event, writes by fetch, sets a value or moves the tab (a chat's
 # address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
 # fetch or clicks a control that publishes, unless it searches or signs in.
+ASSIGN = r"(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])"  # every assignment operator (review round 7 of 5.23.1, Y3)
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*[+-]?=(?!=)|\bwindow\s*\.\s*open\s*\("
+MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*" + ASSIGN + r"|\bwindow\s*\.\s*open\s*\("
 # A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
 DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
 PRESSES_ENTER = r"\.press\s*\(\s*['\"`](?:[^'\"`]*\+)?(?:Enter|Return|NumpadEnter)['\"`]"
-SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
+SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
                          + WRITES + "|" + MOVES + "|" + DRIVES, re.I)
 SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
@@ -5590,15 +5591,15 @@ UNREAD_FORMS = (("a member named as it runs", r"\]\s*\)?\s*(?:\(|\0)"), ("Reflec
                 ("with", r"\bwith\s*\("), ("import()", r"\bimport\s*\("), ("a timer given a string", r"\b(?:setTimeout|setInterval)\s*\(\s*\0"),
                 ("a name written in escapes", r"\\u[0-9a-fA-F{]"))
 CODE_SINKS = re.compile(r"\bcreateElement\s*\(\s*\0(\d+)\0|(?:\bsetAttribute|\bsetAttributeNS)\s*\(\s*\0(\d+)\0|(?:innerHTML|outerHTML"
-                        r"|srcdoc)\s*\+?=\s*\0(\d+)\0|(?:insertAdjacentHTML|\bwrite(?:ln)?|\bBlob)\s*\(([^()]*)"
-                        r"|(?:\blocation(?:\s*\.\s*href)?|\.\s*(?:href|src))\s*=\s*\0(\d+)\0|\blocation\s*\.\s*(?:assign|replace)\s*\(\s*\0(\d+)\0")
+                        r"|srcdoc)\s*" + ASSIGN + r"\s*\0(\d+)\0|(?:insertAdjacentHTML|\bwrite(?:ln)?|\bBlob)\s*\(([^()]*)"
+                        r"|(?:\blocation(?:\s*\.\s*href)?|\.\s*(?:href|src))\s*" + ASSIGN + r"\s*\0(\d+)\0|\blocation\s*\.\s*(?:assign|replace)\s*\(\s*\0(\d+)\0")
 HANDLERS = r"on(?:click|dblclick|submit|keydown|keyup|keypress|input|change|mousedown|mouseup|pointerdown|pointerup|touchstart|touchend)"
-PAGE_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
+PAGE_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
                        + WRITES + "|" + MOVES, re.I)  # SCRIPT_ACTS but a browser server's own calls, which no page script makes (#8)
 SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
                               r"|\.\s*on[a-z]+\s*\(|\.\s*" + HANDLERS + r"\b(?!\s*=[^=])|(?<![\w$.])" + HANDLERS + r"\b"
                               r"|\.\s*postMessage\s*\("
-                              r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*[+-]?=(?!=)|\bnavigation\s*\.\s*navigate\s*\("
+                              r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*navigate\s*\("
                               r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
 SHOWS_PAGE = re.compile(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
 BARE_SENDS = re.compile(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
@@ -5655,7 +5656,7 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
         return _bracketed(code, at)
 
     def given(name: str) -> int:  # where the one value a variable is ever given starts, else -1
-        sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*[-+*/%&|^?]*=(?![=>])", code)]
+        sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*{ASSIGN}", code)]
         declared = re.search(rf"\b(?:const|let|var)\s+{re.escape(name)}\s*=(?!=)", code)
         return len(code) - len(code[sets[0]:].lstrip()) if len(sets) == 1 and declared else -1
 
@@ -5682,7 +5683,7 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
         # const holds) or a member assignment anywhere in the script (rounds 5 and 6, W4: an init its own helper returned
         # passed, then a parameter or a property read named method held a read), or a body in an object it passes to a call
         # or one a variable passed or spread into one holds or is given (round 4, U1: not in what a callback returns or names)
-        for found in re.finditer(r"[{,]\s*(method)\b(?=\s*(?::|[,}]|=(?!=)))|\.\s*(method)\b(?=\s*[-+]?=(?!=))|\0(\d+)\0(?=\s*\]?\s*[:=](?!=))", code):
+        for found in re.finditer(r"[{,]\s*(method)\b(?=\s*(?::|[,}]|=(?!=)))|\.\s*(method)\b(?=\s*" + ASSIGN + r")|\0(\d+)\0(?=\s*\]?\s*(?::|" + ASSIGN + r"))", code):
             if found[3] is not None and literals[int(found[3])] != "method":
                 continue
             rest, at = code[found.end():], given("method")
@@ -5699,7 +5700,7 @@ def _writes_by_fetch(code: str, literals: list) -> bool:
         for name in map(re.escape, passed):
             if any(writes(group(m.end())) for m in re.finditer(rf"(?<![\w$.]){name}\s*=\s*(?=\{{)", code)):
                 return True
-            for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*(method|body)\b|\[\s*\0(\d+)\0\s*\])\s*[-+]?=(?!=)", code):
+            for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*(method|body)\b|\[\s*\0(\d+)\0\s*\])\s*{ASSIGN}", code):
                 prop = member[1] or literals[int(member[2])]
                 if prop == "body" or prop == "method" and not reads(code[member.end():]):
                     return True

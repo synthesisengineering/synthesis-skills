@@ -563,7 +563,7 @@ call of X where X is a dotted name or an empty array's method (`Array.prototype.
   what an IIFE of its own returns; review round 4, U4) (a helper the script defines and names for what
   it reads, `tweetText` or `postBody`, as a function or an object's or a class's method, is none; review round 3 of
   5.23.1, T2); a move by the address or another part
-  of it, set or added to (`location.href +=`, `location.pathname`, `search`, `hash`, `navigation.navigate`,
+  of it, set by any assignment (`location.href +=`, `location.pathname`, `search`, `hash`, `navigation.navigate`,
   `history.go`); a fetch or `Request` whose init (its second argument, or the object a variable given there holds and
   what is set on that variable) carries a body or a method, in any form (a quoted key, the shorthand, an assignment),
   that is not one literal GET or HEAD, or keyed by a name built as it runs (a computed key, a member named by a
@@ -576,6 +576,10 @@ call of X where X is a dotted name or an empty array's method (`Array.prototype.
   5.23.1, T1 and U1); and an XHR opened with a method that is not GET or HEAD. A `body` read from a response is no
   write (review round 2 of 5.23.1, #2).
 - **Passes:** a read, and the extractors the plugin ships.
+
+Wherever these lists read an assignment (a method or a body, a value, the address or a part of it, HTML or a
+`javascript:` address), any assignment operator counts, not `=` alone: `??=`, `||=`, `&&=`, `+=` and the arithmetic
+ones (review round 7 of 5.23.1, Y3: an options helper's `o.method ??= 'POST'` passed as a read).
 
 Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of
 the plugin's own, the seats' ordinary work in two workspaces, it refuses none, holds 5 (4 that click, 1 that moves the

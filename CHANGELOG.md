@@ -11,10 +11,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
   code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
   waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
-  not define, a move by the address or another part of it, set or added to, and a fetch or Request whose init has a
-  method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by such a method set
-  anywhere in the script, as an object key or by a member assignment, or a body in an object it passes to a call or one
-  a variable it passes holds; an XHR's method too); a read passes,
+  not define, a move by the address or another part of it, set by any assignment, and a fetch or Request whose init
+  has a method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by such a
+  method set anywhere in the script, as an object key or by a member assignment, or a body in an object it passes to a
+  call or one a variable it passes holds; an XHR's method too; every assignment operator counts, `??=` and `||=`
+  included); a read passes,
   `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
   or a method of an object or class the script defines, included. Its
   first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused
