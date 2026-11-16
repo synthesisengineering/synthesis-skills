@@ -98,7 +98,7 @@ version 5.8.2; nothing written` (exit 0). It reads the checkout's files as they 
 so an edit can be checked before it is committed. On a defect either command
 prints `refused: 2 problems; nothing written`, then one line for each problem, and exits
 1. CI makes the same checks on every pull request, in
-[tests/test_skills_manager_directory_package.py](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.1/skills/synthesis-skills-manager/tests/test_skills_manager_directory_package.py).
+[tests/test_skills_manager_directory_package.py](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-skills-manager/tests/test_skills_manager_directory_package.py).
 
 ```bash
 python3 skills/synthesis-skills-manager/scripts/build_directory_package.py --changed-since v5.7.0
