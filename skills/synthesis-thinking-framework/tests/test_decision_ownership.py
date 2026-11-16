@@ -3,6 +3,10 @@
 When a recommendation follows from the principal's goals, guidelines and wish for the best-quality work, the agent
 decides it, acts, and reports it in one line; the principal gets only what needs their own authority, or a real
 conflict between their goals that their rulings don't settle. Source-structure checks only.
+
+The ruling's list ends "an approval code": the runtime's typed approval. This skill ships in the hook-free directory
+package, where no approval code exists and the package's check refuses the phrase, and five packaged skills link to
+its decision-ownership contract, so the item is written as what it means anywhere: an approval only they can give.
 """
 
 from __future__ import annotations
@@ -10,7 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
-AUTHORITY = "(money, sends, deploys, their accounts and settings, their voice, an approval code)"
+AUTHORITY = "(money, sends, deploys, their accounts and settings, their voice, an approval only they can give)"
 
 
 def flat(text: str) -> str:

@@ -69,3 +69,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## 2.0.0 to 2.1.0 (2026-11-16)
+
+Nothing of 2.0.0 moved or was removed; SKILL.md had room (6,001 bytes before).
+
+| Added | Where |
+|---|---|
+| The principal's review caps of 2026-11-16: two review rounds per item, the materiality test after the second (an honest agent would hit the finding in ordinary work, or it appears in the principal's records), the open list for the rest, the coordinator bounding the review rather than the reviewer, at most three agents at once, and a release that ships what has passed review without waiting for another round | Binding rules 15 and 16 in SKILL.md, after rule 14, since they bound every section rather than follow one; [review-caps.md](review-caps.md) in full, listed in Contents |

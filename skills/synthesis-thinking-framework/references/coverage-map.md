@@ -37,3 +37,10 @@ metadata:
 | 3.0.0 passage | Now |
 |---|---|
 | `references/decisive-uncertainty.md`, sections "Admitted local observation" and "Admission, steering and capture" (71 lines) | `skills/synthesis-autopilot/references/uncertainty-journal.md` (verbatim), with one sentence left in their place that points there. The sections describe an autopilot run's journal and controller, which a package of the method skills alone does not carry; the owner saw the move before it was made |
+
+## 3.0.1 to 3.1.0 (2026-11-16)
+
+| 3.0.1 passage | Now |
+|---|---|
+| Decision ownership and execution, its last paragraph ("Use the decisive-uncertainty method when a missing fact could change the next decision. ... remain explicit.", 492 bytes, one line) | `references/decisive-uncertainty.md`, at its head (verbatim; its link now names the file it sits in), with one sentence left in its place that points there. Moved to make room under SKILL.md's 8,000 bytes for binding rule 10; binding rule 8 still summarizes it |
+| (new) Binding rule 10, decide what the goals already decide: the principal's ruling of 2026-11-16, with its authority list. The ruling's last item names the runtime's typed approval; this skill ships in the hook-free directory package, which has no such approval and whose check refuses the runtime's term for it, and five packaged skills link to its decision-ownership contract, so the item reads "an approval only they can give" (the CHANGELOG quotes the ruling). The other five items are as stated | SKILL.md; in full in `references/decision-ownership.md`, "Decide what the goals already decide" |
