@@ -3064,6 +3064,7 @@ KEPT = re.compile(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[
 ZDOTDIR_SET = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?ZDOTDIR=([\"']?)([^\"'\s;#]+)\1")
 SETTINGS_MAPS: dict = {}  # the environment it is read from: each path the settings hold covers, with its kind
 ROOTS_MEMO: dict = {}  # the environment, the approved lines' store and whether the settings are among them: the protected paths
+OWN_MEMO: dict = {}  # the environment: the real paths of the startup files, snapshots and harness programs
 
 
 def _settings() -> list[str]:
@@ -3074,9 +3075,10 @@ def _settings() -> list[str]:
 
 def _env_key() -> tuple:
     """What the protected paths are read from: the variables that name a home, a harness's folder or a shell's files."""
-    if len(SETTINGS_MAPS) + len(ROOTS_MEMO) > 512:
+    if len(SETTINGS_MAPS) + len(ROOTS_MEMO) + len(OWN_MEMO) > 512:
         SETTINGS_MAPS.clear()
         ROOTS_MEMO.clear()
+        OWN_MEMO.clear()
     return tuple(os.environ.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
                                                  "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
 
@@ -3130,6 +3132,15 @@ def _settings_map() -> dict:
                     found.setdefault(os.path.join(os.path.dirname(spot), other), ("program", name))
     SETTINGS_MAPS[key] = found
     return found
+
+
+def _harness_own() -> set:
+    """The real paths of the kinds a harness's own variables name (its startup files, snapshots and programs): read once
+    for the environment."""
+    key = _env_key()
+    if key not in OWN_MEMO:
+        OWN_MEMO[key] = {os.path.realpath(p) for p, (kind, _) in _settings_map().items() if kind in ("startup", "snapshots", "program")}
+    return OWN_MEMO[key]
 
 
 def _kinds_at(real: str) -> set:
@@ -3531,7 +3542,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     keyed |= {id(n.func.value) for n in nodes if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "update"} | {id(v) for t, v in pairs if isinstance(t, ast.Name) and getattr(v, "attr", getattr(v, "id", "")) == "environ"} | {
         id(c) for n in nodes if isinstance(n, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops) for c in n.comparators}  # given a value, kept under a name, asked for a name: each read as the table it is
     wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
-    inherited = [r for r in roots if not _kinds_at(r) & {"startup", "snapshots", "program"}]  # a harness's own variables name these (22.26)
+    inherited = [r for r in roots if r not in _harness_own()]  # a harness's own variables name these (22.26)
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
         v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in inherited)))
 
@@ -3546,7 +3557,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             map(named, [*node.args, *(k.value for k in node.keywords), *([node.func.value] if isinstance(node.func, ast.Attribute) else [])]))
 
     store = paths.line_allowances(config or {})
-    folders_held = [r for r in roots if not store or r != os.path.realpath(str(store))]  # the approved lines are one file: nothing holds a folder of them
+    folders_held = [r for r in roots if not store or r != _real(str(store))]  # the approved lines are one file: nothing holds a folder of them
 
     def over(n) -> bool:  # a walk or a pattern that may find what lies in a protected folder, from a folder that holds it
         label = getattr(n.func, "attr", getattr(n.func, "id", ""))
@@ -3555,7 +3566,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         top = os.path.join(top, said(n.args[0]) or "\0") if method and label == "glob" and n.args else top
         top = os.path.join(*[spelled(k.value) for k in n.keywords if k.arg == "root_dir"], top)  # glob's root_dir leads its pattern
         top = home(top[top.rfind("\1") + 1:]).replace("\0", "*")
-        return any(_reaches(os.path.realpath(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
+        return any(_reaches(_real(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
                    for spot in ([""] if os.path.isabs(top) else places) if "\0" not in spot for r in folders_held)
 
     def rooted(n) -> bool:  # what names no folder: a path taken relative to one that holds it, one part of a path, a path flattened, a digest
@@ -3578,7 +3589,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return False
         if "\0" not in path:  # spelled out: it must not climb
             return os.path.isabs(path) and ".." not in os.path.relpath(path, start).split(os.sep)
-        return any(paths.inside(os.path.realpath(start), r) or paths.inside(r, os.path.realpath(start)) for r in roots)
+        return any(paths.inside(_real(start), r) or paths.inside(r, _real(start)) for r in roots)
 
     def named(node, apart=()) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
         todo, met = [node], set()
@@ -4313,7 +4324,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 
     def elsewhere(raw: str) -> bool:  # a plain folder elsewhere leads this spelling, whatever its end
         lead = os.path.dirname(home(raw).split("\0")[0]) if "\1" not in raw else ""
-        return os.path.isabs(lead) and not any(paths.inside(os.path.realpath(lead), r) or paths.inside(r, os.path.realpath(lead)) for r in roots)
+        return os.path.isabs(lead) and not any(paths.inside(_real(lead), r) or paths.inside(r, _real(lead)) for r in roots)
 
     def inward(raw: str) -> set:  # the names that hold what a walk found from where the program stands: under such a folder they only go further in
         return {k for k in finds if all(v[:1] not in ("/", "~", "\0", "\1") and ".." not in v.split("/") for v in ranges.get(k + "~", ["/"]))} if elsewhere(raw) else set()
@@ -4457,7 +4468,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 
     def within(spot: str) -> bool:  # a folder the program may stand in lies in a protected one; an end that cannot be read lies under the part that can
         lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
-        return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
+        return os.path.isabs(lead) and any(paths.inside(_real(lead), r) for r in roots)
 
     def lands(node, folder: bool = False, link: bool = False, at=(where,), reach=()) -> bool:  # whether a write's target is, or may be, in a protected folder
         return any(leads(path, node, folder, link, at, reach) for path in spellings(node) if "\2" not in path)  # no value at all writes nothing

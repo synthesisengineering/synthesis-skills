@@ -1428,10 +1428,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # in Claude Code), _settings_map 1 (the
 # ChatGPT and Codex apps held at the folder that keeps their Codex CLI, which KEPT no longer takes as the whole app). In
 # place: _self_grant's names are whole paths, so muse-bin-<version> or ghostscript no longer names muse or gh.
+# Then each 11 more, all in guards.py, so Codex's commands are judged as fast as before (800 recorded Codex commands:
+# 8.0 s in all without these, 5.2 s with them, against 5.3 s on the head before 22.26): _harness_own 7 with 2 blank lines
+# (the real paths of the startup files, snapshots and harness programs read once for the environment, where the reader
+# had asked every path's kinds for every protected path), OWN_MEMO 1, and _env_key 1 more (its clearing). In place: the
+# reader asks a path's real path once a call (`_real`), not once for every protected path.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17338
-PLUGIN_BUDGET = 43410
+CORE_BUDGET = 17349
+PLUGIN_BUDGET = 43421
 
 
 def _lines(files):
