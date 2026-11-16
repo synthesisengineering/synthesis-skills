@@ -851,3 +851,50 @@ def test_a_program_the_line_hands_the_endpoint_is_judged_by_its_bodies(tmp_path)
     for body, waits in (("send.json", True), ("read.json", False)):
         for line in (f"python3 post.py http://localhost:8765/mcp {body}", f"URL=http://127.0.0.1:8765/mcp python3 post_env.py {body}"):
             assert held(shell(line, cwd=str(tmp_path))) is waits, line
+
+
+# --- round 3's ruling (2026-11-15): a request whose target comes from the environment --------------------------------------
+# A Python or node program whose request target comes from a variable an earlier command exported, with a body the guard
+# cannot read, waits for the code, as curl to such an address does; readable bodies that are no send pass, and so do GETs.
+
+@pytest.mark.parametrize("program", [
+    "python3 -c " + shlex.quote("import os, sys, urllib.request as u; u.urlopen(os.environ['MCP_URL'], data=sys.stdin.buffer.read())"),
+    "python3 -c " + shlex.quote("import os, requests; URL = os.environ.get('MCP_URL', ''); requests.post(URL, data=os.environ['BODY'])"),
+    "python3 -c " + shlex.quote("import os, http.client; c = http.client.HTTPConnection(os.environ['MCP_HOST']); c.request('POST', '/rpc', os.environ['BODY'])"),
+    "python3 -c " + shlex.quote("import os, urllib.request as u; u.urlopen(f\"{os.environ['BASE']}/rpc\", data=os.environ['BODY'].encode())"),
+    "node -e " + shlex.quote("fetch(process.env.MCP_URL, {method: 'POST', body: process.env.BODY})"),
+    "node -e " + shlex.quote("const r = require('http').request({host: process.env.MCP_HOST, method: 'POST'}); r.end(process.env.BODY)"),
+])
+def test_a_request_to_an_address_the_environment_gives_waits_when_its_body_cannot_be_read(tmp_path, program):
+    assert held(shell(program, cwd=str(tmp_path))), program
+
+
+def test_an_environment_address_with_bodies_it_reads_is_judged_by_them_and_reads_pass(tmp_path):
+    (tmp_path / "send.json").write_text(SEND_BODY, encoding="utf-8")
+    (tmp_path / "read.json").write_text(READ_BODY, encoding="utf-8")
+    poster = "import os, sys, urllib.request as u; u.urlopen(os.environ['MCP_URL'], data=open(sys.argv[1], 'rb').read())"
+    assert held(shell(f"python3 -c {shlex.quote(poster)} send.json", cwd=str(tmp_path)))
+    assert shell(f"python3 -c {shlex.quote(poster)} read.json", cwd=str(tmp_path)) == ""
+    (tmp_path / "post.py").write_text("import sys, urllib.request as u\nu.urlopen(sys.argv[1], data=open(sys.argv[2], 'rb').read())\n", encoding="utf-8")
+    assert held(shell('python3 post.py "$MCP_URL" send.json', cwd=str(tmp_path)))  # an argument the shell fills in
+    assert shell('python3 post.py "$MCP_URL" read.json', cwd=str(tmp_path)) == ""
+    assert held(shell('python3 post.py "$MCP_URL" missing.json', cwd=str(tmp_path)))
+    for line in ("python3 -c " + shlex.quote("import os, urllib.request as u; u.urlopen(os.environ['API_URL'], data=b'{\"name\": \"x\"}')"),
+                 "python3 -c " + shlex.quote("import os, urllib.request as u; print(u.urlopen(os.environ['MCP_URL'], timeout=5).status)"),
+                 "python3 -c " + shlex.quote("import os, requests; print(requests.get(os.environ['MCP_URL'], timeout=5).status_code)"),
+                 "node -e " + shlex.quote("fetch(process.env.MCP_URL).then(r => console.log(r.status))"),
+                 "MCP_URL=https://api.example.com/v1 python3 -c " + shlex.quote(
+                     "import os, urllib.request as u; u.urlopen(os.environ['MCP_URL'], data=os.environ['BODY'].encode())"),  # the line gives it
+                 "python3 -c " + shlex.quote("import os, requests; requests.post('https://api.example.com/v1/items', data=os.environ['BODY'])")):
+        assert shell(line, cwd=str(tmp_path)) == "", line
+
+
+def test_only_an_address_the_shell_fills_in_counts_as_one_a_body_or_header_does_not(tmp_path):
+    """curl's rule reads the address: a body, a header or an HTTPie field the shell fills in, to an address spelled for
+    another host, is that host's post (the web rule judges it), not a call on this machine's server."""
+    for line in ('curl -s -X POST https://api.example.com/v1/items -d "$BODY"',
+                 'curl -s -X POST https://api.example.com/v1/items -H "Authorization: Bearer $TOKEN" -d "$BODY"',
+                 'http POST https://api.example.com/v1/items "Authorization:Bearer $TOKEN" body="$BODY"'):
+        assert "local MCP server" not in shell(line, cwd=str(tmp_path)), line
+    for line in ('curl -s -X POST "$SERVICE_URL/items" -d "$BODY"', 'curl -s -X POST --url "$SERVICE_URL" -d "$BODY"'):
+        assert "local MCP server" in shell(line, cwd=str(tmp_path)), line
