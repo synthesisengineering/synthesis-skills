@@ -492,6 +492,125 @@
         "28f85d71de936403af8e555e675804cec83d507a20b8a0f8e6ac80e735571109"
       ],
       "reason": "Reworded at equal strength so the line passes this public repository's disclosure scanner when moved into a split part; the meaning is unchanged."
+    },
+    {
+      "path": "skills/synthesis-clean-text/SKILL.md",
+      "baseline_nonblank_start": 31,
+      "original_text": [
+        "Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists."
+      ],
+      "original_sha256": [
+        "de1b75405f0e5aa9ceb3c6de0a3342a91d51538c270fb2dcb6f066d626bb0052"
+      ],
+      "replacement_text": [
+        "Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists."
+      ],
+      "replacement_sha256": [
+        "5bfe9af3a0139a021db88db00ec65cd6872cc307812dad513423b5b83436d942"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/SKILL.md",
+      "baseline_nonblank_start": 266,
+      "original_text": [
+        "Part of the [synthesis writing](https://synthesiswriting.org) craft. The methodology is durable. The catalog refreshes as model behavior shifts. Newsrooms and editorial workflows are the audience this skill serves."
+      ],
+      "original_sha256": [
+        "e12a678a07524cdb8b8022bf1554515e89b624ce8d2470c318032060e907f6d1"
+      ],
+      "replacement_text": [
+        "Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. The methodology is durable. The catalog refreshes as model behavior shifts. Newsrooms and editorial workflows are the audience this skill serves."
+      ],
+      "replacement_sha256": [
+        "867f9e0ff3d96cab5daa4123b1665a62ed6ab6eaa8cf03f9ee20d716076f53ef"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/calibration-tables.md",
+      "baseline_nonblank_start": 422,
+      "original_text": [
+        "Part of the [synthesis writing](https://synthesiswriting.org) craft. Calibration is the difference between a detector and a guess."
+      ],
+      "original_sha256": [
+        "b523ccc18ddbfb9cad9d96480da524a498fc51d05856d715ab7e84b405097a41"
+      ],
+      "replacement_text": [
+        "Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. Calibration is the difference between a detector and a guess."
+      ],
+      "replacement_sha256": [
+        "54ec05901f5769b8c4560364de9ac06d5335a3e45333c52765f73ac03883b538"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/historical-patterns.md",
+      "baseline_nonblank_start": 362,
+      "original_text": [
+        "*Part of the [synthesis writing](https://synthesiswriting.org) craft. The writer writes, the AI assists, the catalog remembers.*"
+      ],
+      "original_sha256": [
+        "42882c3f94b3587488b86f5fefff40cf26f6445569724c9f197460b4a72e5d46"
+      ],
+      "replacement_text": [
+        "*Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. The writer writes, the AI assists, the catalog remembers.*"
+      ],
+      "replacement_sha256": [
+        "08f250ff8a6bda3edc05351c37850de40ce44476ac79f103d13239547b278607"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
+    },
+    {
+      "path": "skills/synthesis-content-quality/references/substance-and-depth.md",
+      "baseline_nonblank_start": 305,
+      "original_text": [
+        "Part of the [synthesis writing](https://synthesiswriting.org) craft."
+      ],
+      "original_sha256": [
+        "f6eb77ca8330e93faaa06717adce4bb26e03d107e54b1a100ac174284378cee7"
+      ],
+      "replacement_text": [
+        "Part of the [synthesis writing](https://synthesiswork.org/writing/) craft."
+      ],
+      "replacement_sha256": [
+        "3e395765a60bf6b00dbfc804d7686e875559a2aa5408c0b63da2e1e5dd7d6158"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
+    },
+    {
+      "path": "skills/synthesis-writing-craft/SKILL.md",
+      "baseline_nonblank_start": 116,
+      "original_text": [
+        "Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists."
+      ],
+      "original_sha256": [
+        "de1b75405f0e5aa9ceb3c6de0a3342a91d51538c270fb2dcb6f066d626bb0052"
+      ],
+      "replacement_text": [
+        "Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists."
+      ],
+      "replacement_sha256": [
+        "5bfe9af3a0139a021db88db00ec65cd6872cc307812dad513423b5b83436d942"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
+    },
+    {
+      "path": "skills/synthesis-writing-pitfalls/SKILL.md",
+      "baseline_nonblank_start": 119,
+      "original_text": [
+        "Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists."
+      ],
+      "original_sha256": [
+        "de1b75405f0e5aa9ceb3c6de0a3342a91d51538c270fb2dcb6f066d626bb0052"
+      ],
+      "replacement_text": [
+        "Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists."
+      ],
+      "replacement_sha256": [
+        "5bfe9af3a0139a021db88db00ec65cd6872cc307812dad513423b5b83436d942"
+      ],
+      "reason": "Point the synthesis writing link at its current address, where the former address now redirects; the line is otherwise unchanged."
     }
   ]
 }

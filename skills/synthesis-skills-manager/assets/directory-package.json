@@ -44,7 +44,7 @@
       "name": "Rajiv Pant",
       "url": "https://rajiv.com"
     },
-    "homepage": "https://synthesisengineering.org",
+    "homepage": "https://synthesiswork.org/engineering/",
     "repository": "https://github.com/synthesisengineering/synthesis-skills",
     "license": "Apache-2.0 AND CC0-1.0",
     "keywords": [
@@ -65,7 +65,7 @@
         "Read",
         "Write"
       ],
-      "websiteURL": "https://synthesisengineering.org",
+      "websiteURL": "https://synthesiswork.org/engineering/",
       "brandColor": "#1E3A5F",
       "composerIcon": "./assets/synthesis-work.svg",
       "logo": "./assets/synthesis-work.svg"

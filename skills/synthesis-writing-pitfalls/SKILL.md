@@ -119,4 +119,4 @@ A pattern that is a clear pitfall in a personal blog post may be neutral or appr
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.
