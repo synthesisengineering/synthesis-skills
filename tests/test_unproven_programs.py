@@ -1376,3 +1376,34 @@ def test_a_module_path_that_leads_to_another_synthesis_still_waits(world):
         stood_in.write("\n# a copy unlike the guard's own\n")
     for how in ("script file", "line program"):
         assert HELD in _another_way(world, READS_ANOTHER_WAY["a submodule under another name"], how, copy), how
+
+
+# Where Python looks first for a program on the line, a module the line itself puts there runs code the reader never saw:
+# a module-path folder not there when judged, or one something on the line writes into or may fill unseen, and a
+# stand-in the line writes beside the program (review round 3 of 22.21: the module-path rule read only what was there).
+FILLED_FIRST = {
+    "a module path not there yet": "PYTHONPATH=nowhere {py}",
+    "a module path the line makes and fills": "mkdir -p made && cp mine.py made/json.py && PYTHONPATH=made {py}",
+    "a module path the line fills by a copy": "cp mine.py empty/json.py && PYTHONPATH=empty {py}",
+    "a module path the line fills by a redirect": "cat mine.py > empty/json.py; PYTHONPATH=empty {py}",
+    "a module path beside another program that may fill it": "make -s && PYTHONPATH=empty {py}",
+    "a stand-in the line copies beside the program": "cp mine.py json.py && {py}",
+    "a stand-in the line writes beside it by a redirect": "cat mine.py > json.py; {py}",
+    "a stand-in package the line makes beside it": "mkdir -p json && cp mine.py json/__init__.py && {py}",
+}
+
+
+def _reads_state(world) -> str:
+    (world["work"] / "mine.py").write_text("print('a module of its own')\n", encoding="utf-8")
+    (world["work"] / "empty").mkdir(exist_ok=True)
+    return "python3 -c " + shlex.quote(f"import json; print(open('{paths.state()}/x.json').read())")
+
+
+@pytest.mark.parametrize("name", sorted(FILLED_FIRST))
+def test_a_module_the_line_puts_where_python_looks_first_still_waits(world, name):
+    assert HELD in (_verdict(world, FILLED_FIRST[name].format(py=_reads_state(world))) or ""), name
+
+
+@pytest.mark.parametrize("line", ["{py}", "PYTHONPATH=empty {py}", "cd {work} && ls && PYTHONPATH=empty {py}"])
+def test_a_module_path_nothing_on_the_line_can_fill_passes(world, line):
+    assert _verdict(world, line.format(py=_reads_state(world), work=world["work"])) is None, line
