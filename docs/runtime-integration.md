@@ -480,6 +480,25 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    - The hook is run when it is the script an interpreter or a shell runs: its first
      operand past its options, or the module after `-m`. A program handed the hook's file
      (a line counter, a compiler, another script) is not running it.
+   - **What Codex types into a session.** Codex starts a long-running process with
+     `exec_command` (on a terminal with `tty: true`) and types into it with `write_stdin`,
+     which reaches the hook through its matcher. A typed line is judged in the folder that
+     session's `exec_command` named, found by the session's number in the harness's record
+     (an `exec_command` whose output gave it, or a code-mode script that started one command
+     and whose output gave it): as a command line, by every shell guard, and for a program
+     that is no shell also as what it is fed; typed into an interpreter started with no script
+     (`python3`, `node`), with everything typed into it as its program; typed into ssh to
+     another machine, by every shell guard where it stands, since its own folder is elsewhere.
+     The line is the text typed before it and not yet submitted, then its own
+     characters, so a line split across calls is judged whole. A poll (nothing typed) and
+     keys that start nothing new (Ctrl-C, Ctrl-D, Ctrl-Z, Enter) pass; text carrying keys
+     or history that edit, complete or recall a line (backspace, Tab, an arrow, `!!`,
+     `^a^b`, `fc -s`) waits, since what the terminal runs is not the text. Where the record shows
+     no start, where a typed line changed a shell's folder or variables (`cd`, `pushd`,
+     `export`, an assignment, `alias`, `source`, a bare folder name, which zsh takes as `cd`),
+     and in a shell in a container or one ssh opens on this machine (it starts in the home
+     folder), only a line whose every command just reads goes without a code: what it writes
+     cannot be placed, and a read writes nothing.
    Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
    shipped, 30 days of shell commands recorded on one machine were run through the old
    guard and this one, and every command the new one refused was read.
@@ -584,6 +603,16 @@ stay open, and no hook running as that same user can close them:
   the commit check without touching its entry points (`git commit --no-verify`, `git -c
   core.hooksPath=…`, or the global `core.hooksPath` changed with `git config --global`);
   the guard holds none of these.
+- A code for a shell command binds the scripts it runs, not the files named inside them: a
+  script that copies a settings file it names only in its own text (`bash install.sh`
+  running `cp v5-config.json …`) still runs on its code after that file changes. It closes
+  once the reading of the scripts a command runs takes in the files they name.
+- What Codex types into a session is judged from the record's last 32 MB: a session started
+  further back is judged as one the record does not show, and an interpreter keeps a name
+  typed further back that the guard no longer sees. A code-mode script that types into a
+  session it names by a variable is not tied to that session. A shell's own state that no
+  typed line shows (its startup files, `PROMPT_COMMAND`, a trap set before) is not read, and
+  an interpreter or a shell started on a terminal with no command is not held at its start.
 - A program of the agent's that loads synthesis without the plain words `import synthesis`
   or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
   copy that is no protected folder) is read as reaching none of synthesis's writers, so it

@@ -1381,10 +1381,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # claimed file written as `~/...` was never looked at). In place: `paths.config_file` among SYNTHESIS_PLACES, a proof
 # cached for its own folders in _shows, the approved-lines store named only where it is protected in _self_grant; hook.py's
 # file tools judged without a config that cannot be read changes 2 lines in place.
+# Then each 140 more, all in guards.py, from 22.20's review round 1 (a shell Codex started on a terminal, then a write typed
+# into it with write_stdin, passed every shell guard): check_typed 32 (a poll and keys that start nothing pass; the text
+# typed before and not yet submitted joins the line; an interpreter started with no script is judged on all it was typed;
+# a shell's or another program's line goes through every shell guard where its session stands, a program's also as its
+# input; a session the record does not show, one a typed line moved, or a shell in a container or on this machine by ssh
+# lets only a reading line through; the hold, its code and its words), _typed_session 35 (how the session started and
+# what was typed into it since, read back from the record's end within 32 MB and the call's time, from function calls and
+# code-mode scripts), _typed_into 17 (what the session reads typed text as, after its start's cd), _logs_in_here 10 (an
+# ssh that may log in to this machine), _only_reads 8, _js 4; the section's comment 5 and its constants 11 (STDIN_TOOLS 1,
+# STDIN_QUIET 1, EDITING 3 with its comment, STATE 2, JS_TEXT 1, JS_CALL 1, TYPED_BACK 1, REMOTE 1); 16 blank lines;
+# _check 2 (write_stdin dispatched to check_typed). In place: `guarded` holds write_stdin when the config cannot be read.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17005
-PLUGIN_BUDGET = 43077
+CORE_BUDGET = 17145
+PLUGIN_BUDGET = 43217
 
 
 def _lines(files):

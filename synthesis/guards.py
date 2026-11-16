@@ -6442,6 +6442,144 @@ def shell_command(tool_input: dict) -> str:
     return shlex.join(value) if isinstance(value, list) else str(value)
 
 
+# Codex's write_stdin types characters into a session its exec_command started (review round 1 of 22.20: a shell started
+# on a terminal, then a write typed into it, passed every shell guard). A typed line is judged in the folder the session's
+# exec_command named, found by the session's number in the harness's record: as a command line, by every shell guard,
+# or, typed into an interpreter started with no script, with all it was typed as its program. A session the record does
+# not show, or one whose folder or variables a typed line changed, lets through only a line that just reads.
+STDIN_TOOLS = {"write_stdin"}
+STDIN_QUIET = re.compile(r"[\x03\x04\x1a\x1c\r\n]*")  # Ctrl-C, Ctrl-D, Ctrl-Z, Ctrl-\ and Enter: they start nothing not typed before
+EDITING = re.compile(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]|(?<![\w'\\])!(?:!|-?\d|[A-Za-z?#$])|(?:^|\n)\s*\^|(?:^|[\n;&|(]\s*)(?:fc|r)(?![^\s;&|])")
+# keys, history expansions and history commands (`!!`, `!git`, `^a^b`, `fc -s`, zsh's `r`) that edit, complete or recall a
+# line: what runs is not the text
+STATE = re.compile(r"(?:^|[\n;&|(]|\b(?:then|do|else)\b)\s*(?:(?:cd|pushd|popd|export|alias|source|\.|set|unset|shopt|setopt|declare|"
+                   r"typeset|readonly|local|eval|function)\b|[A-Za-z_]\w*\+?=|\w+\s*\(\s*\)\s*\{|[~./][^\s;&|]*\s*(?:\n|$))")  # a bare folder: zsh's cd
+JS_TEXT = r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)"""
+JS_CALL = re.compile(r"tools\.(exec_command|write_stdin)\(\s*\{(.{0,20000}?)\}\s*\)", re.S)  # a code-mode script's calls
+TYPED_BACK = 32 << 20  # how far back a session's record is read for its start and what was typed into it
+
+
+def _js(literal: str) -> str:
+    """A JavaScript string literal's text."""
+    return re.sub(r"\\(u[0-9a-fA-F]{4}|.)", lambda m: chr(int(m[1][1:], 16)) if len(m[1]) == 5 and m[1][0] == "u" else
+                  {"n": "\n", "t": "\t", "r": "\r", "0": "\0"}.get(m[1], m[1]), literal[1:-1], flags=re.S)
+
+
+def _typed_session(transcript: str, sid: str) -> tuple:
+    """(how the session numbered `sid` started, {"cmd", "workdir"}, or None; what was typed into it since, oldest first),
+    read back from the record's end to that start, at most TYPED_BACK bytes and within the call's time: an exec_command
+    whose output gave the number, or a code-mode script whose output gave it that started one command and typed nothing
+    into it. A script that started several is no start the guard can name."""
+    if not transcript or not sid or not os.path.isfile(transcript):
+        return None, []
+    named = re.compile(rf"(?:session_id|[Ss]ession ID)\W{{0,6}}{re.escape(sid)}(?!\d)")  # also as JSON quoted inside an output's JSON
+    mine = re.compile(rf"\bsession_id\s*:\s*{re.escape(sid)}(?!\d)")
+    outputs, typed, start = set(), [], None
+    try:
+        for line in approvals._lines_back(transcript, stop=max(0, os.path.getsize(transcript) - TYPED_BACK)):
+            if time.monotonic() > _CALL["until"] or start is not None:
+                break
+            body = json.loads(line).get("payload") if "_call" in line and '"payload"' in line else None
+            kind, ident = (str(body.get("type") or ""), body.get("call_id")) if isinstance(body, dict) else ("", None)
+            if kind.endswith("_call_output"):
+                outputs |= {ident} if named.search(body["output"] if isinstance(body.get("output"), str) else json.dumps(body.get("output"))) else set()
+            elif kind == "function_call" and body.get("name") in ("exec_command", "write_stdin"):
+                args = json.loads(body.get("arguments") or "{}")
+                if body["name"] == "write_stdin" and str(args.get("session_id")) == sid:
+                    typed.append([str(args.get("chars") or "")])
+                elif body["name"] == "exec_command" and ident in outputs:
+                    start = {"cmd": shell_command(args), "workdir": args.get("workdir")}
+            elif kind == "custom_tool_call" and body.get("name") == "exec":
+                calls = [(name, {k: _js(v) for k, v in re.findall(rf"\b(cmd|workdir|chars)\s*:\s*{JS_TEXT}", fields)}, fields)
+                         for name, fields in JS_CALL.findall(str(body.get("input") or ""))]
+                here = [given.get("chars", "") for name, given, fields in calls if name == "write_stdin" and mine.search(fields)]
+                runs = [given for name, given, _ in calls if name == "exec_command"]
+                if ident in outputs and not here:
+                    start = {"cmd": runs[0]["cmd"], "workdir": runs[0].get("workdir")} if len(runs) == 1 and "cmd" in runs[0] else {}
+                typed.append(here)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return start or None, [chars for chunk in reversed(typed) for chars in chunk]
+
+
+REMOTE = frozenset({"ssh", "mosh", "docker", "podman", "kubectl", "vagrant", "multipass", "lxc", "incus", "limactl", "orb"})  # a shell elsewhere
+
+
+def _logs_in_here(words: list) -> bool:
+    """Whether the machine an ssh or mosh command logs in to may be this one: its destination is a local address or this
+    machine's own name, or one the guard cannot read. A name an ssh config maps to this machine is not followed."""
+    import socket
+    at = 1
+    while at < len(words) and words[at].startswith("-"):
+        at += 2 if re.fullmatch(r"-[bcDEeFIiJLlmOopQRSWw]", words[at]) else 1
+    host = re.sub(r"^(?:ssh://)?(?:[^@/]*@)?([^/]*?)(?::\d+)?(?:/.*)?$", r"\1", words[at]).lower() if at < len(words) else ""
+    name = socket.gethostname().lower()
+    return not host or _here(host) or host.strip("[]") in ("::1", "0.0.0.0", name, name.split(".")[0], name.split(".")[0] + ".local")
+
+
+def _typed_into(cmd: str, folder: str) -> tuple:
+    """(what a session reads what is typed as: "shell", "program" for an interpreter with no script of its own or one told
+    to stay interactive, "remote" for a shell on another machine, "elsewhere" for a shell in a container or one that may
+    be this machine's own, "" for another program; the folder it stands in, after a leading `cd`)."""
+    while (lead := re.match(r"\s*cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*", cmd)):
+        folder, cmd = os.path.normpath(os.path.join(folder, os.path.expanduser(lead[1].strip("'\"")))), cmd[lead.end():]
+    try:
+        words = shlex.split(cmd)
+    except ValueError:
+        words = []
+    while words and (re.fullmatch(r"[A-Za-z_]\w*=.*", words[0]) or words[0] in ("env", "exec", "command")):
+        words = words[1:]
+    head = os.path.basename(words[0]) if words else ""
+    reads = bool(words) and _program(words)[0] == "stdin"
+    return ("shell" if head in SHELLS and reads else "program" if SCRIPT.match(head) and (reads or ("-i" in words and re.match(
+        r"python|node", head))) else "remote" if head in ("ssh", "mosh") and not _logs_in_here(words) else "elsewhere" if head in REMOTE
+            else ""), folder
+
+
+def _only_reads(text: str, cwd: str) -> bool:
+    """A line whose every command is a known reader that writes nothing."""
+    writes: list = []
+    try:
+        found = _commands(text, cwd, writes=writes)
+    except (Unreadable, StopIteration, IndexError):
+        return False
+    return not writes and all(not _landing(words) and not _unread(words, where, set(), text)[0] for words, where in found)
+
+
+def check_typed(tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """What Codex's write_stdin types, judged as the session it goes to runs it (see STDIN_TOOLS). A poll and keys that
+    start nothing new pass; a line is the unsubmitted text before it on the record, then its own characters."""
+    chars = str(tool_input.get("chars") or "")
+    if STDIN_QUIET.fullmatch(chars):
+        return None
+    sid = "" if tool_input.get("session_id") is None else str(tool_input.get("session_id"))
+    start, before = _typed_session(str((session or {}).get("transcript_path") or ""), sid)
+    before = [t for t in before if t != chars]  # the record may hold this very call already, as a try that was held
+    text, cmd = re.split(r"[\r\n]", "".join(before))[-1] + chars, str((start or {}).get("cmd") or "")
+    began = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(start.get("workdir") or "")))) if start else cwd
+    reads, folder = _typed_into(cmd, began) if start else ("", cwd)
+    if EDITING.search(text):
+        why = "carries keys that edit, complete or recall a line, so what the terminal runs is not the text the guard reads"
+    elif reads == "program":  # an interpreter with no script of its own: all it was typed is its program, its start's cd and all
+        return _check("Bash", {"command": f"{cmd} <<'SYNTHESIS_TYPED'\n{''.join(before) + chars}\nSYNTHESIS_TYPED"}, config, began, session)
+    else:  # a shell, or any other program: a command line where the session stands, and for a program also its input
+        reason = _check("Bash", {"command": text}, config, folder, session) or (start and not reads and _check(
+            "Bash", {"command": f"{cmd} <<'SYNTHESIS_TYPED'\n{text}\nSYNTHESIS_TYPED"}, config, began, session)) or None
+        moved = not start or reads == "elsewhere" or (reads == "shell" and STATE.search("".join(before)))
+        if reason or not moved or _only_reads(text, folder):
+            return reason
+        why = ("types into a shell " + ("the record does not show starting" if not start else "in a container, or one that may be "
+               "this machine's own, whose folder is not the one it started in" if reads == "elsewhere" else
+               "whose folder or variables an earlier line changed") + ", so where its writes land and what it runs cannot be placed")
+    subject = {"session": sid, "typed": text, "start": cmd, "runs_in": folder}
+    if approvals.consume("typed-input", subject, session):
+        return None
+    code = approvals.request("typed-input", subject, f"typed into session {sid}: {text[:120]!r}")
+    return (f"Codex's write_stdin {why}. Show the principal the exact text and the session it goes to and ask them to type "
+            f"{approvals.how(code)}; then make the identical call again. A line that only reads (ls, cat, git status), a "
+            "poll and Ctrl-C need no code.")
+
+
 def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
     """A calendar write that names no attendees and turns notifications off emails no one, so it needs no
     approval (Rajiv's ruling, 2026-10-06: the gate exists because invitations email people in his name). An RSVP
@@ -6552,7 +6690,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
+    return (shell_tool(tool) or tool in STDIN_TOOLS or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
             or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
@@ -6576,6 +6714,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     elif shell_tool(tool) and tool_input.get("workdir"):  # Codex's and Muse's shells run a command in the folder it names (22.20)
         cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["workdir"]))))
+    if tool in STDIN_TOOLS:
+        return check_typed(tool_input, config, cwd, session)
     if shell_tool(tool):
         command = shell_command(tool_input)
         return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one

@@ -41,6 +41,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   code; none is newly refused and none newly passes; no file-tool call newly waits. Judging a shell command took a
   median 3.0 ms against 2.8 before, and its 99th percentile 80 ms against 72; a file write through the hook is held to
   the hook's budget by a test of its own.
+- **What Codex types into a session is judged as the line it is** (22.20, review round 1). Codex starts a long-running
+  process with `exec_command`, on a terminal with `tty: true`, and types into it with `write_stdin`. No guard read that
+  tool, so a shell started on a terminal and a write typed into it reached the guard's settings, its hooks and
+  everything else the shell guard protects with no code. `write_stdin` now reaches the hook: the PreToolUse matcher in
+  `hooks/hooks.json` names it, which makes Codex ask once more to trust the plugin's hooks (Muse runs the hook for every
+  tool, and its manifest does not change). A typed line is judged in the folder its session's `exec_command` named,
+  found by the session's number in the record (an `exec_command` whose output gave it, or a code-mode script that
+  started one command and whose output gave it): as a command line, by every shell guard, and for a program that is no
+  shell also as its input; typed into an interpreter started with no script, with all it was typed as its program. Text
+  typed before and not yet submitted joins the line, so a line split across calls is judged whole. A poll and keys that
+  start nothing new (Ctrl-C, Ctrl-D, Enter) pass; keys and history that edit or recall a line (backspace, Tab, an arrow,
+  `!!`, `fc -s`) wait. A session the record does not show, a shell whose folder or variables a typed line changed (`cd`,
+  an assignment, `export`, `alias`, a bare folder name), and a shell in a container or reached by ssh on this machine
+  let only a line that just reads go without a code. Measured over 60 days of Codex's records: no `write_stdin` as a
+  function call; inside 119,058 code-mode scripts, 15,325 polls, 143 keys, 804 submitted lines and 463 unsubmitted texts;
+  17 interpreters started on a terminal with no script, all on one day, and no shell. Replayed over the 1,276 typed
+  calls that were neither a poll nor quiet keys, each judged on the record as it stood then: 1,121 pass, 132 wait as
+  typed into a session the record does not show (on two days), 23 for keys or history that edit or recall a line, and
+  none is refused. An interpreter or a shell started on a terminal with no command is still not held at its start.
 - **A claimed file written as `~/…` is a claimed path.** The shell's writes were joined to the folder a command ran in
   before the home folder was put in, so `echo x > ~/…/notes.md` into a file another session had claimed was never
   looked at, and the session export tagged no project for such a write. Each target now has `~` put in first, as the

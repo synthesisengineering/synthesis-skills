@@ -40,7 +40,7 @@ def test_only_the_four_needed_events_are_registered():
                                                                  "mcp__computer-use__computer_batch",
                                                                  "mcp__computer-use__app_click",
                                                                  "mcp__claude-in-chrome__browser_batch"]
-                         + sorted(guards.FILE_TOOLS))
+                         + sorted(guards.FILE_TOOLS) + sorted(guards.STDIN_TOOLS))
 def test_guarded_tools_reach_the_hook(tool):
     assert re.fullmatch(HOOKS["PreToolUse"][0]["matcher"], tool)
 
