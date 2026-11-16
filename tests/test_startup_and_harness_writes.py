@@ -254,6 +254,38 @@ def test_a_wait_that_names_no_setting_says_why_it_waits(world, line):
     assert "guard's own settings" not in reason and "harness program" not in reason, line
 
 
+UNFOLLOWED = "python3 -c \"import os; name = os.environ.get('OUT', 'x.txt'); f = getattr(__builtins__, 'op' + 'en')(name, 'w'); f.write('x')\""
+
+
+def test_a_harness_s_own_variables_naming_its_program_or_a_startup_file_hold_no_program_that_reads_the_environment(world, monkeypatch, tmp_path):
+    """Claude Code puts its own program's path in CLAUDE_CODE_EXECPATH, and BASH_ENV names a startup file: a program the
+    reader cannot follow that reads the environment and writes is not held for them. A plain write of either still is."""
+    monkeypatch.setenv("CLAUDE_CODE_EXECPATH", str(world["desktop"] / "claude"))
+    monkeypatch.setenv("BASH_ENV", str(tmp_path / "bash-env.sh"))
+    assert _shell(world, UNFOLLOWED) is None
+    assert _held(_file(world, "Write", {"file_path": str(world["desktop"] / "claude"), "content": "x"}), "harness program")
+
+
+def test_an_app_that_carries_codex_is_held_at_its_codex_cli_not_whole(world, monkeypatch, tmp_path):
+    """The ChatGPT app keeps its Codex CLI in Contents/Resources/codex-cli: that folder is held, not the whole app, so a
+    program that names the app to find its codex is not held for it."""
+    app = tmp_path / "Applications" / "ChatGPT.app" / "Contents" / "Resources"
+    (app / "codex-cli" / "bin").mkdir(parents=True)
+    (app / "codex-cli" / "bin" / "codex").write_text("codex", encoding="utf-8")
+    cli = str(app / "codex-cli" / "bin" / "codex")
+    monkeypatch.setattr(paths, "PROGRAM_PLACES", {"codex": (cli, str(app / "codex"))})
+    assert _held(_file(world, "Write", {"file_path": str(app / "codex-cli" / "lib" / "x.node"), "content": "x"}), "harness program")
+    assert _held(_file(world, "Write", {"file_path": str(app / "codex"), "content": "x"}), "harness program")
+    assert _file(world, "Write", {"file_path": str(app.parent / "Info.plist.notes"), "content": "x"}) is None
+    named = f"python3 -c \"import subprocess; subprocess.run(['ls', '{app.parent.parent}'])\""
+    assert _shell(world, named) is None
+
+
+def test_a_variable_that_names_the_state_folder_still_holds_a_program_that_reads_the_environment(world, monkeypatch):
+    monkeypatch.setenv("HELD_HERE", str(paths.state() / "approvals" / "x.json"))
+    assert _shell(world, UNFOLLOWED) is not None
+
+
 def test_a_link_put_in_place_of_a_harness_program_waits(world):
     assert _held(_shell(world, f"ln -sf {world['work']}/tool {world['local_bin']}/claude"), "harness program")
     assert _held(_shell(world, f"rm {world['local_bin']}/codex"), "harness program")
