@@ -61,6 +61,7 @@ Under the messages folder, one folder per section, each holding one folder per c
 | `filtered_threads` | conversations Messenger filtered out of the inbox (spam) |
 | `message_requests` | messages from people not yet accepted |
 | `e2ee_cutover` | the part of each chat from before it switched to end-to-end encryption; the rest comes in the secure-storage download (corroborated [S5, S7]) |
+| `e2ee_cutover_filtered` | the filtered chats' part from before the switch, as `filtered_threads` is to `inbox` |
 
 A conversation found in two sections is one conversation, and its transcript names both.
 

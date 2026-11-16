@@ -4,6 +4,10 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **The Messenger importer reads the filtered chats from before the switch to encryption.** Meta's regular download files them under `e2ee_cutover_filtered`, as `filtered_threads` is to `inbox`; the importer refused such a download with "not a folder this layout holds". The section is now read like `e2ee_cutover`.
+
 ## [5.23.2] - 2026-11-15
 
 - **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
