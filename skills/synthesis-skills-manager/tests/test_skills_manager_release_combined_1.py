@@ -3,10 +3,14 @@ muse, and gh in a full release) after its fresh clone exists, and those commands
 planted one rewrote the clone and moved its tag, the install's listing was read from the clone afterwards, and the
 hook's grant was spent on the agent's bytes. Now the clone is checked against the commit the release verified after
 every harness command it runs, and the grant is spent only on a clone whose HEAD is the commit the remote's tag names,
-its tracked tree clean.
+its tracked tree clean. A release pushes its tag before it installs the runtime, so its own install step still spends
+the grant with no code; a clone whose tag GitHub does not serve waits for the code.
 """
 
+import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -46,6 +50,48 @@ def test_c8_a_harness_command_the_release_runs_cannot_choose_the_runtime(tmp_pat
     install.grant_release("99.0.0", "the launcher's line")  # what the hook writes when it lets that line through
     assert release.main(["--install-only", "--tag", "v99.0.0", "--clients", "claude"]) != 0
     assert (Path(os.path.realpath(paths.home() / "current")) / "synthesis" / "guards.py").read_text() != STUB
+
+
+JUDGE = r"""
+import json, sys
+sys.path.insert(0, sys.argv[1])
+from synthesis import guards
+print(json.dumps(guards.check("Bash", {"command": sys.argv[2]}, {}, cwd=sys.argv[3], session={"session_id": "S-agent"})))
+"""
+
+
+@pytest.mark.parametrize("pushed", [True, False], ids=["its tag on GitHub, as publish leaves it", "its tag only in the clone"])
+def test_c8_a_releases_install_step_spends_the_grant_once_github_serves_its_tag(tmp_path, monkeypatch, pushed):
+    """The reviewer's ordinary-work check, in the order a release runs: the guard grants the launcher's line on the
+    canonical checkout, the tool clones the commit GitHub serves for main, tags it, pushes the tag (`publish`), and only
+    then installs the runtime. Before the push GitHub's tag names nothing, so nothing vouches for the clone: it waits."""
+    install.install(ROOT)  # a runtime is there, so its install needs the hook's grant
+    repo = checkout(tmp_path / "work" / "synthesis-skills", "99.0.0", True)
+    bare = _github(tmp_path, repo)
+    line = f"{paths.home() / 'bin' / 'synthesis-release'} --repo-root {repo}"
+    # judged as the hook judges it, in the harness's own environment, which leads the canonical URL nowhere else
+    said = subprocess.run([sys.executable, "-I", "-S", "-c", JUDGE, str(paths.home() / "current"), line, str(repo.parent)],
+                          capture_output=True, text=True, timeout=300, env=dict(os.environ))
+    grants, requests = paths.home() / "state" / "release-grants", paths.home() / "state" / "approval-requests"
+    assert json.loads(said.stdout) is None and len(list(grants.glob("*.json"))) == 1, said.stdout + said.stderr
+    _github_at(monkeypatch, bare)  # from here the canonical URL leads to the stand-in, for the tool and the install
+    before = install.current_hash()
+    clone = release.fresh_clone(git(repo, "rev-parse", "HEAD"))
+    try:
+        git(clone, "tag", "-a", "v99.0.0", "-m", "Release v99.0.0")
+        if pushed:
+            git(clone, "push", "-q", str(bare), "refs/tags/v99.0.0")
+            install.install(clone, expected=release.runtime_listing(clone, "v99.0.0"))
+        else:
+            with pytest.raises(install.Unapproved):
+                install.install(clone, expected=release.runtime_listing(clone, "v99.0.0"))
+    finally:
+        release.remove_clone(clone)
+    if pushed:
+        assert install.version(paths.home() / "current") == (99, 0, 0) and not list(grants.glob("*.json"))
+        assert not (requests.is_dir() and list(requests.glob("*.json")))  # no code asked for
+    else:
+        assert install.current_hash() == before and len(list(grants.glob("*.json"))) == 1  # waits, and the grant is kept
 
 
 def test_c8_control_with_no_harness_command_the_tags_clone_installs_on_the_grant(tmp_path, monkeypatch):

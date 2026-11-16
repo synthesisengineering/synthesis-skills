@@ -94,7 +94,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
     listing from the clone afterwards: a planted `claude` committed its own runtime in the clone, moved the tag there,
     and the grant was spent on it. Now the listing is read from the verified commit before any harness command runs, the
     clone is held to that commit (its HEAD, its tag, a clean tracked tree) after each harness command and before the
-    install, and the spend asks GitHub which commit the tag names.
+    install, and the spend asks GitHub which commit the tag names. A release pushes its tag before it installs the
+    runtime, so its own install step still needs no code; a clone whose tag GitHub does not serve waits for it.
   - **The runtime loads on Python 3.9 again** (C10): `install.py` has `from __future__ import annotations`, which its
     `dict | None` annotations need on Apple's 3.9, the oldest interpreter the runtime pins, and a test imports every
     runtime module under 3.9 where one is present.
