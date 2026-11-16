@@ -65,6 +65,8 @@ def world(tmp_path, monkeypatch):
     desktop.mkdir(parents=True)
     (desktop / "claude").write_text("claude", encoding="utf-8")
     monkeypatch.setenv("PATH", f"{mine}:{local_bin}:{brew / 'bin'}:/usr/bin:/bin")
+    monkeypatch.setattr(paths, "PROGRAM_DIRS", ("~/.local/bin",))  # the vendors' places of this world only, not this machine's
+    monkeypatch.setattr(paths, "PROGRAM_PLACES", {"claude": paths.PROGRAM_PLACES["claude"]})  # the desktop app's, under the home
     work = tmp_path / "work"
     work.mkdir()
     (work / "rc").write_text("echo hi\n", encoding="utf-8")
