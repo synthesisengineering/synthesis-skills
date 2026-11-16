@@ -1831,6 +1831,8 @@ def test_a_ticket_filed_under_another_harness_is_taken_by_no_process_of_this_one
 def test_a_process_reads_its_own_command_line_and_its_harness_from_the_system():
     """What a sender's process reads of itself is the system's: its command line as `ps` shows it, and an ancestor its
     hook's harness is; a run that sets sys.argv changes neither."""
+    if not sends._harness():  # a terminal's login above this run, or none: the binding files no ticket here
+        pytest.skip("no harness process of this run's own above it")
     program = ("import json, sys; sys.argv = ['m', 'X' * 3]; from synthesis import sends; "
                "print(json.dumps({'line': sends._own_line(), 'ancestors': sorted(map(list, sends._ancestors()))}))")
     done = subprocess.run([sys.executable, "-c", program, "--marker"], capture_output=True, text=True, cwd=ROOT,
@@ -1878,6 +1880,8 @@ def test_open_a_move_the_page_script_reader_does_not_see(name):
 def test_a_real_process_of_the_command_takes_its_ticket_and_another_process_does_not():
     """Round 5, #4, with nothing standing in for the system: the guard files the ticket here, and a process this test
     starts takes it only when its own command line, as the system shows it, is the run's, under this harness."""
+    if not sends._harness():  # a terminal's login above this run, or none: the binding files no ticket here
+        pytest.skip("no harness process of this run's own above it")
     import os
     granted([TEXT])
     me = {**SESSION, "transcript_path": str(RECORD)}
@@ -1967,13 +1971,14 @@ def test_the_process_table_and_command_line_are_the_systems_whatever_ps_comes_fi
     assert int(rows) > 2 and "forged" not in line and line.endswith("sends._own_line())"), done.stdout[-300:]
 
 
-def test_a_hook_under_shells_alone_binds_its_ticket_to_the_topmost_of_them(monkeypatch):
-    """A hook whose ancestors are shells up to the system's first process (a run left behind by its terminal) names the
-    topmost shell as its harness, where it named none and no ticket could be taken."""
+def test_a_hook_under_shells_alone_names_no_harness(monkeypatch):
+    """A hook whose ancestors are shells up to the system's first process (a run left behind by its terminal) names no
+    harness, so it files no ticket and each send waits (review round 7, #2, as ruled: round 6 named the topmost shell,
+    which two sessions under it share)."""
     import os
     monkeypatch.setattr(sends, "_table", lambda: {os.getppid(): (4242, "Sat Nov 15 10:00:00 2026", "zsh"),
                                                   4242: (1, "Sat Nov 15 09:00:00 2026", "sh")})
-    assert sends._harness() == [4242, "Sat Nov 15 09:00:00 2026"]
+    assert sends._harness() == []
 
 
 def test_the_reference_says_how_a_sender_ticket_is_bound():
@@ -1981,3 +1986,71 @@ def test_the_reference_says_how_a_sender_ticket_is_bound():
     ticket = text[text.index("The messages sender names no session"):][:3000]
     assert "so do identical runs of two sessions in one folder within the same minute" not in text
     assert "command line" in ticket and "harness" in ticket, ticket[:200]
+
+
+
+# --- review round 7 (2026-11-15) -----------------------------------------------------------------------------------
+# #2, as ruled: a hook whose walk finds no harness process of the session's own files no ticket. #3, as ruled: an entry
+# spent by a call that is then held is given back, and one a call left with no answer spent stays spent.
+
+HARNESS_TABLES = {  # (process table, whether hook A's harness is its session's own); hook A's parent 1000, session B's 2000
+    "claude-code": ({1000: (900, "S9", "claude"), 900: (1, "S8", "zsh"), 2000: (901, "S7", "claude"), 901: (1, "S6", "zsh")}, True),
+    "only-shells-under-one-topmost-shell": ({1000: (900, "S9", "sh"), 900: (1, "S8", "zsh"), 2000: (900, "S7", "zsh")}, False),
+    "a-python-harness-twice-in-one-terminal-tab": ({1000: (800, "S9", "Python"), 800: (700, "S8", "zsh"), 700: (600, "S7", "login"),
+                                                    600: (1, "S6", "Terminal"), 2000: (810, "S5", "Python"), 810: (700, "S4", "zsh")}, False),
+}
+
+
+@pytest.mark.parametrize("case", sorted(HARNESS_TABLES))
+def test_a_ticket_is_filed_only_under_a_harness_of_the_sessions_own(monkeypatch, case):
+    import os
+    granted([TEXT])
+    table, own = HARNESS_TABLES[case]
+    monkeypatch.setattr(sends, "_table", lambda: dict(table))
+    monkeypatch.setattr(os, "getppid", lambda: 1000)  # session A's hook
+    assert sends._harness() == ([1000, "S9"] if own else []), case
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    assert guards.check("Bash", {"command": f"false && python3 {SENDER} {' '.join(TO_A)}"}, CONFIG, cwd=str(FOLDER), session=me) is None
+    monkeypatch.setattr(os, "getppid", lambda: 2000)  # session B's process, its command line the run's
+    assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A))) and not today(), case
+    monkeypatch.setattr(os, "getppid", lambda: 1000)  # session A's own process under its harness
+    verdict = guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A))
+    assert (verdict is None) if own else held(verdict), (case, verdict)
+
+
+def _failing_log_once(monkeypatch):
+    real, calls = sends.log, []
+
+    def log(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("the day's ledger cannot be written")
+        return real(*args, **kwargs)
+    monkeypatch.setattr(sends, "log", log)
+
+
+def test_an_entry_spent_by_a_call_that_is_then_held_is_given_back(monkeypatch):
+    data = granted([CALL])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    _failing_log_once(monkeypatch)
+    with pytest.raises(OSError):
+        guards.check(SLACK, SAID, CONFIG, session=me)  # held after its entry was spent: the day's ledger failed
+    assert (data["digest"], 0) not in sends._spends() and "0" not in next(b for b in sends.batches() if b["digest"] == data["digest"])["spent"]
+    assert guards.check(SLACK, SAID, CONFIG, session=me) is None  # the identical retry spends it
+    assert (data["digest"], 0) in sends._spends() and [r["how"] for r in today()] == [f"batch:{data['digest'][:12]}:0"]
+
+
+@pytest.mark.parametrize("answer", ["held", "none"])
+def test_under_the_hook_a_held_answer_gives_the_entry_back_and_no_answer_keeps_it(answer):
+    data = granted([CALL])
+    me = {**SESSION, "transcript_path": str(RECORD)}
+    guards.hook_answers()  # this thread's call is the hook's: its records wait for its answer
+    try:
+        assert guards.check(SLACK, SAID, CONFIG, session=me) is None
+        if answer == "held":
+            guards.answered(False)
+        else:
+            guards.hook_answers()  # the next call: the earlier one, never answered, may have run
+    finally:
+        guards.answered(True)
+    assert ((data["digest"], 0) in sends._spends()) is (answer == "none"), answer
