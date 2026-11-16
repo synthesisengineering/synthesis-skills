@@ -214,6 +214,35 @@ def test_a_line_that_writes_a_startup_file_and_sources_it_waits(world):
     assert _held(_shell(world, "echo 'echo planted' > ~/.zshrc; source ~/.zshrc"), "startup file")
 
 
+INSTALLERS = {"brew upgrade gh": "gh", "brew install --cask codex": "codex", "brew reinstall homebrew/core/gh": "gh",
+              "npm i -g @openai/codex": "codex", "npm install -g @anthropic-ai/claude-code@latest": "claude",
+              "yarn global add @openai/codex": "codex", "pnpm add -g @openai/codex": "codex", "claude update": "claude",
+              "claude install stable": "claude", "brew upgrade": "gh"}
+
+
+@pytest.mark.parametrize("line", sorted(INSTALLERS))
+def test_an_installer_told_to_change_a_harness_program_waits(world, line):
+    """It writes where that program's installer keeps it, where the guard does not see; a bare `brew upgrade` changes gh
+    here, since gh is installed from this Homebrew's Cellar."""
+    reason = _shell(world, line)
+    assert _held(reason, "harness program") and INSTALLERS[line] in reason, line
+
+
+@pytest.mark.parametrize("line", ["brew install jq", "brew info gh", "brew install gh-dash", "npm i -g typescript", "npm update -g",
+                                  "claude -p update", "npx @openai/codex --version", "npm ls -g"])
+def test_other_installs_and_an_installer_that_changes_no_harness_program_need_no_code(world, line):
+    assert _shell(world, line) is None, line
+
+
+def test_a_launcher_run_by_its_path_names_where_its_program_is_kept(world):
+    """The codex launcher names the app-server CLI it runs: a harness program's text naming where its own program is
+    kept is no write; one that writes the runtime is still stopped."""
+    (world["local_bin"] / "codex").write_text(f"#!/bin/sh\nexec \"{world['appserver']}/codex\" \"$@\"\n", encoding="utf-8")
+    assert _shell(world, f"{world['local_bin']}/codex --version") is None
+    (world["local_bin"] / "codex").write_text("#!/bin/sh\ncat stub > \"$SYNTHESIS_HOME/current/synthesis/guards.py\"\n", encoding="utf-8")
+    assert _shell(world, f"{world['local_bin']}/codex --version") is not None
+
+
 def test_a_link_put_in_place_of_a_harness_program_waits(world):
     assert _held(_shell(world, f"ln -sf {world['work']}/tool {world['local_bin']}/claude"), "harness program")
     assert _held(_shell(world, f"rm {world['local_bin']}/codex"), "harness program")
