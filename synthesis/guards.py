@@ -3060,7 +3060,7 @@ SETTINGS_SAID = {  # what each kind is, what it holds or does, and what a change
 }
 STARTUP = (".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout", ".bash_profile", ".bash_login", ".profile", ".bashrc")
 HARNESS = ("claude", "codex", "muse", "gh")
-KEPT = re.compile(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[^/]+|[^/]+\.app)(?=/|$)")  # the folder its installer keeps a file in
+KEPT = re.compile(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[^/]+)(?=/|$)")  # the folder its installer keeps a file in
 ZDOTDIR_SET = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?ZDOTDIR=([\"']?)([^\"'\s;#]+)\1")
 SETTINGS_MAPS: dict = {}  # the environment it is read from: each path the settings hold covers, with its kind
 ROOTS_MEMO: dict = {}  # the environment, the approved lines' store and whether the settings are among them: the protected paths
@@ -3085,7 +3085,7 @@ def _settings_map() -> dict:
     """Each path `_settings` names, with its kind and program: read once for the environment the guard runs in. A harness
     program is held at each folder on PATH and in the vendors' known places, whether or not a file is there (one there
     runs instead), through each link to the file it ends at, with the folder its installer keeps it in (Claude Code's
-    versions, the desktop app's, Codex's app-server CLI, a Homebrew keg or cask, an npm package, an app) and, beside a
+    versions, the desktop app's, Codex's app-server CLI and an app's, a Homebrew keg or cask, an npm package) and, beside a
     launcher, the files it keeps there (muse: muse-bin-<version> and .muse-version)."""
     env, key = os.environ, _env_key()
     if key in SETTINGS_MAPS:
@@ -3104,7 +3104,8 @@ def _settings_map() -> dict:
                                         + list(paths.PROGRAM_DIRS) if d) if _writable(d)]  # the system's own take no agent write
     kept = {"claude": [os.path.join(env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share"), "claude"),
                        os.path.join(home, ".local", "share", "claude"), str(paths.desktop_dir() / "claude-code")],
-            "codex": [str(paths.codex_home() / "plugins" / ".plugin-appserver")]}
+            "codex": [str(paths.codex_home() / "plugins" / ".plugin-appserver")] + [  # and an app's Codex CLI, not the whole app
+                p.rsplit("/bin/", 1)[0] for p in paths.PROGRAM_PLACES.get("codex", ()) if "/codex-cli/bin/" in p]}
     for name in HARNESS:
         spots = [os.path.join(d, name) for d in folders] + [os.path.expanduser(p.split("*")[0].rstrip("/")) for p in paths.PROGRAM_PLACES.get(name, ())]
         for spot in spots + kept.get(name, []):
@@ -5503,6 +5504,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     """One reading of a command: the reason it is refused, or None."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     raw = _protected_roots(config)
+    inherited = [r for r in raw if _settings_map().get(r, ("",))[0] not in ("startup", "snapshots", "program")]  # a harness's own variables name these (22.26)
 
     low = text.casefold()
 
@@ -5598,7 +5600,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
         wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
-            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in raw))
+            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in inherited))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
         lost = where[:1] in ("$", "`") and bool(names)  # it runs in a folder the guard cannot read, in a command that names a protected one
         if SCRIPT.match(head) and (hit or (wrote and (reaches or lost or (hit is None and (within or any(n in script for n in names)))))):

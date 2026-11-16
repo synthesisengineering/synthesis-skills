@@ -544,9 +544,9 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    each link on the way, to the file it ends at; the folder its installer keeps it in
    (Claude Code's versions under `~/.local/share/claude`, the desktop app's `claude-code`
    folder, Codex's app-server CLI under `~/.codex/plugins/.plugin-appserver`, a Homebrew keg
-   or cask, an npm package, an app); and the files muse's launcher keeps beside it
-   (`muse-bin-<version>`, `.muse-version`). A folder this user cannot write, the system's
-   own, is left out. An installer told to change one of these programs waits too, since it
+   or cask, an npm package, the Codex CLI folder inside the ChatGPT or Codex app); and the
+   files muse's launcher keeps beside it (`muse-bin-<version>`, `.muse-version`). A folder
+   this user cannot write, the system's own, is left out. An installer told to change one of these programs waits too, since it
    writes where the guard does not see: Homebrew or a Node package manager installing,
    upgrading, removing or linking `gh`, `codex`, `claude-code` or its npm package, a bare
    `brew upgrade` or `npm update -g` while one of them is installed that way, and
@@ -554,7 +554,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    startup file or a snapshot (`source ~/.zshrc` runs what a shell's start runs anyway),
    running a harness program, by name or by its path (a launcher's text may name where its
    program is kept), or installing other tools (`brew install`, `pip install --user`,
-   `npm install -g`).
+   `npm install -g`). A harness's own variables that name its program or a startup file
+   (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`) do not count as a protected path the
+   environment hands a program, so a program that reads its environment is not held for
+   them.
 5. **No hook text holds the phrase** (see What the hook returns).
 6. **Random codes** mean a code cannot be planted before its request exists, and a
    later identical call never reuses the code an earlier approval answered.

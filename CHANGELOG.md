@@ -71,13 +71,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `claude`, `codex`, `muse` and `gh` at every folder on PATH and in the vendors' known places that this user can write,
   whether or not a file is there yet (one put there runs instead), each link on the way to the file it ends at, the
   folder its installer keeps it in (Claude Code's versions, the desktop app's `claude-code`, Codex's app-server CLI, a
-  Homebrew keg or cask, an npm package, an app) and the files muse keeps beside its launcher. An installer told to change
-  one of them waits too, since it writes where the guard does not see: brew or a Node package manager installing,
-  upgrading, removing or linking `gh`, `codex`, `claude-code` or their npm packages, a bare `brew upgrade` or
-  `npm update -g` while one is installed that way, and `claude update` or `claude install`. Reading them, sourcing a
-  startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or by its path (a
-  launcher's text may name where its program is kept), and installing other tools need no code. The vendors' known
-  places now live in `paths`, which the doctor and the guard both read. A protected path outside the home folder had a
+  Homebrew keg or cask, an npm package, the Codex CLI folder inside an app) and the files muse keeps beside its launcher.
+  An installer told to change one of them waits too, since it writes where the guard does not see: brew or a Node
+  package manager installing, upgrading, removing or linking `gh`, `codex`, `claude-code` or their npm packages, a bare
+  `brew upgrade` or `npm update -g` while one is installed that way, and `claude update` or `claude install`. Reading
+  them, sourcing a startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or
+  by its path (a launcher's text may name where its program is kept), and installing other tools need no code. A
+  harness's own variables that name its program or a startup file (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`)
+  hold no program that reads the environment. The vendors' known places now live in `paths`, which the doctor and the
+  guard both read. A protected path outside the home folder had a
   `~` spelling that matched any `~` a program holds (reached only by these paths); a program's text is looked through
   only for the protected parts it holds, and the protected paths, their real paths and the variables that hold one are
   read once, so judging a command takes about as long as before with some 60 more paths (1,500 recorded commands: a
