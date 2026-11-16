@@ -6498,12 +6498,14 @@ def _unfilled(text: str, bare: str | None) -> bool:
 
 
 def _away(start: str, whole: bool = False) -> bool:
-    """Whether an address's spelled start names a scheme and a host that is not this machine, closed by /, ? or # before
-    anything a program or the shell fills in (`whole`: nothing is): it goes to that host whatever is filled in after it.
-    From the ruling's suite on a fresh clone: the Drive publisher's query from the environment made its host's address
-    read as one the environment gives."""
-    m = re.match(r"\s*[a-z][\w+.-]*://(?:[^/?#@\s]*@)?([^/?#@\s]+)" + ("(?:[/?#]|$)" if whole else "[/?#]"), start, re.I)
-    return bool(m) and not _here(m[1].lower()) and not _here(_carried(m[1].lower().rsplit(":", 1)[0]))
+    """Whether an address's spelled start names a scheme and a host that is not this machine, on a port that is not a
+    local MCP server's, closed by /, ? or # before anything a program or the shell fills in (`whole`: nothing is): it goes
+    to that host whatever is filled in after it (a name that resolves here reaches no server on a port it does not
+    name). From the ruling's suite on a fresh clone: the Drive publisher's query from the environment made its host's
+    address read as one the environment gives."""
+    m = re.match(r"\s*[a-z][\w+.-]*://(?:[^/?#@\s]*@)?(([^/?#@\s]+?)(?::(\d+))?)" + ("(?:[/?#]|$)" if whole else "[/?#]"), start, re.I)
+    return bool(m) and not _here(m[1].lower()) and not _here(_carried(m[2].lower())) and m[3] not in {
+        "8765", os.environ.get("WORKSPACE_MCP_PORT") or "8765"}
 
 
 def _http_body(words: list, where: str, feed: str, written: set, bare: str | None = None) -> tuple:
