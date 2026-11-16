@@ -285,7 +285,7 @@ def test_a_release_builds_pushes_and_installs_from_a_fresh_clone_never_the_check
     _forge(repo, git(repo, "rev-parse", "HEAD:skills/demo/SKILL.md"), b"What no CI saw.\n")  # the checkout's own store
     _forge(repo, git(repo, "rev-parse", "HEAD:synthesis/guards.py"), b"# a guard no CI saw\n")
     monkeypatch.setattr(release.doctor, "run_checks", lambda: [])  # the doctor's own checks are tested where it lives
-    monkeypatch.setattr(install, "release_route", lambda: True)  # run as the launcher runs it (the train's board is a trace)
+    install.grant_release("5.23.1", "the launcher's line")  # what the hook writes when it lets that line through (K1)
     installed = []
     real = install.install
     monkeypatch.setattr(install, "install", lambda root, **k: installed.append((Path(root), k)) or real(root, **k))
