@@ -83,11 +83,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   those call, in xunit setup and teardown (`setup_module`, `setup_class` and their like), in a fixture scoped wider than
   a function, in pytest's hooks, or in a plugin of its own named with `-p`. A writer is read under any name it is
   imported by, and through `getattr` with its name written out, and a program that only reads that way passes, also
-  under a `PYTHONPATH` whose folders are there when judged, hide nothing from Python's own installation (its standard
-  library and site-packages) but a synthesis byte for byte the guard's own, and are neither written into by the line
-  nor beside another of its programs that may fill them unseen. A module the
+  under a `PYTHONPATH` whose folders are there when judged, hold nothing the program imports or that hides a module of
+  Python's own installation (its standard library and site-packages) but a synthesis byte for byte the guard's own, and
+  are neither written into by the line nor beside another of its programs that may fill them unseen. A module the
   line writes where a program on it starts counts as one that could stand in, as a file already there does. An import
-  after `;` on a program's line counts as one at a line's start. Of 73,915 shell commands recorded over 60 days, 12
+  after `;` on a program's line counts as one at a line's start. Of 73,936 shell commands recorded over 60 days, 12
   newly wait: 6 runs of probe and measurement tests with no isolation the guard can read, and 6 programs whose import
   after a `;` names one of synthesis's writers, as the same program on separate lines already did. One that waited is
   refused: three `python3 -c` programs typed on its line import synthesis's own code in text Python cannot parse. Four
