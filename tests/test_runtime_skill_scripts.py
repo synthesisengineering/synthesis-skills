@@ -11,6 +11,8 @@ its own release; a copy anywhere else is judged like any other script, and when 
 a plugin copy, the hold names the runtime's copy, which needs no code. These tests build the runtime with the
 installer, under homes of their own, and run the guard from it in a fresh interpreter, as the hook does."""
 
+from __future__ import annotations
+
 import json
 import os
 import re
