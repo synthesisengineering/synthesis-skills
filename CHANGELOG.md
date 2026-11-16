@@ -60,6 +60,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   calls that were neither a poll nor quiet keys, each judged on the record as it stood then: 1,121 pass, 132 wait as
   typed into a session the record does not show (on two days), 23 for keys or history that edit or recall a line, and
   none is refused. An interpreter or a shell started on a terminal with no command is still not held at its start.
+- **An agent's write of a shell's startup files, Claude Code's shell snapshots or a harness program waits for the
+  principal's code** (plan item 22.26). Claude Code runs every command through zsh, which reads `~/.zshenv` after
+  sourcing a snapshot of the shell; Codex runs `bash -lc`, which reads `~/.bash_profile`. A review on 2026-11-15 wrote
+  those files with no code, and an ordinary `ls` then ran the agent's code first; it also showed `synthesis doctor`
+  running an agent-written `~/.local/bin/codex`, which wrote the runtime. A write now waits for his code for exactly that
+  call, bound and read as for the guard's own settings: `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and
+  `~/.zlogout` (and the same in `ZDOTDIR`, from the environment or where `~/.zshenv` sets it), `~/.bash_profile`,
+  `~/.bash_login`, `~/.profile`, `~/.bashrc`, the files `BASH_ENV` and `ENV` name, Claude Code's `shell-snapshots`; and
+  `claude`, `codex`, `muse` and `gh` at every folder on PATH and in the vendors' known places that this user can write,
+  whether or not a file is there yet (one put there runs instead), each link on the way to the file it ends at, the
+  folder its installer keeps it in (Claude Code's versions, the desktop app's `claude-code`, Codex's app-server CLI, a
+  Homebrew keg or cask, an npm package, an app) and the files muse keeps beside its launcher. An installer told to change
+  one of them waits too, since it writes where the guard does not see: brew or a Node package manager installing,
+  upgrading, removing or linking `gh`, `codex`, `claude-code` or their npm packages, a bare `brew upgrade` or
+  `npm update -g` while one is installed that way, and `claude update` or `claude install`. Reading them, sourcing a
+  startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or by its path (a
+  launcher's text may name where its program is kept), and installing other tools need no code. The vendors' known
+  places now live in `paths`, which the doctor and the guard both read. A protected path outside the home folder had a
+  `~` spelling that matched any `~` a program holds (reached only by these paths); a program's text is looked through
+  only for the protected parts it holds, so judging stays inside its time with some 60 more paths; a variable given a
+  value (`XDG_DATA_HOME=…`) is no longer read as a path built from that variable; and a command that waits whatever is
+  protected (it names synthesis's own writers, or runs input the guard cannot read) waits for the protected folders'
+  code in those words, not as a settings hold that lists every kind of setting first. Measured first, read only, over
+  60 days of this Mac's records (Claude Code, Codex and Muse, each call counted once): 2 file-tool writes of a harness
+  program (the `codex` launcher in `~/.local/bin`, rewritten on one day), 1 shell write of a startup file (`~/.zshrc`),
+  and at most 8 installer runs told to change a harness program, on 7 days (brew naming gh, codex or claude 3, a bare
+  `brew upgrade` 3, npm installing a harness package 1, `claude update` or `claude install` 1).
 - **A claimed file written as `~/…` is a claimed path.** The shell's writes were joined to the folder a command ran in
   before the home folder was put in, so `echo x > ~/…/notes.md` into a file another session had claimed was never
   looked at, and the session export tagged no project for such a write. Each target now has `~` put in first, as the

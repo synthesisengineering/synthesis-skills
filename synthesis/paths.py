@@ -169,6 +169,14 @@ def session_id(payload: dict | None = None) -> str:
     return ""
 
 
+# Where a harness's own command is found besides PATH, in each vendor's stable install locations (2026-10-30): the
+# doctor and the release tool look there, and the guard holds an agent's write there for the principal's code (22.26).
+PROGRAM_DIRS = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
+PROGRAM_PLACES = {"codex": tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
+                                 for app in ("ChatGPT", "Codex")),
+                  "claude": ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",)}
+
+
 def codex_home() -> Path:
     """Codex's own folder: `CODEX_HOME` where it is set, else ~/.codex."""
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")

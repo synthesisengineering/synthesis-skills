@@ -527,8 +527,36 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    since they can link as well as copy. The installer's own route (`synthesis install`,
    `synthesis update`, the release script's install stage) writes the hooks from the runtime
    it installs, which the guard trusts as it trusts itself.
-4. **No hook text holds the phrase** (see What the hook returns).
-5. **Random codes** mean a code cannot be planted before its request exists, and a
+4. **A shell's startup files, Claude Code's shell snapshots and the harness programs take
+   the person's code the same way.** Claude Code runs every command through zsh, which
+   reads `~/.zshenv` and sources a snapshot of the shell from `shell-snapshots` in Claude
+   Code's configuration folder; Codex runs `bash -lc`, which reads `~/.bash_profile`,
+   `~/.bash_login` or `~/.profile`; bash reads the file `BASH_ENV` names. Code there runs
+   before every command, where no guard sees it. The harnesses, `synthesis doctor` and the
+   release tool run `claude`, `codex`, `muse` and `gh` wherever each resolves. So a write
+   to any of these waits for the person's code, bound and read as for the settings above:
+   `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and `~/.zlogout`, and the same names
+   in `ZDOTDIR` (from the environment, or where `~/.zshenv` sets it); `~/.bash_profile`,
+   `~/.bash_login`, `~/.profile`, `~/.bashrc`; the files `BASH_ENV` and `ENV` name; the
+   snapshots folder; and each harness program at every folder on PATH and in the vendors'
+   known places (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, the Codex and
+   ChatGPT apps), whether or not a file is there yet, since one put there runs instead;
+   each link on the way, to the file it ends at; the folder its installer keeps it in
+   (Claude Code's versions under `~/.local/share/claude`, the desktop app's `claude-code`
+   folder, Codex's app-server CLI under `~/.codex/plugins/.plugin-appserver`, a Homebrew keg
+   or cask, an npm package, an app); and the files muse's launcher keeps beside it
+   (`muse-bin-<version>`, `.muse-version`). A folder this user cannot write, the system's
+   own, is left out. An installer told to change one of these programs waits too, since it
+   writes where the guard does not see: Homebrew or a Node package manager installing,
+   upgrading, removing or linking `gh`, `codex`, `claude-code` or its npm package, a bare
+   `brew upgrade` or `npm update -g` while one of them is installed that way, and
+   `claude update` or `claude install`. Reading them needs no code, nor does sourcing a
+   startup file or a snapshot (`source ~/.zshrc` runs what a shell's start runs anyway),
+   running a harness program, by name or by its path (a launcher's text may name where its
+   program is kept), or installing other tools (`brew install`, `pip install --user`,
+   `npm install -g`).
+5. **No hook text holds the phrase** (see What the hook returns).
+6. **Random codes** mean a code cannot be planted before its request exists, and a
    later identical call never reuses the code an earlier approval answered.
 
 ### What remains open
@@ -603,6 +631,13 @@ stay open, and no hook running as that same user can close them:
   the commit check without touching its entry points (`git commit --no-verify`, `git -c
   core.hooksPath=…`, or the global `core.hooksPath` changed with `git config --global`);
   the guard holds none of these.
+- The guard holds writes to the startup files and the harness programs, not runs of them. A
+  harness program written where the guard never saw it (before the guard held these, by one
+  of the routes above, or by the person) runs when a harness, `synthesis doctor` or the release tool
+  starts it. Nor are these held: a file a startup file sources (`. ~/.cargo/env`, a plugin
+  manager's scripts), a `ZDOTDIR` set other than in the environment or `~/.zshenv`, and a
+  package of another name that installs a `claude`, `codex` or `gh` command (`npm install
+  -g`, `pip install --user`), which writes it unseen.
 - A code for a shell command binds the scripts it runs, not the files named inside them: a
   script that copies a settings file it names only in its own text (`bash install.sh`
   running `cp v5-config.json …`) still runs on its code after that file changes. It closes

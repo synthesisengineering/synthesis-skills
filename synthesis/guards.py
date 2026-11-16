@@ -3034,44 +3034,177 @@ def _protected_roots(config: dict | None) -> list[str]:
 # tool rewrote either with no code. A write there is not refused, since the principal changes them: it waits for his
 # code for that exact call, the private installer's copy of his settings included (the orchestrating session's ruling
 # under his standing rule that no agent grants itself an approval). Reading them needs none.
+#
+# A shell's startup files, Claude Code's shell snapshots and the harness programs wait the same way (22.26). Claude Code
+# runs every command through zsh, which reads ~/.zshenv (from ZDOTDIR, where that is set) after sourcing a snapshot of
+# the shell; Codex runs `bash -lc`, which reads ~/.bash_profile, ~/.bash_login or ~/.profile, and bash reads the file
+# BASH_ENV names. The harnesses, `synthesis doctor` and the release tool run claude, codex, muse and gh wherever each
+# resolves. The same review wrote ~/.zshenv with no code, and an ordinary `ls` then ran the agent's code; and the doctor
+# ran an agent-written ~/.local/bin/codex, which wrote the runtime. Reading or running any of them needs no code.
 SETTINGS_KIND = "guard-settings"
-SETTINGS_SAID = {
+SETTINGS_SAID = {  # what each kind is, what it holds or does, and what a change there does
     "config.json": ("the synthesis guard's own settings", "its line allowances, own repositories, sheet hosts, send-window "
-                    "signatures, forbidden phrases, account routing and the turn-end judge's settings"),
+                    "signatures, forbidden phrases, account routing and the turn-end judge's settings",
+                    "changes what every approval means"),
     "git-hooks": ("the global commit check's entry points", "what git runs before every commit, merge and commit message in "
-                  "every repository"),
+                  "every repository", "changes what every approval means"),
+    "startup": ("a shell's startup file", "zsh or bash runs it before every command a harness runs",
+                "runs before every command, where this guard never sees it"),
+    "snapshots": ("Claude Code's shell snapshots", "one is sourced before every command Claude Code runs",
+                  "runs before every command, where this guard never sees it"),
+    "program": ("a harness program", "what the harnesses, synthesis doctor and the release tool run as `{}`",
+                "runs with no code whenever one of them starts it"),
 }
+STARTUP = (".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout", ".bash_profile", ".bash_login", ".profile", ".bashrc")
+HARNESS = ("claude", "codex", "muse", "gh")
+KEPT = re.compile(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[^/]+|[^/]+\.app)(?=/|$)")  # the folder its installer keeps a file in
+ZDOTDIR_SET = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?ZDOTDIR=([\"']?)([^\"'\s;#]+)\1")
+SETTINGS_MAPS: dict = {}  # the environment it is read from: each path the settings hold covers, with its kind
 
 
 def _settings() -> list[str]:
-    """config.json and the git-hooks folder of the synthesis home this guard runs for."""
-    return [str(paths.config_file()), str(paths.home() / "git-hooks")]
+    """Every path whose write waits for the principal's code: the guard's settings and the commit check's entry points of
+    the synthesis home this guard runs for, the shells' startup files, Claude Code's shell snapshots, the harness programs."""
+    return list(_settings_map())
 
 
-def _settings_said(reached: list) -> str:
-    """What each of the settings a write reaches is and holds, as a hold names it."""
-    return " and ".join(f"{SETTINGS_SAID[os.path.basename(p)][0]} ({p}: {SETTINGS_SAID[os.path.basename(p)][1]})" for p in reached)
+def _settings_map() -> dict:
+    """Each path `_settings` names, with its kind and program: read once for the environment the guard runs in. A harness
+    program is held at each folder on PATH and in the vendors' known places, whether or not a file is there (one there
+    runs instead), through each link to the file it ends at, with the folder its installer keeps it in (Claude Code's
+    versions, the desktop app's, Codex's app-server CLI, a Homebrew keg or cask, an npm package, an app) and, beside a
+    launcher, the files it keeps there (muse: muse-bin-<version> and .muse-version)."""
+    env = os.environ
+    key = tuple(env.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
+                                         "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
+    if key in SETTINGS_MAPS:
+        return SETTINGS_MAPS[key]
+    home = os.path.expanduser("~")
+    found = {str(paths.config_file()): ("config.json", ""), str(paths.home() / "git-hooks"): ("git-hooks", "")}
+    read = _regular(os.path.join(home, ".zshenv"), 1 << 16)
+    zdots = [env.get("ZDOTDIR") or home] + [_expanded(dot) for _, dot in ZDOTDIR_SET.findall(read[0].decode("utf-8", "replace") if read else "")]
+    for folder, name in [(z, n) for z in [home] + zdots for n in STARTUP[:5]] + [(home, n) for n in STARTUP[5:]]:
+        found[os.path.join(folder, name)] = ("startup", "")
+    for named in (env.get("BASH_ENV"), env.get("ENV")):
+        if named:
+            found[_expanded(named)] = ("startup", "")
+    found[os.path.join(env.get("CLAUDE_CONFIG_DIR") or os.path.join(home, ".claude"), "shell-snapshots")] = ("snapshots", "")
+    folders = [d for d in dict.fromkeys(os.path.abspath(os.path.expanduser(d)) for d in env.get("PATH", "").split(os.pathsep)
+                                        + list(paths.PROGRAM_DIRS) if d) if _writable(d)]  # the system's own take no agent write
+    kept = {"claude": [os.path.join(env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share"), "claude"),
+                       os.path.join(home, ".local", "share", "claude"), str(paths.desktop_dir() / "claude-code")],
+            "codex": [str(paths.codex_home() / "plugins" / ".plugin-appserver")]}
+    for name in HARNESS:
+        spots = [os.path.join(d, name) for d in folders] + [os.path.expanduser(p.split("*")[0].rstrip("/")) for p in paths.PROGRAM_PLACES.get(name, ())]
+        for spot in spots + kept.get(name, []):
+            found.setdefault(os.path.normpath(spot), ("program", name))
+        for spot in [s for s in spots if os.path.lexists(s)]:
+            hop, hops = spot, 0
+            while os.path.islink(hop) and hops < 8:  # each link it passes through, to the file it ends at
+                try:
+                    hop, hops = os.path.normpath(os.path.join(os.path.dirname(hop), os.readlink(hop))), hops + 1
+                except OSError:
+                    break
+                found.setdefault(hop, ("program", name))
+            end = os.path.realpath(spot)
+            for path in [end] + [m[0] for m in [KEPT.match(end)] if m]:
+                found.setdefault(path, ("program", name))
+            try:
+                beside = os.listdir(os.path.dirname(spot)) if os.path.isfile(spot) and not os.path.islink(spot) else []
+            except OSError:
+                beside = []
+            for other in beside:
+                if other.startswith((f"{name}-bin", f".{name}-")):
+                    found.setdefault(os.path.join(os.path.dirname(spot), other), ("program", name))
+    SETTINGS_MAPS[key] = found
+    return found
+
+
+def _kinds_at(real: str) -> set:
+    """The kinds of the settings-held paths a path lies in (22.26)."""
+    return {kind for path, (kind, _) in _settings_map().items() if paths.inside(real, _real(path))}
+
+
+def _runs_at_start(name: str, where: str) -> bool:
+    """Whether a script a shell runs or sources is a shell's startup file or a Claude Code shell snapshot: what a shell
+    runs at its start anyway, which only the principal's code changes (22.26), so `source ~/.zshrc` reads it."""
+    return bool(_kinds_at(_real(os.path.join(where, os.path.expanduser(name)))) & {"startup", "snapshots"})
+
+
+PACKAGES = {"gh": "gh", "codex": "codex", "claude-code": "claude", "claude": "claude", "@anthropic-ai/claude-code": "claude", "@openai/codex": "codex"}
+CHANGES = {"brew": frozenset("install reinstall upgrade uninstall remove rm link ln unlink switch".split()),
+           "node": frozenset("install i add update up upgrade uninstall un remove rm r link ln".split())}
+
+
+def _installs(words: list) -> str:
+    """The harness program an installer command changes where its installer keeps it, else '' (22.26): Homebrew or a
+    Node package manager told to install, upgrade, remove or link it, or to upgrade everything while it is installed that
+    way, and Claude Code's own `claude update`, `claude install` and `claude migrate-installer`."""
+    head = os.path.basename(words[0])
+    rest = [w for w in words[1:] if not w.startswith("-")]
+    rest = rest[1:] if head == "yarn" and rest[:1] == ["global"] else rest
+    if head == "claude":
+        return "claude" if words[1:2] in (["update"], ["install"], ["migrate-installer"]) else ""
+    node = head in ("npm", "pnpm", "yarn", "bun") and (any(w in ("-g", "--global", "--location=global") for w in words) or "global" in words[1:2])
+    if not rest or not ((head == "brew" and rest[0] in CHANGES["brew"]) or (node and rest[0] in CHANGES["node"])):
+        return ""
+    named = [PACKAGES.get(re.sub(r"(?<=.)@[^/]*$", "", w.rsplit("/", 1)[-1] if head == "brew" else w), "") for w in rest[1:]]
+    if rest[1:]:
+        return next((n for n in named if n), "")
+    where = "/node_modules/" if node else "/Cellar/"  # everything it installed: a harness program installed that way
+    return next((name for path, (kind, name) in _settings_map().items() if kind == "program" and rest[0].startswith("up")
+                 and (where in path or (head == "brew" and "/Caskroom/" in path))), "")
+
+
+def _writable(folder: str) -> bool:
+    """Whether this user can put a file in a folder: it, or the nearest folder above it that is there, is theirs or open
+    to them."""
+    while not os.path.lexists(folder) and folder != os.path.dirname(folder):
+        folder = os.path.dirname(folder)
+    try:
+        return os.access(folder, os.W_OK) or os.stat(folder).st_uid == os.getuid()
+    except OSError:
+        return False
+
+
+def _expanded(value: str) -> str:
+    """A path as a shell expands it: `${NAME:-default}`, then $NAME and ~."""
+    value = re.sub(r"\$\{(\w+):?-([^}]*)\}", lambda m: os.environ.get(m[1]) or m[2], value)
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(value)))
+
+
+def _settings_said(reached: list) -> tuple:
+    """(what each of the settings a write reaches is and holds, at most three paths of a kind, what a change there does),
+    as a hold names them."""
+    kinds: dict = {}
+    for path in reached:
+        kinds.setdefault(_settings_map().get(path, ("config.json", "")), []).append(path)
+    said = " and ".join(f"{SETTINGS_SAID[kind][0]} ({', '.join(spots[:3])}{f' and {len(spots) - 3} more' if len(spots) > 3 else ''}: "
+                        f"{SETTINGS_SAID[kind][1].format(name)})" for (kind, name), spots in kinds.items())
+    return said, "; it ".join(dict.fromkeys(SETTINGS_SAID[kind][2] for kind, _ in kinds))
 
 
 def check_settings_write(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
-    """A file tool's write of the guard's own settings or of a git hook waits for the principal's code for exactly that
-    call: the tool, the file it lands in and everything it writes (22.20). Judged where the path really leads, in any
-    case, so a link made beforehand, `..` or capitals change nothing."""
+    """A file tool's write of the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a harness
+    program waits for the principal's code for exactly that call: the tool, the file it lands in and everything it
+    writes (22.20, 22.26). Judged where the path really leads, in any case, so a link made beforehand, `..` or capitals
+    change nothing."""
     import hashlib
     targets = _file_targets(tool, tool_input)
-    real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
-    reached = [s for s in _settings() if any(paths.inside(real[t], os.path.realpath(s)) for t in targets)]
+    real = {t: _real(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
+    reached = [s for s in _settings() if any(paths.inside(real[t], _real(s)) for t in targets)]
     if not reached:
         return None
-    hit = next(t for t in targets if any(paths.inside(real[t], os.path.realpath(s)) for s in reached))
+    hit = next(t for t in targets if any(paths.inside(real[t], _real(s)) for s in reached))
     subject = {"tool": tool, "writes": sorted(set(real.values())),
                "input": hashlib.sha256(json.dumps(tool_input, sort_keys=True, default=str).encode("utf-8")).hexdigest()}
     if approvals.consume(SETTINGS_KIND, subject, session):
         return None
-    code = approvals.request(SETTINGS_KIND, subject, f"{tool} writes {real[hit]}, the guard's own settings")
-    return (f"{tool} would write {hit}, {_settings_said(reached)}. A change there changes what every approval means, so it "
-            "waits for the principal: show them the exact change (the file and what the call writes) and ask them to type "
-            f"{approvals.how(code)}; then make the identical call again. Reading it needs no code.")
+    said, does = _settings_said(reached)
+    code = approvals.request(SETTINGS_KIND, subject, f"{tool} writes {real[hit]}, {said.split(' (')[0]}")
+    return (f"{tool} would write {hit}, {said}. A change there {does}, so it waits for the principal: show them the exact "
+            f"change (the file and what the call writes) and ask them to type {approvals.how(code)}; then make the identical "
+            "call again. Reading it needs no code.")
 
 
 def _claude_parts(real: str) -> list:
@@ -4856,7 +4989,8 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
         return ("", "", False, "") if free else (head, code(mine or name) if mine or (kind == "file" and not module) else "", True, mine)
     if head in SHELLS or head in (".", "source"):
         inline, reads, _ = _shell_input(words)
-        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name), True, "")
+        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) or (
+            kind == "file" and _runs_at_start(name, where)) else (head, code(name), True, "")
     if head in AWKS:
         return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):
@@ -5148,8 +5282,8 @@ def _spellings(raw: list, env: dict) -> tuple:
                 for name, value in anchors if paths.inside(root, value)] + [((f"${name}",), root) for name, value in anchors
                                                                             if paths.inside(value, root) and value != root]
         parts = {part for spelling, _ in spellings for part in spelling}
-        patterns = {part: re.compile(rf"\b{re.escape(part[1:])}\b" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I)
-                    for part in parts}
+        patterns = {part: (re.compile(rf"\b{re.escape(part[1:])}\b(?!=(?!=))" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I),
+                           part.lstrip("$").casefold()) for part in parts}  # with the text a statement must hold; a variable given a value is not read
         gates = set()
         for root in roots:  # the folders above each one, up to the home folder or a variable's folder
             at = os.path.dirname(root)
@@ -5187,15 +5321,21 @@ def _joined(statement: str, patterns: dict, spellings: list) -> str:
     path join, and with them those of at most one path written whole; parts of two paths written whole never join, and
     one such path alone counts only where they stand one after another in it (the coordinator, 2026-11-15: a script's
     path and a page's path on one line spelled the transcripts between them)."""
+    low = statement.casefold()  # a part whose text the statement does not hold is not looked for (22.26: some 60 more paths)
+    hits = [(part, pattern) for part, (pattern, text) in patterns.items() if text in low]
+    if not hits:
+        return ""
     whole = [(m.start(), m.end(), m.group().strip("'\"`")) for m in LITERAL.finditer(statement)]
     whole = [(a, b, t) for a, b, t in whole if t[:1] in "/~" and len([s for s in t.split("/") if s]) > 1]
     found: dict = {}
-    for part, pattern in patterns.items():
+    for part, pattern in hits:
         for m in pattern.finditer(statement):
             found.setdefault(part, set()).add(next((i for i, (a, b, _) in enumerate(whole) if a <= m.start() < b), -1))
     for spelling, root in spellings:
-        sets = [found.get(part, set()) for part in spelling]
-        if all(sets) and (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
+        if not all(part in found for part in spelling):
+            continue
+        sets = [found[part] for part in spelling]
+        if (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
                 any(-1 in s for s in sets) or len(spelling) == 1 or any(p[:1] == "$" for p in spelling)
                 or re.search(r"(?:^|/)" + "/".join(map(re.escape, spelling)) + r"(?:/|$)", whole[i][2], re.I)) for i in set().union(*sets) - {-1})):
             return root
@@ -5245,7 +5385,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             if base and not isinstance(base, Unproven):
                 return base  # refused whatever the settings: the folders every approval rests on take no code
             alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only")
-            touched, reason = bool(alone) and not isinstance(alone, Overdue), base
+            touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
         if reason and not isinstance(reason, Unproven):
             return reason
         waits = waits or reason
@@ -5283,14 +5423,28 @@ def _judged(command: str, text: str, cwd: str, config: dict | None, settings) ->
 
 
 def _reached(command: str, cwd: str) -> list:
-    """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, else the ones
-    it spells; both, where it shows neither (a pattern, a path a program builds)."""
+    """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, or in a folder
+    they change whole; else the ones in or above a path it names, else those whose names it spells; all of them, where
+    it shows none of those (a pattern, a path a program builds)."""
     try:
         landed = [_real(re.sub(r"/\*\*(?:/\*)?$", "", t)) for t in _shell_writes(command, cwd)]
     except RecursionError:
         landed = []
-    found = [s for s in _settings() if any(paths.inside(t, _real(s)) for t in landed)]
-    return found or [s for s in _settings() if os.path.basename(s).casefold() in command.casefold()] or _settings()
+    home = os.path.realpath(os.path.expanduser("~"))
+    named = [p for w in re.findall(r"(?<![\w$])[~/][^\s'\";|&<>()`]*", command)[:64]
+             for p in [_real(os.path.join(cwd, os.path.expanduser(w)))] if p not in ("/", home)]
+    for group in (landed, named):
+        found = [s for s in _settings() if any(paths.inside(t, _real(s)) or paths.inside(_real(s), t) for t in group)]
+        if found:
+            return found
+    try:
+        installed = {_installs(words) for words, _ in _parse(command, cwd)[0]} - {""}
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        installed = set()
+    found = [s for s, (kind, name) in _settings_map().items() if kind == "program" and name in installed]
+    if found:
+        return found
+    return [s for s in _settings() if re.search(rf"(?<![\w.-]){re.escape(os.path.basename(s))}(?![\w-])", command, re.I)] or _settings()
 
 
 def _named_files(command: str, cwd: str) -> list:
@@ -5310,21 +5464,22 @@ def _named_files(command: str, cwd: str) -> list:
 
 
 def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool) -> str | None:
-    """A shell command that may change the guard's own settings or a git hook waits for the principal's code for that
-    command, the folder it runs in, each script it runs and each file it names, as they stand (22.20)."""
-    said = _settings_said(_reached(command, cwd))
+    """A shell command that may change the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a
+    harness program waits for the principal's code for that command, the folder it runs in, each script it runs and each
+    file it names, as they stand (22.20, 22.26)."""
+    said, does = _settings_said(_reached(command, cwd))
     if not hold:
         return Unproven(f"may change {said}")
     subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items()),
                "files": _named_files(command, cwd)}
     if approvals.consume(SETTINGS_KIND, subject, session):
         return None
-    code = approvals.request(SETTINGS_KIND, subject, f"the guard's own settings: {command[:140]}")
-    return (f"This command may change {said}" + (f"; it also {also}" if also else "") + ". A change there changes what "
-            "every approval means, so it waits for the principal: show them this exact command and what it writes there (the "
-            f"file it copies, the text it puts in), and ask them to type {approvals.how(code)}; then run the identical command "
-            f"again from {cwd}. The code binds the command, the folder it runs in and each file it names as it stands now, so a "
-            "file changed after the approval makes it a new command. Reading these files needs no code (cat, head, grep, jq).")
+    code = approvals.request(SETTINGS_KIND, subject, f"{said.split(' (')[0]}: {command[:140]}")
+    return (f"This command may change {said}" + (f"; it also {also}" if also else "") + f". A change there {does}, so it "
+            "waits for the principal: show them this exact command and what it writes there (the file it copies, the text it "
+            f"puts in), and ask them to type {approvals.how(code)}; then run the identical command again from {cwd}. The code "
+            "binds the command, the folder it runs in and each file it names as it stands now, so a file changed after the "
+            "approval makes it a new command. Reading these files needs no code (cat, head, grep, jq).")
 
 
 def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
@@ -5332,10 +5487,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     raw = _protected_roots(config)
 
-    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case
-        return {m[0] for m in re.finditer(re.escape(name), text, re.I)}
+    low = text.casefold()
+
+    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case (one it does not hold is not looked for)
+        return {m[0] for m in re.finditer(re.escape(name), text, re.I)} if name.casefold() in low else set()
     mine = spelled(store.name) if store and str(store) in raw else set()  # the store's own name: a write from inside its folder
-    names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
+    names = sorted({s for r in raw for n in (r, *["~" + r[len(home):]] * paths.inside(r, home)) for s in spelled(n)} | mine)  # `~` spells only the home folder's (22.26)
     redirects, readable = [], True
     try:  # the files the parsed command writes, named in full or not (2026-11-11: a path relative to the session's
         _commands(text, cwd, writes=redirects)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
@@ -5364,6 +5521,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
+        if _CALL.get("settings") and _installs(words):  # it writes where that program's installer keeps it, unseen (22.26)
+            why = why or f"runs an installer that changes the harness program {_installs(words)}"
         landed = _landing(words)  # a copy onto a note or a script that is the agent's own lands on it, not inside it
         firm = {w for w in landed if _own(_real(os.path.join(where, os.path.expanduser(w))))}
         roomy = {w for w in landed if head in COPIERS and _own(_real(os.path.join(where, os.path.expanduser(w))), True)
@@ -5395,8 +5554,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                                              _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(_real(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
+        kept = [r for r in raw if _settings_map().get(r, ("",))[0] != "program"] if ran and "program" in _kinds_at(ran) else raw  # a launcher names where its program is (22.26)
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
-            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
+            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, kept, linked)
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):

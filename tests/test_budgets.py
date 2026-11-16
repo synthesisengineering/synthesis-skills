@@ -1392,10 +1392,31 @@ ROOT = Path(__file__).resolve().parents[1]
 # ssh that may log in to this machine), _only_reads 8, _js 4; the section's comment 5 and its constants 11 (STDIN_TOOLS 1,
 # STDIN_QUIET 1, EDITING 3 with its comment, STATE 2, JS_TEXT 1, JS_CALL 1, TYPED_BACK 1, REMOTE 1); 16 blank lines;
 # _check 2 (write_stdin dispatched to check_typed). In place: `guarded` holds write_stdin when the config cannot be read.
+# 22.26: core and plugin each 164 more, so an agent's write of a shell's startup files, Claude Code's shell snapshots or a
+# harness program waits for the principal's code (a review of 2026-11-15: a written ~/.zshenv ran the agent's code before
+# an ordinary `ls`, and the doctor ran an agent-written codex that wrote the runtime). paths.py 8: PROGRAM_DIRS 3 with its
+# comment 2, PROGRAM_PLACES 3, 2 blank lines (the vendors' known places, read by the doctor and the guard alike);
+# doctor.py 4 fewer (KNOWN_LOCATIONS built from them). guards.py 160: the settings block's comment 7 more (why each new
+# kind runs with no code), SETTINGS_SAID 7 more (each kind's words and what a change there does), STARTUP 1, HARNESS 1,
+# KEPT 1, ZDOTDIR_SET 1, SETTINGS_MAPS 1; _settings 1 more (its docstring); _settings_map 50 (the startup files, also in
+# the folder ~/.zshenv names as ZDOTDIR and the files BASH_ENV and ENV name, the snapshots folder, and each harness
+# program at every folder on PATH and in the known places this user can write, through each link, with its installer's
+# folder and a launcher's own files beside it, read once for the environment); _kinds_at 3; _runs_at_start 4 (sourcing a
+# startup file or a snapshot reads it); PACKAGES 1 and CHANGES 2 with _installs 18 (an installer told to change a harness
+# program); _writable 9 (a folder only the system writes takes no agent write); _expanded 4 (a path as a shell expands
+# it); _settings_said 6 more (by kind, at most three paths a kind, and what a change there does); check_settings_write 2
+# more (its docstring, the kind in its words); _settings_hold 1 more (its docstring); _reached 14 more (a folder a write
+# changes whole, a path the command names, the program an installer changes); _unread 1 more (a startup file a shell
+# runs is read); _joined 6 more (a part whose text a statement does not hold is not looked for, so judging stays in its
+# time with some 60 more paths); _self_grant 5 more (an installer 2, a launcher naming where its program is kept 1, a
+# name the command does not hold is not looked for 2); 14 blank lines. In place: a protected path outside the home folder
+# has no `~` spelling in _self_grant (one matched any `~` in a program); _spellings keeps each part's text beside its
+# pattern and reads no variable a statement gives a value; check_self_grant makes no settings hold of a wait that the
+# settings alone do not change.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17145
-PLUGIN_BUDGET = 43217
+CORE_BUDGET = 17309
+PLUGIN_BUDGET = 43381
 
 
 def _lines(files):

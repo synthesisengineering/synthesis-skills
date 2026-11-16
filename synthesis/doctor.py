@@ -923,11 +923,7 @@ def muse_hook_commands(inspect: dict) -> list:
 # through to a different install.
 
 CLIENT_ENV = {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN", "muse": "SYNTHESIS_MUSE_BIN"}
-KNOWN_LOCATIONS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
-    tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
-          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) + (
-    ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",) if h == "claude" else ())
-    for h in HARNESSES}
+KNOWN_LOCATIONS = {h: tuple(f"{d}/{h}" for d in paths.PROGRAM_DIRS) + paths.PROGRAM_PLACES.get(h, ()) for h in HARNESSES}
 
 
 def _expand(candidate: str) -> list:
