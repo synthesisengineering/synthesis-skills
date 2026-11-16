@@ -1468,10 +1468,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # from a variable the line does not set, or an argument the shell fills in). curl's address only 4 (ADDRESSLESS 2 and
 # _mcp_calls 2: a body, a header or an HTTPie field the shell fills in is no address). _line_values 1 (the environment a
 # line gives a program, read with no $ in the line). The blank lines between the two new functions 4.
+# Then 27 more in each, from the ruling's replay (a recorded line running a large program took over a minute, its body's
+# values multiplying through its assignments; and a program's own helper called with a method and a body read as a
+# library's request): _joinings 9 (a body joined from parts is each joining, while there are at most KINDS of them
+# within TEXT_LIMIT), _py_bodies 6 (each name's sources read once, each body expression's kinds counted once, a function
+# of the program's own read where it writes, not where it is called), KINDS 1, HTTP_HINT 3 (with no endpoint named, only
+# a file that may make a request is read), _js_enclosing 3 (every site's brackets in one pass), _js_values 3 and
+# _js_called less 1 (each name and each function read once), _js_bodies 2, _js_kind 1, _js_read less 2, and the blank
+# lines around _joinings 2.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 18164
-PLUGIN_BUDGET = 44236
+CORE_BUDGET = 18191
+PLUGIN_BUDGET = 44263
 
 
 def _lines(files):

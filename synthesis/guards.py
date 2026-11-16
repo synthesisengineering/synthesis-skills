@@ -6784,6 +6784,10 @@ BODY_KEYS = ("data", "json", "body", "content", "files")
 WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 SHELLED = ("system", "popen", "run", "call", "check_output", "check_call", "Popen", "getoutput", "getstatusoutput")
 LOGGED = ("print", "log", "debug", "info", "warning", "warn", "error", "exception", "critical")
+KINDS = 256  # the distinct values a body expression is read as, past which one more is a value the guard cannot read
+HTTP_HINT = re.compile(r"\burlopen\b|\bRequest\b|\b(?:requests|httpx|aiohttp|urllib3|pycurl|socket|axios|got|curl|wget|xh|subprocess|child_process)\b"
+                       r"|http\.client|HTTPConnection|\bfetch\s*\(|\.(?:request|post|put|patch)\s*\(|\b(?:execSync|spawn|spawnSync|execFile)\b"
+                       r"|\bos\s*\.\s*(?:system|popen)\b|['\"](?:POST|PUT|PATCH|DELETE)['\"]", re.I)  # a request a file may make
 CLIENT_LINE = re.compile(r"""[`'"]?\s*(?:\S*/)?(?:curl|wget|https?|xh)(?:\s|$)""")  # a command line that starts an HTTP client
 JS_SITES = re.compile(r"(?<![\w$.])(body|data|json)\s*:(?!:)|[{,]\s*(body|data|json)\s*(?=[,}])|\.\s*(write|end|send)\s*\(|\.\s*(post|put|patch)\s*\(|\.\s*(pipe)\s*\(")
 JS_RUNS = re.compile(r"(?<![\w$])(exec|execSync|spawn|spawnSync|execFile|execFileSync|execa|execaSync)\s*\(")
@@ -6801,6 +6805,17 @@ def _names_mcp(text: str, head: str) -> bool:
     path = any(re.search(r"(?:^|[^\w.-])/mcp(?:/|$|[?#\s])", s) for s in strings)
     return bool(re.search(r"WORKSPACE_MCP_(?:URL|PORT)", text) or any(_mcp_endpoint(w) == "mcp" for s in strings for w in s.split()[:64])
                 or (port or path) and (port and path or any(LOCAL_IN.search(s) for s in strings)))
+
+
+def _joinings(parts: list) -> list:
+    """What a body joined from parts can be: each joining of the parts' texts when every part is text, while there are
+    at most KINDS of them within TEXT_LIMIT in all (else one the guard cannot read); otherwise each part's own kinds."""
+    texts = [[k[1] for k in p] if p and all(isinstance(k, tuple) and k[0] == "text" for k in p) else None for p in parts]
+    if any(t is None for t in texts):
+        return [x for p in parts for x in p]
+    if math.prod(len(t) for t in texts) * max(sum(max(map(len, t)) for t in texts), 1) > TEXT_LIMIT or math.prod(len(t) for t in texts) > KINDS:
+        return [None]
+    return [("text", "".join(c)) for c in itertools.product(*texts)]
 
 
 def _py_bodies(text: str) -> tuple | None:
@@ -6856,18 +6871,19 @@ def _py_bodies(text: str) -> tuple | None:
         if isinstance(e, ast.Call) and named(e.func) == "open" and isinstance(e.func, ast.Attribute) and not e.args:
             return opened(e.func.value, depth + 1)  # Path(name).open()
         if isinstance(e, ast.Call) and named(e.func) in ("open", "Path", "PurePath", "FileIO"):
-            return [("file", files(e.args[0] if e.args else next((k.value for k in e.keywords if k.arg in ("file", "path")), None)))]
+            return [("file", tuple(files(e.args[0] if e.args else next((k.value for k in e.keywords if k.arg in ("file", "path")), None))))]
         if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div):
-            return [("file", files(e))]
+            return [("file", tuple(files(e)))]
         return [x for how, node, _ in binds.get(e.id, ()) for x in (opened(node.value, depth + 1) if how == "assign" else opened(
             node.context_expr, depth + 1) if how == "with" else [None])] or [None] if isinstance(e, ast.Name) else [None]
 
     read: dict = {}  # each expression read once a program; one met again while it is read (a cycle) is unknown
 
-    def kind(e) -> list:
+    def kind(e) -> list:  # each kind once, and at most KINDS of them (past that, one more the guard cannot read)
         if id(e) not in read:
             read[id(e)] = [None]
-            read[id(e)] = reading(e)
+            found = list(dict.fromkeys(reading(e)))
+            read[id(e)] = found if len(found) <= KINDS else found[:KINDS] + [None]
         return read[id(e)]
 
     def reading(e) -> list:
@@ -6887,10 +6903,9 @@ def _py_bodies(text: str) -> tuple | None:
             return kind(e.elt)
         if isinstance(e, (ast.Await, ast.Starred, ast.FormattedValue, ast.NamedExpr)):
             return kind(e.value)
-        if isinstance(e, (ast.IfExp, ast.BoolOp, ast.BinOp, ast.JoinedStr)):  # parts it joins: one text when all are text
+        if isinstance(e, (ast.IfExp, ast.BoolOp, ast.BinOp, ast.JoinedStr)):  # parts it joins: each joining when all are text
             parts = [kind(p) for p in ([e.body, e.orelse] if isinstance(e, ast.IfExp) else [e.left, e.right] if isinstance(e, ast.BinOp) else e.values)]
-            whole = isinstance(e, (ast.BinOp, ast.JoinedStr)) and all(text_of(p) is not None for p in parts)
-            return [("text", "".join(text_of(p) for p in parts))] if whole else [x for p in parts for x in p]
+            return _joinings(parts) if isinstance(e, (ast.BinOp, ast.JoinedStr)) else [x for p in parts for x in p]
         if isinstance(e, ast.Call):
             f, n = e.func, named(e.func)
             if n in ("read", "read_text", "read_bytes", "readlines", "readline", "getvalue") and isinstance(f, ast.Attribute):
@@ -6920,16 +6935,20 @@ def _py_bodies(text: str) -> tuple | None:
             found += opened(node.context_expr) if how == "with" else [None] if given is None else [x for g in given for x in kind(g)]
         return found or [None]
 
-    def sources(e, seen=None) -> set:  # where a value comes from: each environment variable it reads ("?" for one it cannot name), "argv"
-        seen, found, inner = set() if seen is None else seen, set(), [n for n in ast.walk(e)] if isinstance(e, ast.AST) else []
+    by_name: dict = {}  # where each name's values come from, read once a program (a name met again while it is read adds nothing)
+
+    def sources(e) -> set:  # where a value comes from: each environment variable it reads ("?" for one it cannot name), "argv"
+        found, inner = set(), list(ast.walk(e)) if isinstance(e, ast.AST) else []
         for n in inner:
             got = n.slice if isinstance(n, ast.Subscript) and named(n.value) == "environ" else n.args[0] if isinstance(n, ast.Call) and n.args and (
                 named(n.func) == "getenv" or named(n.func) == "get" and named(getattr(n.func, "value", None)) == "environ") else None
             found |= {got.value if isinstance(got, ast.Constant) else "?"} if got is not None else set()
-            found |= {"argv"} if argued(n) else set()
-            for how, node, at in binds.get(n.id, ()) if isinstance(n, ast.Name) and n.id not in seen and not seen.add(n.id) else ():
-                for given in [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, n.id) if how == "param" else []:
-                    found |= sources(given, seen) if isinstance(given, ast.AST) else set()
+            found |= {"argv"} if named(n) == "argv" or isinstance(n, ast.Attribute) and getattr(n.value, "id", None) in parsed else set()
+            if isinstance(n, ast.Name) and n.id not in by_name:
+                by_name[n.id] = set()
+                by_name[n.id] = set().union(*[sources(g) for how, node, at in binds.get(n.id, ()) for g in (
+                    [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, n.id) if how == "param" else []) if isinstance(g, ast.AST)], set())
+            found |= by_name.get(n.id, set()) if isinstance(n, ast.Name) else set()
         return found | ({"?"} if not found and any(named(n) in ("environ", "getenv") for n in inner) else set())
 
     def aims(node, f, n, spots) -> set:  # where a write's address comes from: its URL, host or base URL, or the connection it is made on
@@ -6962,10 +6981,12 @@ def _py_bodies(text: str) -> tuple | None:
             marked = True
         elif isinstance(node, ast.Call) and named(node.func) not in LOGGED:
             f, n = node.func, named(node.func)
-            attr, given = isinstance(f, ast.Attribute), [k.value for k in node.keywords if k.arg in BODY_KEYS]
-            spots = [i for i, a in enumerate(node.args) if str(_constant(a, binds, changed)).upper() in WRITE_METHODS]
+            attr = isinstance(f, ast.Attribute)
+            mine = n in defs and (not attr or named(f.value) in ("self", "cls"))  # a function of the program's own is read where it writes
+            given = [] if mine else [k.value for k in node.keywords if k.arg in BODY_KEYS]
+            spots = [] if mine else [i for i, a in enumerate(node.args) if str(_constant(a, binds, changed)).upper() in WRITE_METHODS]
             request = n in ("request", "Request", "putrequest", "build_request", "stream", "urlopen")
-            if not (n in defs and not attr):  # a library's request call; a function of the program's own is read where it writes
+            if not mine:  # a library's request call
                 given += (node.args[1:2] if n in ("urlopen", "Request") or (attr and n == "open") else node.args[1:3] if attr and n in ("post", "put", "patch")
                           else node.args[spots[0] + 2:spots[0] + 3] if n == "request" and spots else node.args[:1] if attr and n in (
                               "send", "sendall", "endheaders") and low else [])
@@ -7027,21 +7048,23 @@ def _js_props(expr: str) -> dict | None:
 
 def _js_called(name: str, text: str) -> list:
     """For each function a JavaScript program defines with `name` among its parameters: (its parameters, the arguments
-    each call of it hands over), a definition's own name being no call."""
-    out = []
-    for m in JS_FUNCS.finditer(text):
-        fn, params = next((m[g], m[g + 1]) for g in (1, 3, 5) if m[g])
-        given = [p.split("=")[0].strip() for p in params.split(",")]
-        out += [(given, [_js_parts(text[c.end():_js_scan(text, c.end(), "")], ",") for c in re.finditer(rf"(?<![\w$]){re.escape(fn)}\s*\(", text)
-                         if not m.start() <= c.start() < m.end()])] if name in given else []
-    return out
+    each call of it hands over), a definition's own name being no call. The program's functions are found once a call."""
+    known = _CALL.setdefault("jsf", {})
+    if id(text) not in known:  # each function's name, parameters and place
+        known[id(text)] = [(next(m[g] for g in (1, 3, 5) if m[g]), [p.split("=")[0].strip() for p in next(m[g + 1] for g in (1, 3, 5) if m[g]).split(",")],
+                            m.start(), m.end()) for m in JS_FUNCS.finditer(text)]
+    return [(given, [_js_parts(text[c.end():_js_scan(text, c.end(), "")], ",") for c in re.finditer(rf"(?<![\w$]){re.escape(fn)}\s*\(", text)
+                     if not start <= c.start() < end]) for fn, given, start, end in known[id(text)] if name in given]
 
 
 def _js_values(name: str, text: str) -> list:
     """The expressions a JavaScript name stands for: what each declaration or assignment gives it, and for a function's
-    parameter what each call hands it there."""
-    found = [_js_expr(text, m.end()) for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*=(?![=>])", text)]
-    return found + [args[given.index(name)] for given, calls in _js_called(name, text) for args in calls if len(args) > given.index(name)]
+    parameter what each call hands it there; read once a call."""
+    known = _CALL.setdefault("jsv", {})
+    if (name, id(text)) not in known:
+        found = [_js_expr(text, m.end()) for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*=(?![=>])", text)]
+        known[(name, id(text))] = found + [args[given.index(name)] for given, calls in _js_called(name, text) for args in calls if len(args) > given.index(name)]
+    return known[(name, id(text))]
 
 
 def _js_pairs(method: str, params: str, text: str) -> list:
@@ -7077,7 +7100,8 @@ def _js_kind(expr: str, text: str) -> list:
     seen = _CALL.setdefault("js", {})
     if expr not in seen:
         seen[expr] = [None]
-        seen[expr] = _js_read(expr, text)
+        found = list(dict.fromkeys(_js_read(expr, text)))
+        seen[expr] = found if len(found) <= KINDS else found[:KINDS] + [None]
     return seen[expr]
 
 
@@ -7091,16 +7115,14 @@ def _js_read(expr: str, text: str) -> list:
         return [None] if e[0] == "`" and "${" in e else [("text", _unquoted(e))]
     parts = _js_parts(e, "+")
     if len(parts) > 1:
-        kinds = [_js_kind(p, text) for p in parts]
-        whole = all(len(k) == 1 and isinstance(k[0], tuple) and k[0][0] == "text" for k in kinds)
-        return [("text", "".join(k[0][1] for k in kinds))] if whole else [x for k in kinds for x in k]
+        return _joinings([_js_kind(p, text) for p in parts])
     inside = re.fullmatch(r"(?:JSON\s*\.\s*(?:stringify|parse)|Buffer\s*\.\s*from|String|new\s+TextEncoder\s*\(\s*\)\s*\.\s*encode)\s*\(([\s\S]*)\)", e) or (
         re.fullmatch(r"([\s\S]+?)\s*\.\s*(?:toString|trim|valueOf)\s*\(\s*\)", e))
     if inside:
         return _js_kind(_js_parts(inside[1], ",")[0], text)
     read = re.match(r"(?:(?:[\w$]+|require\s*\([^()]*\))\s*\.\s*)*(?:readFileSync|readFile|createReadStream)\s*\(", e)
     if read:
-        return [("file", _js_files(_js_parts(e[read.end():_js_scan(e, read.end(), "")], ",")[0], text))]
+        return [("file", tuple(_js_files(_js_parts(e[read.end():_js_scan(e, read.end(), "")], ",")[0], text)))]
     if re.fullmatch(r"process\s*\.\s*stdin", e):
         return ["stdin"]
     if re.match(r"process\s*\.\s*argv\b", e):
@@ -7140,16 +7162,19 @@ def _js_sources(expr: str, text: str, depth: int = 0) -> set:
     return seen[(expr, depth)]
 
 
-def _js_enclosing(masked: str, at: int) -> tuple:
-    """(where the innermost call's bracket opens, where the innermost object's opens) around a place in a program's text
-    with its strings and comments blanked."""
-    stack: list = []
-    for i, c in enumerate(masked[:at]):
-        if c in "([{":
-            stack.append(i)
-        elif c in ")]}" and stack:
-            stack.pop()
-    return next((i for i in reversed(stack) if masked[i] == "("), None), next((i for i in reversed(stack) if masked[i] == "{"), None)
+def _js_enclosing(masked: str, places: list) -> list:
+    """For each place, in order, in a program's text with its strings and comments blanked: (where the innermost call's
+    bracket opens, where the innermost object's opens), read in one pass."""
+    stack, out, i = [], [], 0
+    for at in places:
+        while i < at:
+            if masked[i] in "([{":
+                stack.append(i)
+            elif masked[i] in ")]}" and stack:
+                stack.pop()
+            i += 1
+        out.append((next((s for s in reversed(stack) if masked[s] == "("), None), next((s for s in reversed(stack) if masked[s] == "{"), None)))
+    return out
 
 
 def _js_bodies(text: str) -> tuple:
@@ -7158,11 +7183,13 @@ def _js_bodies(text: str) -> tuple:
     _py_bodies reads Python's: a request's body, data or json; what .write(), .end() or .send() hands a request; the body
     of a .post(), .put() or .patch(); what it pipes into a request; a client it runs. A write method no write found here
     takes waits."""
-    _CALL.update(js={}, jss={})  # what _js_kind and _js_sources have read of this program
+    _CALL.update(js={}, jss={}, jsv={}, jsf={})  # what this program's readers have read of it
     masked = re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", lambda m: " " * len(m[0]), PROGRAM_STRINGS.sub(lambda m: m[0][:1] + " " * max(len(m[0]) - 2, 0) + m[0][-1:], text))
     streams = set(re.findall(r"([\w$]+)\s*=\s*(?:fs\s*\.\s*)?createWriteStream\s*\(", masked)) | {"process.stdout", "process.stderr", "console"}
     bodies, lines, wrote, aimed = [], [], False, []
-    for m in JS_SITES.finditer(masked):
+    sites = list(JS_SITES.finditer(masked))
+    around = dict(zip([m.start() for m in sites], _js_enclosing(masked, [m.start() for m in sites])))
+    for m in sites:
         key, short, verb, post, pipe = m.groups()
         args = _js_parts(text[m.end():_js_scan(text, m.end(), "")], ",") if verb or post or pipe else []
         receiver = re.search(r"([\w$.]+)\s*$", masked[:m.start()])
@@ -7171,11 +7198,11 @@ def _js_bodies(text: str) -> tuple:
         wrote = True
         if pipe:
             source = re.search(r"(?:createReadStream\s*\(([^()]*)\)|process\s*\.\s*(stdin))\s*$", text[:m.start()])
-            handed = [("file", _js_files(source[1], text))] if source and source[1] else ["stdin"] if source else [None]
+            handed = [("file", tuple(_js_files(source[1], text)))] if source and source[1] else ["stdin"] if source else [None]
         else:
             handed = _js_kind(_js_expr(text, m.end()) if key else short or (args[0] if verb else args[1] if len(args) > 1 else ""), text)
         if key or short:  # its address: the call the options go to, or their url, host or baseURL
-            paren, brace = _js_enclosing(masked, m.start())
+            paren, brace = around[m.start()]
             given = [a for a in _js_parts(text[paren + 1:_js_scan(text, paren + 1, "")], ",")[:1] if a[:1] != "{"] if paren is not None else []
             shape = _js_props(text[brace:_js_scan(text, brace + 1, "") + 1]) if brace is not None else None
             given += [shape[k] for k in ("url", "host", "hostname", "baseURL") if shape and k in shape]
@@ -7213,7 +7240,7 @@ def _posted_bodies(files: list, head: str, where: str, path: str, args, feed: st
         s not in values or any(_mcp_endpoint(v) == "mcp" for v in values[s])) for s in srcs)
     how = f"`{head}` posting a body it reads or builds to " + ("a local MCP server" if named else "an address the environment gives")
     calls, bodies, lines = [], [], []
-    for _, text in files:
+    for _, text in files if named else [(f, t) for f, t in files if HTTP_HINT.search(t)]:  # a file with no request in it posts nothing
         try:
             found = _py_bodies(text) if head.startswith("python") else _js_bodies(text) if re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node)$", head) else None
         except RecursionError:  # nested past what the reader follows: a body it cannot read

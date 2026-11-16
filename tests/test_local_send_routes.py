@@ -898,3 +898,18 @@ def test_only_an_address_the_shell_fills_in_counts_as_one_a_body_or_header_does_
         assert "local MCP server" not in shell(line, cwd=str(tmp_path)), line
     for line in ('curl -s -X POST "$SERVICE_URL/items" -d "$BODY"', 'curl -s -X POST --url "$SERVICE_URL" -d "$BODY"'):
         assert "local MCP server" in shell(line, cwd=str(tmp_path)), line
+
+
+def test_a_program_whose_values_multiply_is_read_quickly_and_waits_past_what_it_counts(tmp_path):
+    """From the ruling's replay: a recorded program whose body names multiplied through its assignments took over a
+    minute; each value is now counted once, at most KINDS of them, and a string past the text limit is one it cannot
+    read."""
+    import time
+    branching = "import os, urllib.request as u\nc = os.environ.get('C')\nn0 = 'a'\n" + "".join(
+        f"n{i} = n{i - 1} + 'x' if c else n{i - 1} + 'y'\n" for i in range(1, 41)) + "u.urlopen(os.environ['MCP_URL'], data=n40.encode())\n"
+    doubling = "import os, urllib.request as u\nn0 = 'ab'\n" + "".join(f"n{i} = n{i - 1} + n{i - 1}\n" for i in range(1, 41)) + \
+        "u.urlopen(os.environ['MCP_URL'], data=n40.encode())\n"
+    for program in (branching, doubling):
+        began = time.monotonic()
+        assert held(shell("python3 - <<'EOF'\n" + program + "EOF", cwd=str(tmp_path)))
+        assert time.monotonic() - began < 5
