@@ -6337,9 +6337,11 @@ def shell_command(tool_input: dict) -> str:
 # Codex's code-mode tool `exec` runs JavaScript in a V8 isolate with no file system, network or process of its own; each
 # tool its script calls on the global `tools` object reaches this hook as a call of its own (2026-11-15: in 60 days of
 # records, 792 script results held a hook's refusal, each of a nested call). The script's signs: the grammar's first-line
-# pragma, a call on `tools`, or one of its own helpers.
-CODE_MODE_SIGN = re.compile(r"\A\s*//\s*@exec:|\btools\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]\n]+\])\s*\(|\bALL_TOOLS\b"
-                            r"|\b(?:text|image|audio|generatedImage|store|load|notify|exit|yield_control)\s*\(")
+# pragma, a call on the global `tools`, or one of its global helpers, each working inside Codex by the tool's own
+# description: on the script's result (text, image, audio, generatedImage, notify, yield_control; a remote media URL is
+# refused), its session's store (store, load) or its run (exit). None reaches a person, a service, a file or a process.
+CODE_MODE_SIGN = re.compile(r"\A\s*//\s*@exec:|(?<![.\w$])tools\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]\n]+\])\s*\(|(?<![.\w$])ALL_TOOLS\b"
+                            r"|(?<![.\w$])(?:text|image|audio|generatedImage|store|load|notify|exit|yield_control)\s*\(")
 
 
 def code_mode_script(tool: str, tool_input, session: dict | None = None) -> bool:

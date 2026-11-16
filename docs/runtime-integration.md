@@ -607,7 +607,11 @@ as one; Codex's records show hooks refusing such nested calls inside the scripts
 
 - **The script passes on purpose** and is never read as a shell line. A bare string, or a
   script under `input` or `code`, is known by its signs: the grammar's first-line
-  `// @exec:` pragma, a call on `tools`, or one of the script's helpers such as `text(`. No
+  `// @exec:` pragma, a call on the global `tools`, or one of the script's global helpers
+  such as `text(` (never a member of another object, such as `process.exit(`). Each helper
+  counted works inside Codex, by the tool's own description: on the script's result
+  (`text`, `image`, `audio`, `generatedImage`, `notify`, `yield_control`; Codex refuses a
+  remote media URL), its session's store (`store`, `load`) or its run (`exit`). No
   shell tool sends those shapes. Under `command`, where a shell's command line also
   arrives, the text is a script only when Codex's own record of this very call (the
   payload's `tool_use_id`, in the rollout `transcript_path` names, inside Codex's sessions

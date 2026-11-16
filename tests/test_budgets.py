@@ -1380,10 +1380,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # and _tag 12, each with 1 blank line (the files a script's nested patches and commands wrote, read from Codex's
 # item_completed events; the tagging moved out of wrote), _codex 5 more (a script's call marked; the events read),
 # __init__ 1 more (this reading's call and script ids), wrote 2 fewer (its loop moved into _tag; a script never read).
+# Then each 16 more, from review round 1 of 22.33. doctor.py 14: _lstat 5 with 2 blank lines and _nested_proof 5 more (only
+# a regular file is read, opened without blocking or following a link, its first line within a bound), NESTED_FIRST 1 and
+# check_codex_nested_hooks 1 more (each listed file's lstat). guards.py 2: CODE_MODE_SIGN's note 2 more (what each helper
+# does, by Codex's own description of the tool).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17040
-PLUGIN_BUDGET = 43112
+CORE_BUDGET = 17056
+PLUGIN_BUDGET = 43128
 
 
 def _lines(files):

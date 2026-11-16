@@ -443,14 +443,27 @@ def check_codex_hooks_file(codex_home: Path) -> Check | None:
 # A Codex rollout passed 1.8 GB on 2026-11-15, so each is read as its first line and its last 16 MB; the newest 120 tails
 # came to 219 MB, and the newest one already held a refusal.
 NESTED_FILES, NESTED_TAIL, NESTED_READ, NESTED_DAYS = 120, 16 << 20, 128 << 20, 30
+NESTED_FIRST = 1 << 20  # a first line, its session record, was 19.6 to 23.2 KB in the newest 60 (2026-11-15)
 HOOK_REFUSAL = re.compile(r"(?:Command|Tool call) blocked by PreToolUse hook: ")  # codex-rs hook_runtime.rs's words
+
+
+def _lstat(path: Path):
+    try:
+        return path.lstat()
+    except OSError:
+        return None  # gone since it was listed
 
 
 def _nested_proof(path: Path, tail: int) -> tuple:
     """(Codex's version, whether a code-mode script was called, the time of the newest hook refusal in such a script's
-    result or '', bytes read) for one rollout, from its first line and its last `tail` bytes."""
-    with open(path, "rb") as handle:
-        first, size = handle.readline(), os.fstat(handle.fileno()).st_size
+    result or '', bytes read) for one rollout, from its first line (within NESTED_FIRST) and its last `tail` bytes. It is
+    opened without blocking and without following a link, and read only if it is a regular file, so a FIFO or a link
+    put in its place since it was listed never holds the doctor (review round 1 of 22.33)."""
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)), "rb") as handle:
+        state = os.fstat(handle.fileno())
+        if not stat.S_ISREG(state.st_mode):
+            return "", False, "", 0
+        first, size = handle.readline(NESTED_FIRST), state.st_size
         start = max(len(first), size - tail)
         handle.seek(start)
         lines = handle.read().split(b"\n")[1 if start > len(first) else 0:]  # a line cut by the seek is not read
@@ -477,9 +490,10 @@ def check_codex_nested_hooks(codex_home: Path, files: int = NESTED_FILES, now: f
     name = "codex nested hooks"
     root, now = Path(codex_home) / "sessions", now or time.time()
     try:
-        found = sorted(((p.stat().st_mtime, p) for p in root.rglob("rollout-*.jsonl")), reverse=True) if root.is_dir() else []
+        listed = list(root.rglob("rollout-*.jsonl")) if root.is_dir() else []
     except OSError as exc:
         return Check("warn", name, f"Codex's records could not be listed ({exc}): that nested calls reach the hook is unproven")
+    found = sorted(((s.st_mtime, p) for p, s in ((p, _lstat(p)) for p in listed) if s and stat.S_ISREG(s.st_mode)), reverse=True)
     read, scanned, newest, proof = 0, 0, "", None
     for mtime, path in found[:files]:
         if mtime < now - NESTED_DAYS * 86400 or read >= NESTED_READ:

@@ -16,7 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   by its signs (the first-line pragma, a call on `tools`, a script helper); under `command`, where a shell's command line
   also arrives, only when Codex's record of that very call (its `tool_use_id`, in Codex's own sessions folder) shows its
   `exec` tool with that text, since a command line can be written to look like a script. A command line under the name
-  `exec` is still judged as one, and so now are a bare string and text under `input` or `code` that are no script.
+  `exec` is still judged as one, and so now are a bare string and text under `input` or `code` that are no script. A sign
+  is a call of the script's own global (`tools`, or a helper such as `text(`), never a member of another object such as
+  `process.exit(`, and each helper counted works inside Codex by the tool's own description: on the script's result
+  (`text`, `image`, `audio`, `generatedImage`, `notify`, `yield_control`; a remote media URL is refused), its session's
+  store (`store`, `load`) or its run (`exit`).
 - **The browser page tracker reads the browser calls a code-mode script makes.** Codex records them only as
   `item_completed` events, and the guard's reader of its records read only call records, so a step after a navigate
   made inside a script judged its page as unknown. It now reads those events, under the name Codex's hook gives the tool
@@ -34,7 +38,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   files and 128 MB from 30 days, newest first; one record had passed 1.8 GB), a hook's refusal in an `exec` script's
   result, which only a hook run on a nested call makes. Codex offers no dry probe. The line names the Codex version and
   the date it proves, and warns, never fails, when it finds no refusal inside a script, or only one from an older Codex
-  than the newest to run a script.
+  than the newest to run a script. It reads only a regular file, opened without blocking or following a link, and a first
+  line within 1 MB, so a FIFO named as a rollout, which held it until a writer came, or a line with no end never holds it.
 
 ## [5.23.1] - 2026-11-15
 
