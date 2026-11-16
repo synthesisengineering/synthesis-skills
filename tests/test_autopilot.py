@@ -210,7 +210,12 @@ def test_binding_rule_14_stops_the_run_on_its_count_and_the_plan_file_page_says_
         assert words in template, words
     section = " ".join(doc.split("\n## Origins and the count\n")[1].split("\n## ")[0].split())
     for words in ("`origin: principal`", "`origin: self`", "`added <time>`", "`closed <time>`", "last 24 hours",
-                  "two days running", "`Principal answer:`", "counts nothing", "says so once"):
+                  "two days running", "`Principal answer:`", "counts nothing", "says so once",
+                  # review round 1: a run adopting origins, and the answer line
+                  "A run that adopts origins mid-run tags every item", "closed in the last 24 hours",
+                  "the first word of the quote", "dated after the count blocker's alert",
+                  "never written from the agent's own judgement", "a checkpoint the principal reserved",
+                  "the day before yesterday, yesterday and today", "more than five minutes ahead"):
         assert words in section, words
 
 
@@ -409,15 +414,21 @@ def test_9_a_cycle_that_advanced_nothing_must_name_its_wait(tmp_path, capsys):
 # over a day, the run adds more of its own items than it closes of the principal's, or the principal's open items
 # rise two days running, it starts nothing new and asks the principal one line: continue, narrow, or stop.
 
-def tagged(tmp_path, *, closed=(), added=(), still_open=1, answer=None, days=(), header=None):
+ASKED = "migrate endpoints: the count's one line. Continue, narrow, or stop?"  # as a run records it under ## Blockers
+
+
+def tagged(tmp_path, *, closed=(), added=(), still_open=1, answer=None, asked=None, days=(), header=None):
     """A plan whose items carry their origin: the principal's items closed `closed` minutes ago, the run's own items
-    added `added` minutes ago and still open, `still_open` of the principal's items open, and the open principal items
-    counted on the days before today, oldest first, as `days`."""
+    added `added` minutes ago and still open, `still_open` of the principal's items open, the count's question under
+    ## Blockers alerted `asked` minutes ago, the principal's `answer` line, and the open principal items counted on the
+    days before today, oldest first, as `days`."""
     items = [f"- [x] {n}. Ship part {n} (origin: principal, closed {ago(m)}) — its tests pass" for n, m in enumerate(closed, 1)]
     items += [f"- [ ] {len(items) + n}. Close what review round {n} found (origin: self, added {ago(m)})"
               for n, m in enumerate(added, 1)]
     items += [f"- [ ] {len(items) + n}. Ship part {len(items) + n} (origin: principal)" for n in range(1, still_open + 1)]
-    path = write_plan(tmp_path, checklist=items, header={**(header or {}), **({"Principal answer": answer} if answer else {})})
+    blockers = (f"- [ ] {ASKED} — alerted {ago(asked)} (banner posted)",) if asked is not None else ()
+    path = write_plan(tmp_path, checklist=items, blockers=blockers,
+                      header={**(header or {}), **({"Principal answer": answer} if answer else {})})
     if days:
         lines = [f"- {(date.today() - timedelta(days=len(days) - i)).isoformat()}: {n} open principal item(s)"
                  for i, n in enumerate(days)]
@@ -426,13 +437,24 @@ def tagged(tmp_path, *, closed=(), added=(), still_open=1, answer=None, days=(),
     return path
 
 
+def reply(minutes, words="continue", where="chat") -> str:
+    """The principal's answer line as a run records it: their reply in quotes, where they gave it, and when."""
+    return f'"{words}" — {where}, {ago(minutes)}'
+
+
+def release(path, words="continue"):
+    """The count's question asked and alerted five minutes ago, the principal's reply a minute ago, the blocker checked."""
+    edit(path, "## Blockers\n", f"## Blockers\n\n- [x] {ASKED} — alerted {ago(5)} (banner posted) — {words}\n")
+    edit(path, "Status: running", f"Status: running\nPrincipal answer: {reply(1, words)}")
+
+
 def advance(path, what="closed the next part") -> int:
     return run("--session", "S1", "cycle", "--plan", path, "--advanced", what)
 
 
 def test_cycle_refuses_an_advance_once_the_runs_own_items_outnumber_the_principals_closed_over_24_hours(tmp_path, capsys):
-    """The advance is not recorded, and cycle prints the one line to bring the principal. A wait is still recorded,
-    with the line still to ask."""
+    """The advance is not recorded, and cycle prints the one line to bring the principal. A wait is still recorded, and
+    its first line says the run starts nothing new until the principal answers (review round 1, finding 1)."""
     path = tagged(tmp_path, closed=(90,), added=(60, 30))
     engage("S1", path)
     capsys.readouterr()
@@ -440,20 +462,31 @@ def test_cycle_refuses_an_advance_once_the_runs_own_items_outnumber_the_principa
     err = capsys.readouterr().err
     assert ("migrate endpoints: in the last 24 hours this run added 2 item(s) of its own and closed 1 of yours. "
             "Continue, narrow, or stop?") in err
-    assert "Start nothing new" in err and "Principal answer:" in err and "## Blockers" in err
+    assert "Start nothing new until the principal answers" in err and "Principal answer:" in err and "## Blockers" in err
     assert "re-reviewed the fix" not in path.read_text(encoding="utf-8")
     assert run("--session", "S1", "cycle", "--plan", path, "--waiting-on", "the principal's answer") == 0
-    assert "Continue, narrow, or stop?" in capsys.readouterr().out
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "the count stops this run: start nothing new until the principal answers. The one line:"
+    assert out[1].endswith("Continue, narrow, or stop?") and out[2].startswith("cycle recorded (")
     assert "waiting on: the principal's answer" in path.read_text(encoding="utf-8")
 
 
-def test_a_continue_or_narrow_answer_dated_inside_the_window_lets_the_run_go_on_and_nothing_else_does(tmp_path):
-    """The principal's answer is one dated line the template names. Continue lets the run go on; so does narrow, once
-    the plan is narrowed as they said. An answer older than the window's start, a stop, or one with no time does not."""
-    cases = ((f"continue {ago(30)}", 0), (f"narrow {ago(30)}", 0), (f"continue {ago(25 * 60)}", 1),
-             (f"stop {ago(30)}", 1), ("continue", 1))
-    for i, (answer, refused) in enumerate(cases):
-        path = tagged(tmp_path / str(i), closed=(90,), added=(60, 30), answer=answer)
+def test_only_the_principals_own_reply_quoted_and_dated_after_the_count_blockers_alert_lets_the_run_go_on(tmp_path):
+    """Review round 1: any dated "continue" released the run, one the agent wrote itself before any stop included, and
+    the keyword was read anywhere on the line. The line now carries the principal's reply in quotes and where they gave
+    it; only the quote's first word is read, continue or narrow; and it counts only when dated after the count
+    blocker's alert, inside the last 24 hours, and not in the future."""
+    cases = ((reply(30), 40, 0), (reply(30, "Narrow: drop the re-reviews, keep the fix"), 40, 0),
+             (reply(30, "continue", "a direct message"), 40, 0),
+             (reply(25 * 60), 26 * 60, 1),                   # older than the window
+             (reply(30, "stop"), 40, 1), (reply(30, "Don't continue; stop here"), 40, 1),  # the first word, not any word
+             (f"continue {ago(30)}", 40, 1),                 # not quoted
+             (f'"continue", {ago(30)}', 40, 1),               # not where it was given
+             (reply(30), None, 1),                           # no alert: written before any stop
+             (reply(30), 20, 1),                             # dated before the alert
+             (reply(-60), 40, 1))                            # dated in the future
+    for i, (answer, asked, refused) in enumerate(cases):
+        path = tagged(tmp_path / str(i), closed=(90,), added=(60, 30), answer=answer, asked=asked)
         engage("S1", path)
         assert advance(path) == refused, answer
         assert ("advanced: closed the next part" in path.read_text(encoding="utf-8")) == (not refused), answer
@@ -490,13 +523,24 @@ def test_the_open_principal_items_are_written_at_each_days_first_wake_and_two_ri
             in capsys.readouterr().err)
     today = f"- {date.today().isoformat()}: 4 open principal item(s)"
     assert autopilot.load(path).sections["backlog count"].count(today) == 1  # written at the day's first wake, refused or not
-    edit(path, "Status: running", f"Status: running\nPrincipal answer: continue {ago(1)}")
+    release(path)
     assert advance(path) == 0 and advance(path, "closed another part") == 0
     assert autopilot.load(path).sections["backlog count"].count(today) == 1  # once a day
     for i, (days, still_open) in enumerate((((3, 2), 4), ((2, 3), 3), ((2,), 3))):  # a fall, a level day, one day only
         path = tagged(tmp_path / str(i), still_open=still_open, days=days)
         engage("S1", path)
         assert advance(path) == 0, days
+
+
+def test_two_days_running_means_the_day_before_yesterday_yesterday_and_today(tmp_path):
+    """Review round 1: the last three counts were compared whatever their dates. Counts thirty and ten days ago and
+    today's higher each time are not two days running."""
+    path = tagged(tmp_path, still_open=3)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("\n## Backlog count\n\n" + "".join(f"- {(date.today() - timedelta(days=back)).isoformat()}: {n} "
+                                                         f"open principal item(s)\n" for back, n in ((30, 1), (10, 2))))
+    engage("S1", path)
+    assert advance(path) == 0
 
 
 def test_both_reasons_go_in_the_one_line(tmp_path, capsys):
@@ -508,36 +552,88 @@ def test_both_reasons_go_in_the_one_line(tmp_path, capsys):
             "this run rose two days running (2, 3, 4). Continue, narrow, or stop?") in capsys.readouterr().err
 
 
+def test_a_plan_adopting_origins_mid_run_is_told_which_items_the_count_could_not_read(tmp_path, capsys):
+    """Review round 1, finding 2: five of the principal's items closed before the plan took up origins, then one item of
+    the run's own was tagged, and the line said "closed 0 of yours". It now names the items the count could not read."""
+    items = [f"- [x] {n}. Legacy part {n} — shipped" for n in range(1, 6)]
+    items += [f"- [ ] 6. Close what the review found (origin: self, added {ago(30)})", "- [ ] 7. Ship part 7 (origin: principal)"]
+    path = write_plan(tmp_path, checklist=items)
+    engage("S1", path)
+    capsys.readouterr()
+    assert advance(path) == 1
+    assert ("migrate endpoints: in the last 24 hours this run added 1 item(s) of its own and closed 0 of yours, and it "
+            "could not read the origin or time of item(s) 1, 2, 3, 4, 5. Continue, narrow, or stop?"
+            in capsys.readouterr().err)
+
+
 def test_a_plan_without_origins_counts_nothing_and_says_so_once(tmp_path, capsys):
     """A plan written before origins: every item is unknown, nothing is counted, nothing stops the run, and cycle says
-    so once, and again only when more such items appear."""
+    so once for the plan, however many items it gains."""
     path = write_plan(tmp_path)
     engage("S1", path)
     capsys.readouterr()
     assert advance(path, "migrated /orders") == 0
     out = capsys.readouterr().out
-    assert out.count("the count leaves out 3 checklist item(s)") == 1 and "last 24 hours" not in out
+    assert out.count("no checklist item carries an origin, so the count counts nothing") == 1 and "last 24 hours" not in out
     assert advance(path, "updated their tests") == 0
-    assert "leaves out" not in capsys.readouterr().out
+    assert "origin" not in capsys.readouterr().out
     plan = autopilot.load(path)
     assert "backlog count" not in plan.sections
-    assert [line for line in plan.sections["cycle ledger"] if "the count leaves out 3 item(s)" in line] != []
+    assert [line for line in plan.sections["cycle ledger"] if "no origins: the count counts nothing" in line] != []
     assert "Continue with the next one now: 2. Migrate /orders (1 more open after it)" in stop("S1")
     edit(path, "- [ ] 3. Update their tests", "- [ ] 3. Update their tests\n- [ ] 4. Tidy the fixtures")
-    assert advance(path, "tidied") == 0
-    assert "the count leaves out 4 checklist item(s)" in capsys.readouterr().out
+    assert advance(path, "tidied") == 0 and "origin" not in capsys.readouterr().out
+
+
+def test_the_note_of_items_the_count_could_not_read_is_told_once_for_each_item(tmp_path, capsys):
+    """Review round 1: the note compared numbers, so a plan once told about five items heard nothing of three new ones
+    it could not read. A plan that counts is told of each item once."""
+    legacy = "\n".join(f"- [ ] {n}. legacy item" for n in range(1, 6))
+    path = write_plan(tmp_path, checklist=legacy.splitlines())
+    engage("S1", path)
+    assert advance(path) == 0
+    edit(path, legacy, "\n".join([f"- [x] 1. legacy item (origin: principal, closed {ago(30)}) — done"]
+                                 + [f"- [ ] {n}. legacy item (origin: principal)" for n in range(2, 6)]))
+    capsys.readouterr()
+    assert advance(path) == 0 and "could not read" not in capsys.readouterr().out
+    edit(path, "- [ ] 5. legacy item (origin: principal)", "- [ ] 5. legacy item (origin: principal)\n"
+         + "\n".join(f"- [ ] {n}. fix (origin: self)" for n in (6, 7, 8)))
+    assert advance(path) == 0
+    assert "the count could not read the origin or time of item(s) 6, 7, 8" in capsys.readouterr().out
+    assert advance(path) == 0 and "could not read" not in capsys.readouterr().out
 
 
 def test_an_item_the_count_cannot_place_is_left_out_and_said(tmp_path, capsys):
     """An item of the principal's checked with no close time, or one of the run's own with no added time, is left
-    out like an item with no origin."""
+    out like an item with no origin, and named."""
     path = tagged(tmp_path, closed=(90,), added=(60,))
     edit(path, "(origin: self, added", "(origin: self, found")
     edit(path, "- [ ] 3. Ship part 3 (origin: principal)", "- [x] 3. Ship part 3 (origin: principal) — shipped")
     engage("S1", path)
     capsys.readouterr()
     assert advance(path) == 0
-    assert "the count leaves out 2 checklist item(s)" in capsys.readouterr().out
+    assert "the count could not read the origin or time of item(s) 2, 3" in capsys.readouterr().out
+
+
+def test_a_time_in_the_future_or_one_that_cannot_be_read_is_rejected_visibly_and_never_switches_the_check_off(tmp_path, capsys):
+    """Review round 1: an item of the run's own stamped in UTC with no Z read as local time, in the future, and was not
+    counted, unseen; a close stamped near the year 9999 made cycle raise and switched the turn-end check off. A time
+    more than five minutes ahead, or one that cannot be read, is rejected and named: an item of the run's own counts as
+    added now, one of the principal's does not count as closed, and both checks keep working."""
+    items = ["- [x] 1. Ship part 1 (origin: principal, closed 9999-12-31T23:59-05:00) — shipped",
+             f"- [ ] 2. Close what the review found (origin: self, added {ago(-120)})", "- [ ] 3. Ship part 3 (origin: principal)"]
+    path = write_plan(tmp_path, checklist=items)
+    engage("S1", path)
+    counted = autopilot.tally(autopilot.load(path))
+    assert (counted["principal"], counted["self"], counted["unplaced"], counted["stop"]) == (0, 1, ["1", "2"], True)
+    assert "start nothing new until the principal answers" in stop("S1")
+    capsys.readouterr()
+    assert advance(path) == 1
+    assert ("added 1 item(s) of its own and closed 0 of yours, and it could not read the origin or time of item(s) 1, 2. "
+            "Continue, narrow, or stop?") in capsys.readouterr().err
+    edit(path, "- [x] 1. Ship part 1 (origin: principal, closed 9999-12-31T23:59-05:00)",
+         "- [x] 1. Ship part 1 (origin: principal, closed 2026-13-45T99:99)")
+    assert autopilot.tally(autopilot.load(path))["unplaced"] == ["1", "2"] and stop("S1") is not None
 
 
 def test_the_documented_cycle_output_is_what_cycle_prints(tmp_path, capsys):
@@ -556,7 +652,7 @@ def test_the_documented_cycle_output_is_what_cycle_prints(tmp_path, capsys):
     assert advance(path, "re-reviewed the guard fix") == 1
     stamp = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}[+-]\d{2}:\d{2}")
     assert stamp.sub("<time>", capsys.readouterr().err).splitlines() == [stamp.sub("<time>", line) for line in blocks[1]]
-    edit(path, "Status: running", f"Status: running\nPrincipal answer: continue {ago(1)}")
+    release(path, "Continue.")
     assert advance(path, "re-reviewed the guard fix") == 0
     assert capsys.readouterr().out.splitlines() == blocks[2]
 
@@ -565,17 +661,67 @@ def test_the_turn_end_check_asks_the_run_to_stop_and_bring_the_one_line_rather_t
     path = tagged(tmp_path, closed=(90,), added=(60, 30))
     engage("S1", path)
     reason = stop("S1")
-    assert "start nothing new" in reason and "Continue, narrow, or stop?" in reason and "Principal answer:" in reason
-    assert "Continue with the next one now" not in reason
-    edit(path, "Status: running", f"Status: running\nPrincipal answer: continue {ago(1)}")
+    assert "start nothing new until the principal answers" in reason and "Continue, narrow, or stop?" in reason
+    assert "Principal answer:" in reason and "Continue with the next one now" not in reason
+    release(path)
     assert "Continue with the next one now: 2. Close what review round 1 found" in stop("S1")
-    blocked = tagged(tmp_path / "blocked", closed=(90,), added=(60, 30), header={"Status": "blocked"})
-    edit(blocked, "## Blockers\n", "## Blockers\n\n- [ ] Continue, narrow, or stop? — alerted 2026-11-16T10:00 (banner posted)\n")
+    blocked = tagged(tmp_path / "blocked", closed=(90,), added=(60, 30), asked=1, header={"Status": "blocked"})
     engage("S2", blocked)
     assert stop("S2") is None
     rising = tagged(tmp_path / "rising", still_open=4, days=(2, 3))
     engage("S3", rising)
     assert "rose two days running (2, 3, 4)" in stop("S3")
+
+
+def test_the_turn_end_check_holds_a_stopped_run_and_names_what_moved_after_the_count_blockers_alert(tmp_path):
+    """Review round 1, finding 1: once a stopped run was set blocked and alerted, nothing held it, and two wakes closed
+    an item and added two. The check now names each item added or closed after the count blocker's alert until the
+    principal is told and alerted again; a run asked but still running is told to set blocked; and a waiting run that
+    has not asked is held like a running one."""
+    path = tagged(tmp_path, closed=(300,), added=(200, 100), asked=60, header={"Status": "blocked"})
+    engage("S1", path)
+    assert stop("S1") is None  # stopped, asked and alerted, nothing moved since: the turn may end
+    edit(path, "- [ ] 2. Close what review round 1 found (origin: self, added",
+         f"- [x] 2. Close what review round 1 found (origin: self, closed {ago(0)}, added")
+    edit(path, "- [ ] 4. Ship part 4 (origin: principal)",
+         f"- [ ] 4. Ship part 4 (origin: principal)\n- [ ] 5. Close what review round 3 found (origin: self, added {ago(0)})")
+    reason = stop("S1") or ""
+    assert "2 item(s) were added or closed after its alert" in reason and "item(s) 2, 5" in reason
+    assert "start nothing new until the principal answers" in reason
+    edit(path, "(banner posted)", f"(banner posted); alerted {ago(0)} (banner posted)")  # told again, after the work
+    assert stop("S1") is None
+    running = tagged(tmp_path / "running", closed=(90,), added=(60, 30), asked=1)
+    engage("S2", running)
+    assert "set Status: blocked" in stop("S2")
+    waiting = tagged(tmp_path / "waiting", closed=(90,), added=(60, 30),
+                     header={"Status": "waiting", "Waiting on": "CI run 9 (an hour)"})
+    engage("S3", waiting)
+    assert "start nothing new until the principal answers" in stop("S3", session_crons=[{"id": "c1"}])
+
+
+def test_the_wake_prompt_the_re_entry_protocol_rule_8_and_the_decision_protocol_hold_the_counts_stop():
+    """Review round 1, finding 1: the hourly wake said to continue the next open item, and rule 8 and the decision
+    protocol said never to block the whole run on one question. The count's stop is the one exception."""
+    assert cli.wake_prompt("<plan>").endswith(
+        "continue the next open checklist item, unless `cycle` says the count stops the run: then start nothing new until "
+        "the principal answers.")
+    reentry = (SKILL / "references" / "continuation.md").read_text(encoding="utf-8").split("\n## Re-entry protocol\n")[1]
+    assert "start nothing new until the principal answers" in " ".join(reentry.split("\n## ")[0].split())
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    rule = next(line for line in rules.splitlines() if line.startswith("8. "))
+    assert "The count's stop (rule 14) is the one exception" in rule
+    protocol = (SKILL / "references" / "delegation.md").read_text(encoding="utf-8").split("\n## Decision Protocol\n")[1]
+    assert "The one exception is the count's stop" in " ".join(protocol.split("\n## ")[0].split())
+
+
+def test_the_crafted_ways_past_the_count_are_on_the_open_list():
+    """Review round 1: what a run that means to slip the count can still do, since the count reads the plan the run
+    writes. The extreme-year stamp no longer stops either check."""
+    found = (ROOT / "docs" / "runtime-integration.md").read_text(encoding="utf-8").split("\n### What remains open\n")[1]
+    found = " ".join(found.split("\n### ")[0].split())
+    for words in ("The autopilot count reads only the plan file", "`origin: principal`", "close again at a later time",
+                  "split one of the principal's items", "year 9999", "the check stays on"):
+        assert words in found, words
 
 
 # ---- scenarios 10 to 14: an honest close ----------------------------------------
@@ -790,10 +936,12 @@ def test_session_start_brief_says_a_run_its_count_stopped_waits_for_the_principa
     assert note.startswith(f"Autopilot run stopped by its count, waiting for the principal's answer: {path} ")
     assert ("The one line: migrate endpoints: in the last 24 hours this run added 2 item(s) of its own and closed 1 of "
             "yours. Continue, narrow, or stop?") in note
-    assert "start nothing new" in note and "Principal answer:" in note and "Next open item" not in note
+    assert "start nothing new until the principal answers" in note and "Principal answer:" in note
+    assert "Next open item" not in note
     edit(path, "Status: running", "Status: blocked")
     assert "waiting for the principal's answer" in autopilot.brief({"session_id": "S1"})  # asked, not yet answered
-    edit(path, "Status: blocked", f"Status: running\nPrincipal answer: continue {ago(1)}")
+    edit(path, "Status: blocked", "Status: running")
+    release(path)
     assert "Next open item: 2. Close what review round 1 found" in autopilot.brief({"session_id": "S1"})
 
 
@@ -822,15 +970,16 @@ def test_the_check_takes_well_under_50_ms(tmp_path, pace):
 
 
 def test_the_count_keeps_the_check_well_under_50_ms(tmp_path, pace):
-    """The check counts from the plan it already read: every item's origin and times, the answer line and the days."""
+    """The check counts from the plan it already read: every item's origin and times, each read against the count
+    blocker's alert, the answer line and the days."""
     items = [f"- [x] {i}. step (origin: principal, closed {ago(i)}) — done" for i in range(100)]
-    items += [f"- [ ] {i}. fix (origin: self, added {ago(i)})" for i in range(100, 200)] + ["- [ ] 200. last (origin: principal)"]
-    path = tagged(tmp_path, days=tuple(range(60, 0, -1)))
+    items += [f"- [ ] {i}. fix (origin: self, added {ago(i)})" for i in range(100, 201)] + ["- [ ] 201. last (origin: principal)"]
+    path = tagged(tmp_path, days=tuple(range(60, 0, -1)), asked=300, answer=reply(400), header={"Status": "blocked"})
     edit(path, "## Checklist\n", "## Checklist\n\n" + "\n".join(items) + "\n")
     edit(path, "## Cycle ledger\n", "## Cycle ledger\n\n" + "".join(f"- 2026-10-05T{i % 24:02}:00 advanced: x\n"
                                                                     for i in range(2000)))
     engage("S1", path)
-    assert "Continue with the next one now: 100. fix" in stop("S1")  # 100 of each in the window: level, so it goes on
+    assert "were added or closed after its alert" in stop("S1")  # 101 of its own against 100: each item read against the alert
     times = []
     for _ in range(15):
         start = time.perf_counter()

@@ -41,5 +41,7 @@ def test_the_backlog_page_says_where_the_list_lives_how_items_are_marked_and_cou
     for words in ("`**Plan:**`", "one ordered list", "(origin: principal)", "(origin: self, added", "closed <time>",
                   "## Backlog count", "open principal item(s)", "since the last checkpoint", "two days running",
                   "continue, narrow or stop", "finish, ship and install", "side-quest test",
-                  "synthesis-autopilot"):
+                  "synthesis-autopilot",
+                  # review round 1: rule 16 allows an important issue that serves the goals, and so does the test
+                  "it is an important issue that serves those goals"):
         assert words in page, words

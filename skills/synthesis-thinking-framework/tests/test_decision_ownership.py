@@ -1,12 +1,12 @@
-"""Decide what the goals already decide: the principal's ruling of 2026-11-16, read from where it lives.
+"""Decide what the goals already decide, read from where it lives. Source-structure checks only.
 
-When a recommendation follows from the principal's goals, guidelines and wish for the best-quality work, the agent
-decides it, acts, and reports it in one line; the principal gets only what needs their own authority, or a real
-conflict between their goals that their rulings don't settle. Source-structure checks only.
-
-The ruling's list ends "an approval code": the runtime's typed approval. This skill ships in the hook-free directory
-package, where no approval code exists and the package's check refuses the phrase, and five packaged skills link to
-its decision-ownership contract, so the item is written as what it means anywhere: an approval only they can give.
+The test is the principal's ruling of 2026-11-16: a recommendation that follows from their goals, guidelines and wish
+for the best-quality work is decided, acted on and reported in one line, not brought to them. The list of what still
+goes to them is the project's rule as the brief for plan item 22.37(d) gave it, with a checkpoint they reserved added
+in review round 1, whose answer is never written from the agent's own judgement. The list's item "an approval code" is
+the runtime's typed approval; this skill ships in the hook-free directory package, where no such approval exists and
+whose check refuses the runtime's term, and five packaged skills link to its decision-ownership contract, so the item
+is written as what it means anywhere: an approval only they can give.
 """
 
 from __future__ import annotations
@@ -14,7 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 SKILL = Path(__file__).resolve().parents[1]
-AUTHORITY = "(money, sends, deploys, their accounts and settings, their voice, an approval only they can give)"
+AUTHORITY = ("(money, sends, deploys, their accounts and settings, their voice, an approval only they can give, a "
+             "checkpoint they reserved, whose answer is never written from the agent's own judgement)")
 
 
 def flat(text: str) -> str:
