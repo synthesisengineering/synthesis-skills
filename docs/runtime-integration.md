@@ -651,8 +651,11 @@ stay open, and no hook running as that same user can close them:
   further back is judged as one the record does not show, and an interpreter keeps a name
   typed further back that the guard no longer sees. A code-mode script that types into a
   session it names by a variable is not tied to that session. A shell's own state that no
-  typed line shows (its startup files, `PROMPT_COMMAND`, a trap set before) is not read, and
-  an interpreter or a shell started on a terminal with no command is not held at its start.
+  typed line shows (its startup files, `PROMPT_COMMAND`, a trap set before) is not read.
+- An interpreter or a shell that Codex starts on a terminal with no command is not held at its
+  start: what is typed into it later is judged line by line, an interpreter's lines with all it
+  was typed as its program, so holding every bare start would add a code for little gain (60
+  days of records held 17 such starts, all interpreters, all on one day).
 - A program of the agent's that loads synthesis without the plain words `import synthesis`
   or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
   copy that is no protected folder) is read as reaching none of synthesis's writers, so it
