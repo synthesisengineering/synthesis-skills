@@ -965,10 +965,13 @@ def test_a_host_spelled_on_the_line_or_in_nodes_text_is_that_hosts_too(tmp_path)
     "python3 -c " + shlex.quote("import os, sys, urllib.request as u; opener = u.build_opener(); opener.open(os.environ['MCP_URL'], sys.stdin.buffer.read())"),
     "python3 -c " + shlex.quote("import os, sys, urllib.request as u; u.urlopen(f\"http://localhost:{os.environ['PORT']}/rpc\", data=sys.stdin.buffer.read())"),
     "python3 -c " + shlex.quote("import os, sys, urllib.request as u; u.urlopen(f\"https://api.example.com{os.environ['REST']}\", data=sys.stdin.buffer.read())"),
+    "python3 -c " + shlex.quote("import os, sys, urllib.request as u; u.urlopen('https://api.example.com:' + '87' + '65/' + os.environ['P'], data=sys.stdin.buffer.read())"),
     "python3 -c " + shlex.quote("import os, subprocess; subprocess.run(['curl', '-X', 'POST', os.environ['MCP_URL'], '-d', os.environ['BODY']])"),
     "python3 -c " + shlex.quote("import os, sys, subprocess; b = sys.stdin.read(); subprocess.run(['curl', '-X', 'POST', os.environ['MCP_URL'], '-d', b])"),
     "node -e " + shlex.quote("fetch(`http://localhost:${process.env.PORT}/rpc`, {method: 'POST', body: process.env.BODY})"),
     'curl -s -X POST "http://localhost:$PORT/rpc" -d "$BODY"',
 ])
-def test_a_local_host_an_unclosed_one_an_opener_or_a_client_started_for_an_address_the_environment_gives_waits(tmp_path, program):
+def test_an_address_the_environment_can_still_aim_at_this_machine_waits(tmp_path, program):
+    """A local host with its port filled in, a host left open to what follows, the server's port on a spelled name (one
+    that resolves here reaches it), an opener's open, and a client started for an address the environment gives."""
     assert held(shell(program, cwd=str(tmp_path))), program
