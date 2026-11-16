@@ -4,6 +4,31 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+- **A Codex code-mode script passes the guard on purpose, and its nested calls stay judged one by one.** In code mode
+  Codex runs nearly every call as one `exec` script (121,270 of 166,646 recorded calls from 2026-09-16 to 2026-11-15):
+  JavaScript in a V8 isolate with no file system, network or process of its own, each tool it calls on `tools` reaching
+  the hook as a call of its own (in those records, 792 script results held a hook's refusal, each of a nested call). The
+  guard counted `exec` among the shell tools, so a script reaching it was read as a shell line: a path in it could be
+  refused by its text alone, a path built at run time passed, and a bare-string payload crashed the guard into a hold.
+  A script is now passed on purpose and never read as a shell line: a bare string, or the text under `input` or `code`,
+  by its signs (the first-line pragma, a call on `tools`, a script helper); under `command`, where a shell's command line
+  also arrives, only when Codex's record of that very call (its `tool_use_id`, in Codex's own sessions folder) shows its
+  `exec` tool with that text, since a command line can be written to look like a script. A command line under the name
+  `exec` is still judged as one, and so now are a bare string and text under `input` or `code` that are no script.
+- **The browser page tracker reads the browser calls a code-mode script makes.** Codex records them only as
+  `item_completed` events, and the guard's reader of its records read only call records, so a step after a navigate
+  made inside a script judged its page as unknown. It now reads those events, under the name Codex's hook gives the tool
+  (`workspace-mcp` and `github.fetch` make `mcp__workspace_mcp__github__fetch`), and counts a direct call recorded both
+  ways once.
+- **`synthesis doctor` proves that Codex still runs hooks on nested calls** (`codex nested hooks`), the only way the
+  guard sees code-mode work: from the newest rollouts, read only (each one's first line and its last 16 MB, at most 120
+  files and 128 MB from 30 days, newest first; one record had passed 1.8 GB), a hook's refusal in an `exec` script's
+  result, which only a hook run on a nested call makes. Codex offers no dry probe. The line names the Codex version and
+  the date it proves, and warns, never fails, when it finds no refusal inside a script, or only one from an older Codex
+  than the newest to run a script.
+
 ## [5.23.1] - 2026-11-15
 
 - **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal

@@ -74,7 +74,8 @@ Each event reads one JSON object on stdin. Missing fields are tolerated.
 | `transcript_path` | SessionStart, PreToolUse, Stop | Which harness is running (from where the file lives); the record an approval is checked against; the record a reply's quotes must appear in. |
 | `cwd` | SessionStart, PreToolUse | The session's working directory: the workspace for account routing, the directory a shell command starts in, and the ritual line's workspace. |
 | `prompt` (or `user_prompt`) | UserPromptSubmit | The text the person typed, scanned for `approve <code>`, with one or more codes after the word on its line. |
-| `tool_name`, `tool_input` | PreToolUse | The call to check. A shell command is read from `tool_input.command` or `tool_input.cmd`, as a string or an argv list; `tool_input.workdir` is the fallback directory. |
+| `tool_name`, `tool_input` | PreToolUse | The call to check. A shell command is read from `tool_input.command` or `tool_input.cmd`, as a string or an argv list; `tool_input.workdir` is the fallback directory. A Codex code-mode script (`exec`) is passed on purpose: see [Codex code mode](#codex-code-mode). |
+| `tool_use_id` | PreToolUse | The call's own id: for a script sent under `command`, whether Codex's record shows this very call as its code-mode tool ([Codex code mode](#codex-code-mode)). |
 | `last_assistant_message` | Stop | The reply to check. |
 | `stop_hook_active` | Stop | Whether this turn end follows a hook's earlier request to continue. |
 | `background_tasks`, `session_crons` | Stop | Whether something already scheduled will wake an autopilot session. |
@@ -595,6 +596,34 @@ matter: it writes the summary about 54 minutes into a pause and applies it at th
 prompt, however much later, and the summary carries no time. SessionStart still restores
 the project state from disk when the summary takes effect; the note covers what only
 the conversation held.
+
+## Codex code mode
+
+In code mode Codex runs nearly every call as one `exec` script: JavaScript evaluated in a
+V8 isolate with no file system, network or process of its own. Each tool the script calls
+on its global `tools` object (`tools.exec_command`, `tools.apply_patch`, an MCP tool)
+reaches the PreToolUse hook as a call of its own, under that tool's own name, and is judged
+as one; Codex's records show hooks refusing such nested calls inside the scripts' results.
+
+- **The script passes on purpose** and is never read as a shell line. A bare string, or a
+  script under `input` or `code`, is known by its signs: the grammar's first-line
+  `// @exec:` pragma, a call on `tools`, or one of the script's helpers such as `text(`. No
+  shell tool sends those shapes. Under `command`, where a shell's command line also
+  arrives, the text is a script only when Codex's own record of this very call (the
+  payload's `tool_use_id`, in the rollout `transcript_path` names, inside Codex's sessions
+  folder) shows its `exec` tool with this text: a command line can be written to look like
+  a script, so how the text looks never decides there. Everything else under the name
+  `exec` is judged as a command line: `cmd`, an argv list, or text with no script signs.
+- **The browser page tracker reads the calls a script makes.** Codex records them only as
+  `item_completed` events (`McpToolCall`: server, tool, arguments, result). The guard
+  reads them under the name Codex's hook gives the tool (`workspace-mcp` and
+  `github.fetch` make `mcp__workspace_mcp__github__fetch`), and a direct call's event,
+  which carries the call's own id, is counted once.
+- **The doctor proves that nested calls still reach the hook.** Its `codex nested hooks`
+  line reads Codex's newest rollouts for a hook's refusal in a script's result, which only
+  a hook run on a nested call makes, and names the Codex version and the date it proves.
+  It warns, never fails, when it finds none, or only one from an older Codex than the
+  newest to run a script.
 
 ## Muse
 

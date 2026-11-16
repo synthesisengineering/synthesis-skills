@@ -1367,10 +1367,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# Then each 122 more, for Codex code mode (board request 22.33, 2026-11-15). guards.py 57: code_mode_script 13 and
+# _recorded_script 15, each with 2 blank lines (a code-mode script passed on purpose and never read as a shell line;
+# under `command` only by Codex's record of that very call), CODE_MODE_SIGN 2 with its 4-line note and 2 blank lines,
+# _mcp_name 4 with 2 blank lines and _line_events 6 more (the calls a script makes, read from Codex's item_completed
+# events under the name its hook gives them), _check 4 more (the script passed; a bare string read as the command) and
+# shell_command 1 more (an `exec` call that is no script read from `input` or `code`). doctor.py 65:
+# check_codex_nested_hooks 34 and _nested_proof 21, each with 2 blank lines, and its bounds 1 and refusal pattern 1 with
+# a 2-line note and 2 blank lines (the proof, from Codex's own rollouts, that hooks still run on nested calls; records
+# that cannot be listed warn).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16881
-PLUGIN_BUDGET = 42953
+CORE_BUDGET = 17003
+PLUGIN_BUDGET = 43075
 
 
 def _lines(files):

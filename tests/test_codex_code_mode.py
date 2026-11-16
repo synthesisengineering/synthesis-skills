@@ -203,6 +203,14 @@ def test_a_proof_from_an_older_codex_does_not_cover_a_newer_one():
     assert check.status == "warn" and "0.167.0-alpha.4.1" in check.detail and "0.169.0-alpha.11.1" in check.detail, check
 
 
+def test_records_that_cannot_be_listed_warn_rather_than_stop_the_doctor(tmp_path):
+    folder = paths.transcript_roots()["codex"]
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "rollout-2026-11-15T10-00-00-0009.jsonl").symlink_to(tmp_path / "gone.jsonl")  # removed as it was listed
+    check = doctor.check_codex_nested_hooks(paths.codex_home())
+    assert check.status == "warn" and "could not be listed" in check.detail, check
+
+
 def test_the_doctor_reads_only_the_newest_rollouts_it_allows_itself():
     rollout(meta(), exec_call("call_1", script("ls")), output("call_1", REFUSED),
             name="rollout-2026-11-14T10-00-00-0001.jsonl", mtime=1_800_000_000)
