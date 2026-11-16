@@ -1140,9 +1140,7 @@ ORDINARY_SCRIPTS = {  # build, test and setup scripts that never name synthesis'
 
 # Read as the command lines they hold, these wait as the same lines typed on the command do: the rule for a change of
 # folder the guard cannot follow (22.8, round 4 of 5.23.1, Q1) holds the sourced build and release scripts, which change
-# folder, setup's lines and an environment's ~/.secrets, which this home lacks; and on a Mac with Homebrew, an
-# environment's `brew shellenv` runs the brew script, which gives HOME a value the guard does not read and then uses it
-# (22.15, R2-2).
+# folder, setup's lines and an environment's ~/.secrets, which this home lacks.
 HELD_AS_ON_THE_LINE = {("build", "source"), ("release", "source"), ("setup", "bash"), ("setup", "its path"), ("setup", "source"),
                        ("an environment", "bash"), ("an environment", "its path"), ("an environment", "source")}
 

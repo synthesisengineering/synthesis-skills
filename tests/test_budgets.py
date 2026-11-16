@@ -2239,10 +2239,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # more (the script read by those names, and its docstring), and the 4 blank lines between them.
 # 5.24.0, 22.38 (0053af96) merged into release/next at fb665578: release/next's ceilings (core 22348, plugin 49006) and
 # 22.38's raise just above (20 each), measured: core 22368 and plugin 49026. The merge's own lines change nothing.
+# Then core and plugin each 63 more, all in guards.py, so Homebrew run by its full path passes as on main (the
+# coordinator's ruling, 2026-11-16: 22.21 now reads brew's own script, and three rules read it as moving HOME or its
+# folder). _moves_home 21 with 2 blank lines (HOME given a value in what the shell runs: never in a comment, an array's
+# values or the words a loop walks), _moves_by_function 29 with 2 blank lines (a function moves the folder only when it is
+# named for a folder builtin, or its body changes folder and it is called anywhere but in a command substitution),
+# FOLDER_BUILTINS 1, check_self_grant 6 (that reading made once on the text as written, for every reading of it, whose
+# values can break its quoting), and _cd_sources 2 (a printf -v of a literal name no cd reads sets nothing a cd reads).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22368
-PLUGIN_BUDGET = 49026
+CORE_BUDGET = 22431
+PLUGIN_BUDGET = 49089
 
 
 def _lines(files):

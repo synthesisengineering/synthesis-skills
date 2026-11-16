@@ -1894,6 +1894,7 @@ STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "pe
 
 PLACINGS = 256  # the starting points a line's changes of folder may give its commands; past them the line waits (round 4)
 FOLDER_MOVE = re.compile(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd|popd)(?=[\s;&|)`}]|$)")  # a change of folder in a script
+FOLDER_BUILTINS = frozenset({"cd", "pushd", "popd", "builtin", "command", "enable"})  # a function named so redefines how folders move
 
 
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
@@ -2168,11 +2169,44 @@ def _cd_sources(text: str, mode: dict) -> None:
         src["vars"].setdefault(m[1], []).append(m[2])
     named = len(re.findall(r"(?<![\w${])(?:cdpath|CDPATH)\b|\$\{(?:cdpath|CDPATH):{0,2}=", plain)) - len(re.findall(
         r"\b(?:unset|export)\s+(?:-\w+\s+)*(?:cdpath|CDPATH)\b(?!\+?=)", plain))  # each place it names CDPATH, but to unset or export it
-    src["unread"] = src["unread"] or named > given or any(re.search(r"[$`(]", e) for e in src["CDPATH"]) or bool(re.search(
-        r"\b(?:declare|typeset|local)\s+(?:-\w+\s+)*-\w*n|\bprintf?\s+(?:-\w+\s+)*-v|\$\{\([^)]*P", plain))
+    src["unread"] = src["unread"] or named > given or any(re.search(r"[$`(]", e) for e in src["CDPATH"]) or bool(re.search(  # printf -v
+        r"\b(?:declare|typeset|local)\s+(?:-\w+\s+)*-\w*n|\bprintf?\s+(?:-\w+\s+)*-v" + ("" if src["cdable"] else  # of a literal name
+        r"\s*(?:(?:CDPATH|cdpath|OLDPWD|HOME)\b|[^\w\s])") + r"|\$\{\([^)]*P", plain))  # no cd reads sets nothing a cd reads
     if not mode["quiet"] and (re.search(r"(?:^|[\s;&|(])(?:BASH_ENV|ZDOTDIR)=|\b(?:enable|disable)\s[^;&|\n]*?\b(?:cd|pushd|popd|builtin"
-                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and (FUNCTION.search(plain) or re.search(r"\balias\s+\S", plain)))):
+                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and ((FUNCTION.search(plain) and text not in _CALL.get(
+                                            "still", ()) and _moves_by_function(text)) or re.search(r"\balias\s+\S", plain)))):
         _CALL["unplaced"] = True
+
+
+def _moves_by_function(text: str) -> bool:
+    """Whether a function a line defines may move its folder: one named for a folder builtin, a change of folder outside
+    every function's body, or a function whose body moves (itself or through another) called anywhere but in a command
+    substitution, which runs in a subshell (2026-11-16: Homebrew's own `brew`, read since 22.21, defines `quiet_cd` and
+    calls it only in `$(...)`). Text the parser cannot read may."""
+    try:
+        tokens = _lex(text)
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        return True
+    bodies, outside, at = {}, [], 0
+    while at < len(tokens):
+        kind, value = tokens[at][:2]
+        name = value if kind == "w" and [t[:2] for t in tokens[at + 1:at + 3]] == [("op", "("), ("op", ")")] else (
+            tokens[at + 1][1] if kind == "w" and value == "function" and at + 1 < len(tokens) else "")
+        opened = next((i for i in range(at + 1, min(at + 6, len(tokens))) if tokens[i][:2] == ("w", "{")), None) if name else None
+        if opened is None:
+            outside.append(tokens[at])
+            at += 1
+            continue
+        depth, end = 0, opened
+        for end in range(opened, len(tokens)):  # to the brace that closes the body
+            depth += {("w", "{"): 1, ("w", "}"): -1}.get(tokens[end][:2], 0)
+            if depth == 0:
+                break
+        bodies[name], at = {t[1] for t in tokens[opened + 1:end] if t[0] == "w"}, end + 1
+    moving = {n for n, words in bodies.items() if words & {"cd", "pushd", "popd"}}
+    while any(n not in moving and words & moving for n, words in bodies.items()):
+        moving |= {n for n, words in bodies.items() if words & moving}
+    return bool(FOLDER_BUILTINS & set(bodies)) or any(t[0] == "w" and t[1] in {"cd", "pushd", "popd"} | moving for t in outside)
 
 
 def _piped(upstream) -> str:
@@ -5376,6 +5410,29 @@ DEFINES = re.compile(r"(?:^|[\s;&|({])(?:function[ \t]+[^\s;&|()]|(?:functions|a
                      r"|[^\s;&|()<>'\"=$]+[ \t]*\([ \t]*\)[ \t\n]*[{(])|\$\{\w+:{0,2}=")  # and a parameter expansion that assigns
 MOVES_HOME = re.compile(r"(?<![\w${])HOME\b(?!=)|\$\{HOME:{0,2}=")  # HOME given a value by anything but a HOME= the guard reads
 USES_HOME = re.compile(r"\$\{?HOME\b|(?<![\w$~./-])~(?=/|\s|$|[\"'])|(?:^|[;&|(]\s*)cd\s*(?:$|[;&|)])")
+
+
+def _moves_home(text: str) -> bool:
+    """MOVES_HOME in what the shell runs: never in a comment, an array's values or the words a for or select loop walks,
+    since a list of variable names gives none of them a value (2026-11-16: Homebrew's own `brew`, read since 22.21, waited
+    on a comment naming HOME and on the names it keeps from the environment). Text the parser cannot read is read whole."""
+    try:
+        tokens = _lex(text)
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        return bool(MOVES_HOME.search(text))
+    walking = False  # past a for or select loop's `in`, before its `do` or the end of its command
+    for at, (kind, value, *_) in enumerate(tokens):
+        if kind == "op" or (kind == "w" and value == "do"):
+            walking = False
+        elif walking:
+            continue
+        elif kind == "w" and value == "in" and at >= 2 and tokens[at - 2][:2] in (("w", "for"), ("w", "select")) and (
+                at == 2 or tokens[at - 3][0] == "op" or (tokens[at - 3][0] == "w" and tokens[at - 3][1] in KEYWORDS)):
+            walking = True
+        elif (kind == "sub" and _moves_home(value)) or (kind == "in" and MOVES_HOME.search(value)) or (  # an array's values cut
+                kind == "w" and MOVES_HOME.search(re.sub(r"^([A-Za-z_]\w*\+?=)\([\s\S]*", r"\1", value))):
+            return True
+    return False
 SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-workspace-mcp/{name}" for name in (
     "install-autostart.sh", "uninstall-autostart.sh"))  # they write or load a LaunchAgent or a systemd unit (review round 2, R2-8)
 
@@ -6124,7 +6181,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             _grant_release(given, command)  # the one install this line's run may make with no code (22.18, K1)
             return None
     home = os.path.expanduser("~")
-    homeless = MOVES_HOME.search(command) and USES_HOME.search(command)  # HOME given a value the guard does not read, then used
+    homeless = MOVES_HOME.search(command) and USES_HOME.search(command) and _moves_home(command)  # HOME given a value it does not read, then used
     if homeless:  # $HOME and ~ stay as written: what they lead to is not known (review round 2, R2-2)
         readings = [command]
     elif re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
@@ -6135,12 +6192,18 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
-    for text in readings:  # each command is judged in every folder it may run in (`_commands`)
-        reason = _self_grant(command, text, cwd, config, depth) if time.monotonic() <= _CALL["until"] else Unproven(
-            "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
-        if reason and not isinstance(reason, Unproven):
-            return reason
-        waits = waits or reason
+    still = _CALL.get("still", frozenset())  # readings whose functions move a folder only in a subshell (`_cd_sources`)
+    if FUNCTION.search(command) and FOLDER_MOVE.search(command) and not _moves_by_function(command):
+        _CALL["still"] = still | frozenset(readings)  # read as written: a reading's values can break the quoting
+    try:
+        for text in readings:  # each command is judged in every folder it may run in (`_commands`)
+            reason = _self_grant(command, text, cwd, config, depth) if time.monotonic() <= _CALL["until"] else Unproven(
+                "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+            if reason and not isinstance(reason, Unproven):
+                return reason
+            waits = waits or reason
+    finally:
+        _CALL["still"] = still
     if hold and _CALL["unplaced"]:  # where its commands run could not be told (review round 4 of 5.23.1, Q1)
         waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
                                   "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
