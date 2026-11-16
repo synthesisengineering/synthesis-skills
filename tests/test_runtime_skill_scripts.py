@@ -604,6 +604,14 @@ def test_a_protected_folder_spelled_as_a_pattern_on_the_line_is_heard(mac, tmp_p
     assert _verdict(mac, f"python3 {work / 'copy.py'} {work}/t.txt {mac.sh}/{pattern}/", work), pattern  # any script
 
 
+@pytest.mark.parametrize("word", ["['m', '--to', '+15550100', '--text-file', 'reply.txt']", "x[z-a]y", "[[:alpha:]"])
+def test_a_pattern_whose_range_python_cannot_read_is_the_word_as_written(tmp_path, word):
+    """A bracket range the shell matches nothing with (`[t-f]` in a program's list handed as a word) stays as written,
+    as the shell leaves it, on every Python: Apple's 3.9 refused to compile the range and the guard stopped on it."""
+    from synthesis import guards
+    assert guards._globbed(str(tmp_path / word)) == [str(tmp_path / word)]
+
+
 def test_a_hard_link_to_a_release_file_by_a_pattern_and_a_write_through_one_wait(mac, tmp_path):
     """R2-4: `ln` with its source spelled as a pattern, then a Write through the link, rewrote the release in place."""
     work = _work(tmp_path)
