@@ -574,6 +574,14 @@ stay open, and no hook running as that same user can close them:
   year 9999, cannot be converted: the count rejects it and names the item, and the check
   stays on (before this, such a stamp ended `cycle` with a traceback and switched the
   turn-end check off). Review round 1 of 22.37; crafted.
+- During a stop, the turn-end check names work only when its item is stamped: an item
+  added or checked after the count blocker's alert without its time goes unseen. A
+  principal request recorded during a stop counts as work after the alert, like any
+  other item. The count names an item by its leading number, so dotted numbers collapse:
+  it names items 1.1 and 1.2 both as 1. On a plan adopting origins, old checked items
+  with no close time are named among those the count could not read, though they closed
+  long before. An answer dated up to five minutes ahead of a later alert releases the
+  run, inside the tolerance the clock is given (crafted). Review round 2 of 22.37.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.

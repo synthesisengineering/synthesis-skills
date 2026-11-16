@@ -265,8 +265,9 @@ def _answered(plan: Plan, now: float) -> bool:
 
 def tally(plan: Plan) -> dict:
     """Principal items closed and self-generated items added in the last 24 hours, the open principal items on the day
-    before yesterday, yesterday and today, and whether the count stops the run: the first outnumbered, or each of
-    those days higher than the one before, and no principal answer counts. An item with no origin, or no time the
+    before yesterday, yesterday and today, and whether the count stops the run: the first outnumbered, each of those
+    days higher than the one before, or an open count blocker alerted (`pending`, so the stop outlasts its window), and
+    no principal answer counts. An item with no origin, or no time the
     count can read (one more than five minutes ahead is rejected), is named in `unplaced` and left out, except that
     one of the run's own whose time was written but rejected counts as added now. A plan with no origins counts nothing."""
     now, counted = time.time(), {"principal": 0, "self": 0, "open": 0, "unplaced": [], "tracked": False}
@@ -292,8 +293,9 @@ def tally(plan: Plan) -> dict:
     days = {**recorded, run[2]: recorded.get(run[2], counted["open"])} if counted["tracked"] else {}
     series = [days[when] for when in run if when in days]
     over, rising = counted["self"] > counted["principal"], len(series) == 3 and series[0] < series[1] < series[2]
-    counted.update(today=run[2], recorded=recorded, series=series, over=over, rising=rising,
-                   stop=(over or rising) and not _answered(plan, now))
+    pending = _asked(plan, now, waiting=True)  # an open, alerted count blocker: the stop holds past its window
+    counted.update(today=run[2], recorded=recorded, series=series, over=over, rising=rising, pending=pending,
+                   stop=(over or rising or pending is not None) and not _answered(plan, now))
     return counted
 
 
@@ -303,6 +305,9 @@ def stop_line(plan: Plan, counted: dict) -> str:
            f"{counted['principal']} of yours"] if counted["over"] else []
     if counted["rising"]:
         why.append(f"your open items in this run rose two days running ({', '.join(map(str, counted['series']))})")
+    if counted["pending"] is not None and not why:
+        at = datetime.fromtimestamp(counted["pending"]).astimezone().isoformat(timespec="minutes")
+        why.append(f"it is still waiting for your answer to the count's question of {at}")
     if counted["unplaced"]:
         why.append(f"it could not read the origin or time of item(s) {_names(counted['unplaced'])}")
     return f"{plan.title}: {', and '.join(why)}. {ASKS}"

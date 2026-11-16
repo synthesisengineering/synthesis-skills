@@ -37,7 +37,8 @@ remains and that a real blocker is an acceptable answer.
 open items, the check reads the count from the same plan
 ([plan-file.md](plan-file.md#origins-and-the-count)). When the run added more of its
 own items than it closed of the principal's in the last 24 hours, or the
-principal's open items rose two days running, and no answer of the principal's
+principal's open items rose two days running, or the count's blocker is open and
+alerted (so the stop outlasts its 24 hours), and no answer of the principal's
 counts, the stop holds the whole run, whatever its status:
 
 - With no open blocker carrying the count's line and an alert, it asks for the one

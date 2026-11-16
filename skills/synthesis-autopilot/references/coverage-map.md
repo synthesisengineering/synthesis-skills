@@ -286,3 +286,14 @@ the count could not read, and `cycle` names each such item once. A plan with no 
 is told once. [plan-file.md](plan-file.md#origins-and-the-count) and
 [procedure.md](procedure.md#when-the-count-stops-the-run) say all of this, including how
 a run adopting origins mid-run tags every item. SKILL.md is 7,479 bytes.
+
+**2026-11-16 (4.2.0), review round 2 of the count.** With no answer, the stop lapsed once
+its 24 hours slid past the items that caused it; it now holds while the count's blocker is
+open and alerted with no answer after it, and the stop line says the question is still
+waiting ([plan-file.md](plan-file.md#origins-and-the-count),
+[turn-end-check.md](turn-end-check.md#when-it-asks)). A reply that opens with "Yes," was
+quoted whole and read by that word; [plan-file.md](plan-file.md#origins-and-the-count) and
+[procedure.md](procedure.md#when-the-count-stops-the-run) each gain one sentence: quote the
+reply from the word continue, narrow or stop, keep the whole reply on the checked blocker,
+and ask again only when it holds none of the three. The first-word rule stays. What remains
+is on the open list in `docs/runtime-integration.md`.

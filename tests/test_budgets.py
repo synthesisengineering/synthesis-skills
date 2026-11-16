@@ -1399,10 +1399,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # into _held). autopilot_cli.py 9: cmd_cycle 8 more (the stop said first on a wait, the refusal's terms, each item told
 # once and a plan with no origins once), wake_prompt 1 more (start nothing new until the principal answers), TOLD and
 # NO_ORIGINS 2 less NOTED 1, and 1 blank line fewer.
+# Then each 5 more, all in autopilot.py, from review round 2 of 22.37 (with no answer, the stop lapsed once its 24 hours
+# slid past the items that caused it): stop_line 3 (the reason for a question still waiting), tally 1 more (an open,
+# alerted count blocker keeps the stop), and its docstring 1 more.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 17025
-PLUGIN_BUDGET = 43132
+CORE_BUDGET = 17030
+PLUGIN_BUDGET = 43137
 
 
 def _lines(files):

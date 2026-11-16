@@ -18,31 +18,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   wake's ledger line, and at each day's first wake writes the open principal items under a new `## Backlog count`
   section. When the second outnumbers the first, or the open principal items rose two days running (the day before
   yesterday, yesterday and today, each higher than the one before), the count stops the run until the principal
-  answers: `cycle --advanced` refuses the advance and prints the one line to bring them, ending "Continue, narrow, or
-  stop?" and naming any item whose origin or time it could not read; a cycle that only names a wait is recorded and
-  opens with "start nothing new until the principal answers", as does the hourly wake's prompt. The stop is the one
-  exception to never blocking a whole run on one question (binding rule 8 and the decision protocol): the turn-end
-  check asks for the line in any open status but paused, asks a run that has asked to set `Status: blocked`, and names
-  every item added or closed after the count blocker's alert until the principal is told and alerted again. Only the
-  principal's own reply lets the run go on: quoted on the `Principal answer:` line with where and when they gave it,
-  its first word continue or narrow, dated after the count blocker's alert and inside the window, and never written
-  from the agent's own judgement, since the count's question is a checkpoint the principal reserved. A time more than
-  five minutes ahead, or one that cannot be read (a year such as 9999 used to end `cycle` with a traceback and switch
-  the turn-end check off), is rejected and named: a self item with such a time counts as added now, a principal item
-  as not closed, and both checks keep working. A plan written before origins counts nothing and never stops, and
-  `cycle` says so once; in a plan that counts, it names each item it could not read once. The session-start brief,
-  after compaction too, says a stopped run waits for the principal's answer and gives the line. The check reads only
-  the plan it already loaded, and each section's items once: on a 201-item plan with 2,000 ledger lines and 60 days
-  of counts the whole check took 1.0 ms under Python 3.12 and 1.4 ms under Apple's 3.9; on a real 620 KB plan of 146
-  items, with every item tagged as the run's own so the count stops it and reads each item against the alert, it
-  took 9.7 ms and 11.7 ms, and as a new process 32.3 ms where the hook budget allows 43.1, twice what its
-  standard-library modules take to load there (77.0 against 124.2 under 3.9). It imports nothing new. The fan-out rules and binding rule 11 name the principal's cap of three agents at
-  once. Binding rules 8, 11 and 14 carry these; `references/plan-file.md` the convention, the answer and the
-  template; `references/procedure.md`, `references/turn-end-check.md`, the re-entry protocol and runaway control the
-  rest. To make room for rule 14, the Procedure's six numbered steps (1,313 bytes) moved word for word from SKILL.md
-  to the new `references/procedure.md`; SKILL.md keeps the helper path and a pointer, and is 7,479 bytes. The crafted
-  ways past the count that remain (an item of the run's own marked principal, a close stamped again later, one of the
-  principal's items split in several) are on the open list in `docs/runtime-integration.md`.
+  answers, past its 24 hours while the count's blocker is open and alerted with no answer after it, when the line says
+  the question is still waiting: `cycle --advanced` refuses the advance and prints the one line to bring them, ending
+  "Continue, narrow, or stop?" and naming any item whose origin or time it could not read; a cycle that only names a
+  wait is recorded and opens with "start nothing new until the principal answers", as does the hourly wake's prompt.
+  The stop is the one exception to never blocking a whole run on one question (binding rule 8 and the decision
+  protocol): the turn-end check asks for the line in any open status but paused, asks a run that has asked to set
+  `Status: blocked`, and names every item added or closed after the count blocker's alert until the principal is told
+  and alerted again. Only the principal's own reply lets the run go on: quoted on the `Principal answer:` line with
+  where and when they gave it, its first word continue or narrow (a reply such as "Yes, continue." is quoted from that
+  word, the whole reply kept on the checked blocker), dated after the count blocker's alert and inside the window, and
+  never written from the agent's own judgement, since the count's question is a checkpoint the principal reserved. A
+  time more than five minutes ahead, or one that cannot be read (a year such as 9999 used to end `cycle` with a
+  traceback and switch the turn-end check off), is rejected and named: a self item with such a time counts as added
+  now, a principal item as not closed, and both checks keep working. A plan written before origins counts nothing and
+  never stops, and `cycle` says so once; in a plan that counts, it names each item it could not read once. The
+  session-start brief, after compaction too, says a stopped run waits for the principal's answer and gives the line.
+  The check reads only the plan it already loaded, and each section's items once: on a 201-item plan with 2,000 ledger
+  lines and 60 days of counts the whole check took 1.0 ms under Python 3.12 and 1.4 ms under Apple's 3.9; on a real
+  620 KB plan of 146 items, with every item tagged as the run's own so the count stops it and reads each item against
+  the alert, it took 9.7 ms and 11.7 ms, and as a new process 32.3 ms where the hook budget allows 43.1, twice what
+  its standard-library modules take to load there (77.0 against 124.2 under 3.9). It imports nothing new. The fan-out
+  rules and binding rule 11 name the principal's cap of three agents at once. Binding rules 8, 11 and 14 carry these;
+  `references/plan-file.md` the convention, the answer and the template; `references/procedure.md`,
+  `references/turn-end-check.md`, the re-entry protocol and runaway control the rest. To make room for rule 14, the
+  Procedure's six numbered steps (1,313 bytes) moved word for word from SKILL.md to the new `references/procedure.md`;
+  SKILL.md keeps the helper path and a pointer, and is 7,479 bytes. The crafted ways past the count that remain (an
+  item of the run's own marked principal, a close stamped again later, one of the principal's items split in several,
+  work done during a stop without its time) are on the open list in `docs/runtime-integration.md`.
 - **A review has caps, and the coordinator holds them** (`synthesis-adversarial-review` 2.1.0). Two review rounds per
   item, counted per item, so a fix, or a fix to a fix, never starts them again. After the second, the coordinator
   applies the test: a finding blocks only if an honest agent would hit it in ordinary work or it appears in the

@@ -25,9 +25,12 @@ what was done, alert them again, and add the new alert to the blocker.
 
 When the principal answers, write their reply on the `Principal answer:` line, in
 quotes and word for word, then where they gave it and when; check the blocker
-with their words, and set `Status: running`. Never write the line from your own
-judgement: the count's question is a checkpoint the principal reserved. The count
-reads the quote's first word:
+with their words, and set `Status: running`. Quote the reply from the word
+continue, narrow or stop that they used ("Yes, continue, but skip X" becomes
+"continue, but skip X"), keep their whole reply on the checked blocker, and ask
+again only when the reply holds none of the three words. Never write the line from
+your own judgement: the count's question is a checkpoint the principal reserved.
+The count reads the quote's first word:
 
 - **continue**: go on with the next open item.
 - **narrow**: first narrow the plan as they said: take the items they dropped off
