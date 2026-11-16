@@ -1382,10 +1382,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # heading 1 and its 7 blank lines. The plugin's 26 more are autopilot_cli.py's: cmd_cycle 25 more (the day's count
 # written at its first wake, the refused advance with the one line, the note of items the count leaves out, said once,
 # and the count on the ledger line and in the output) and NOTED 1.
+# Then each 7 more, all in autopilot.py's brief, so a run its count stopped comes back at session start and after
+# compaction as waiting for the principal's answer, with the one line, and names no next item: its count read 1, the
+# test 1, that paragraph 4, and its docstring 1 more.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16953
-PLUGIN_BUDGET = 43051
+CORE_BUDGET = 16960
+PLUGIN_BUDGET = 43058
 
 
 def _lines(files):

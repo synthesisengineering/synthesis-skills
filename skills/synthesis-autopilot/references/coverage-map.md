@@ -260,4 +260,10 @@ steps (1,313 bytes, six lines) moved word for word from SKILL.md to
 [procedure.md](procedure.md), which also says what to do when the count stops the
 run; SKILL.md keeps the helper path and a one-line pointer, and Contents lists the
 page. SKILL.md went from 7,922 to 7,344 bytes. The principal's rulings of 2026-11-16
-set the two kinds of item, the count, its day and the one line.
+set the two kinds of item, the count, its day and the one line. In the same release,
+the session-start brief says a run its count stopped waits for the principal's answer,
+and gives the line, instead of naming the next item; and the
+[fan-out rules](delegation.md#sub-agent-fan-out-hygiene) gain a paragraph after their
+four 2.4.0 rules, which stay verbatim: at most three agents at once, the cap the
+principal set for every fan-out. Binding rule 11 gains the same as one sentence after
+its existing text, and SKILL.md is 7,378 bytes.

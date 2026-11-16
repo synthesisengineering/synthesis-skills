@@ -390,7 +390,8 @@ def _evaluate(payload: dict, config: dict) -> tuple[str | None, str | None]:
 
 
 def brief(payload: dict) -> str:
-    """One paragraph for session start, including after compaction (R6.3): the run this session owns."""
+    """One paragraph for session start, including after compaction (R6.3): the run this session owns, or, when its
+    count has stopped it, that it waits for the principal's answer to the one line."""
     try:
         session = paths.session_id(payload)
         pointer = _read_pointer(session) if session else {}
@@ -398,6 +399,12 @@ def brief(payload: dict) -> str:
         if plan is None or plan.field("owner session") != session or plan.status not in OPEN:
             return ""
         items = plan.open_items()
+        counted = tally(plan) if items else {}
+        if counted.get("stop"):
+            return (f"Autopilot run stopped by its count, waiting for the principal's answer: {plan.path} (Status: "
+                    f"{plan.status}). Read the plan before anything else and start nothing new. The one line: "
+                    f"{stop_line(plan, counted)} Their answer goes on the Principal answer: line with the time they "
+                    f"gave it.")
         return (f"Autopilot run in progress: {plan.path} (Status: {plan.status}). Read the plan before anything "
                 f"else. Next open item: {items[0] if items else 'none; verify and close'}.")
     except Exception:

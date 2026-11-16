@@ -781,6 +781,31 @@ def test_session_start_brief_brings_the_run_back_after_compaction(tmp_path):
     assert autopilot.brief({"session_id": "S2"}) == ""
 
 
+def test_session_start_brief_says_a_run_its_count_stopped_waits_for_the_principals_answer(tmp_path):
+    """When the count has stopped the run, what comes back at session start and after compaction says so, with the
+    one line, and names no next item to start; once the principal's answer is written, the next item comes back."""
+    path = tagged(tmp_path, closed=(90,), added=(60, 30))
+    engage("S1", path)
+    note = autopilot.brief({"session_id": "S1", "source": "compact"})
+    assert note.startswith(f"Autopilot run stopped by its count, waiting for the principal's answer: {path} ")
+    assert ("The one line: migrate endpoints: in the last 24 hours this run added 2 item(s) of its own and closed 1 of "
+            "yours. Continue, narrow, or stop?") in note
+    assert "start nothing new" in note and "Principal answer:" in note and "Next open item" not in note
+    edit(path, "Status: running", "Status: blocked")
+    assert "waiting for the principal's answer" in autopilot.brief({"session_id": "S1"})  # asked, not yet answered
+    edit(path, "Status: blocked", f"Status: running\nPrincipal answer: continue {ago(1)}")
+    assert "Next open item: 2. Close what review round 1 found" in autopilot.brief({"session_id": "S1"})
+
+
+def test_the_fan_out_rules_and_binding_rule_11_name_the_three_agent_cap():
+    """The principal's caps of 2026-11-16 bound every fan-out, a review's or not: at most three agents at once."""
+    fan_out = (SKILL / "references" / "delegation.md").read_text(encoding="utf-8").split(
+        "\n## Sub-Agent Fan-Out Hygiene\n")[1].split("\n## ")[0]
+    assert "**At most three agents at once.**" in fan_out and "references/review-caps.md" in fan_out
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    assert "At most three agents run at once." in next(line for line in rules.splitlines() if line.startswith("11. "))
+
+
 # ---- R6.4 and R8.1: fast enough for every turn end ------------------------------
 
 def test_the_check_takes_well_under_50_ms(tmp_path, pace):

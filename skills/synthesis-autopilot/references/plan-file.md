@@ -164,7 +164,9 @@ days running (each of the last three days higher than the day before), and no
 `cycle --advanced` refuses to record the advance and prints the one line to bring
 the principal, which ends "Continue, narrow, or stop?". The day's count is still
 written. A cycle that only names a wait is recorded, and prints the line too. The
-turn-end check asks for that line instead of the next item. Start nothing new:
+turn-end check asks for that line instead of the next item, and the session-start
+brief, after compaction too, says the run waits for the principal's answer and
+gives the line instead of naming the next item. Start nothing new:
 [procedure.md](procedure.md#when-the-count-stops-the-run) says how to ask and what
 each answer means. The answer goes on the one `Principal answer:` header line,
 updated in place, with the time the principal gave it, and holds for 24 hours from

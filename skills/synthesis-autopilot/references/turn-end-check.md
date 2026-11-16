@@ -211,7 +211,9 @@ finds a board notice at its next prompt.
 contract as `reply_check.check`; `evaluate(payload, config)` returns
 `(reason, note)` so the hook can also print the cap note as `systemMessage`; and
 `brief(payload) -> str` is a one-paragraph reminder of the owned run for the
-session-start hook, including after compaction.
+session-start hook, including after compaction. When the count has stopped the
+run it names no next item: it says the run waits for the principal's answer, and
+gives the one line.
 
 ## How it differs from the 2.4.0 gate
 

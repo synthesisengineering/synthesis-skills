@@ -20,12 +20,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   prints the one line to bring the principal, ending "Continue, narrow, or stop?"; a cycle that only names a wait is
   recorded and prints the line too. The turn-end check asks for that line instead of the next open item, from the plan
   it already reads: on a 201-item plan with 2,000 ledger lines and 60 days of counts, the whole check took 1.0 ms
-  under Python 3.12 and 1.4 ms under Apple's 3.9, and it imports nothing new. A plan written before origins counts
-  nothing and never stops; `cycle` says so once, and again only when more such items appear. Binding rule 14 carries
-  the rule; `references/plan-file.md` the convention and the template; `references/turn-end-check.md`, the re-entry
-  protocol and runaway control the rest. To make room for rule 14, the Procedure's six numbered steps (1,313 bytes)
-  moved word for word from SKILL.md to a new `references/procedure.md`, which also says what each answer asks for;
-  SKILL.md keeps the helper path and a pointer, and is 7,344 bytes.
+  under Python 3.12 and 1.4 ms under Apple's 3.9, and it imports nothing new. The session-start brief, after
+  compaction too, says a run its count stopped waits for the principal's answer, and gives the line, instead of
+  naming the next item. A plan written before origins counts nothing and never stops; `cycle` says so once, and again
+  only when more such items appear. The fan-out rules and binding rule 11 name the principal's cap of three agents at
+  once. Binding rule 14 carries the rule; `references/plan-file.md` the convention and the template;
+  `references/turn-end-check.md`, the re-entry protocol and runaway control the rest. To make room for rule 14, the
+  Procedure's six numbered steps (1,313 bytes) moved word for word from SKILL.md to a new `references/procedure.md`,
+  which also says what each answer asks for; SKILL.md keeps the helper path and a pointer, and is 7,378 bytes.
 - **A review has caps, and the coordinator holds them** (`synthesis-adversarial-review` 2.1.0). Two review rounds per
   item; after the second, a finding blocks only if an honest agent would hit it in ordinary work or it appears in the
   principal's records, and anything else goes on the open list. The coordinator bounds the review, not the reviewer.
@@ -37,7 +39,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   items closed are counted against self-generated items added since the last; when, over a day, the second outnumbers
   the first, new work stops for the principal's one line. Work goes top-down: finish, ship and install before anything
   new, and a side quest only when it serves the principal's goals. Binding rules 14 to 16, in full in the new
-  `references/backlog.md`.
+  `references/backlog.md`. The checkpoint's procedure leads to that count from its step 4 (`synthesis-checkpoint`
+  2.1.0).
 - **Decide what the goals already decide** (`synthesis-thinking-framework` 3.1.0). When a recommendation follows from
   the principal's goals, guidelines and wish for the best-quality work, the agent decides it, acts, and reports it in
   one line; the principal gets only what needs their own authority (money, sends, deploys, their accounts and
