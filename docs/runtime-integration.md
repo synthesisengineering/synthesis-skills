@@ -635,9 +635,11 @@ stay open, and no hook running as that same user can close them:
   harness program written where the guard never saw it (before the guard held these, by one
   of the routes above, or by the person) runs when a harness, `synthesis doctor` or the release tool
   starts it. Nor are these held: a file a startup file sources (`. ~/.cargo/env`, a plugin
-  manager's scripts), a `ZDOTDIR` set other than in the environment or `~/.zshenv`, and a
+  manager's scripts), a `ZDOTDIR` set other than in the environment or `~/.zshenv`, a
   package of another name that installs a `claude`, `codex` or `gh` command (`npm install
-  -g`, `pip install --user`), which writes it unseen.
+  -g`, `pip install --user`), which writes it unseen, and a folder on the PATH an agent's
+  shell builds from its startup files that is neither on the PATH the hook runs with nor
+  one of the known places.
 - A code for a shell command binds the scripts it runs, not the files named inside them: a
   script that copies a settings file it names only in its own text (`bash install.sh`
   running `cp v5-config.json …`) still runs on its code after that file changes. It closes
