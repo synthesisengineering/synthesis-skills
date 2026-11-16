@@ -975,3 +975,23 @@ def test_an_address_the_environment_can_still_aim_at_this_machine_waits(tmp_path
     """A local host with its port filled in, a host left open to what follows, the server's port on a spelled name (one
     that resolves here reaches it), an opener's open, and a client started for an address the environment gives."""
     assert held(shell(program, cwd=str(tmp_path))), program
+
+
+# --- review round 4 of 22.17 (2026-11-16): on the open list -----------------------------------------------------------------
+# The reviewer's probe: a body the program builds while it runs, its JSON-RPC method joined from 'tools/' and 'call',
+# posted to an address an earlier command exported. Spelled whole, the method makes the same program wait.
+
+SPLIT_METHOD = ("import json, os, urllib.request as u; b = json.dumps({'method': 'tools/' + 'call'}).encode(); "
+                "u.urlopen(u.Request(os.environ['PROBE_TARGET'], data=b))")
+
+
+def test_a_tool_call_built_with_its_method_spelled_whole_waits(tmp_path):
+    program = SPLIT_METHOD.replace("'tools/' + 'call'", "'tools/call'")
+    assert held(shell("python3 -c " + shlex.quote(program), cwd=str(tmp_path)))
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason="open list (docs/runtime-integration.md, What remains open): a "
+                   "body built while the program runs, its JSON-RPC method split across literals, sent to a target from the "
+                   "environment, reads as a request the program builds with no tool call (review round 4 of 22.17; crafted)")
+def test_a_tool_call_whose_method_is_split_across_literals_waits(tmp_path):
+    assert held(shell("python3 -c " + shlex.quote(SPLIT_METHOD), cwd=str(tmp_path)))

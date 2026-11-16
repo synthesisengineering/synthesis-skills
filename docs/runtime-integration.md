@@ -549,6 +549,11 @@ stay open, and no hook running as that same user can close them:
 - A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself, a Python program's asyncio
   stream, and a request library the guard does not know whose post names no write method and no body keyword (pycurl's
   `POSTFIELDS` alone) reach the server's tools unread; this is crafted, and 60 days of records hold none.
+- A program that takes its target from the environment and builds its body while it runs, with the JSON-RPC method
+  split across literals (`'tools/' + 'call'`), reaches the server's tools unread: the guard reads such a body as a request
+  the program builds, and finds a tool call only where the program's text spells the method whole, so it reads a body
+  that is no tool call. The strict expected failure `test_a_tool_call_whose_method_is_split_across_literals_waits`
+  names it (review round 4 of 22.17; crafted).
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
