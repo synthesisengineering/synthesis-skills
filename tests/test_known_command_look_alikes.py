@@ -121,6 +121,8 @@ def test_the_hold_names_the_script_and_the_name_it_takes(world):
 @pytest.mark.parametrize("line", [
     "PATH={tools}:$PATH ls -la",
     "export PATH={tools}:$PATH && git status",
+    "export PATH=\"$(pwd)/tools:$PATH\" && ls -la",
+    "PATH=$PWD/tools:$PATH git status",
     "env PATH={tools} python3 -c 'print(1)'",
     "cd tools && PATH=. ls",
     "cd tools && ./ls",
@@ -134,6 +136,37 @@ def test_a_look_alike_reached_through_the_lines_own_path_or_a_wrapper_waits(worl
         world["plant"](name)
     line = line.format(tools=world["tools"])
     assert _held(world["verdict"](line)), line
+
+
+@pytest.mark.parametrize("line", ["tools/l?", "{tools}/[l]s -la", "t*/git status"])
+def test_a_look_alike_named_through_a_pattern_waits(world, line):
+    """The shell expands the pattern before it runs the first word it makes."""
+    for name in ("ls", "git"):
+        world["plant"](name)
+    line = line.format(tools=world["tools"])
+    assert _held(world["verdict"](line)), line
+
+
+def test_a_path_the_line_adds_to_is_read_after_the_one_it_had(world):
+    """`PATH+=…` puts its folders after PATH's own, so the real `ls` is still the one found first."""
+    world["plant"]("ls")
+    assert world["verdict"]("cd tools && PATH+=:/nonexistent ls") is None
+    assert _held(world["verdict"]("cd tools && PATH=.:$PATH ls"))
+
+
+def test_only_a_name_the_guard_trusts_is_looked_at(world, monkeypatch):
+    """The check costs a lookup only where the guard judges a command by its name; a program of its own name is read
+    as before, by its path, and looked up for nothing."""
+    asked = []
+    for name in ("_runnable", "_compiled"):
+        real = getattr(guards, name)
+        monkeypatch.setattr(guards, name, lambda spot, real=real: asked.append(spot) or real(spot))
+    world["plant"]("mytool", "#!/bin/sh\necho benign\n")
+    world["first_on_path"](world["tools"])
+    world["verdict"]("mytool a && othertool b | sort")
+    assert asked and not [spot for spot in asked if os.path.basename(spot) in ("mytool", "othertool")]  # `sort` was
+    world["verdict"]("ls -la")
+    assert [spot for spot in asked if os.path.basename(spot) == "ls"]
 
 
 @pytest.mark.parametrize("line", ["env echo hi", "find . -maxdepth 0 -exec echo {} \\;", "nohup printf x", "xargs test -n"])
@@ -172,6 +205,37 @@ def test_a_look_alike_the_line_writes_first_on_path_and_runs_by_name_waits(world
     world["first_on_path"](world["tools"])
     line = (f"printf '#!/bin/sh\\ncat {world['stub']} > {world['target']}\\n' > {world['tools']}/ls; "
             f"chmod +x {world['tools']}/ls; ls")
+    assert _held(world["verdict"](line)), line
+
+
+# --- what the look-alike's `#!` line says it runs as ------------------------------------------------------------------
+
+def test_a_look_alike_is_judged_as_its_interpreter_runs_it(world):
+    """A Python look-alike is read by the Python reader: one that only reads passes, one that writes the guard is held;
+    `#!/bin/cat` only prints its file; a `#!` line that names another look-alike runs that one too."""
+    reads = world["plant"]("ls", "#!/usr/bin/env python3\nimport sys\nprint(len(open(sys.argv[0]).read()))\n")
+    assert world["verdict"](f"{reads} -la") is None
+    world["plant"]("git", f"#!/usr/bin/env python3\nimport shutil\nshutil.copy({str(world['stub'])!r}, {str(world['target'])!r})\n")
+    reason = world["verdict"](f"{world['tools']}/git status")
+    assert reason and (reason.startswith("Refused") or _held(reason)), reason
+    world["plant"]("cat", "#!/bin/cat\nanything at all\n")
+    assert world["verdict"](f"{world['tools']}/cat notes.txt") is None
+    world["plant"]("bash")
+    world["plant"]("sh", f"#!{world['tools']}/bash\necho hi\n")
+    assert _held(world["verdict"](f"{world['tools']}/sh -c 'echo hi'"))
+
+
+def test_a_look_alike_of_the_hook_is_refused_as_running_it(world):
+    hook = world["plant"]("synthesis-hook", "#!/bin/sh\nexec python3 -c 'pass' \"$@\"\n", folder=paths.home() / "bin")
+    world["link"](world["tools"] / "python3", hook)
+    reason = world["verdict"](f"{world['tools']}/python3 pre-tool-use")
+    assert reason and reason.startswith("Refused") and "synthesis hook" in reason, reason
+
+
+@pytest.mark.parametrize("line", ["bash -c 'tools/ls -la'", "watch 'tools/ls -la'", "sh -c \"cd tools && ./git status\""])
+def test_a_look_alike_inside_another_commands_words_waits(world, line):
+    for name in ("ls", "git"):
+        world["plant"](name)
     assert _held(world["verdict"](line)), line
 
 
@@ -221,7 +285,7 @@ def test_links_to_compiled_programs_pass_wherever_they_lie(world):
         assert world["verdict"](line) is None, line
 
 
-def test_the_commands_that_really_are_scripts_pass_where_their_installer_puts_them(world):
+def test_the_commands_that_really_are_scripts_pass_where_their_installer_puts_them(world, monkeypatch):
     """npm's npx in its global folder, a version manager's shim, a Homebrew formula's own script, the synthesis
     launcher in the runtime's protected bin/, and the system's own scripts (macOS's /usr/bin/cd, shasum on both)."""
     npm = world["tmp"] / "npm-global"
@@ -230,6 +294,7 @@ def test_the_commands_that_really_are_scripts_pass_where_their_installer_puts_th
     shims = world["tmp"] / ".pyenv" / "shims"
     world["plant"]("python3", "#!/usr/bin/env bash\nset -e\nprogram=\"${0##*/}\"\nexec pyenv exec \"$program\" \"$@\"\n", folder=shims)
     brew = world["tmp"] / "brew"
+    monkeypatch.setenv("HOMEBREW_PREFIX", str(brew))
     world["plant"]("groovy", "#!/bin/sh\nexec java -classpath groovy.jar \"$@\"\n", folder=brew / "Cellar" / "groovy" / "4.0.0" / "libexec" / "bin")
     world["link"](brew / "bin" / "groovy", "../Cellar/groovy/4.0.0/libexec/bin/groovy")
     launcher = world["plant"]("synthesis", "#!/bin/sh\nexec python3 -c 'from synthesis.cli import main; main()' \"$@\"\n",
@@ -243,6 +308,22 @@ def test_the_commands_that_really_are_scripts_pass_where_their_installer_puts_th
     reads = READS.format(record=shlex.quote(str(world["record"])))  # through the shim, still read as Python
     for line in ("npx --version", "python3 -c 'print(1)'", reads, "groovy -e 1", "synthesis who"):
         assert world["verdict"](line) is None, line
+
+
+def test_an_installers_folder_admits_only_the_names_that_installer_provides(world, monkeypatch):
+    """A folder the user writes admits a script only under a name its installer provides there: `ls` linked from npm's
+    global folder, set among a version manager's shims, or in Homebrew's Cellar is read as the script it is, and a
+    Cellar that is not Homebrew's admits nothing."""
+    npm, brew, elsewhere = world["tmp"] / "npm-global", world["tmp"] / "brew", world["tmp"] / "else"
+    monkeypatch.setenv("HOMEBREW_PREFIX", str(brew))
+    world["plant"]("x.js", folder=npm / "lib" / "node_modules" / "pkg" / "bin")
+    world["link"](npm / "bin" / "ls", "../lib/node_modules/pkg/bin/x.js")
+    shim = world["plant"]("ls", folder=world["tmp"] / ".pyenv" / "shims")
+    world["plant"]("ls", folder=brew / "Cellar" / "coreutils" / "9.5" / "bin")
+    world["link"](brew / "bin" / "ls", "../Cellar/coreutils/9.5/bin/ls")
+    world["plant"]("groovy", folder=elsewhere / "Cellar" / "groovy" / "4.0.0" / "bin")
+    for line in (f"{npm}/bin/ls", f"{shim} -la", f"{brew}/bin/ls -la", f"{elsewhere}/Cellar/groovy/4.0.0/bin/groovy -e 1"):
+        assert _held(world["verdict"](line)), line
 
 
 def test_ordinary_scripts_off_the_guards_lists_are_judged_as_before(world):

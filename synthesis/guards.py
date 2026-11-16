@@ -1696,15 +1696,19 @@ def _simple(tokens: list) -> list:
     return items
 
 
-def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[str]]:
+def _bare(words: list[str], moved: list | None = None, started: list | None = None) -> tuple[list[str], list[str]]:
     """The command a line runs, past assignments, keywords and wrappers like env or timeout, plus
-    any script a wrapper takes as text (eval, env -S)."""
+    any script a wrapper takes as text (eval, env -S). `started` collects each program word taken off, with the
+    words after it: a program judged by its name, and looked at (`_look_alike`)."""
     scripts: list[str] = []
     while words:
         head = os.path.basename(words[0])
         if words[0] in KEYWORDS or re.match(r"[A-Za-z_]\w*=", words[0]):
             words = words[1:]
             continue
+        if started is not None and (head == "eval" or head in WRAPPERS or (head == "script" and len(words) > 1) or (
+                head == "launchctl" and words[1:2] in (["asuser"], ["bsexec"]))):
+            started.append((words[0], words[1:]))
         if head == "eval":
             return [], scripts + [" ".join(words[1:])]
         if head == "command" and words[1:2] in (["-v"], ["-V"]):
@@ -1838,18 +1842,204 @@ PROMPTED = frozenset({"codex", "claude", "muse", "gh", "say"})  # their words ar
 STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "perl", "tee", "touch", "truncate", "mkdir", "rmdir", "rm",
                       "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
+# A program under the name of a command the guard judges by name is read as what it is (22.32). The review of
+# 2026-11-15 (C9) named a script of its own `bash`, `python3`, `ls` or `git` and ran it by its path, or found first on
+# PATH in a folder the user writes: judged as that command, it was never read, and it replaced the runtime's guard in
+# nine forms of nine. The real commands are compiled programs or links to them; so a command word the guard trusts
+# that leads to a script is also judged as that script, under the rules for scripts, unless it is one of the commands
+# that really are scripts, where its installer puts it (`_installed`). 60 days of records (2026-09-16 to 2026-11-15,
+# 252,649 distinct commands): every such word led to a compiled program, a builtin, nothing, or a script of that list.
+COMPILED = (b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe",
+            b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca")  # ELF; Mach-O, thin and universal
+BUILTINS = frozenset(". : [ alias bg break cd command continue echo eval exec exit export false fc fg getopts hash jobs kill local "
+                     "printf pwd read readonly return set shift test times trap true type ulimit umask unalias unset wait".split())  # bash, zsh and dash each run these themselves
+SHIMS = (".pyenv", ".rbenv", ".nodenv", ".asdf", ".jenv", ".plenv", ".goenv", ".luaenv", ".phpenv")  # version managers: <root>/shims/<name>
+SHIM_ROOTS = ("PYENV_ROOT", "RBENV_ROOT", "NODENV_ROOT", "ASDF_DATA_DIR", "JENV_ROOT", "PLENV_ROOT", "GOENV_ROOT")
+NPM_BINS = ("npx", "pnpx", "tsx", "ts-node")  # the names it trusts that are npm packages' bins (JavaScript files)
+BREWED = ("groovy", "scala", "elixir", "jruby", "7z", "7za", "irb", "shasum", "gunzip", "zcat", "uncompress", "egrep", "fgrep",
+          "synthesis", *NPM_BINS)  # the names it trusts that a Homebrew formula installs as a script
+BREWS = ("/opt/homebrew", "/usr/local")  # Homebrew's prefixes on a Mac, beside HOMEBREW_PREFIX (`brew shellenv` sets it)
+
+
+class LookAlike(str):
+    """The first word of the command a look-alike script really runs as, carrying where it was found (`found`) and the
+    name it took (`name`), so a hold can say what ran."""
+    found = name = ""
+
+
+def _trusted(name: str) -> bool:
+    """A command the guard judges by its name: a shell, an interpreter, a reader, a file utility, a wrapper, an editor,
+    an unpacker, or a program with rules of its own."""
+    return (name in SHELLS or name in READERS or name in WRITERS or name in OWN_RULES or name in EDITORS or name in WRAPPERS
+            or name in EXTRACTS or name in ("gsed", "open", "script", "launchctl")
+            or bool(SCRIPT.match(name) or UNREAD.match(name) or INTERPRETER.match(name)))
+
+
+def _compiled(real: str):
+    """True for a compiled program, False for any other regular file (a script: the system runs a text file with no `#!`
+    line with a shell), None for what is no regular file or cannot be read. Read once a call, its first four bytes."""
+    memo = _CALL["looks"]
+    if ("kind", real) not in memo:
+        found = _regular(real, 4)
+        memo[("kind", real)] = None if found is None else found[0][:4] in COMPILED
+    return memo[("kind", real)]
+
+
+def _root_owned(path: str) -> bool:
+    """The file and every folder above it owned by root and writable by neither this user nor its groups, as the
+    interpreter the launchers pin is chosen: what root installed, which no program of the agent's rewrites."""
+    memo, spot = _CALL["looks"], path
+    if ("root", path) not in memo:
+        while True:
+            try:
+                ok = not os.lstat(spot).st_uid and not os.access(spot, os.W_OK)
+            except OSError:
+                ok = False
+            if not ok or os.path.dirname(spot) == spot:
+                break
+            spot = os.path.dirname(spot)
+        memo[("root", path)] = ok
+    return memo[("root", path)]
+
+
+def _installed(name: str, real: str, found: str) -> bool:
+    """A script that really is the command `name`, where its installer puts it. Anywhere no program of the agent's
+    writes, by its own name (a version or a suffix after it: `wish8.5`, `which.debianutils`): one root installed, or the
+    runtime's own launcher in its protected `bin/`. In a folder the user writes, only a name that installer provides:
+    an npm package's bin (NPM_BINS) linked from its global folder (`<prefix>/bin/<name>` into `<prefix>/lib/node_modules/`,
+    or Debian's `<prefix>/share/nodejs/`) or a project's `node_modules/.bin/`; an interpreter's version manager shim;
+    a Homebrew formula's script (BREWED) in Homebrew's own Cellar. `found` is the path the command was found as, `real`
+    where it leads."""
+    at, base, folder = os.path.dirname(found), os.path.basename(real), os.path.dirname(real)
+    if name in NPM_BINS and ((os.path.basename(at) == "bin" and any(paths.inside(real, _real(os.path.join(os.path.dirname(at), *w)))
+                                                                  for w in (("lib", "node_modules"), ("share", "nodejs")))) or (
+            os.path.basename(at) == ".bin" and os.path.basename(os.path.dirname(at)) == "node_modules" and paths.inside(real, _real(os.path.dirname(at))))):
+        return True
+    if not re.fullmatch(re.escape(name) + r"[\d.]*(?:\.[a-z]+)?", base):
+        return False
+    if _root_owned(real) or any(paths.inside(real, _real(paths.home() / part)) for part in ("bin", "releases")):
+        return True
+    roots = {_real(os.environ[k]) for k in SHIM_ROOTS if os.environ.get(k)}
+    if (SCRIPT.match(name) or UNREAD.match(name) or INTERPRETER.match(name) or name in NPM_BINS) and base == name and (
+            os.path.basename(folder) == "shims" and (os.path.basename(os.path.dirname(folder)) in SHIMS or os.path.dirname(folder) in roots)):
+        return True
+    cellars = [os.environ.get("HOMEBREW_CELLAR", "")] + [os.path.join(p, "Cellar") for p in (os.environ.get("HOMEBREW_PREFIX", ""), *BREWS) if p]
+    return name in BREWED and any(c and paths.inside(real, _real(c)) for c in cellars)
+
+
+def _search_paths(command: str, cwd: str) -> list:
+    """The folders a command word may be looked up in, each list in the order the shell reads it: PATH as this process
+    has it, and each value the line gives PATH itself (`PATH=… cmd`, `export PATH=…`, `env PATH=…`), with `$PATH`, `~`
+    and the folder the line starts in (`$(pwd)`, `$PWD`) put in. A folder another substitution names is passed over."""
+    path = os.environ.get("PATH", "")
+    found = [path.split(os.pathsep)]
+    for m in ASSIGNED.finditer(command) if "PATH" in command else ():
+        if m[1] == "PATH":  # `PATH+=…` adds to it
+            value = (path if m[2] else "") + re.sub(r"\$\{PATH\}|\$PATH\b", lambda _: path, m[3].strip("'\""))
+            value = re.sub(r"\$\(\s*pwd\s*\)|`\s*pwd\s*`|\$\{PWD\}|\$PWD\b", lambda _: cwd, value)
+            value = re.sub(r"(^|:)~(?=/|:|$)", lambda u: u[1] + os.path.expanduser("~"), value)
+            found.append([f for f in value.split(os.pathsep) if not re.search(r"[$`]", f)])
+    return found
+
+
+def _look_alike(word: str, here: str, run_from_path: bool, line: dict) -> tuple:
+    """(where a command word the guard trusts was found, where that leads) when it leads to a script and not to the
+    compiled program the command really is, nor to one of the commands that really are scripts where its installer puts
+    it (`_installed`); ("", "") for any other. A word with a slash is that file; any other is looked up on each of
+    the line's search paths as the shell looks it up (a builtin the shell runs itself excepted, unless a program that
+    starts commands from PATH runs it: `run_from_path`), the first regular file it may run winning. A file the line
+    itself writes there counts as a script, with the line as its text. A word written as a pattern is the first file it
+    names, as the shell expands it (`tools/l?`)."""
+    if re.search(r"[*?\[]", word) and not re.search(r"[$`]", word):
+        import glob  # only for a word written as a pattern
+        try:
+            made = sorted(f for f in (os.listdir(here) if "/" not in word else ()) if fnmatch.fnmatchcase(f, word) and (
+                f[:1] != "." or word[:1] == ".")) or sorted(glob.glob(os.path.join(here, os.path.expanduser(word))) if "/" in word else [])
+        except OSError:
+            made = []
+        word = made[0] if made else word
+    name = os.path.basename(word)
+    if not name or re.search(r"[$`*?\[]", word) or not _trusted(name) or ("/" not in word and not run_from_path and word in BUILTINS):
+        return "", ""
+    written = line["written"] if name in line["names"] else ()  # a file of that name the line writes
+    if "/" in word:
+        lists = [[os.path.normpath(os.path.join(here, os.path.expanduser(word)))]]
+    else:
+        lists = [[os.path.join(folder if os.path.isabs(folder) else os.path.join(here, folder), word) for folder in folders]
+                 for folders in line["paths"]]
+    for spots in lists:
+        for spot in spots:
+            if written and _real(spot) in written:
+                return spot, _real(spot)
+            if "/" in word or _runnable(spot):
+                real = _real(spot)
+                if _compiled(real) is False and not _installed(name, real, spot):
+                    return spot, real
+                break  # the first program found is the one that runs
+    return "", ""
+
+
+def _runnable(spot: str) -> bool:
+    """A regular file this user may run, as the shell's lookup on PATH takes one (a folder or a link to nothing it passes
+    over). Asked once a call."""
+    memo = _CALL["looks"]
+    if ("run", spot) not in memo:
+        try:
+            memo[("run", spot)] = os.stat(spot).st_mode & 0o170000 == 0o100000 and os.access(spot, os.X_OK)
+        except (OSError, ValueError):
+            memo[("run", spot)] = False
+    return memo[("run", spot)]
+
+
+def _as_run(found: str, real: str, words: list, written: bool) -> list:
+    """The command a look-alike script really is, as the system starts it: the interpreter its `#!` line names, with
+    that line's words, then the script and the words it was given, `env` and its options taken off as `_bare` takes
+    them. /bin/sh for a text file with no `#!` line (what the shell does with one), for a file the line itself writes,
+    and for a line that would hand the script over as a command (`#!/bin/sh -c`). Its first word carries where it was
+    found and the name it took."""
+    first = b"" if written else (_regular(real, 256) or (b"",))[0]
+    shebang = first[2:].split(b"\n", 1)[0].decode("utf-8", "replace").split() if first[:2] == b"#!" else []
+    try:
+        run = _bare(shebang + [real] + list(words[1:]))[0] if shebang else []
+    except Unreadable:
+        run = []
+    if not run or run[0] == real or (os.path.basename(run[0]) in SHELLS and _shell_input(run)[0] is not None):
+        run = ["/bin/sh", real] + list(words[1:])
+    head = LookAlike(run[0])
+    head.found, head.name = found, os.path.basename(words[0])
+    return [head] + run[1:]
+
 
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None, prose: bool = False) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False, line: dict | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
     command found and in the same order, (the `&&` chain it stands in, whether a later command of
     that chain runs only if this one ran and succeeded). `feeds` collects, the same way, the text each
-    command reads on its own stdin (its heredocs and here-strings)."""
+    command reads on its own stdin (its heredocs and here-strings). A command word the guard judges by
+    name that leads to a script (`_look_alike`) adds the command that script really is, after it.
+    `line` is the whole line's: its search paths, what it writes, and each word looked at."""
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
     found, outer, upstream, chain, back, stack = [], [], "", object(), cwd, []
+    top, line = line is None, line or {"paths": _search_paths(command, cwd), "written": set(), "names": set(), "later": []}
+
+    def looked(word: str, rest: list, here: str, from_path: bool, chain, needed: bool, feed) -> bool:
+        """Whether a command word is a look-alike: the command its script really is, and the one its `#!` line names
+        when that is a look-alike too, three deep, go into what the line runs."""
+        look, run, added = _look_alike(word, here, from_path, line), [word] + list(rest), False
+        for _ in range(3) if look[0] else ():
+            run, added = _as_run(look[0], look[1], run, look[1] in line["written"]), True
+            found.append((run, here))
+            if runs is not None:
+                runs.append((chain, needed))
+            if feeds is not None:
+                feeds.append(feed())
+            look = _look_alike(run[0], here, True, line)
+            if not look[0]:
+                break
+        return added
     for item in _simple(_lex(command)):
         if item in ("(", ")"):
             if item == "(":
@@ -1865,8 +2055,8 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         for text, literal in stdin:
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
-        moved: list = []
-        words, inner = _bare(words, moved)
+        moved, started = [], []
+        words, inner = _bare(words, moved, started)
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
@@ -1885,12 +2075,18 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             head in OPAQUE or head in READERS - WORDS or head in ACTORS)  # a reader may still redirect: `date >> file`; a key press handed to `watch`
         if writes is not None and taken:
             writes += [(t, cwd) for t in targets]
+        if taken:  # what the line writes or edits in place, where a program it then runs may be
+            made = [os.path.join(cwd, os.path.expanduser(t)) for t in targets] + [
+                os.path.join(here, os.path.expanduser(re.sub(r"/\*\*(?:/\*)?$", "", t))) for t in (
+                    _landing(words) if words and (head in WRITERS or head in ("sed", "gsed", "perl")) else ())]
+            line["written"].update(_real(m) for m in made)
+            line["names"].update(os.path.basename(m) for m in made)
         if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
             for at, word in enumerate(words[1:], 1):
                 held = ([], [], [])
                 try:
                     said = MESSAGE.fullmatch(words[at - 1]) or (word.startswith("-") and MESSAGE.fullmatch(word.split("=", 1)[0]))
-                    inner = _commands(word, here, depth + 1, *held, prose=True) if " " in word and not said else []  # --body TEXT, --body=TEXT
+                    inner = _commands(word, here, depth + 1, *held, prose=True, line=line) if " " in word and not said else []  # --body TEXT, --body=TEXT
                 except (Unreadable, StopIteration, IndexError, RecursionError):
                     continue
                 found += [(w, Quoted(h)) for w, h in inner]
@@ -1920,14 +2116,22 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                     dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
                 cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
             if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it
-                roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found
-                scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
-                            else shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run, there in ran if run for root in roots]
+                roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found; it starts
+                scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && env " + shlex.join(w.replace("{}", "./{}") for w in run) if there
+                            else "env " + shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run, there in ran if run
+                            for root in roots]  # each from PATH, as env does, never as a shell's builtin
             script, reads, given = _shell_input(words)
             if script is not None:
                 scripts.append(_placed(script, given))
             elif reads:  # the shell runs whatever reaches its stdin
                 scripts += [_placed(text, given) for text in [text for text, _ in stdin] + ([_piped(upstream)] if piped else [])]
+        texts, up = [text for text, _ in stdin], (upstream if piped else None)  # what a look-alike reads on its stdin
+
+        def feed(texts=texts, up=up) -> str:
+            return "\n".join(texts + ([_piped(up)] if up is not None else []))
+        for at, (word, rest) in enumerate(started + ([(words[0], words[1:])] if words else [])):  # a wrapper's command is started from PATH
+            if not looked(word, rest, here, at > 0, chain, needed, feed):
+                line["later"].append((word, rest, Quoted(here) if prose else here, at > 0, chain, needed, feed))
         said, fill = words[1:], iter(words[2:])
         if head == "printf":  # what it prints: its format with its words put in
             said = [re.sub(r"%[-0-9.]*[sbqd]", lambda m: next(fill, ""), w) for w in said[:1]]
@@ -1935,7 +2139,9 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         upstream = (here, files) if files else "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n") if head in ("echo", "printf", "cat") else (
             f"{UNREAD_INPUT} {head}")  # what another program prints into a shell cannot be read (finding 18)
         for script in scripts:
-            found += _commands(script, here, depth + 1, writes, runs, feeds)
+            found += _commands(script, here, depth + 1, writes, runs, feeds, line=line)
+    for word, rest, here, from_path, chain, needed, feed in line["later"] if top and line["names"] else ():
+        looked(word, rest, here, from_path, chain, needed, feed)  # a look-alike the line writes after a loop or a function names it
     return found
 
 
@@ -1953,8 +2159,14 @@ def _parse(command: str, cwd: str, runs: list | None = None, feeds: list | None 
     try:
         return _commands(command, cwd, runs=runs, feeds=feeds), True
     except (Unreadable, StopIteration, IndexError):
-        found = [(_bare(part.split())[0], cwd) for part in SEPARATORS.split(command)]
-        found = [(words, where) for words, where in found if words]
+        found, line = [], {"paths": _search_paths(command, cwd), "written": set(), "names": set()}
+        for part in SEPARATORS.split(command):
+            started: list = []
+            words = _bare(part.split(), None, started)[0]
+            found += [(words, cwd)] * bool(words)
+            for at, (word, rest) in enumerate(started + ([(words[0], words[1:])] if words else [])):  # a look-alike: what it really is too
+                look = _look_alike(word, cwd, at > 0, line)
+                found += [(_as_run(look[0], look[1], [word] + rest, False), cwd)] if look[0] else []
         if runs is not None:
             runs[:] = [(None, False)] * len(found)
         if feeds is not None:
@@ -4568,7 +4780,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "looks": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, what its programs are, and its deadline
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -5183,7 +5395,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, until=time.monotonic() + CALL_SECONDS)
     waits = None
     for text in readings:
         reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
@@ -5323,9 +5535,11 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         proven = shipped or (not shows if python and ran and not source else python and not bare and bool(source) and hit is False and not (
             reach[0] == "places" and not reach[2] and wrote))  # a write to where synthesis's own paths lead, unspelled, cannot be placed
         if named and not waits and not proven:
-            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}" if shows else
+            alike = words[0] if isinstance(words[0], LookAlike) else None  # a script under the name of a command it trusts (22.32)
+            ran_as = (f"`{alike.found}`, a script under the name of `{alike.name}`," if alike else f"`{label}` on {ran}," if shows else f"`{label}`,")
+            waits = Unproven(f"runs {ran_as} which {shows}, and names {named}" if shows else
                              f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
-                             f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
+                             f"{named}" if bare and hit is False and not alike else f"runs {ran_as} which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
                 within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(_real(where)) in _spellings(raw, env)[2]):
@@ -6445,7 +6659,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()

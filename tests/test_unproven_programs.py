@@ -31,6 +31,17 @@ SLACK = "mcp__slack__slack_send_message"
 HELD = "approve followed by the code"
 
 
+def _runtime_cli_first(monkeypatch) -> None:
+    """A bare `synthesis` is the runtime's own launcher in its protected bin/, first on PATH, as an install leaves it. A
+    machine's own CLI lies outside a test's runtime, and a script under a name the guard trusts that lies outside it is
+    read as the script it is (22.32)."""
+    launcher = paths.home() / "bin" / "synthesis"
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text("#!/bin/sh\nexec python3 -m synthesis \"$@\"\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{launcher.parent}{os.pathsep}{os.environ.get('PATH', '')}")
+
+
 @pytest.fixture
 def world(tmp_path, monkeypatch):
     """A home of the test's own, where every protected folder lies where it lies on a Mac: the transcripts under
@@ -46,6 +57,7 @@ def world(tmp_path, monkeypatch):
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
     (paths.state() / "approvals").mkdir(parents=True)
     paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
+    _runtime_cli_first(monkeypatch)
     work = tmp_path / "work"
     work.mkdir()
     (work / "forged.jsonl").write_text("{}\n", encoding="utf-8")

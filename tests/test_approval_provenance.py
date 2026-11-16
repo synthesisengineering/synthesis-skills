@@ -270,6 +270,11 @@ def test_a_command_carrying_a_pending_code_is_refused(tmp_path):
 def roots(tmp_path, monkeypatch):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude"))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
+    launcher = paths.home() / "bin" / "synthesis"  # a bare `synthesis` is the runtime's own, as an install leaves it (22.32)
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    launcher.write_text("#!/bin/sh\nexec python3 -m synthesis \"$@\"\n", encoding="utf-8")
+    launcher.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{launcher.parent}{os.pathsep}{os.environ.get('PATH', '')}")
     found = paths.transcript_roots()
     return {"state": paths.state(), "claude": found["claude-code"], "codex": found["codex"], "muse": found["muse"]}
 
