@@ -220,3 +220,15 @@ def test_a_script_another_program_may_have_written_waits_and_a_shell_script_s_wr
     (tmp_path / "w.sh").write_text("echo " + shlex.quote(CALL) + " > s5.py\n")
     said = _said("bash w.sh && python3 s5.py", tmp_path)
     assert said.startswith("Refused") or "approve followed by the code" in said, said
+
+
+def test_written_contents_reads_a_sourced_script_and_holds_scripts_past_what_it_follows(tmp_path):
+    (tmp_path / "w.sh").write_text("echo 'print(5)' > s5.py\n")
+    assert guards.written_contents(". w.sh && python3 s5.py", str(tmp_path))[_at(tmp_path, "s5.py")] == "print(5)"
+    for name, runs in (("a.sh", "b.sh"), ("b.sh", "c.sh"), ("c.sh", "d.sh")):
+        (tmp_path / name).write_text(f"bash {runs}\n")
+    (tmp_path / "d.sh").write_text("echo 'print(6)' > s.py\n")
+    deep = guards.written_contents("bash a.sh && python3 s.py", str(tmp_path))
+    assert deep[guards.ANY_FILE] == guards.UNKNOWN_CONTENT and deep[_at(tmp_path, "s.py")] == guards.UNKNOWN_CONTENT
+    unknown = guards.written_contents("python3 -c \"open('gen.py', 'w').write('x')\" && python3 gen.py && python3 s.py", str(tmp_path))
+    assert unknown[_at(tmp_path, "s.py")] == guards.UNKNOWN_CONTENT  # what gen.py now holds, and so writes, cannot be told
