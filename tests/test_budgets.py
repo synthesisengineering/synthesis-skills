@@ -1377,10 +1377,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # WINDOW_CLI 1 (`synthesis sends open` started by a program), _granting_text's docstring 2, _commands 2 (a `cat`
 # heredoc's body kept for the file it writes, and its parameter), _unread 1 (that body read as the script it is) and
 # _self_grant 1 (the bodies it reads, the window started by a program).
+# 22.22's review round 2: core 306 more and plugin 306, measured, all in guards.py. _reaching 127 (what reaches a program
+# a program starts: in Python by its syntax tree, the started call's arguments and the names they are built from through
+# chains, appends and with-block handles, and what it hands the program after; every string where a starter or a module
+# of them is handed on or looked up, a value comes from a parameter, its own function or the environment, or it writes a
+# file a started program may run; in node every string but what it prints; in perl and ruby every string),
+# written_contents 59 (one reading of what a line writes to each file, which this rule and 22.21's program reach share),
+# _python_written 47 (the files a Python program writes, moves, copies, links or unpacks into), _read_once 21 (each
+# program parsed and read once a call, Python's warnings unprinted), _js_args 18 (a node call's arguments as spans),
+# _commands 7 (what tee, dd of= and a redirected echo or printf write), _granting_text 5 (a kept string found inside a
+# reaching one, an f-string by its text, no program for a script's arguments), _self_grant 4, and the constants 21
+# (STARTS_BY 2, STARTER_MODULE 1, UNSEEN_FLOW 3, DOCUMENT 1, RUNS_FILES 2, FILE_MOVES 2, JS_STARTS 2, JS_PRINTS 1 with its
+# 2 blank lines, JS_WRITES 2, RUNS_CODE 1, UNKNOWN_CONTENT 1, ANY_FILE 1), less RUNS_STRINGS 3.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16911
-PLUGIN_BUDGET = 42983
+CORE_BUDGET = 17217
+PLUGIN_BUDGET = 43289
 
 
 def _lines(files):

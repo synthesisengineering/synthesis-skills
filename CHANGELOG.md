@@ -11,18 +11,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   matched the names of the approval and send-window functions anywhere in a program's text, and strings it wrote to a
   file quoted them. Now the rule reads the program's code: a string counts only where it is the bare name or a dotted
   path to it (as getattr, a subscript or attrgetter takes it), an f-string only for its expressions, and comments not
-  at all. A program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function), or starts a program
-  (node's child_process family, Python's subprocess, os.system, os.exec and os.spawn), keeps every string: a string it
-  hands that program, or writes to a file it then starts, is code, and one that starts `synthesis sends open` is refused
-  as one that opens the window (review round 1). A call, an import, an attribute reach, a getattr or subscript by the
-  name, and a program it starts that reaches them are refused as before. A script the same line writes by a heredoc
-  (`cat > s.py <<'EOF'`) and then runs is judged by the heredoc's body, as the script it is: one that calls the approval
-  or send-window code waits as a script file's would (an older gap, the same on 5.23.1). Replayed over 60 days of this
-  Mac's records, each guard from its installed runtime: of 257 commands the rule could fire on, 155 were refused for this
-  reason before and 66 after; 88 now pass, 1 waits on another rule, and 5 that passed now wait, each a heredoc script read
-  as its body. Of the 119 that review round 1's head let pass, 88 still do and 31 are refused again, programs that start
-  a program. Read by Python's own syntax tree (78) or its tokenizer (10), none of the 88 reaches the functions in code,
-  and four planted self-grant programs are refused before and after.
+  at all; a program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function) keeps every string.
+  A call, an import, an attribute reach, and a getattr or subscript by the name are refused as before.
+- **A program that starts a program keeps only the strings that reach it** (22.22, review rounds 1 and 2). Python is
+  read by its syntax tree: the started call's arguments, the values of the names they are built from (through chains
+  of names, appends and with-block handles), and what it hands the started program after, such as its standard input,
+  count; prose it prints, or writes to a plain note, beside an unrelated program (`subprocess.run(['npm', 'test'])`,
+  `git add` of that note) does not. Every string counts where what reaches cannot be read: a starter, or a module of
+  them, handed on or looked up by name (an alias such as `import os as o` or `from os import system` is followed), a
+  value from a parameter, a function of its own or the environment, a run-time import or lookup, or a file it writes
+  that a started program may run: anything but a plain document (.md, .txt, .rst, .log, .csv), since a program loads a
+  module, a package.json or a Makefile unnamed, and a document too where it starts an interpreter or a shell or names
+  it as the program. Node, read without a parser, keeps every string but what it prints, so a console.log beside
+  `execSync('npm test')` is prose; perl and ruby, where a string may be a command (a backtick), keep every string. A
+  program that starts `synthesis sends open` is refused as one that opens the window.
+- **A script the same line writes and then runs is judged by what is written, whatever the writer** (22.22, review
+  round 2): a `cat >` or `cat >>` heredoc, `tee`, a redirected `echo` or `printf`, or `dd of=`. Where the guard cannot
+  tell what is written, the run waits: a program writes the file (a Python or node program that names it, another
+  command's output, a copy, curl -o), the line writes it twice, or a program on the line may write any file (one that
+  builds the name it writes, starts a program or runs a string as code). One reading does this,
+  `guards.written_contents(line, cwd)`, the content each file gets or `UNKNOWN_CONTENT`, which 22.21's program reach
+  shares; a shell script the line runs writes what its own lines write.
+- Replayed over 60 days of this Mac's records, each guard from its installed runtime. Of 253 commands the self-grant
+  rule could fire on, main refused 153 for this reason and this head 49: 93 now pass, 11 wait on another rule, and 14
+  that passed now wait for a code (9 of them run code that calls the approval or send-window functions). Of the 87 that
+  review round 1's head let pass and main refused, 77 still pass. Of 3,355 lines that write a script and then run it,
+  530 that main let pass now wait for a code, none refused: 490 run a script whose text cannot be told, mostly because
+  another program on the line may write any file (it starts a program, builds the name it writes, or runs a string as
+  code), and 40 run a script now read as written, 29 of which only read a protected folder or import synthesis's code.
+  Four planted self-grant programs are refused before and after.
 
 ## [5.23.1] - 2026-11-15
 
