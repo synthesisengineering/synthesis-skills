@@ -549,10 +549,6 @@ stay open, and no hook running as that same user can close them:
 - A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself, a Python program's asyncio
   stream, and a request library the guard does not know whose post names no write method and no body keyword (pycurl's
   `POSTFIELDS` alone) reach the server's tools unread; this is crafted, and 60 days of records hold none.
-- A program that takes a local MCP server's address from an environment variable an earlier command exported, with no
-  word of its own line naming the server, is not judged by the bodies it posts: the guard reads a program's text and its
-  line. curl's rule for an address the shell fills in (its body judged, an unreadable one waiting) could be carried to
-  such programs at the cost of holding their posts elsewhere whose bodies it cannot read; that is a decision still open.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one

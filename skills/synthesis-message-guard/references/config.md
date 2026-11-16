@@ -653,15 +653,17 @@ connector call takes (the account it acts as, the travel rule, then the send rul
 not send), with the server named `workspace-mcp`:
 
 - **An HTTP client to an address on this machine** (`localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, in any case and
-  with a trailing dot, HTTPie's and xh's `:port` shorthand, and a URL in a variable the line sets or exports; `curl`, with
-  its `-K` config file read, `wget`, HTTPie, `xh`): its body read from its data words, a redirect's file, an
-  `@file`, a file option, its heredoc or input, a `$(cat file)`, HTTPie's fields or its `--raw`. A variable the line sets
-  (an assignment or a `for` list) is put into the words that use it, so a body it holds is read whole. Each `tools/call`
-  request it holds, a batch's included, is that tool's call. A body it cannot read (a file it lacks, one the same line
-  writes, input another program writes, another substitution, a variable or parameter the line does not set, outside
-  single quotes) waits when the address is a local MCP server's endpoint: port 8765 or the one `WORKSPACE_MCP_PORT`
-  names, or a path ending `/mcp`, `/sse` or `/messages`. A liveness read, `initialize`, `tools/list` and any other local
-  app's API pass.
+  with a trailing dot, HTTPie's and xh's `:port` shorthand, and a URL in a variable the line sets or exports; `curl`,
+  with its `-K` config file read, `wget`, HTTPie, `xh`): its body read from its data words, a redirect's file, an
+  `@file`, a file option, its heredoc or input, a `$(cat file)`, HTTPie's fields or its `--raw`. A variable the line
+  sets (an assignment or a `for` list) is put into the words that use it, so a body it holds is read whole. Each
+  `tools/call` request it holds, a batch's included, is that tool's call. A body it cannot read (a file it lacks, one
+  the same line writes, input another program writes, another substitution, a variable or parameter the line does not
+  set, outside single quotes) waits when the address is a local MCP server's endpoint (port 8765 or the one
+  `WORKSPACE_MCP_PORT` names, or a path ending `/mcp`, `/sse` or `/messages`) or an address the shell fills in from a
+  variable the line does not set, which may be one; a body, a header or an HTTPie field the shell fills in is no
+  address, so a post to an address spelled for another host is that host's, judged by the web rule. A liveness read,
+  `initialize`, `tools/list` and any other local app's API pass.
 - **A program that posts the JSON-RPC or calls a client's `call_tool`**, given inline, on its input, in a file or as a
   module (in Python with the modules of its own it imports, which count only their literal names): its tool name read as
   a literal, an item of a literal list, tuple or dict a loop walks (a part it unpacks or a key it takes included), a
@@ -692,7 +694,11 @@ not send), with the server named `workspace-mcp`:
   attribute it sets, an `append` or `update`), a method or tool name it builds, a file it lacks or the line writes, a
   write method handed to a call the guard does not know as a request or set where no write takes it, and, in another
   language or in a program that does not parse, a write method or a body word in its text. A program that only reads (a
-  GET, a liveness check) hands over no body and passes.
+  GET, a liveness check) hands over no body and passes. A program whose text and line name no endpoint is judged the
+  same way by the bodies of each write whose address comes from a variable an earlier command exported (`os.environ`,
+  `getenv`, `process.env`, read through its names and through the connection the write is made on) or from an argument
+  the shell fills in, as curl to an address the shell fills in is (round 3's ruling): a send waits, a body it cannot
+  read waits, and readable bodies that are no send pass; an address the line itself gives is read as it is.
 - **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
   the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
   program runs, and a call whose tool name the guard cannot read (one the shell fills in, one built or read while it
@@ -701,9 +707,9 @@ not send), with the server named `workspace-mcp`:
 
 Sixty days of Claude Code and Codex records (2026-11-15) held 251 client runs, 48 liveness reads of the server and 113
 programs posting its JSON-RPC, none naming a sending tool and none whose result read as a message, draft or event made.
-A command line a program builds from values the guard cannot read is read only for the client it starts, and waits then;
-a raw socket client on the line (`nc`, `socat`), a Python program's asyncio stream, and a program that takes the server's
-address from an environment variable no word of its line shows are not read (on the open list).
+A command line a program builds from values the guard cannot read is judged as on the line, each such value standing as
+a word the shell fills in; a raw socket client on the line (`nc`, `socat`) and a Python program's asyncio stream are not
+read (on the open list).
 
 ## A git command and the programs its configuration names (5.23.1)
 

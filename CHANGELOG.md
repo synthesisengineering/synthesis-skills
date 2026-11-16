@@ -87,8 +87,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   waits, and a push to a repository on this disk counts its receiving hooks unless the hooks folder is synthesis's own.
   Includes named on the command line (`-c include.path`, `GIT_CONFIG_COUNT`) are followed as in a file. Tests first (20
   failed). Replayed: the round's first run held 26 more programs, through the line's readings, which now count only an
-  HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts whose URL comes from
-  the environment with a body the guard cannot read.
+  HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts to a local address
+  that is no MCP endpoint, with a header and a body the shell fills in, read then as an address the shell fills in (they
+  pass since the ruling's address-only reading, as any local app's API does).
 - **Review round 3 of the three.** A program's posts are read by what they hand over, not by how they are spelled. A
   Python or node program whose text names this machine's MCP endpoint (two of a local host, port 8765 and an `/mcp`
   path, written together or apart), or whose line hands it one, and makes any HTTP write (a call given a body by keyword
@@ -107,6 +108,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   in now names a tool only when it can make a name. At its end 15 wait that main's guard passed: round 2's 16 less two
   that now read right (a program whose tool call gives its method through a constant, and a liveness read whose `body =`
   had read as a post), and one program of the day that holds a `send_gmail_message` request in its own text.
+- **A request to an address the environment gives waits as curl's does** (round 3's ruling). A Python or node program
+  whose request target comes from a variable an earlier command exported (`os.environ`, `getenv`, `process.env`, read
+  through its names and through the connection the write is made on) or from an argument the shell fills in is judged by
+  the bodies it hands that write: a send waits, a body the guard cannot read waits, and readable bodies that are no send
+  pass. A GET or a liveness check hands over none, and an address the line itself gives is read as it is, so one for
+  another host passes. A line a program hands a shell is judged as on the line, what it cannot read standing as a word
+  the shell fills in. curl's rule reads only the address: a body, a header or an HTTPie field the shell fills in, sent
+  to an address spelled for another host, is that host's post, judged by the web rule. Tests first (8 failed). Replayed
+  against round 3's head: the first run stalled on a recorded line that took over a minute, now 0.6 s. At its end 55
+  more recorded commands wait, on 13 days, each running a program that posts a body the guard cannot read to an address
+  from a variable an earlier command exported or an argument the shell fills in (20 distinct programs run in them:
+  Claude Code's and Codex's Python, and two Codex node scripts run 15 times on one day), and the two curl posts above
+  pass.
 - **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
   osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
   Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
