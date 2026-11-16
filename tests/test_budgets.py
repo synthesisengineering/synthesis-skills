@@ -2284,6 +2284,35 @@ HOOK_NEEDS = ("json", "os", "re", "signal", "sys", "time",                      
               "urllib.parse")                                                     # sends.py
 
 
+def test_the_guard_compiles_no_pattern_as_it_loads():
+    """A normal call uses few of the guard's regular expressions, and compiling every one of them as the module loaded
+    was most of its load (the coordinator, 2026-11-16: the hook's normal call over 50 ms; 125 compiles took 9.4 ms of a
+    12 ms load, and `ls -la && git status` uses 18 of them). Each is compiled the first time a call uses it, and answers
+    as the compiled pattern does."""
+    import re
+    import subprocess
+    import sys
+    probe = ("import re, sys\n"
+             "sys.path.insert(0, sys.argv[1])\n"
+             "made, real = [], re._compile\n"
+             "def counted(*a, **k):\n"
+             "    made.append(sys._getframe(2).f_code.co_filename)\n"  # what called re.compile, re.search and the rest
+             "    return real(*a, **k)\n"
+             "re._compile = counted\n"
+             "import synthesis.guards\n"
+             "print(sum(f.endswith('guards.py') for f in made))\n")
+    done = subprocess.run([sys.executable, "-I", "-S", "-c", probe, str(ROOT)], capture_output=True, text=True, timeout=120)
+    assert (done.returncode, done.stdout.strip()) == (0, "0"), done.stdout + done.stderr
+    from synthesis import guards
+    lazy, real = guards._Pattern(r"(?P<a>a)(b)?", re.I), re.compile(r"(?P<a>a)(b)?", re.I)
+    assert lazy.pattern == real.pattern and "search" not in vars(lazy)  # nothing compiled before its first use
+    assert lazy.search("xAb").groups() == real.search("xAb").groups() and lazy.match("ab")[0] == "ab" and lazy.fullmatch("A")
+    assert [m.span() for m in lazy.finditer("aAb")] == [m.span() for m in real.finditer("aAb")] and lazy.findall("ab a") == real.findall("ab a")
+    assert lazy.sub("-", "xaby") == "x-y" and lazy.subn("-", "aa") == ("--", 2) and lazy.split("xay") == real.split("xay")
+    assert (lazy.flags, lazy.groups, lazy.groupindex) == (real.flags, real.groups, real.groupindex)
+    assert vars(lazy)["search"].__self__.pattern == real.pattern  # from then on the compiled pattern's own methods answer
+
+
 def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
     """What a session pays on every shell command: a new process that runs the installed runtime, compiled as the
     installer leaves it. On the principal's Mac the modules named above load in 27 ms, so twice that is 54 ms,
