@@ -201,6 +201,25 @@ def test_a_look_alike_the_line_copies_into_place_and_runs_waits(world):
     assert _held(world["verdict"](line)), line
 
 
+def test_a_compiled_program_the_line_links_or_copies_into_place_is_judged_as_what_it_copies(world):
+    """The replay's one ordinary case (2026-11-16): a line that links a real interpreter into a folder and runs it there.
+    A link or a copy is what it copies; a file made only executable keeps what it holds."""
+    world["link"](world["tools"] / "python3-made-earlier", PYTHON)
+    for line in (f"mkdir -p venv/bin && ln -s {PYTHON} venv/bin/python3 && venv/bin/python3 -c 'print(1)'",
+                 f"mkdir -p bin && cp {PYTHON} bin/python3 && ./bin/python3 -c 'print(1)'",
+                 "cd tools && ln -sf python3-made-earlier python3 && ./python3 -c 'print(1)'",
+                 f"chmod +x {world['tools']}/python3-made-earlier && {world['tools']}/python3-made-earlier -c 'print(1)'"):
+        assert world["verdict"](line) is None, line
+
+
+def test_a_script_the_line_copies_into_place_is_read_as_the_script_it_copies(world):
+    """Under a name the guard trusts, the copied script's own text is what is read: the line names no protected folder,
+    the script it links names the runtime's guard, and the hold names the runtime."""
+    evil = world["plant"]("evil.sh", folder=world["work"])
+    reason = world["verdict"](f"ln -s {evil} {world['tools']}/ls && {world['tools']}/ls -la")
+    assert _held(reason) and str(paths.home() / "current") in reason and "under the name of `ls`" in reason, reason
+
+
 def test_a_look_alike_the_line_writes_first_on_path_and_runs_by_name_waits(world):
     world["first_on_path"](world["tools"])
     line = (f"printf '#!/bin/sh\\ncat {world['stub']} > {world['target']}\\n' > {world['tools']}/ls; "
