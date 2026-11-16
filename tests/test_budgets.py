@@ -1705,10 +1705,30 @@ ROOT = Path(__file__).resolve().parents[1]
 # release/next's ceilings (core 18748, plugin 45365) and 22.12's raises itemized just above (101, 30, 60, 69, 83, 22, 5,
 # 5 and 1, core and plugin alike: 376 each), measured: core 19124 and plugin 45741. 22.12 named its release 5.23.2; its
 # first paragraph's label is 5.24.0, the release that carries it.
+# Then each 122 more, for Codex code mode (board request 22.33, 2026-11-15). guards.py 57: code_mode_script 13 and
+# _recorded_script 15, each with 2 blank lines (a code-mode script passed on purpose and never read as a shell line;
+# under `command` only by Codex's record of that very call), CODE_MODE_SIGN 2 with its 4-line note and 2 blank lines,
+# _mcp_name 4 with 2 blank lines and _line_events 6 more (the calls a script makes, read from Codex's item_completed
+# events under the name its hook gives them), _check 4 more (the script passed; a bare string read as the command) and
+# shell_command 1 more (an `exec` call that is no script read from `input` or `code`). doctor.py 65:
+# check_codex_nested_hooks 34 and _nested_proof 21, each with 2 blank lines, and its bounds 1 and refusal pattern 1 with
+# a 2-line note and 2 blank lines (the proof, from Codex's own rollouts, that hooks still run on nested calls; records
+# that cannot be listed warn).
+# Then each 37 more, all in sessions.py, for the session index of code-mode work (22.33's follow-up): _Session.nested 19
+# and _tag 12, each with 1 blank line (the files a script's nested patches and commands wrote, read from Codex's
+# item_completed events; the tagging moved out of wrote), _codex 5 more (a script's call marked; the events read),
+# __init__ 1 more (this reading's call and script ids), wrote 2 fewer (its loop moved into _tag; a script never read).
+# Then each 16 more, from review round 1 of 22.33. doctor.py 14: _lstat 5 with 2 blank lines and _nested_proof 5 more (only
+# a regular file is read, opened without blocking or following a link, its first line within a bound), NESTED_FIRST 1 and
+# check_codex_nested_hooks 1 more (each listed file's lstat). guards.py 2: CODE_MODE_SIGN's note 2 more (what each helper
+# does, by Codex's own description of the tool).
+# 5.24.0, 22.33 (3ec6c350: Codex code mode, from main at b8efb5ee) merged into release/next at 877fbabf: release/next's
+# ceilings (core 19124, plugin 45741) and 22.33's raises itemized just above (122, 37 and 16, core and plugin alike: 175
+# each), measured: core 19299 and plugin 45916.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 19124
-PLUGIN_BUDGET = 45741
+CORE_BUDGET = 19299
+PLUGIN_BUDGET = 45916
 
 
 def _lines(files):

@@ -455,6 +455,85 @@ def check_codex_hooks_file(codex_home: Path) -> Check | None:
     return Check("warn", "codex hooks file", unread) if unread and not switched else None
 
 
+# A Codex rollout passed 1.8 GB on 2026-11-15, so each is read as its first line and its last 16 MB; the newest 120 tails
+# came to 219 MB, and the newest one already held a refusal.
+NESTED_FILES, NESTED_TAIL, NESTED_READ, NESTED_DAYS = 120, 16 << 20, 128 << 20, 30
+NESTED_FIRST = 1 << 20  # a first line, its session record, was 19.6 to 23.2 KB in the newest 60 (2026-11-15)
+HOOK_REFUSAL = re.compile(r"(?:Command|Tool call) blocked by PreToolUse hook: ")  # codex-rs hook_runtime.rs's words
+
+
+def _lstat(path: Path):
+    try:
+        return path.lstat()
+    except OSError:
+        return None  # gone since it was listed
+
+
+def _nested_proof(path: Path, tail: int) -> tuple:
+    """(Codex's version, whether a code-mode script was called, the time of the newest hook refusal in such a script's
+    result or '', bytes read) for one rollout, from its first line (within NESTED_FIRST) and its last `tail` bytes. It is
+    opened without blocking and without following a link, and read only if it is a regular file, so a FIFO or a link
+    put in its place since it was listed never holds the doctor (review round 1 of 22.33)."""
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)), "rb") as handle:
+        state = os.fstat(handle.fileno())
+        if not stat.S_ISREG(state.st_mode):
+            return "", False, "", 0
+        first, size = handle.readline(NESTED_FIRST), state.st_size
+        start = max(len(first), size - tail)
+        handle.seek(start)
+        lines = handle.read().split(b"\n")[1 if start > len(first) else 0:]  # a line cut by the seek is not read
+    entries = [json_in(raw.decode("utf-8", "replace")) for raw in lines if b"custom_tool_call" in raw and (
+        b"blocked by PreToolUse hook: " in raw or b"custom_tool_call_output" not in raw)]
+    meta = (json_in(first.decode("utf-8", "replace")) or {}).get("payload") or {}
+    calls, when = set(), ""
+    for entry in [e for e in entries if isinstance(e, dict) and isinstance(e.get("payload"), dict)]:
+        given = entry["payload"]
+        if given.get("type") == "custom_tool_call" and given.get("name") == "exec":
+            calls.add(given.get("call_id"))
+        elif given.get("type") == "custom_tool_call_output" and given.get("call_id") in calls:
+            out = given.get("output")
+            text = "\n".join(str(p.get("text", "")) for p in out if isinstance(p, dict)) if isinstance(out, list) else str(out)
+            when = str(entry.get("timestamp") or "") if HOOK_REFUSAL.search(text) else when
+    return str(meta.get("cli_version") or "") if isinstance(meta, dict) else "", bool(calls), when, len(first) + size - start
+
+
+def check_codex_nested_hooks(codex_home: Path, files: int = NESTED_FILES, now: float = 0) -> Check | None:
+    """Whether Codex still runs PreToolUse hooks on the calls a code-mode script makes, which is how the guard sees them:
+    proven by a hook's refusal in an `exec` script's result, which only a hook run on a call nested in it makes. Codex
+    offers no dry probe, so its newest rollouts are read, read only and within bounds, until one holds such a refusal.
+    A proof names the Codex that made it; one from an older Codex than the newest to run a script does not cover it."""
+    name = "codex nested hooks"
+    root, now = Path(codex_home) / "sessions", now or time.time()
+    try:
+        listed = list(root.rglob("rollout-*.jsonl")) if root.is_dir() else []
+    except OSError as exc:
+        return Check("warn", name, f"Codex's records could not be listed ({exc}): that Codex runs hooks on nested calls is unproven")
+    found = sorted(((s.st_mtime, p) for p, s in ((p, _lstat(p)) for p in listed) if s and stat.S_ISREG(s.st_mode)), reverse=True)
+    read, scanned, newest, proof = 0, 0, "", None
+    for mtime, path in found[:files]:
+        if mtime < now - NESTED_DAYS * 86400 or read >= NESTED_READ:
+            break
+        try:
+            version, scripts, when, size = _nested_proof(path, min(NESTED_TAIL, NESTED_READ - read))
+        except OSError:
+            continue
+        read, scanned, newest = read + size, scanned + 1, newest or (version or "of unrecorded version" if scripts else "")
+        if when:
+            proof = (when[:10], version or "of unrecorded version")
+            break
+    if proof is None and not newest:
+        return None  # no code-mode script in what was read: nothing nested to prove
+    where = "its newest rollout" if scanned == 1 else f"its newest {scanned} rollouts"
+    if proof and proof[1] == newest:
+        return Check("ok", name, f"Codex {newest} runs PreToolUse hooks on calls made inside a code-mode script: a hook refused "
+                                 f"one in a script's result on {proof[0]}, in {where}")
+    if proof:
+        return Check("warn", name, f"Codex {newest} has run code-mode scripts with no hook refusal inside one in {where}, so that "
+                                   f"it hooks the calls they make is unproven for it; Codex {proof[1]} did on {proof[0]}")
+    return Check("warn", name, f"Codex has run code-mode scripts with no PreToolUse refusal inside one in {where}: that it runs "
+                               "hooks on the calls such scripts make is unproven, and the guard sees code-mode work only through them")
+
+
 def codex_user_entries(codex_home: Path) -> tuple:
     """({event: [(event:group:place, group, hook)]} for each hook in Codex's own hooks.json that runs the stable hook
     with its event, why Codex reads none of that file or '')."""
@@ -1891,7 +1970,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
             hooks = _hooks_file(entry["path"])
             checks += [check_package("codex", entry["path"], runtime), check_hooks_wired("codex", _commands(hooks)),
                        check_codex_trust(hooks, config, entry.get("id") or PLUGIN, entry["path"], codex_home)]
-            checks += [c for c in [check_codex_hooks_file(codex_home)] if c]
+            checks += [c for c in [check_codex_hooks_file(codex_home), check_codex_nested_hooks(codex_home)] if c]
             if catalog is not None:
                 result, catalog_error = catalog()
                 checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))

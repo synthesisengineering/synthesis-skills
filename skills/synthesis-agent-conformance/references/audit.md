@@ -129,6 +129,16 @@ there with no item here fails:
   a top-level key it does not know, a hook of a type it does not know) and setup's option
   is off: a warning, since the person's own hooks there do not run and no synthesis hook
   depends on the file;
+- `codex nested hooks`: that Codex still runs PreToolUse hooks on the calls a code-mode
+  script (its `exec` tool) makes, the only way the guard sees them, proven from Codex's own
+  rollouts by a hook's refusal in such a script's result, which only a hook run on a nested
+  call makes. Codex offers no dry probe, so the newest rollouts of the last 30 days are read,
+  read only, newest first, each a regular file opened without blocking or following a link:
+  its first line (the Codex version, within 1 MB) and its last 16 MB, at most 120 files and
+  128 MB, stopping at the first proof. The line names the Codex version
+  and the date it proves; it warns, never fails, when no refusal inside a script was found
+  or the proof is from an older Codex than the newest one that ran a script, and says
+  nothing where no rollout read holds a code-mode script;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
   tool name treated as a shell by the guard. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness

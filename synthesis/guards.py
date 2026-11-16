@@ -7003,16 +7003,28 @@ def _caller(lines: list, i: int, ident: str) -> dict | None:
     return None
 
 
+def _mcp_name(server: str, tool: str) -> str:
+    """The name Codex's hook gives the MCP tool its record names by server and tool: `workspace-mcp` and `github.fetch`
+    make `mcp__workspace_mcp__github__fetch`, as the refusals in its records name them (2026-11-15)."""
+    return "mcp__" + re.sub(r"\W", "_", server) + "__" + re.sub(r"\W", "_", tool.replace(".", "__"))
+
+
 def _line_events(line: str) -> list:
     """(call or result, its id, the tool's name, its input or its text) for each tool call and result on a line of a
-    Claude Code record or a Codex rollout."""
+    Claude Code record or a Codex rollout, where a call a code-mode script makes is recorded only as an
+    `item_completed` event, its call and its result together (a direct call's event carries the call's own id)."""
     try:
         entry = json.loads(line)
     except ValueError:
         return []
     payload = entry.get("payload") if isinstance(entry, dict) else None
     if isinstance(payload, dict):
-        kind, ident = payload.get("type"), str(payload.get("call_id") or "")
+        kind, ident, item = payload.get("type"), str(payload.get("call_id") or ""), payload.get("item")
+        if kind == "item_completed" and isinstance(item, dict) and item.get("type") == "McpToolCall":
+            given, done, ident = item.get("arguments"), item.get("result"), str(item.get("id") or "")
+            return [("call", ident, _mcp_name(str(item.get("server") or ""), str(item.get("tool") or "")),
+                     given if isinstance(given, dict) else {}),
+                    ("result", ident, "", _said(done) if isinstance(done, dict) else str(item.get("error") or ""))]
         if kind in ("function_call", "custom_tool_call"):
             given = payload.get("arguments") if kind == "function_call" else payload.get("input")
             try:
@@ -7035,10 +7047,10 @@ def _driver_events(transcript: str, server: str) -> list:
     call a hook refused, and its result, are left out (review round 1 of 5.23.1, #4)."""
     calls, events, refused = {}, [], set()
     for line in _tail(transcript):
-        if server + "__" not in line and not any(m in line for m in PAGE_MARKS):
+        if server + "__" not in line and "McpToolCall" not in line and not any(m in line for m in PAGE_MARKS):
             continue
         for kind, ident, name, data in _line_events(line):
-            if kind == "call" and name.startswith(server + "__"):
+            if kind == "call" and name.startswith(server + "__") and ident not in calls:  # a direct call's event: once
                 calls[ident] = name
                 events.append((ident, "call", name, data, ""))
             elif kind == "result" and ident in calls:
@@ -7266,9 +7278,52 @@ def shell_tool(tool: str) -> bool:
 
 
 def shell_command(tool_input: dict) -> str:
-    """The command text, whichever harness spelled it: a string or an argv list."""
-    value = tool_input.get("command", tool_input.get("cmd", ""))
+    """The command text, whichever harness spelled it: a string or an argv list, under `command` or `cmd`, else what an
+    `exec` call that is no code-mode script sent under `input` or `code`."""
+    value = next((tool_input[k] for k in ("command", "cmd", "input", "code") if k in tool_input), "")
     return shlex.join(value) if isinstance(value, list) else str(value)
+
+
+# Codex's code-mode tool `exec` runs JavaScript in a V8 isolate with no file system, network or process of its own; each
+# tool its script calls on the global `tools` object reaches this hook as a call of its own (2026-11-15: in 60 days of
+# records, 792 script results held a hook's refusal, each of a nested call). The script's signs: the grammar's first-line
+# pragma, a call on the global `tools`, or one of its global helpers, each working inside Codex by the tool's own
+# description: on the script's result (text, image, audio, generatedImage, notify, yield_control; a remote media URL is
+# refused), its session's store (store, load) or its run (exit). None reaches a person, a service, a file or a process.
+CODE_MODE_SIGN = re.compile(r"\A\s*//\s*@exec:|(?<![.\w$])tools\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]\n]+\])\s*\(|(?<![.\w$])ALL_TOOLS\b"
+                            r"|(?<![.\w$])(?:text|image|audio|generatedImage|store|load|notify|exit|yield_control)\s*\(")
+
+
+def code_mode_script(tool: str, tool_input, session: dict | None = None) -> bool:
+    """Whether a call is a Codex code-mode script, passed on purpose and never read as a shell line. A bare string, or the
+    text under `input` or `code`, is one when it reads as such a script: no shell tool sends those shapes. Under
+    `command`, where a shell's command line arrives, it is one only when Codex's record of this very call shows its
+    `exec` tool with this text: a command line can be written to look like a script, so how it looks never decides."""
+    if tool != "exec" or not isinstance(tool_input, (str, dict)) or isinstance(tool_input, dict) and "cmd" in tool_input:
+        return False
+    if isinstance(tool_input, str) or "command" not in tool_input:
+        text = tool_input if isinstance(tool_input, str) else next(
+            (tool_input[k] for k in ("input", "code") if isinstance(tool_input.get(k), str)), "")
+        return bool(CODE_MODE_SIGN.search(text))
+    text = tool_input["command"]
+    return isinstance(text, str) and bool(CODE_MODE_SIGN.search(text)) and _recorded_script(text, session or {})
+
+
+def _recorded_script(text: str, session: dict) -> bool:
+    """Whether the session's Codex record, in Codex's own sessions folder where only Codex writes, holds the hook's
+    `tool_use_id` as a call of its `exec` tool with this text (its last 8 MB are read)."""
+    ident, transcript = str(session.get("tool_use_id") or ""), str(session.get("transcript_path") or "")
+    if not ident or not transcript or not paths.inside(os.path.realpath(transcript), _real(paths.transcript_roots()["codex"])):
+        return False
+    for line in reversed(_tail(transcript)):
+        if ident in line and "custom_tool_call" in line:
+            try:
+                payload = json.loads(line).get("payload") or {}
+            except (ValueError, AttributeError):
+                continue
+            if payload.get("type") == "custom_tool_call" and payload.get("call_id") == ident:
+                return payload.get("name") == "exec" and payload.get("input") == text
+    return False
 
 
 def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
@@ -7396,6 +7451,10 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    if code_mode_script(tool, tool_input, session):
+        return None  # it acts only through its nested calls, each judged here as a call of its own
+    if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
+        tool_input = {"command": tool_input}
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
