@@ -7078,8 +7078,8 @@ def _made_here(tab: str, session: dict | None, server: str) -> str:
     for path in mine + [p for p in others if p and os.path.isfile(p) and not os.path.samefile(p, record)
                         and time.time() - os.path.getmtime(p) <= 12 * 3600]:
         tail = [line for line in _tail(path) if _when(line) >= made]
-        refused = {ident for line in tail if "PreToolUse:" in line for kind, ident, _, said in _line_events(line)
-                   if kind == "result" and said.lstrip().startswith("PreToolUse:")}
+        refused = {ident for line in tail if "PreToolUse" in line for kind, ident, _, said in _line_events(line)
+                   if kind == "result" and REFUSED_BY_HOOK.match(said)}
         for line in tail:
             for event, ident, name, given in _line_events(line) if "tool_use" in line or "function_call" in line else ():
                 if event != "call" or ident in refused or name.rpartition("__")[0] != server:
@@ -7899,6 +7899,9 @@ def _caller(lines: list, i: int, ident: str) -> dict | None:
     return None
 
 
+REFUSED_BY_HOOK = re.compile(r"\s*(?:PreToolUse:|(?:Command|Tool call) blocked by PreToolUse hook: )")  # Claude Code's, then Codex's
+
+
 def _mcp_name(server: str, tool: str) -> str:
     """The name Codex's hook gives the MCP tool its record names by server and tool: `workspace-mcp` and `github.fetch`
     make `mcp__workspace_mcp__github__fetch`, as the refusals in its records name them (2026-11-15)."""
@@ -7943,14 +7946,14 @@ def _driver_events(transcript: str, server: str) -> list:
     call a hook refused, and its result, are left out (review round 1 of 5.23.1, #4)."""
     calls, events, refused = {}, [], set()
     for line in _tail(transcript):
-        if server + "__" not in line and "McpToolCall" not in line and not any(m in line for m in PAGE_MARKS):
+        if server + "__" not in line and "McpToolCall" not in line and "PreToolUse" not in line and not any(m in line for m in PAGE_MARKS):
             continue
         for kind, ident, name, data in _line_events(line):
             if kind == "call" and name.startswith(server + "__") and ident not in calls:  # a direct call's event: once
                 calls[ident] = name
                 events.append((ident, "call", name, data, ""))
             elif kind == "result" and ident in calls:
-                refused |= {ident} if str(data).lstrip().startswith("PreToolUse:") else set()
+                refused |= {ident} if REFUSED_BY_HOOK.match(str(data)) else set()
                 events.append((ident, "result", calls[ident], {}, data))
     return [event[1:] for event in events[::-1] if event[0] not in refused]
 

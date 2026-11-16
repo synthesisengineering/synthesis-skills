@@ -552,6 +552,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   as its body. Of the 119 that review round 1's head let pass, 88 still do and 31 are refused again, programs that start
   a program. Read by Python's own syntax tree (78) or its tokenizer (10), none of the 88 reaches the functions in code,
   and four planted self-grant programs are refused before and after.
+- **A call Codex's hook refused is left out, as Claude Code's is** (core). The page tracker and the send step leave out a
+  call a hook refused, and knew only Claude Code's words for a refusal, so a call Codex refused (its result `Command
+  blocked by PreToolUse hook: ...` or `Tool call blocked by PreToolUse hook: ...`, direct or made inside a code-mode
+  script) counted as run: a refused navigate placed the page a browser tool then acted on, and another session's refused
+  call voided a send step.
 
 ## [5.23.2] - 2026-11-15
 

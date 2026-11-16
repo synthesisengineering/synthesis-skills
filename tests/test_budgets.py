@@ -2187,10 +2187,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # 9, core and plugin alike: 30 each), measured: core 22198 and plugin 48821. The merge's own lines change in place: the
 # parser takes release/next's reading mode and 22.22's heredoc bodies, and hands both to each reading and to _walk,
 # which since 22.8 holds the loop 22.22's line sits in.
+# 5.24.0, a call Codex's hook refused left out as Claude Code's is (the coordinator's ruling, 2026-11-16): core and plugin
+# 3 more, all in guards.py: REFUSED_BY_HOOK 1 and its 2 blank lines (a hook's refusal in Claude Code's words and in
+# Codex's, `Command blocked by PreToolUse hook: ` and `Tool call blocked by PreToolUse hook: `); _driver_events reads a
+# line that holds one and leaves its call out, and _made_here leaves it out too, in place. Measured: core 22201 and
+# plugin 48824.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22198
-PLUGIN_BUDGET = 48821
+CORE_BUDGET = 22201
+PLUGIN_BUDGET = 48824
 
 
 def _lines(files):
