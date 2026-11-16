@@ -281,6 +281,16 @@ def test_an_app_that_carries_codex_is_held_at_its_codex_cli_not_whole(world, mon
     assert _shell(world, named) is None
 
 
+def test_a_name_that_only_begins_with_a_harness_program_s_path_names_no_harness_program(world):
+    """muse-bin-<an old version> beside the muse launcher, or ghostscript beside gh, is another file: a program the reader
+    cannot follow that names one and writes is not held for the harness program whose path its name begins with."""
+    for other in (f"{world['local_bin']}/muse-bin-1.0.0-R1", f"{world['brew']}/bin/ghostscript", f"{world['local_bin']}/claude-monitor"):
+        line = f"python3 -c \"x = '{other}'; f = getattr(__builtins__, 'op' + 'en')('out.txt', 'w'); f.write(x)\""
+        assert _shell(world, line) is None, other
+    line = f"python3 -c \"x = '{world['local_bin']}/muse'; f = getattr(__builtins__, 'op' + 'en')('out.txt', 'w'); f.write(x)\""
+    assert _held(_shell(world, line), "harness program")
+
+
 def test_a_variable_that_names_the_state_folder_still_holds_a_program_that_reads_the_environment(world, monkeypatch):
     monkeypatch.setenv("HELD_HERE", str(paths.state() / "approvals" / "x.json"))
     assert _shell(world, UNFOLLOWED) is not None
