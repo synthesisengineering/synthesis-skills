@@ -492,7 +492,7 @@ def check_codex_nested_hooks(codex_home: Path, files: int = NESTED_FILES, now: f
     try:
         listed = list(root.rglob("rollout-*.jsonl")) if root.is_dir() else []
     except OSError as exc:
-        return Check("warn", name, f"Codex's records could not be listed ({exc}): that nested calls reach the hook is unproven")
+        return Check("warn", name, f"Codex's records could not be listed ({exc}): that Codex runs hooks on nested calls is unproven")
     found = sorted(((s.st_mtime, p) for p, s in ((p, _lstat(p)) for p in listed) if s and stat.S_ISREG(s.st_mode)), reverse=True)
     read, scanned, newest, proof = 0, 0, "", None
     for mtime, path in found[:files]:
@@ -510,8 +510,8 @@ def check_codex_nested_hooks(codex_home: Path, files: int = NESTED_FILES, now: f
         return None  # no code-mode script in what was read: nothing nested to prove
     where = "its newest rollout" if scanned == 1 else f"its newest {scanned} rollouts"
     if proof and proof[1] == newest:
-        return Check("ok", name, f"Codex {newest} ran a PreToolUse hook on a call made inside a code-mode script (a refusal in "
-                                 f"that script's result on {proof[0]}, in {where}): calls nested in `exec` scripts reach the guard")
+        return Check("ok", name, f"Codex {newest} runs PreToolUse hooks on calls made inside a code-mode script: a hook refused "
+                                 f"one in a script's result on {proof[0]}, in {where}")
     if proof:
         return Check("warn", name, f"Codex {newest} has run code-mode scripts with no hook refusal inside one in {where}, so that "
                                    f"it hooks the calls they make is unproven for it; Codex {proof[1]} did on {proof[0]}")

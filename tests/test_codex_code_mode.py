@@ -208,11 +208,14 @@ def test_no_codex_record_is_no_line():
     assert doctor.check_codex_nested_hooks(paths.codex_home()) is None  # no code-mode script, so nothing nested to prove
 
 
-def test_a_refusal_inside_a_script_proves_that_nested_calls_reach_the_hook():
+def test_a_refusal_inside_a_script_proves_that_this_codex_runs_hooks_on_nested_calls():
+    """One hook's refusal in a script's result proves that this Codex version runs hooks on nested calls, and the line says
+    that much and no more: not that every nested call is hooked, nor that this guard refused (review round 2 of 22.33)."""
     rollout(meta(), exec_call("call_1", script("ls")), output("call_1", REFUSED, at="2026-11-14T09:30:00Z"))
     check = doctor.check_codex_nested_hooks(paths.codex_home())
     assert check.status == "ok" and check.name == "codex nested hooks", check
-    assert "2026-11-14" in check.detail and "0.169.0-alpha.11.1" in check.detail and "inside a code-mode script" in check.detail
+    assert check.detail == ("Codex 0.169.0-alpha.11.1 runs PreToolUse hooks on calls made inside a code-mode script: a hook "
+                            "refused one in a script's result on 2026-11-14, in its newest rollout"), check.detail
 
 
 @pytest.mark.parametrize("rows", [

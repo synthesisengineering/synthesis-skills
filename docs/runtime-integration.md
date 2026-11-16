@@ -623,9 +623,10 @@ as one; Codex's records show hooks refusing such nested calls inside the scripts
   reads them under the name Codex's hook gives the tool (`workspace-mcp` and
   `github.fetch` make `mcp__workspace_mcp__github__fetch`), and a direct call's event,
   which carries the call's own id, is counted once.
-- **The doctor proves that nested calls still reach the hook.** Its `codex nested hooks`
+- **The doctor proves that Codex still runs hooks on nested calls.** Its `codex nested hooks`
   line reads Codex's newest rollouts for a hook's refusal in a script's result, which only
-  a hook run on a nested call makes, and names the Codex version and the date it proves.
+  a hook run on a nested call makes, and names the Codex version and the date it proves:
+  that this version hooks such calls, not that every one is hooked or whose hook refused.
   It warns, never fails, when it finds none, or only one from an older Codex than the
   newest to run a script.
 
