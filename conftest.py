@@ -36,6 +36,17 @@ def no_desktop_sessions_of_this_mac(tmp_path, monkeypatch):
     monkeypatch.setenv("SYNTHESIS_CLAUDE_DESKTOP_DIR", str(tmp_path / "harness" / "claude-desktop"))
 
 
+@pytest.fixture(autouse=True)
+def no_synthesis_launcher_of_this_mac(monkeypatch):
+    """No test finds the Mac's own synthesis launcher on PATH (`~/.local/bin/synthesis`, a link into its home's `bin/`):
+    the guard looks a command up there since 22.32, and that launcher is no test home's own, so a test that judged
+    `synthesis` by name judged this Mac's runtime instead (the merge of 22.32 into release/next, 2026-11-16: the batch
+    tests among them). A folder on PATH that holds a `synthesis` program is left off; a test that needs one puts its own
+    first."""
+    found = [os.path.join(d, "synthesis") for d in os.environ.get("PATH", "").split(os.pathsep)]
+    monkeypatch.setenv("PATH", os.pathsep.join(os.path.dirname(f) for f in found if not (os.path.isfile(f) and os.access(f, os.X_OK))))
+
+
 @pytest.fixture(scope="session", autouse=True)
 def compiled_code_stays_in_the_run(tmp_path_factory):
     if not sys.pycache_prefix:  # beside the source: a test's files are in its own temporary folder already
