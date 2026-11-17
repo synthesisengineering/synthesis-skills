@@ -599,21 +599,23 @@ def self_hosted_step() -> dict:
 
 def test_on_a_self_hosted_mac_a_job_uses_the_macs_own_python_in_an_environment_home_and_path_of_its_own():
     """setup-python cannot serve a self-hosted Mac: its macOS builds install with `sudo installer` into
-    /Library/Frameworks, and the runner there is no administrator. So the job uses the Mac's own Python, python.org's
-    framework build (what setup-python installs on GitHub's macOS machines) or else Homebrew's, and Apple's
-    /usr/bin/python3, in a virtual environment in RUNNER_TEMP, which the runner empties after the job; HOME is a folder
-    there too; and stand-ins for osascript, say, afplay and open come first on PATH, so no test speaks, posts a
-    notification or opens an app on the Mac. All of it before anything installs a package."""
+    /Library/Frameworks, and the runner there is no administrator. So the job uses the Mac's own Python: python.org's
+    framework build, which is what setup-python installs on GitHub's macOS machines, and Apple's /usr/bin/python3, in a
+    virtual environment in RUNNER_TEMP, which the runner empties after the job. HOME is a folder there too, and
+    stand-ins for osascript, say, afplay and open come first on PATH, so no test speaks, posts a notification or opens
+    an app on the Mac. All of it comes before anything installs a package. Never Homebrew's Python: its sys.base_prefix
+    is a link (opt/python@3.13) to the Cellar the loader reads, so the local-messaging sandbox, which may read only
+    under sys.base_prefix, cannot start it, and every sandbox test failed (2026-11-17, Homebrew's 3.13.16)."""
     steps = ci_workflow()["jobs"]["test"]["steps"]
     setup = next(step for step in steps if str(step.get("uses", "")).startswith("actions/setup-python@"))
     assert setup["if"] == "matrix.python != 'apple' && runner.environment == 'github-hosted'"
     own = self_hosted_step()
     assert own["env"] == {"PYTHON_VERSION": "${{ matrix.python }}"}
     for needed in ("/Library/Frameworks/Python.framework/Versions/$PYTHON_VERSION/bin/python$PYTHON_VERSION",
-                   "/opt/homebrew/opt/python@$PYTHON_VERSION/bin/python$PYTHON_VERSION", "/usr/bin/python3",
-                   '-m venv "$RUNNER_TEMP/venv"', 'echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"',
+                   "/usr/bin/python3", '-m venv "$RUNNER_TEMP/venv"', 'echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"',
                    'echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"', "for name in osascript say afplay open"):
         assert needed in own["run"], needed
+    assert "homebrew" not in own["run"].lower()
     installs = [i for i, step in enumerate(steps) if "pip install" in str(step.get("run", ""))]
     assert installs and steps.index(own) < min(installs)
 
