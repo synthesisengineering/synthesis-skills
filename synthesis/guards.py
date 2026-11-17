@@ -6715,8 +6715,9 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
                 base = _judged(command, text, cwd, config, False, depth)
                 if base and not isinstance(base, Unproven):
                     return base  # refused whatever the settings: the folders every approval rests on take no code
-                alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only", depth)
-                touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
+                if time.monotonic() <= _CALL["until"]:  # judged in its time; else the wait found with the settings protected stands
+                    alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only", depth)
+                    touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
             if reason and not isinstance(reason, Unproven):
                 return reason
             waits = waits or reason

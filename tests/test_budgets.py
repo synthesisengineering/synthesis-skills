@@ -2365,10 +2365,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # HOMEBREW_PREFIX, HOMEBREW_CELLAR and the version managers' roots, which 22.32 reads to find a command its installer
 # keeps as a script (the runtime reads only what its launchers keep). The line's search paths and what it writes are
 # kept in the reading's own state, so its scripts and its second, physical reading share them.
+# Then each 1 more, in guards.py's check_self_grant: when the pass without the settings runs out of the guard's time, the
+# wait the pass with them found stands, and the pass with the settings alone is not begun (the rituals' scripts, read
+# whole with every module of theirs, took 2.3 to 2.8 s in the first pass: the second ended unfinished, and its words,
+# out of time, replaced the first pass's, which name what the program reaches).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23194
-PLUGIN_BUDGET = 49852
+CORE_BUDGET = 23195
+PLUGIN_BUDGET = 49853
 
 
 def _lines(files):
