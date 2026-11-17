@@ -162,7 +162,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   moves nothing past its subshell, and `env cd` and the like move nothing. These readings are the parse's own, so a
   check the guard runs for a program's commands no longer cuts the physical one short. A line whose folder
   this cannot tell waits for the principal's code: a CDPATH set in a way it cannot read, a redefined `cd`, a `cd` inside
-  eval, a sourced file, a function, an alias or a trap, BASH_ENV or ZDOTDIR. **`~/.synthesis/v5/git-hooks` is a
+  eval, a sourced file or a trap, a function whose body changes folder called outside a command substitution, an alias
+  a command on the line defines, BASH_ENV or ZDOTDIR. **`~/.synthesis/v5/git-hooks` is a
   protected folder** (A8). In a repository under `pr_gated`, a push waits for the principal's code when it makes, moves
   or deletes a version tag there (round 3, M5): one named in full, a bare name git takes for a local tag, `--tags`, or
   an annotated version tag that `--follow-tags` or `push.followTags` carries along; the remote is asked which version
@@ -785,6 +786,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   repository it renders, compare published dates with that commit, since a change can reach origin's main before its
   upload; a push still compares with origin's main. The guardrails config and deploys references say so, and the line
   budgets rise by the measured 74, itemized.
+- **What the integration review of 5.24.0 found** (core). Its four blocking findings, each with its failing test committed
+  first. CI's Linux runners: the install tests ask the interpreter the launchers pin for its compiled code (Ubuntu 26.04
+  pins its own system Python, a newer one than the suite's, so the suite's own tag found none), a test runs only the
+  shells a system has, sets `XDG_CONFIG_HOME` itself and reads module paths that hold only what it tests, and a command
+  found in a system folder through links root installed is that command whatever the file it reaches is named
+  (Ubuntu's `/usr/bin/open`, through `/etc/alternatives` to the script `xdg-open`, was read as a look-alike); a link in
+  a folder the user writes, or a chain through one, is still read. The folder rule reads an alias only where a command
+  on the line defines one, never a word in a message, a note or a heredoc's body (the private skills' installer, whose
+  comment calls its update step "just an alias", waited at every run), and now catches one whose value changes folder;
+  a function moves the folder only when its body does and it is called outside a command substitution, so a helper that
+  only reads, beside a `cd`, passes; a text the parser cannot read is still left unplaced by a CDPATH it cannot read.
+  The HOME rule reads a heredoc's body only where a shell runs it (fed to a shell, `source` or `eval`, itself or down
+  its pipeline, or inside a command substitution), an unquoted body's substitutions always, and what `echo` or `printf`
+  only print as data. A process substitution (`diff <(…) file`) is a file's name to its command, where the line was
+  read as a subshell and then a command named `file`, which 22.21 ran as a script; and a `case` statement's patterns
+  run nothing (a list of notes there was read as scripts and ran the guard out of its time). A pytest command whose own
+  words put every home at absolute paths apart from every protected folder is not read (`env -u PYTHONPATH HOME=…
+  SYNTHESIS_HOME=… … python3 -m pytest -q tests`), and pytest asked only for its version or its help reads only the
+  conftests it loads at its start, for what they run outside a test. Re-judged on this Mac with the fix, every Claude
+  Code call of the review's replay in those classes passes: the 56 the folder rule held (the private installer's runs
+  among them), the 20 the HOME rule held, the 12 pytest runs and the four that ran out of the guard's time, one of
+  them a line of two nested scripts now judged in 2.1 s where it took 2.8. A pytest reading is made once a call, and
+  the transcripts' folder is found once a call. The guardrails' config and deploys references and
+  `docs/runtime-integration.md` say so: `deploy_also_renders`' default names the checkout itself, never a file in it;
+  the open list records how the merges narrowed the reading of scripts a line writes (parked for the sandbox on
+  2026-11-16) and gains the ritual-script holds' wording and three `eslint`/`tsc` holds. The line budgets rise by the
+  measured 199, itemized.
 
 ## [5.23.2] - 2026-11-15
 
