@@ -450,7 +450,15 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the guard can read, for no code. Words are judged wherever the program sits, so a launcher
      (`script`, `arch`, `time -p`, `xcrun`) hides nothing, and after the shell's own expansions:
      brace lists (`{a,b}`, `{1..3}`, nested) and every redirect bash and zsh accept (`>|`,
-     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A folder is named by its path in any case; on the
+     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A name hides nothing either (22.32): a command
+     word the guard judges by name (a shell, an interpreter, a reader, a file utility, a wrapper
+     and their like) that leads to a script rather than a compiled program, by its own path or
+     found on PATH as the shell looks it up (also when a wrapper or `find -exec` starts it, or
+     the line gives PATH itself), is judged as that script too: the command its `#!` line
+     starts, or a shell for a file with none, beside its judgment by name. A builtin the shell
+     runs itself is not looked up, and the commands that really are scripts pass where their
+     installer puts them (the guardrails' config reference, "Commands judged by name"). A
+     folder is named by its path in any case; on the
      command line, each word only by its own path (after `~`, variables, `..` and links), so
      parts in two words never join (2026-11-15: a skill script's path in the harness's plugin
      cache and a project page's path were read together as naming the transcripts); in a
@@ -814,6 +822,20 @@ stay open, and no hook running as that same user can close them:
   the commit check without touching its entry points (`git commit --no-verify`, `git -c
   core.hooksPath=…`, or the global `core.hooksPath` changed with `git config --global`);
   the guard holds none of these.
+- A compiled look-alike: a compiled program under the name of a command the guard judges by
+  name (`bash`, `python3`, `ls`, `cat` and their like), one the agent built, copied or linked
+  to, is judged by that name, since the guard reads only that it is compiled (crafted; 22.32
+  reads a script under such a name as what it is). So is a look-alike the line makes by a
+  route the guard does not read as a write before it runs it (a download, an archive, a
+  recursive copy, a program's own write), an installed script of one of the commands that
+  really are scripts rewritten where its installer put it in a folder the user writes (npm's
+  global folder, a version manager's shims, Homebrew's Cellar), and a look-alike set there,
+  or in a copy of npm's or a version manager's layout, under a name that installer provides.
+  The guard looks a command up on PATH as its own process has it and as the line sets it
+  (with `$(pwd)` put in): a folder another substitution builds into PATH, a name bound to a
+  file with `hash -p` or looked up with BSD `env -P`, and a harness's shell that reads a
+  startup file, a snapshot, a function or an alias first may run something else under the
+  name.
 - The first install comes from the harness's plugin folder, and that folder is the agent's to write. Where the
   synthesis home holds no trace of a runtime, the bootstrap in `hooks.json` (and Muse's `session-start.sh`) runs
   `python3 -B -S <plugin>/synthesis/install.py` from PATH while the stable hook is missing, and installs the runtime

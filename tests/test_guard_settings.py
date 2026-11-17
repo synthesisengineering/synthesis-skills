@@ -41,6 +41,7 @@ def world(tmp_path, monkeypatch):
                        ("SYNTHESIS_CLAUDE_DESKTOP_DIR", home / "Library" / "Application Support" / "Claude")):
         monkeypatch.setenv(key, str(value))
     monkeypatch.setenv("SYNTHESIS_SESSION", "S-principal")
+    monkeypatch.setenv("PATH", os.pathsep.join(("/usr/bin", "/bin", "/usr/sbin", "/sbin")))  # no synthesis of another home's on it (22.32)
     record = home / ".claude" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")

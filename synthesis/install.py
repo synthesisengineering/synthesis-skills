@@ -75,7 +75,9 @@ KEPT = ("HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "LANG", "LANGUAGE", 
         "CODEX_THREAD_ID", "MUSE_SESSION_ID", "MUSE_PLUGIN_ROOT", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME",
         "XDG_CACHE_HOME", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "CDPATH", "OLDPWD",  # the last two: where a cd may land
         "SYNTHESIS_JUDGE_RUN",  # the judge's marker (judge.MARKER): a turn hook inside the judge's own run judges nothing
-        "SYNTHESIS_WORKSPACES", "WORKSPACE_MCP_PORT")  # the send routes' workspaces root and the local MCP server's port
+        "SYNTHESIS_WORKSPACES", "WORKSPACE_MCP_PORT",  # the send routes' workspaces root and the local MCP server's port
+        "HOMEBREW_PREFIX", "HOMEBREW_CELLAR", "PYENV_ROOT", "RBENV_ROOT", "NODENV_ROOT", "ASDF_DATA_DIR", "JENV_ROOT", "PLENV_ROOT",
+        "GOENV_ROOT")  # where the guard finds a command its installer keeps as a script (22.32: guards.BREWS and SHIM_ROOTS)
 GIT_KEPT = ("SYNTHESIS_GIT_HOOK", "GIT_DIR", "GIT_INDEX_FILE", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
             "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_QUARANTINE_PATH", "GIT_PREFIX", "GIT_REFLOG_ACTION", "GIT_AUTHOR_NAME",
             "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE",

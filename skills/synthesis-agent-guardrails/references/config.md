@@ -63,6 +63,7 @@ hooks, and a plugin of the agent's own named with `-p`.
 ## Contents
 
 - [Keys](#keys)
+- [Commands judged by name](#commands-judged-by-name)
 - [An example](#an-example)
 - [From the 1.x config files](#from-the-1x-config-files)
 
@@ -91,6 +92,42 @@ hooks, and a plugin of the agent's own named with `-p`.
 | `reply_watch` | none (no check) | `{}` turns on the reply check's question after a message to a person: a turn in which one went out ends with a watch for its answer or with `synthesis wait none "<why>"`, or the reply is sent back once. It takes no key: what a message to a person is, the send guard says (`send_tools`, `not_send_tools`). Any other shape is said in a reply sent back once. What it reads: [reply-and-provenance.md](reply-and-provenance.md#a-message-to-a-person). |
 | `reply_file_links` | false | True: a reply that names a file without a clickable absolute-path markdown link is sent back once. |
 | `judge` | none (no judge) | A model that reads content before a check decides (M38), first for the reply check's shortcut phrasing: each reply the list flags goes to it; on that check a hit clears only when the judge's first reading and a second, narrow question both pass it surely, and a hold sends it back with what the judge read. `local`: `models`, the local models to ask through Ollama on this Mac's loopback address, the first one installed answering; `url` (default `http://127.0.0.1:11434`, loopback only); `keep_alive` (default `30m`, so a session's judge stays warm). `deadline_seconds` (default 3, at most 8: the Stop hook gives the judge 8 seconds inside its own 10, since 2026-11-15): past it, or with no model installed, no server or an answer that is not a strict verdict, the list decides as before. `subscription`: the plan of the harness the reply came from, through its own command line, so no one buys API credits for the judge; it reads a reply first where `local` is left out: an entry for `claude-code` (`claude -p`) or `codex` (`codex exec`), each a `model` and optionally a `command` (default `claude` or `codex` on PATH; used only where it resolves to that harness's own program, as bound below) and an `effort`, and `leave_out`, the workspaces whose replies it never reads (one whose plan is not confirmed for its work keeps the word list). It runs on the plan's sign-in alone (an API key, gateway token or cloud account in the environment is kept out of its run), so its verdicts count against the plan's usage and cost nothing more; give it `deadline_seconds` 8: a flagged reply's two questions took up to 7.2 seconds at the 95th percentile on the plan (2026-11-15), and inside the default 3 most go unanswered and the list decides; `synthesis doctor` warns, with the fix, when a configured plan's judge would not answer or answers past the deadline. A harness without an entry, Muse among them, keeps the other judges. `cloud`: the cloud model, the judge itself when neither `local` nor the reply's `subscription` judges it and otherwise a second opinion only where the first verdict is unsure: `provider` (`anthropic`), `model`, `keys_file` (the file that holds the keys, read at call time: its keys are never logged, cached or shown) and `keys` (`default`, the dotted path of the key for every workspace, beside it a workspace's own path, or null for a workspace whose key is not confirmed, which keeps the word list), `price_per_mtok` `{input, output}` in dollars, `monthly_cap_usd` (default 10: past it the other judges, or with none the word list, decide alone for the rest of the month and the principal is told once), and optionally `effort` and `url`, which is only the provider's own host over https (`https://api.anthropic.com`, the default). The request asks for adaptive thinking and the verdict's strict schema; a refusal, an answer that did not finish or any error is no verdict. Any other shape is said in the reply sent back, and the list alone decides until it is fixed. Every judge setting comes from this file, which a session can write, so each is bound: `local.url` to this Mac's loopback address; a `subscription` entry's `command` to the harness's own program, that is `claude` or `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` and the apps' own folders); anything else runs nothing, the list decides, and the doctor names the setting, while a program planted in one of those folders the person can write, or earlier on PATH, counts as the harness's own and is on the open list in `docs/runtime-integration.md`; `model` to a plain name and `effort` to letters, values on the harness's command line and never options of their own; `cloud.url` to the provider's own host over https, so the reply, the principal's last message and the key go nowhere else; each `cloud.keys` path to one that ends in the provider's name, so the keys file gives the judge that key and nothing else; `deadline_seconds` to at most 8. A section outside these bounds is said in the reply sent back and by the doctor, and the list decides until it is fixed. What it reads: [reply-and-provenance.md](reply-and-provenance.md#the-judge). |
+
+## Commands judged by name
+
+No key turns this on or off; it depends on what is installed where. The shell guard judges some commands by their
+name: the shells, the interpreters, the usual readers, the file utilities, the wrappers (`env`, `nohup`, `timeout`,
+`xargs`, `npx` and their like), the editors and the unpackers. Since 22.32 a command word of one of those names that
+leads to a script (a text file, with a `#!` line or none) rather than a compiled program is also judged as that
+script, under the rules for scripts, beside its judgment by name: a script of the agent's named `bash` or `ls` waits
+for the code where it, or its command, names a protected folder, as a script with a name of its own does. The guard
+finds the file as the shell would: by the word's own path, or on PATH as the hook's process has it and on any PATH the
+line gives itself. A builtin the shell runs itself (`echo`, `cd`, `test`, `printf` and their like) is not looked up;
+the same name started by `env`, `nohup`, `xargs` or `find -exec` is. A word written as a pattern is the file it
+expands to. A file the line copies or links into place before it runs it is judged as what it copies, and one it
+writes itself (a redirect, `tee`, an edit in place) is read as the line; a change of mode or owner writes nothing it
+runs.
+
+The real commands are compiled programs or links to them, wherever they lie: the system's, Homebrew's `python3` and
+`node`, a venv's `python`. These commands really are scripts, and pass by their name where their installer puts them.
+Where no program of the agent's writes, any of these names passes under its own name (or that name with a version or
+a suffix after it); in a folder the user writes, only the names that installer provides there:
+
+| Where the file lies | Which names |
+|---|---|
+| Installed by root: the file and every folder above it owned by root and writable by neither this user nor its groups | Any, by its own name: macOS's `/usr/bin/cd`, `read`, `wait` and `command`, `shasum`, `irb`, `wish`; Linux's `which`, `egrep`, `fgrep`, `zcat`, `gunzip`, `uncompress` |
+| The runtime's own `bin/` (protected), also through a link elsewhere on PATH | Any, by its own name: `synthesis` |
+| An npm package's bin: `<prefix>/bin/<name>` linked into `<prefix>/lib/node_modules/` (or Debian's `<prefix>/share/nodejs/`), or a project's `node_modules/.bin/<name>` | `npx`, `pnpx`, `tsx`, `ts-node` (from Homebrew, nvm, fnm, a distribution or a project) |
+| A version manager's shim, `<root>/shims/<name>`: pyenv, rbenv, nodenv, asdf, jenv, plenv, goenv, luaenv or phpenv, or the root its variable names (`PYENV_ROOT` and the like) | The interpreters (`python3`, `node`, `ruby`, `perl` and their like) and the npm bins above |
+| Homebrew's own Cellar (`HOMEBREW_CELLAR`, or `Cellar` under `HOMEBREW_PREFIX`, which `brew shellenv` sets, `/opt/homebrew` or `/usr/local`) | `groovy`, `scala`, `elixir`, `jruby`, `7z`, `7za`, `irb`, `shasum`, `gunzip`, `zcat`, `uncompress`, `egrep`, `fgrep`, `synthesis` and the npm bins above |
+
+pip3, pytest, npm and a venv's `activate` are scripts too, but the guard judges them by none of these names, so they
+are untouched. A script another installer puts in a folder the user writes under one of these names (a JVM tool
+from sdkman, say) is read as the script it is, which waits only where it or its command names a protected folder.
+Measured on 60 days of records (2026-09-16 to 2026-11-15, 252,649 distinct commands), every command word of these
+names led to a compiled program, a builtin, nothing, or a script of this table. A compiled program under such a
+name, an installed script rewritten where its installer put it in a folder the user writes, and a look-alike set
+where such an installer puts its scripts are judged by the name (the open list, in `docs/runtime-integration.md`).
 
 ## An example
 

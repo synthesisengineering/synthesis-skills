@@ -2337,10 +2337,38 @@ ROOT = Path(__file__).resolve().parents[1]
 # places are written once); doctor.py 4 more than the sum (both sides moved KNOWN_LOCATIONS into paths, and its 4 fewer
 # were counted on each side). 22.26's STARTUP, the startup files, is STARTUP_FILES here: release/next's STARTUP names the
 # variables that change how a program starts, and the two bound one name.
+# 22.32, a program under the name of a command the guard judges by name (fix/known-command-look-alikes, from main at
+# 218da465):
+# Then each 227 more, all in guards.py, for 22.32 (a review's C9: a script of the agent's named like a command the guard
+# judges by name, run by its path or found first on PATH, was judged by that name and never read, and replaced the
+# runtime's guard in nine forms of nine): _look_alike 36 (a command word found as the shell finds it: by its path, on
+# each search path the line has, a builtin in the shell's own place excepted, a word written as a pattern expanded; a
+# file the line copies or links there judged as what it copies, one it writes itself counted as a script), _installed 23
+# (the commands that really are scripts, where their installer puts them: root's own and the runtime's launcher by their
+# own names; in a folder the user writes only the names that installer provides: an npm package's bin, an interpreter's
+# version manager shim, a Homebrew formula's script in Homebrew's Cellar), _as_run 17 (the command a look-alike really
+# is, from its `#!` line), _root_owned 15, _search_paths 13 (PATH as the line sets it, `$(pwd)` put in), _made 12 (what
+# a command writes, and what a copy or a link copies: the replay of 2026-11-16 found a real interpreter linked into a
+# folder and run there held), _runnable 10 and _compiled 8 (a file the shell may run, and whether it is compiled, by its
+# first four bytes, each asked once a call), _trusted 6, LookAlike 4 (the hold names the script and the name it took),
+# the comment and the constants 17 (COMPILED, BUILTINS, SHIMS, SHIM_ROOTS, NPM_BINS, BREWED, BREWS), and the new
+# definitions' 21 blank lines; _commands 33 more (the line's search paths and what it writes, each program word looked
+# at, the command a look-alike really is put beside it, the line's words looked at again at its end, `find -exec`
+# started as from PATH), _parse 6 more (the same for a line read only in pieces), _bare 4 more (each program word it
+# takes off, kept), _self_grant 2 more (the hold's words for a look-alike).
+# 5.24.0, 22.32 (4d322d09) merged into release/next: release/next's ceilings (core 22960, plugin 49618) and its raise
+# just above (227 each), measured: core 23194 and plugin 49852. The merge's own lines leave each 7 above that sum.
+# guards.py 5: release/next reads a line in _walk, a starting point at a time, where 22.32 read it in _commands, so its
+# closure that puts a look-alike's command beside it is _looked, beside the walker (1 more: its blank lines), the walker
+# names the reading's line state (1), and _commands takes that state on a line of its own (1); and a shell script read
+# line by line (22.21) names, when refused or held, the name a look-alike took (2). install.py 2: the launchers keep
+# HOMEBREW_PREFIX, HOMEBREW_CELLAR and the version managers' roots, which 22.32 reads to find a command its installer
+# keeps as a script (the runtime reads only what its launchers keep). The line's search paths and what it writes are
+# kept in the reading's own state, so its scripts and its second, physical reading share them.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22960
-PLUGIN_BUDGET = 49618
+CORE_BUDGET = 23194
+PLUGIN_BUDGET = 49852
 
 
 def _lines(files):
