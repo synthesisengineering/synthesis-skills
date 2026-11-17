@@ -122,6 +122,7 @@ a suffix after it); in a folder the user writes, only the names that installer p
 | An npm package's bin: `<prefix>/bin/<name>` linked into `<prefix>/lib/node_modules/` (or Debian's `<prefix>/share/nodejs/`), or a project's `node_modules/.bin/<name>` | `npx`, `pnpx`, `tsx`, `ts-node` (from Homebrew, nvm, fnm, a distribution or a project) |
 | A version manager's shim, `<root>/shims/<name>`: pyenv, rbenv, nodenv, asdf, jenv, plenv, goenv, luaenv or phpenv, or the root its variable names (`PYENV_ROOT` and the like) | The interpreters (`python3`, `node`, `ruby`, `perl` and their like) and the npm bins above |
 | Homebrew's own Cellar (`HOMEBREW_CELLAR`, or `Cellar` under `HOMEBREW_PREFIX`, which `brew shellenv` sets, `/opt/homebrew` or `/usr/local`) | `groovy`, `scala`, `elixir`, `jruby`, `7z`, `7za`, `irb`, `shasum`, `gunzip`, `zcat`, `uncompress`, `egrep`, `fgrep`, `synthesis` and the npm bins above |
+| Anywhere, a script whose one line is `exec <path> "$@"`, handing every word to a compiled program root installed (as CI puts Apple's Python first as `python`) | The name of that program, or that name with a version after it: `python` or `python3` for `/usr/bin/python3` |
 
 pip3, pytest, npm and a venv's `activate` are scripts too, but the guard judges them by none of these names, so they
 are untouched. A script another installer puts in a folder the user writes under one of these names (a JVM tool

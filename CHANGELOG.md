@@ -756,6 +756,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   and `zcat`; the runtime's launcher in its protected `bin/`), and in a folder the user writes only under a name that
   installer provides there (an npm package's bin such as `npx`, an interpreter's version manager shim, a Homebrew
   formula's script in Homebrew's Cellar), the list in the guardrails' config reference, "Commands judged by name".
+  So does a script whose one line hands every word to a compiled program of that name root installed (`exec
+  /usr/bin/python3 "$@"`, as CI puts Apple's Python first as `python`), and the launchers keep `HOMEBREW_PREFIX`,
+  `HOMEBREW_CELLAR` and the version managers' roots that it reads.
   Measured first, read only, on 60 days of records (2026-09-16 to 2026-11-15: 265,897 shell runs, 252,649 distinct
   commands): no such word led to any other script; 6,211 led to the synthesis launcher, 2,050 to npm's `npx` and 535
   to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled look-alike (a
