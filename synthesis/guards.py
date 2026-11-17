@@ -1927,6 +1927,7 @@ NPM_BINS = ("npx", "pnpx", "tsx", "ts-node")  # the names it trusts that are npm
 BREWED = ("groovy", "scala", "elixir", "jruby", "7z", "7za", "irb", "shasum", "gunzip", "zcat", "uncompress", "egrep", "fgrep",
           "synthesis", *NPM_BINS)  # the names it trusts that a Homebrew formula installs as a script
 BREWS = ("/opt/homebrew", "/usr/local")  # Homebrew's prefixes on a Mac, beside HOMEBREW_PREFIX (`brew shellenv` sets it)
+HANDS_ON = _Pattern(r'#![^\n]*\n(?:[ \t]*(?:#[^\n]*)?\n)*[ \t]*exec[ \t]+("?)(/[^"\s$`]+)\1[ \t]+"\$@"[ \t]*(?:\n[ \t]*(?:#[^\n]*)?)*\n?')  # one line, `exec <path> "$@"`
 
 
 class LookAlike(str):
@@ -1976,8 +1977,9 @@ def _installed(name: str, real: str, found: str) -> bool:
     runtime's own launcher in its protected `bin/`. In a folder the user writes, only a name that installer provides:
     an npm package's bin (NPM_BINS) linked from its global folder (`<prefix>/bin/<name>` into `<prefix>/lib/node_modules/`,
     or Debian's `<prefix>/share/nodejs/`) or a project's `node_modules/.bin/`; an interpreter's version manager shim;
-    a Homebrew formula's script (BREWED) in Homebrew's own Cellar. `found` is the path the command was found as, `real`
-    where it leads."""
+    a Homebrew formula's script (BREWED) in Homebrew's own Cellar. Anywhere, a script that only hands its words to a
+    compiled program of that name root installed (`exec /usr/bin/python3 "$@"`, as CI puts Apple's Python first): it is
+    that program. `found` is the path the command was found as, `real` where it leads."""
     at, base, folder = os.path.dirname(found), os.path.basename(real), os.path.dirname(real)
     if name in NPM_BINS and ((os.path.basename(at) == "bin" and any(paths.inside(real, _real(os.path.join(os.path.dirname(at), *w)))
                                                                   for w in (("lib", "node_modules"), ("share", "nodejs")))) or (
@@ -1985,6 +1987,9 @@ def _installed(name: str, real: str, found: str) -> bool:
         return True
     if not re.fullmatch(re.escape(name) + r"[\d.]*(?:\.[a-z]+)?", base):
         return False
+    hand = HANDS_ON.fullmatch((_regular(real, 4096) or (b"",))[0].decode("utf-8", "replace"))  # it hands every word on, unchanged
+    if hand and re.fullmatch(re.escape(name) + r"[\d.]*", os.path.basename(_real(hand[2]))) and _compiled(_real(hand[2])) and _root_owned(_real(hand[2])):
+        return True
     if _root_owned(real) or any(paths.inside(real, _real(paths.home() / part)) for part in ("bin", "releases")):
         return True
     roots = {_real(os.environ[k]) for k in SHIM_ROOTS if os.environ.get(k)}

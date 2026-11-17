@@ -2383,10 +2383,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # 5.24.0, the catalog dates (940f3c7f) merged into release/next, after the site topology (997fc2d7), which changes no
 # code: release/next's ceilings (core 23195, plugin 49853) and the raise just above (74 each), measured: core 23269 and
 # plugin 49927. The merge's own lines change nothing.
+# Then each 5 more, all in guards.py, so a script that only hands its words to the real interpreter is that interpreter
+# (CI's Apple job puts Apple's Python first as `python` by a two-line script, since a link breaks Xcode's shim; judged
+# as a look-alike, its `"$@"` lost the program it hands on, and an ordinary read through it waited): HANDS_ON 1, and
+# _installed 4 (the hand-off read from the script, to a compiled program of that name root installed, 3; its docstring 1).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23269
-PLUGIN_BUDGET = 49927
+CORE_BUDGET = 23274
+PLUGIN_BUDGET = 49932
 
 
 def _lines(files):
