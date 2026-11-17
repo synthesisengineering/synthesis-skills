@@ -2,7 +2,24 @@
 
 Everything lives in the principal's private `~/.synthesis/v5/config.json`. A missing file
 means the defaults below. A file that can't be read or parsed blocks every shell call,
-send and account-routed call until it is fixed (R3.5); other tools are unaffected.
+send and account-routed call until it is fixed (R3.5); other tools are unaffected, except
+that a file tool is still judged without it, so a write into the state folder stays refused
+and the file's repair waits for the principal's code.
+
+**The file is the principal's to change.** It sets what every approval means, so an agent's
+write to it waits for the principal's code for exactly that write, and so does a write to
+anything under `~/.synthesis/v5/git-hooks`, the commit check's entry points: by a file tool
+(Write, Edit, MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and
+`edit_file`) or by any shell command the guard reads (a redirect, `cp`, `mv`, `tee`,
+`install`, `ln`, `sed -i`, `rm`, a program that writes it), however its path is spelled. The
+copy that installs the principal's settings from a private repository waits too, and its
+code binds the file it copies as it stood. Reading needs no code (`cat`, `head`, `grep`,
+`jq`, `diff`, and `cat … > copy` for a copy); `cp` and `ln` of it wait, as for every file
+the guard protects. The installer's own route (`synthesis install`, `synthesis update`) is
+unchanged. A write to a shell's startup files, Claude Code's shell snapshots or the harness
+programs (`claude`, `codex`, `muse`, `gh` wherever each resolves) waits the same way, since
+each runs with no code. How the guard reads each route: the plugin's
+`docs/runtime-integration.md` (Approvals).
 
 **When a guard cannot answer** (5.21.0). In Claude Code the plugin's PreToolUse hook sets
 `"onFailure": "block"`, so from Claude Code 2.1.295 a guarded call (a shell command, a file

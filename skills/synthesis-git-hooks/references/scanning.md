@@ -33,6 +33,11 @@ calling `synthesis/commit_check.py` with its own name in `SYNTHESIS_GIT_HOOK`:
 Its own checks run first; the repository's hooks run only after they pass
 (`test_the_synthesis_checks_run_before_any_repository_hook`).
 
+The folder is the commit check's own: an agent's write to anything in it, by a file tool or
+a shell command the guard reads, waits for the principal's code for exactly that write, as a
+write to the guard's `config.json` does (the plugin's `docs/runtime-integration.md`,
+Approvals). The installer writes the three wrappers without one.
+
 ## The staged diff, byte for byte
 
 - Read as bytes from `git diff --cached --no-ext-diff --no-textconv --text --no-renames

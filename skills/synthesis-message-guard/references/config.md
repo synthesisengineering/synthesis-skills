@@ -4,7 +4,10 @@ The guard reads `~/.synthesis/v5/config.json`, the principal's private file. An
 unreadable or malformed file blocks every send (R3.5); a missing file means the defaults
 below. The public starting point is
 [config.example.json](../config.example.json), which the tests load in CI, where there is
-no `~/.synthesis`.
+no `~/.synthesis`. An agent's write to the file waits for the principal's code for that
+exact write, by a file tool or a shell command, since its keys (`own_repos`,
+`send_window_signatures`, `forbidden_phrases` and the rest) set what every approval means;
+reading it needs none (the agent guardrails' config reference says how each route is read).
 
 **When the guard cannot answer** (5.21.0). In Claude Code the plugin's PreToolUse hook sets
 `"onFailure": "block"`, so from Claude Code 2.1.295 a send is held when the guard times out (its

@@ -309,10 +309,10 @@ def pre_tool_use(payload, began=None):
                 config, unreadable = paths.config(), None
             except (OSError, ValueError) as exc:
                 config, unreadable = {}, exc
-            if unreadable is not None:
+            if unreadable is not None and tool not in guards.FILE_TOOLS:
                 reason = (f"synthesis guard config is unreadable ({unreadable}); fix {paths.config_file()}"
                           if guards.guarded(tool, tool_input) else "")
-            else:
+            else:  # a file tool is judged without the config it cannot read: the folders and settings it guards need none (22.20)
                 try:
                     reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
                 except approvals.Unverified as exc:

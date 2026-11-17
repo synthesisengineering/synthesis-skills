@@ -3441,12 +3441,219 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), harness transcripts, approved commit lines."""
-    store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
-                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
-                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
-                             *([store] if store else [])]]
+    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), harness transcripts, approved commit lines.
+    While a shell command is judged for the guard's own settings (`_CALL["settings"]`, set by check_self_grant), those
+    are among them too, or alone ("only")."""
+    store, mode = paths.line_allowances(config or {}), _CALL.get("settings")
+    if mode == "only":
+        return _settings()
+    key = (_env_key(), str(store), bool(mode))  # read once for the environment: they are paths, not the files at them
+    if key not in ROOTS_MEMO:
+        ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
+                                            *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
+                                            paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
+                                            *([store] if store else [])]] + (_settings() if mode else [])
+    return list(ROOTS_MEMO[key])
+
+
+# The guard's own settings and the global commit check's entry points (22.20). What an approval means rests on both: a
+# setting names the lines the principal approved, his own repositories, the hosts a sheet uploads to, what a send window
+# lets through, the phrases a message may not hold, the account each workspace acts as and the turn-end judge's program
+# and host; a git hook is what git runs before every commit in every repository. A review of 2026-11-15 found that a file
+# tool rewrote either with no code. A write there is not refused, since the principal changes them: it waits for his
+# code for that exact call, the private installer's copy of his settings included (the orchestrating session's ruling
+# under his standing rule that no agent grants itself an approval). Reading them needs none.
+#
+# A shell's startup files, Claude Code's shell snapshots and the harness programs wait the same way (22.26). Claude Code
+# runs every command through zsh, which reads ~/.zshenv (from ZDOTDIR, where that is set) after sourcing a snapshot of
+# the shell; Codex runs `bash -lc`, which reads ~/.bash_profile, ~/.bash_login or ~/.profile, and bash reads the file
+# BASH_ENV names. The harnesses, `synthesis doctor` and the release tool run claude, codex, muse and gh wherever each
+# resolves. The same review wrote ~/.zshenv with no code, and an ordinary `ls` then ran the agent's code; and the doctor
+# ran an agent-written ~/.local/bin/codex, which wrote the runtime. Reading or running any of them needs no code.
+SETTINGS_KIND = "guard-settings"
+SETTINGS_SAID = {  # what each kind is, what it holds or does, and what a change there does
+    "config.json": ("the synthesis guard's own settings", "its line allowances, own repositories, sheet hosts, send-window "
+                    "signatures, forbidden phrases, account routing and the turn-end judge's settings",
+                    "changes what every approval means"),
+    "git-hooks": ("the global commit check's entry points", "what git runs before every commit, merge and commit message in "
+                  "every repository", "changes what every approval means"),
+    "startup": ("a shell's startup file", "zsh or bash runs it before every command a harness runs",
+                "runs before every command, where this guard never sees it"),
+    "snapshots": ("Claude Code's shell snapshots", "one is sourced before every command Claude Code runs",
+                  "runs before every command, where this guard never sees it"),
+    "program": ("a harness program", "what the harnesses, synthesis doctor and the release tool run as `{}`",
+                "runs with no code whenever one of them starts it"),
+}
+STARTUP_FILES = (".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout", ".bash_profile", ".bash_login", ".profile", ".bashrc")
+HARNESS = ("claude", "codex", "muse", "gh")
+KEPT = _Pattern(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[^/]+)(?=/|$)")  # the folder its installer keeps a file in
+ZDOTDIR_SET = _Pattern(r"(?m)^[ \t]*(?:export[ \t]+)?ZDOTDIR=([\"']?)([^\"'\s;#]+)\1")
+SETTINGS_MAPS: dict = {}  # the environment it is read from: each path the settings hold covers, with its kind
+ROOTS_MEMO: dict = {}  # the environment, the approved lines' store and whether the settings are among them: the protected paths
+OWN_MEMO: dict = {}  # the environment: the real paths of the startup files, snapshots and harness programs
+
+
+def _settings() -> list[str]:
+    """Every path whose write waits for the principal's code: the guard's settings and the commit check's entry points of
+    the synthesis home this guard runs for, the shells' startup files, Claude Code's shell snapshots, the harness programs."""
+    return list(_settings_map())
+
+
+def _env_key() -> tuple:
+    """What the protected paths are read from: the variables that name a home, a harness's folder or a shell's files."""
+    if len(SETTINGS_MAPS) + len(ROOTS_MEMO) + len(OWN_MEMO) > 512:
+        SETTINGS_MAPS.clear()
+        ROOTS_MEMO.clear()
+        OWN_MEMO.clear()
+    return tuple(os.environ.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
+                                                 "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
+
+
+def _settings_map() -> dict:
+    """Each path `_settings` names, with its kind and program: read once for the environment the guard runs in. A harness
+    program is held at each folder on PATH and in the vendors' known places, whether or not a file is there (one there
+    runs instead), through each link to the file it ends at, with the folder its installer keeps it in (Claude Code's
+    versions, the desktop app's, Codex's app-server CLI and an app's, a Homebrew keg or cask, an npm package) and, beside a
+    launcher, the files it keeps there (muse: muse-bin-<version> and .muse-version)."""
+    env, key = os.environ, _env_key()
+    if key in SETTINGS_MAPS:
+        return SETTINGS_MAPS[key]
+    home = os.path.expanduser("~")
+    found = {str(paths.config_file()): ("config.json", ""), str(paths.home() / "git-hooks"): ("git-hooks", "")}
+    read = _regular(os.path.join(home, ".zshenv"), 1 << 16)
+    zdots = [env.get("ZDOTDIR") or home] + [_expanded(dot) for _, dot in ZDOTDIR_SET.findall(read[0].decode("utf-8", "replace") if read else "")]
+    for folder, name in [(z, n) for z in [home] + zdots for n in STARTUP_FILES[:5]] + [(home, n) for n in STARTUP_FILES[5:]]:
+        found[os.path.join(folder, name)] = ("startup", "")
+    for named in (env.get("BASH_ENV"), env.get("ENV")):
+        if named:
+            found[_expanded(named)] = ("startup", "")
+    found[os.path.join(env.get("CLAUDE_CONFIG_DIR") or os.path.join(home, ".claude"), "shell-snapshots")] = ("snapshots", "")
+    folders = [d for d in dict.fromkeys(os.path.abspath(os.path.expanduser(d)) for d in env.get("PATH", "").split(os.pathsep)
+                                        + list(paths.PROGRAM_DIRS) if d) if _writable(d)]  # the system's own take no agent write
+    kept = {"claude": [os.path.join(env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share"), "claude"),
+                       os.path.join(home, ".local", "share", "claude"), str(paths.desktop_dir() / "claude-code")],
+            "codex": [str(paths.codex_home() / "plugins" / ".plugin-appserver")] + [  # and an app's Codex CLI, not the whole app
+                p.rsplit("/bin/", 1)[0] for p in paths.PROGRAM_PLACES.get("codex", ()) if "/codex-cli/bin/" in p]}
+    for name in HARNESS:
+        spots = [os.path.join(d, name) for d in folders] + [os.path.expanduser(p.split("*")[0].rstrip("/")) for p in paths.PROGRAM_PLACES.get(name, ())]
+        for spot in spots + kept.get(name, []):
+            found.setdefault(os.path.normpath(spot), ("program", name))
+        for spot in [s for s in spots if os.path.lexists(s)]:
+            hop, hops = spot, 0
+            while os.path.islink(hop) and hops < 8:  # each link it passes through, to the file it ends at
+                try:
+                    hop, hops = os.path.normpath(os.path.join(os.path.dirname(hop), os.readlink(hop))), hops + 1
+                except OSError:
+                    break
+                found.setdefault(hop, ("program", name))
+            end = os.path.realpath(spot)
+            for path in [end] + [m[0] for m in [KEPT.match(end)] if m]:
+                found.setdefault(path, ("program", name))
+            try:
+                beside = os.listdir(os.path.dirname(spot)) if os.path.isfile(spot) and not os.path.islink(spot) else []
+            except OSError:
+                beside = []
+            for other in beside:
+                if other.startswith((f"{name}-bin", f".{name}-")):
+                    found.setdefault(os.path.join(os.path.dirname(spot), other), ("program", name))
+    SETTINGS_MAPS[key] = found
+    return found
+
+
+def _harness_own() -> set:
+    """The real paths of the kinds a harness's own variables name (its startup files, snapshots and programs): read once
+    for the environment."""
+    key = _env_key()
+    if key not in OWN_MEMO:
+        OWN_MEMO[key] = {os.path.realpath(p) for p, (kind, _) in _settings_map().items() if kind in ("startup", "snapshots", "program")}
+    return OWN_MEMO[key]
+
+
+def _kinds_at(real: str) -> set:
+    """The kinds of the settings-held paths a path lies in (22.26)."""
+    return {kind for path, (kind, _) in _settings_map().items() if paths.inside(real, _real(path))}
+
+
+def _runs_at_start(name: str, where: str) -> bool:
+    """Whether a script a shell runs or sources is a shell's startup file or a Claude Code shell snapshot: what a shell
+    runs at its start anyway, which only the principal's code changes (22.26), so `source ~/.zshrc` reads it."""
+    return bool(_kinds_at(_real(os.path.join(where, os.path.expanduser(name)))) & {"startup", "snapshots"})
+
+
+PACKAGES = {"gh": "gh", "codex": "codex", "claude-code": "claude", "claude": "claude", "@anthropic-ai/claude-code": "claude", "@openai/codex": "codex"}
+CHANGES = {"brew": frozenset("install reinstall upgrade uninstall remove rm link ln unlink switch".split()),
+           "node": frozenset("install i add update up upgrade uninstall un remove rm r link ln".split())}
+
+
+def _installs(words: list) -> str:
+    """The harness program an installer command changes where its installer keeps it, else '' (22.26): Homebrew or a
+    Node package manager told to install, upgrade, remove or link it, or to upgrade everything while it is installed that
+    way, and Claude Code's own `claude update`, `claude install` and `claude migrate-installer`."""
+    head = os.path.basename(words[0])
+    rest = [w for w in words[1:] if not w.startswith("-")]
+    rest = rest[1:] if head == "yarn" and rest[:1] == ["global"] else rest
+    if head == "claude":
+        return "claude" if words[1:2] in (["update"], ["install"], ["migrate-installer"]) else ""
+    node = head in ("npm", "pnpm", "yarn", "bun") and (any(w in ("-g", "--global", "--location=global") for w in words) or "global" in words[1:2])
+    if not rest or not ((head == "brew" and rest[0] in CHANGES["brew"]) or (node and rest[0] in CHANGES["node"])):
+        return ""
+    named = [PACKAGES.get(re.sub(r"(?<=.)@[^/]*$", "", w.rsplit("/", 1)[-1] if head == "brew" else w), "") for w in rest[1:]]
+    if rest[1:]:
+        return next((n for n in named if n), "")
+    where = "/node_modules/" if node else "/Cellar/"  # everything it installed: a harness program installed that way
+    return next((name for path, (kind, name) in _settings_map().items() if kind == "program" and rest[0].startswith("up")
+                 and (where in path or (head == "brew" and "/Caskroom/" in path))), "")
+
+
+def _writable(folder: str) -> bool:
+    """Whether this user can put a file in a folder: it, or the nearest folder above it that is there, is theirs or open
+    to them."""
+    while not os.path.lexists(folder) and folder != os.path.dirname(folder):
+        folder = os.path.dirname(folder)
+    try:
+        return os.access(folder, os.W_OK) or os.stat(folder).st_uid == os.getuid()
+    except OSError:
+        return False
+
+
+def _expanded(value: str) -> str:
+    """A path as a shell expands it: `${NAME:-default}`, then $NAME and ~."""
+    value = re.sub(r"\$\{(\w+):?-([^}]*)\}", lambda m: os.environ.get(m[1]) or m[2], value)
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(value)))
+
+
+def _settings_said(reached: list) -> tuple:
+    """(what each of the settings a write reaches is and holds, at most three paths of a kind, what a change there does),
+    as a hold names them."""
+    kinds: dict = {}
+    for path in reached:
+        kinds.setdefault(_settings_map().get(path, ("config.json", "")), []).append(path)
+    said = " and ".join(f"{SETTINGS_SAID[kind][0]} ({', '.join(spots[:3])}{f' and {len(spots) - 3} more' if len(spots) > 3 else ''}: "
+                        f"{SETTINGS_SAID[kind][1].format(name)})" for (kind, name), spots in kinds.items())
+    return said, "; it ".join(dict.fromkeys(SETTINGS_SAID[kind][2] for kind, _ in kinds))
+
+
+def check_settings_write(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A file tool's write of the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a harness
+    program waits for the principal's code for exactly that call: the tool, the file it lands in and everything it
+    writes (22.20, 22.26). Judged where the path really leads, in any case, so a link made beforehand, `..` or capitals
+    change nothing."""
+    import hashlib
+    targets = _file_targets(tool, tool_input)
+    real = {t: _real(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
+    reached = [s for s in _settings() if any(paths.inside(real[t], _real(s)) for t in targets)]
+    if not reached:
+        return None
+    hit = next(t for t in targets if any(paths.inside(real[t], _real(s)) for s in reached))
+    subject = {"tool": tool, "writes": sorted(set(real.values())),
+               "input": hashlib.sha256(json.dumps(tool_input, sort_keys=True, default=str).encode("utf-8")).hexdigest()}
+    if approvals.consume(SETTINGS_KIND, subject, session):
+        return None
+    said, does = _settings_said(reached)
+    code = approvals.request(SETTINGS_KIND, subject, f"{tool} writes {real[hit]}, {said.split(' (')[0]}")
+    return (f"{tool} would write {hit}, {said}. A change there {does}, so it waits for the principal: show them the exact "
+            f"change (the file and what the call writes) and ask them to type {approvals.how(code)}; then make the identical "
+            "call again. Reading it needs no code.")
 
 
 def _claude_parts(real: str) -> list:
@@ -3506,8 +3713,9 @@ def _file_targets(tool: str, tool_input: dict) -> list[str]:
 def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[str]:
     """The files a shell line writes or removes: redirects, what its utilities change (`_landing`), `apply_patch`;
     in every reading of the line (`_resolved`). A reading that cannot be made is passed over, and kept in `unread`
-    for a caller that counts them."""
-    targets = []
+    for a caller that counts them. `~` is put in before a target is joined to its folder, as the shell does (22.20: a
+    claimed file written as `~/…` was joined to the folder the command ran in, and its claim never looked at)."""
+    targets, at = [], lambda where, t: os.path.join(where, os.path.expanduser(t))
     for text in _resolved(command):
         writes = []
         try:
@@ -3516,11 +3724,11 @@ def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[st
             if unread is not None:
                 unread.append(text)
             continue
-        targets += [os.path.join(w, t) for t, w in writes]
+        targets += [at(w, t) for t, w in writes]
         for words, where in found:
-            targets += [os.path.join(where, w) for w in _landing(words)]
+            targets += [at(where, w) for w in _landing(words)]
             if os.path.basename(words[0]) == "apply_patch":
-                targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
+                targets += [at(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     return targets
 
 
@@ -3770,8 +3978,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     keyed |= {id(n.func.value) for n in nodes if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "update"} | {id(v) for t, v in pairs if isinstance(t, ast.Name) and getattr(v, "attr", getattr(v, "id", "")) == "environ"} | {
         id(c) for n in nodes if isinstance(n, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops) for c in n.comparators}  # given a value, kept under a name, asked for a name: each read as the table it is
     wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
+    inherited = [r for r in roots if r not in _harness_own()]  # a harness's own variables name these (22.26)
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
-        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
+        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in inherited)))
 
     def source(node):  # what an open call opens: its first argument, or the path whose own open() it is; None for any other node
         if not (isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open"):
@@ -3784,7 +3993,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             map(named, [*node.args, *(k.value for k in node.keywords), *([node.func.value] if isinstance(node.func, ast.Attribute) else [])]))
 
     store = paths.line_allowances(config or {})
-    folders_held = [r for r in roots if not store or r != os.path.realpath(str(store))]  # the approved lines are one file: nothing holds a folder of them
+    folders_held = [r for r in roots if not store or r != _real(str(store))]  # the approved lines are one file: nothing holds a folder of them
 
     def over(n) -> bool:  # a walk or a pattern that may find what lies in a protected folder, from a folder that holds it
         label = getattr(n.func, "attr", getattr(n.func, "id", ""))
@@ -3793,7 +4002,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         top = os.path.join(top, said(n.args[0]) or "\0") if method and label == "glob" and n.args else top
         top = os.path.join(*[spelled(k.value) for k in n.keywords if k.arg == "root_dir"], top)  # glob's root_dir leads its pattern
         top = home(top[top.rfind("\1") + 1:]).replace("\0", "*")
-        return any(_reaches(os.path.realpath(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
+        return any(_reaches(_real(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
                    for spot in ([""] if os.path.isabs(top) else places) if "\0" not in spot for r in folders_held)
 
     def rooted(n) -> bool:  # what names no folder: a path taken relative to one that holds it, one part of a path, a path flattened, a digest
@@ -3816,7 +4025,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return False
         if "\0" not in path:  # spelled out: it must not climb
             return os.path.isabs(path) and ".." not in os.path.relpath(path, start).split(os.sep)
-        return any(paths.inside(os.path.realpath(start), r) or paths.inside(r, os.path.realpath(start)) for r in roots)
+        return any(paths.inside(_real(start), r) or paths.inside(r, _real(start)) for r in roots)
 
     def named(node, apart=()) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
         todo, met = [node], set()
@@ -4323,7 +4532,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         seen += (id(c),)
         if c is ENV:
             made = [(env[key], ())] if key in env and not re.search(r"[$`]", env[key]) else [] if key is not None else [(None, ())] + [
-                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in roots))]  # any of them: one may name a protected path
+                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in inherited))]  # any of them: one may name a protected path
         elif isinstance(c, ast.Dict):
             made = [x for k, v in zip(c.keys, c.values) for x in (
                 [y for o in resolve(v, seen) or [None] for y in part(o, sel, None, seen)] if k is None else [(v, ())] * (key is None or key_at(k) in (key, None)))]
@@ -4551,7 +4760,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 
     def elsewhere(raw: str) -> bool:  # a plain folder elsewhere leads this spelling, whatever its end
         lead = os.path.dirname(home(raw).split("\0")[0]) if "\1" not in raw else ""
-        return os.path.isabs(lead) and not any(paths.inside(os.path.realpath(lead), r) or paths.inside(r, os.path.realpath(lead)) for r in roots)
+        return os.path.isabs(lead) and not any(paths.inside(_real(lead), r) or paths.inside(r, _real(lead)) for r in roots)
 
     def inward(raw: str) -> set:  # the names that hold what a walk found from where the program stands: under such a folder they only go further in
         return {k for k in finds if all(v[:1] not in ("/", "~", "\0", "\1") and ".." not in v.split("/") for v in ranges.get(k + "~", ["/"]))} if elsewhere(raw) else set()
@@ -4695,7 +4904,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 
     def within(spot: str) -> bool:  # a folder the program may stand in lies in a protected one; an end that cannot be read lies under the part that can
         lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
-        return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
+        return os.path.isabs(lead) and any(paths.inside(_real(lead), r) for r in roots)
 
     def lands(node, folder: bool = False, link: bool = False, at=(where,), reach=()) -> bool:  # whether a write's target is, or may be, in a protected folder
         return any(leads(path, node, folder, link, at, reach) for path in spellings(node) if "\2" not in path)  # no value at all writes nothing
@@ -4997,6 +5206,7 @@ EXTRACTS = {**dict.fromkeys(("tar", "bsdtar", "gtar"), r"-?[A-Za-z]*x[A-Za-z]*|-
             **dict.fromkeys(("7z", "7za", "ar"), r"-?[a-z]*[xe][a-z]*")}  # the word that says it unpacks where it stands
 CANDIDATE = _Pattern(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
 SPELLINGS: dict = {}  # (home, roots, anchors): the pattern of every way a program's text spells a protected folder
+ANCHORS: dict = {}  # (roots, the variables that hold a path): those whose folder holds a protected one or lies in one
 
 
 class Unproven(str):
@@ -5061,7 +5271,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
 GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
                                                                     "paths"))  # the writers approvals rest on; the board's grant nothing
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
-SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
+SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir", "paths.config_file",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
                               "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file"})
 
@@ -5617,7 +5827,8 @@ def _unread(words: list, where: str, written: set, line: str, bodies: dict | Non
         return ("", "", False, "") if free else (head, code(mine or name) if mine or (kind == "file" and not module) else "", True, mine)
     if head in SHELLS or head in (".", "source"):
         inline, reads, _ = _shell_input(words)
-        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name), True, "")
+        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) or (
+            kind == "file" and _runs_at_start(name, where)) else (head, code(name), True, "")
     if head in AWKS:
         return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):
@@ -5764,9 +5975,9 @@ def _shows(files: list, words: list, where: str, names: list, raw: list, env: di
     scripts or the call's deadline, it is not read (finding 12). None is refused on this reading."""
     at = _program(words)[1]
     argv = words[at + (words[at:at + 1] == ["-m"]):]  # what Python hands it: its own file first, then the words after it
-    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names))
+    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names), tuple(raw))  # a proof holds for its folders
     if key not in _CALL["proofs"]:
-        if len(_CALL["proofs"]) >= PROOFS_A_CALL:
+        if sum(k[-1] == key[-1] for k in _CALL["proofs"]) >= PROOFS_A_CALL:  # each set of protected folders reads as many
             return "is one script more than this guard reads in one call"
         _CALL["proofs"][key] = ""
         for file, text in files:
@@ -6134,13 +6345,18 @@ def _spellings(raw: list, env: dict) -> tuple:
     """(each part's pattern, each spelling of a protected folder as the parts it needs, the folders between each
     protected one and the home folder or a variable's folder that holds it, the protected folders as compared). A
     folder's parts count wherever they stand in one program, however they are joined (finding 14)."""
-    home = os.path.realpath(os.path.expanduser("~"))
-    roots = sorted({form for r in raw for form in (os.path.normpath(r), os.path.realpath(r))})
-    low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
-    anchors = tuple(sorted((name, os.path.normpath(os.path.expanduser(value))) for name, value in env.items() if name not in (
-        "HOME", "PWD", "OLDPWD", "_") and isinstance(value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value
-        and any(v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for r in low_roots
-                for v in [paths.spelled(os.path.normpath(os.path.expanduser(value))).rstrip(os.sep)])))
+    home = _real(os.path.expanduser("~"))
+    roots = sorted({form for r in raw for form in (os.path.normpath(r), _real(r))})
+    values = tuple(sorted((name, value) for name, value in env.items() if name not in ("HOME", "PWD", "OLDPWD", "_") and isinstance(
+        value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value))
+    if (tuple(roots), values) not in ANCHORS:  # a variable's folder that holds a protected one, or lies in one: its value read once
+        low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
+        if len(ANCHORS) > 256:
+            ANCHORS.clear()
+        ANCHORS[(tuple(roots), values)] = tuple((name, os.path.normpath(os.path.expanduser(value))) for name, value in values if any(
+            v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for v in [paths.spelled(os.path.normpath(
+                os.path.expanduser(value))).rstrip(os.sep)] for r in low_roots))
+    anchors = ANCHORS[(tuple(roots), values)]
     key = (home, tuple(roots), anchors)
     if key not in SPELLINGS:
         spellings = []
@@ -6151,8 +6367,8 @@ def _spellings(raw: list, env: dict) -> tuple:
                 for name, value in anchors if paths.inside(root, value)] + [((f"${name}",), root) for name, value in anchors
                                                                             if paths.inside(value, root) and value != root]
         parts = {part for spelling, _ in spellings for part in spelling}
-        patterns = {part: re.compile(rf"\b{re.escape(part[1:])}\b" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I)
-                    for part in parts}
+        patterns = {part: (re.compile(rf"\b{re.escape(part[1:])}\b(?!=(?!=))" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I),
+                           part.lstrip("$").casefold()) for part in parts}  # with the text a statement must hold; a variable given a value is not read
         gates = set()
         for root in roots:  # the folders above each one, up to the home folder or a variable's folder
             at = os.path.dirname(root)
@@ -6190,15 +6406,21 @@ def _joined(statement: str, patterns: dict, spellings: list) -> str:
     path join, and with them those of at most one path written whole; parts of two paths written whole never join, and
     one such path alone counts only where they stand one after another in it (the coordinator, 2026-11-15: a script's
     path and a page's path on one line spelled the transcripts between them)."""
+    low = statement.casefold()  # a part whose text the statement does not hold is not looked for (22.26: some 60 more paths)
+    hits = [(part, pattern) for part, (pattern, text) in patterns.items() if text in low]
+    if not hits:
+        return ""
     whole = [(m.start(), m.end(), m.group().strip("'\"`")) for m in LITERAL.finditer(statement)]
     whole = [(a, b, t) for a, b, t in whole if t[:1] in "/~" and len([s for s in t.split("/") if s]) > 1]
     found: dict = {}
-    for part, pattern in patterns.items():
+    for part, pattern in hits:
         for m in pattern.finditer(statement):
             found.setdefault(part, set()).add(next((i for i, (a, b, _) in enumerate(whole) if a <= m.start() < b), -1))
     for spelling, root in spellings:
-        sets = [found.get(part, set()) for part in spelling]
-        if all(sets) and (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
+        if not all(part in found for part in spelling):
+            continue
+        sets = [found[part] for part in spelling]
+        if (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
                 any(-1 in s for s in sets) or len(spelling) == 1 or any(p[:1] == "$" for p in spelling)
                 or re.search(r"(?:^|/)" + "/".join(map(re.escape, spelling)) + r"(?:/|$)", whole[i][2], re.I)) for i in set().union(*sets) - {-1})):
             return root
@@ -6232,7 +6454,8 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
 def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True,
                      depth: int = 0, clean: bool = False) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
-    only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal). `clean`: a
+    only reads names a protected folder, or because it may change the guard's own settings: what it does with them
+    protected, then without them, then with them alone (`hold`: file the code and spend it; else the reason). `clean`: a
     script a line runs, with no command before it there that may have written a file (`Run`)."""
     given = _release_tool(command, cwd, session) if hold else {}  # never for a command a program starts: it is judged
     if given:
@@ -6252,14 +6475,20 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
+    touched, inside = False, _CALL.get("settings") is not None  # inside: a command a program starts, judged in its pass
     still, was = _CALL.get("still", frozenset()), _CALL.get("clean")  # readings whose functions move a folder only in a subshell (`_cd_sources`)
     _CALL["clean"] = hold or clean  # nothing ran before the line itself; before a command a program starts, anything may have
     if FUNCTION.search(command) and FOLDER_MOVE.search(command) and not _moves_by_function(command):
         _CALL["still"] = still | frozenset(readings)  # read as written: a reading's values can break the quoting
     try:
         for text in readings:  # each command is judged in every folder it may run in (`_commands`)
-            reason = _self_grant(command, text, cwd, config, depth) if time.monotonic() <= _CALL["until"] else Unproven(
-                "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+            reason = _judged(command, text, cwd, config, _CALL["settings"] if inside else True, depth)
+            if not inside and reason and not isinstance(reason, Overdue):  # held with the settings protected: and without them?
+                base = _judged(command, text, cwd, config, False, depth)
+                if base and not isinstance(base, Unproven):
+                    return base  # refused whatever the settings: the folders every approval rests on take no code
+                alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only", depth)
+                touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
             if reason and not isinstance(reason, Unproven):
                 return reason
             waits = waits or reason
@@ -6268,6 +6497,8 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
     if hold and _CALL["unplaced"]:  # where its commands run could not be told (review round 4 of 5.23.1, Q1)
         waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
                                   "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
+    if touched:
+        return _settings_hold(command, cwd, waits, session, hold)
     if not waits:
         return None
     if not hold:
@@ -6284,16 +6515,95 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             "tail, grep or jq, or a Python program whose writes the guard can read.")
 
 
+class Overdue(Unproven):
+    """A reading the guard ran out of time to judge: it waits, and says nothing of which folder it would have reached."""
+
+
+def _judged(command: str, text: str, cwd: str, config: dict | None, settings, depth: int = 0) -> str | None:
+    """One reading judged with the guard's own settings among the protected paths (True), without them (False), or as the
+    only ones ("only"); a command a program starts is judged the same way as the program (22.20)."""
+    if time.monotonic() > _CALL["until"]:
+        return Overdue("is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+    before, _CALL["settings"] = _CALL.get("settings"), settings
+    try:
+        return _self_grant(command, text, cwd, config, depth)
+    finally:
+        _CALL["settings"] = before
+
+
+def _reached(command: str, cwd: str) -> list:
+    """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, or in a folder
+    they change whole; else the ones in or above a path it names, else those whose names it spells; all of them, where
+    it shows none of those (a pattern, a path a program builds)."""
+    try:
+        landed = [_real(re.sub(r"/\*\*(?:/\*)?$", "", t)) for t in _shell_writes(command, cwd)]
+    except RecursionError:
+        landed = []
+    home = os.path.realpath(os.path.expanduser("~"))
+    named = [p for w in re.findall(r"(?<![\w$])[~/][^\s'\";|&<>()`]*", command)[:64]
+             for p in [_real(os.path.join(cwd, os.path.expanduser(w)))] if p not in ("/", home)]
+    for group in (landed, named):
+        found = [s for s in _settings() if any(paths.inside(t, _real(s)) or paths.inside(_real(s), t) for t in group)]
+        if found:
+            return found
+    try:
+        installed = {_installs(words) for words, _ in _parse(command, cwd)[0]} - {""}
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        installed = set()
+    found = [s for s, (kind, name) in _settings_map().items() if kind == "program" and name in installed]
+    if found:
+        return found
+    return [s for s in _settings() if re.search(rf"(?<![\w.-]){re.escape(os.path.basename(s))}(?![\w-])", command, re.I)] or _settings()
+
+
+def _named_files(command: str, cwd: str) -> list:
+    """Each regular file a command names, by a word or a `<`, with its size, time and the digest of its first megabyte:
+    a settings write's code binds what it copies and reads as it stood when the principal was shown it (22.20)."""
+    import hashlib
+    marks: dict = {}
+    words = [(w, where) for ws, where in _parse(command, cwd)[0] for w in ws[1:]]
+    words += [(w, cwd) for w in re.findall(r"(?<![<\d])<(?![<(&])\s*([^\s;&|<>()]+)", command)]
+    for word, where in words:
+        word = word.split("=", 1)[-1] if word.startswith("-") else word
+        path = _real(os.path.join(str(where), os.path.expanduser(word))) if word and not word.startswith("-") else ""
+        found = _regular(path, 1 << 20) if path and path not in marks and len(marks) < 32 else None
+        if found is not None:
+            marks[path] = f"{found[1].st_size}:{found[1].st_mtime_ns}:{hashlib.sha256(found[0]).hexdigest()}"
+    return sorted(marks.items())
+
+
+def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool) -> str | None:
+    """A shell command that may change the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a
+    harness program waits for the principal's code for that command, the folder it runs in, each script it runs and each
+    file it names, as they stand (22.20, 22.26)."""
+    said, does = _settings_said(_reached(command, cwd))
+    if not hold:
+        return Unproven(f"may change {said}")
+    subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items()),
+               "files": _named_files(command, cwd)}
+    if approvals.consume(SETTINGS_KIND, subject, session):
+        return None
+    code = approvals.request(SETTINGS_KIND, subject, f"{said.split(' (')[0]}: {command[:140]}")
+    return (f"This command may change {said}" + (f"; it also {also}" if also else "") + f". A change there {does}, so it "
+            "waits for the principal: show them this exact command and what it writes there (the file it copies, the text it "
+            f"puts in), and ask them to type {approvals.how(code)}; then run the identical command again from {cwd}. The code "
+            "binds the command, the folder it runs in and each file it names as it stands now, so a file changed after the "
+            "approval makes it a new command. Reading these files needs no code (cat, head, grep, jq).")
+
+
 def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: int = 0) -> str | None:
     """One reading of a command: the reason it is refused, or None. A shell script it runs, by a shell, by its path or
     sourced, is read as the command lines it holds, three scripts deep (22.21)."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     raw = _protected_roots(config)
+    inherited = [r for r in raw if _settings_map().get(r, ("",))[0] not in ("startup", "snapshots", "program")]  # a harness's own variables name these (22.26)
 
-    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case
-        return {m[0] for m in re.finditer(re.escape(name), text, re.I)}
-    mine = spelled(store.name) if store else set()  # the store's own name: a write from inside its folder
-    names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
+    low = text.casefold()
+
+    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case (one it does not hold is not looked for)
+        return {m[0] for m in re.finditer(re.escape(name) + r"(?![\w.-])", text, re.I)} if name.casefold() in low else set()  # muse-bin-… is no muse
+    mine = spelled(store.name) if store and str(store) in raw else set()  # the store's own name: a write from inside its folder
+    names = sorted({s for r in raw for n in (r, *["~" + r[len(home):]] * paths.inside(r, home)) for s in spelled(n)} | mine)  # `~` spells only the home folder's (22.26)
     redirects, readable, bodies = [], True, {}  # bodies: what a heredoc the line writes to a file puts in it
     try:  # the files the parsed command writes, named in full or not (2026-11-11: a path relative to the session's
         _commands(text, cwd, writes=redirects, bodies=bodies)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
@@ -6328,6 +6638,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
+        if _CALL.get("settings") and _installs(words):  # it writes where that program's installer keeps it, unseen (22.26)
+            why = why or f"runs an installer that changes the harness program {_installs(words)}"
         landed = _landing(words)  # a copy onto a note or a script that is the agent's own lands on it, not inside it
         firm = {w for w in landed if _own(_real(os.path.join(where, os.path.expanduser(w))))}
         roomy = {w for w in landed if head in COPIERS and _own(_real(os.path.join(where, os.path.expanduser(w))), True)
@@ -6360,8 +6672,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         missed = missed or next((f"imports {f}, which the same line writes" for f, _ in files[1:] if _real(f) in written), "")  # finding 3
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(_real(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
+        kept = [r for r in raw if _settings_map().get(r, ("",))[0] != "program"] if ran and "program" in _kinds_at(ran) else raw  # a launcher names where its program is (22.26)
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
-            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
+            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, kept, linked)
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(_granting_text(script, head)) or (
@@ -6418,7 +6731,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
         wrote = bool(SCRIPTED_WRITE.search(source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
-            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in raw))
+            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in inherited))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
         lost = where[:1] in ("$", "`") and bool(names)  # it runs in a folder the guard cannot read, in a command that names a protected one
         if SCRIPT.match(head) and (hit or (wrote and (reaches or lost or (hit is None and (within or any(n in script for n in names)))))):
@@ -6463,6 +6776,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         runs = head in SHELLS or head in (".", "source") or "/" in words[0]
         target = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS else next(
             (w for w in words[1:] if not w.startswith(("-", "+"))), "")))) if runs else ""
+        runs = runs and not _kinds_at(target) & {"startup", "snapshots"}  # what a shell runs at its start anyway (22.26)
         body = ("\n".join(f for f in feeds if f.strip()) or _script_file(words, where) or "") if runs and target in written else (
             _script_file(words, where) if runs else None)  # one the line writes: its bodies, else the file as it stands; built at run time, unread
         if body == TOO_LARGE:
@@ -6496,8 +6810,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:
         return f"Refused: this command writes {owned}"
-    if not why and any(paths.inside(t, _real(r)) for t in real for r in raw
-                       if t in links or not (_own(t) or (t in made and _own(t, True)))):
+    landing = [t for t in real if t in links or not (_own(t) or (t in made and _own(t, True)))]  # each target asked once (22.26)
+    if not why and any(paths.inside(t, _real(r)) for t in landing for r in raw):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     # A target outside every protected folder may still change one. The approved lines are one file in a working
     # repository: removing or moving its folder removes it, while a search or a copy across that folder is judged by
@@ -8372,6 +8686,144 @@ def _recorded_script(text: str, session: dict) -> bool:
     return False
 
 
+# Codex's write_stdin types characters into a session its exec_command started (review round 1 of 22.20: a shell started
+# on a terminal, then a write typed into it, passed every shell guard). A typed line is judged in the folder the session's
+# exec_command named, found by the session's number in the harness's record: as a command line, by every shell guard,
+# or, typed into an interpreter started with no script, with all it was typed as its program. A session the record does
+# not show, or one whose folder or variables a typed line changed, lets through only a line that just reads.
+STDIN_TOOLS = {"write_stdin"}
+STDIN_QUIET = _Pattern(r"[\x03\x04\x1a\x1c\r\n]*")  # Ctrl-C, Ctrl-D, Ctrl-Z, Ctrl-\ and Enter: they start nothing not typed before
+EDITING = _Pattern(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]|(?<![\w'\\])!(?:!|-?\d|[A-Za-z?#$])|(?:^|\n)\s*\^|(?:^|[\n;&|(]\s*)(?:fc|r)(?![^\s;&|])")
+# keys, history expansions and history commands (`!!`, `!git`, `^a^b`, `fc -s`, zsh's `r`) that edit, complete or recall a
+# line: what runs is not the text
+STATE = _Pattern(r"(?:^|[\n;&|(]|\b(?:then|do|else)\b)\s*(?:(?:cd|pushd|popd|export|alias|source|\.|set|unset|shopt|setopt|declare|"
+                 r"typeset|readonly|local|eval|function)\b|[A-Za-z_]\w*\+?=|\w+\s*\(\s*\)\s*\{|[~./][^\s;&|]*\s*(?:\n|$))")  # a bare folder: zsh's cd
+JS_TEXT = r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)"""
+JS_CALL = _Pattern(r"tools\.(exec_command|write_stdin)\(\s*\{(.{0,20000}?)\}\s*\)", re.S)  # a code-mode script's calls
+TYPED_BACK = 32 << 20  # how far back a session's record is read for its start and what was typed into it
+
+
+def _js(literal: str) -> str:
+    """A JavaScript string literal's text."""
+    return re.sub(r"\\(u[0-9a-fA-F]{4}|.)", lambda m: chr(int(m[1][1:], 16)) if len(m[1]) == 5 and m[1][0] == "u" else
+                  {"n": "\n", "t": "\t", "r": "\r", "0": "\0"}.get(m[1], m[1]), literal[1:-1], flags=re.S)
+
+
+def _typed_session(transcript: str, sid: str) -> tuple:
+    """(how the session numbered `sid` started, {"cmd", "workdir"}, or None; what was typed into it since, oldest first),
+    read back from the record's end to that start, at most TYPED_BACK bytes and within the call's time: an exec_command
+    whose output gave the number, or a code-mode script whose output gave it that started one command and typed nothing
+    into it. A script that started several is no start the guard can name."""
+    if not transcript or not sid or not os.path.isfile(transcript):
+        return None, []
+    named = re.compile(rf"(?:session_id|[Ss]ession ID)\W{{0,6}}{re.escape(sid)}(?!\d)")  # also as JSON quoted inside an output's JSON
+    mine = re.compile(rf"\bsession_id\s*:\s*{re.escape(sid)}(?!\d)")
+    outputs, typed, start = set(), [], None
+    try:
+        for line in approvals._lines_back(transcript, stop=max(0, os.path.getsize(transcript) - TYPED_BACK)):
+            if time.monotonic() > _CALL["until"] or start is not None:
+                break
+            body = json.loads(line).get("payload") if "_call" in line and '"payload"' in line else None
+            kind, ident = (str(body.get("type") or ""), body.get("call_id")) if isinstance(body, dict) else ("", None)
+            if kind.endswith("_call_output"):
+                outputs |= {ident} if named.search(body["output"] if isinstance(body.get("output"), str) else json.dumps(body.get("output"))) else set()
+            elif kind == "function_call" and body.get("name") in ("exec_command", "write_stdin"):
+                args = json.loads(body.get("arguments") or "{}")
+                if body["name"] == "write_stdin" and str(args.get("session_id")) == sid:
+                    typed.append([str(args.get("chars") or "")])
+                elif body["name"] == "exec_command" and ident in outputs:
+                    start = {"cmd": shell_command(args), "workdir": args.get("workdir")}
+            elif kind == "custom_tool_call" and body.get("name") == "exec":
+                calls = [(name, {k: _js(v) for k, v in re.findall(rf"\b(cmd|workdir|chars)\s*:\s*{JS_TEXT}", fields)}, fields)
+                         for name, fields in JS_CALL.findall(str(body.get("input") or ""))]
+                here = [given.get("chars", "") for name, given, fields in calls if name == "write_stdin" and mine.search(fields)]
+                runs = [given for name, given, _ in calls if name == "exec_command"]
+                if ident in outputs and not here:
+                    start = {"cmd": runs[0]["cmd"], "workdir": runs[0].get("workdir")} if len(runs) == 1 and "cmd" in runs[0] else {}
+                typed.append(here)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return start or None, [chars for chunk in reversed(typed) for chars in chunk]
+
+
+REMOTE = frozenset({"ssh", "mosh", "docker", "podman", "kubectl", "vagrant", "multipass", "lxc", "incus", "limactl", "orb"})  # a shell elsewhere
+
+
+def _logs_in_here(words: list) -> bool:
+    """Whether the machine an ssh or mosh command logs in to may be this one: its destination is a local address or this
+    machine's own name, or one the guard cannot read. A name an ssh config maps to this machine is not followed."""
+    import socket
+    at = 1
+    while at < len(words) and words[at].startswith("-"):
+        at += 2 if re.fullmatch(r"-[bcDEeFIiJLlmOopQRSWw]", words[at]) else 1
+    host = re.sub(r"^(?:ssh://)?(?:[^@/]*@)?([^/]*?)(?::\d+)?(?:/.*)?$", r"\1", words[at]).lower() if at < len(words) else ""
+    name = socket.gethostname().lower()
+    return not host or _here(host) or host.strip("[]") in ("::1", "0.0.0.0", name, name.split(".")[0], name.split(".")[0] + ".local")
+
+
+def _typed_into(cmd: str, folder: str) -> tuple:
+    """(what a session reads what is typed as: "shell", "program" for an interpreter with no script of its own or one told
+    to stay interactive, "remote" for a shell on another machine, "elsewhere" for a shell in a container or one that may
+    be this machine's own, "" for another program; the folder it stands in, after a leading `cd`)."""
+    while (lead := re.match(r"\s*cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*", cmd)):
+        folder, cmd = os.path.normpath(os.path.join(folder, os.path.expanduser(lead[1].strip("'\"")))), cmd[lead.end():]
+    try:
+        words = shlex.split(cmd)
+    except ValueError:
+        words = []
+    while words and (re.fullmatch(r"[A-Za-z_]\w*=.*", words[0]) or words[0] in ("env", "exec", "command")):
+        words = words[1:]
+    head = os.path.basename(words[0]) if words else ""
+    reads = bool(words) and _program(words)[0] == "stdin"
+    return ("shell" if head in SHELLS and reads else "program" if SCRIPT.match(head) and (reads or ("-i" in words and re.match(
+        r"python|node", head))) else "remote" if head in ("ssh", "mosh") and not _logs_in_here(words) else "elsewhere" if head in REMOTE
+            else ""), folder
+
+
+def _only_reads(text: str, cwd: str) -> bool:
+    """A line whose every command is a known reader that writes nothing."""
+    writes: list = []
+    try:
+        found = _commands(text, cwd, writes=writes)
+    except (Unreadable, StopIteration, IndexError):
+        return False
+    return not writes and all(not _landing(words) and not _unread(words, where, set(), text)[0] for words, where in found)
+
+
+def check_typed(tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """What Codex's write_stdin types, judged as the session it goes to runs it (see STDIN_TOOLS). A poll and keys that
+    start nothing new pass; a line is the unsubmitted text before it on the record, then its own characters."""
+    chars = str(tool_input.get("chars") or "")
+    if STDIN_QUIET.fullmatch(chars):
+        return None
+    sid = "" if tool_input.get("session_id") is None else str(tool_input.get("session_id"))
+    start, before = _typed_session(str((session or {}).get("transcript_path") or ""), sid)
+    before = [t for t in before if t != chars]  # the record may hold this very call already, as a try that was held
+    text, cmd = re.split(r"[\r\n]", "".join(before))[-1] + chars, str((start or {}).get("cmd") or "")
+    began = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(start.get("workdir") or "")))) if start else cwd
+    reads, folder = _typed_into(cmd, began) if start else ("", cwd)
+    if EDITING.search(text):
+        why = "carries keys that edit, complete or recall a line, so what the terminal runs is not the text the guard reads"
+    elif reads == "program":  # an interpreter with no script of its own: all it was typed is its program, its start's cd and all
+        return _check("Bash", {"command": f"{cmd} <<'SYNTHESIS_TYPED'\n{''.join(before) + chars}\nSYNTHESIS_TYPED"}, config, began, session)
+    else:  # a shell, or any other program: a command line where the session stands, and for a program also its input
+        reason = _check("Bash", {"command": text}, config, folder, session) or (start and not reads and _check(
+            "Bash", {"command": f"{cmd} <<'SYNTHESIS_TYPED'\n{text}\nSYNTHESIS_TYPED"}, config, began, session)) or None
+        moved = not start or reads == "elsewhere" or (reads == "shell" and STATE.search("".join(before)))
+        if reason or not moved or _only_reads(text, folder):
+            return reason
+        why = ("types into a shell " + ("the record does not show starting" if not start else "in a container, or one that may be "
+               "this machine's own, whose folder is not the one it started in" if reads == "elsewhere" else
+               "whose folder or variables an earlier line changed") + ", so where its writes land and what it runs cannot be placed")
+    subject = {"session": sid, "typed": text, "start": cmd, "runs_in": folder}
+    if approvals.consume("typed-input", subject, session):
+        return None
+    code = approvals.request("typed-input", subject, f"typed into session {sid}: {text[:120]!r}")
+    return (f"Codex's write_stdin {why}. Show the principal the exact text and the session it goes to and ask them to type "
+            f"{approvals.how(code)}; then make the identical call again. A line that only reads (ls, cat, git status), a "
+            "poll and Ctrl-C need no code.")
+
+
 def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
     """A calendar write that names no attendees and turns notifications off emails no one, so it needs no
     approval (Rajiv's ruling, 2026-10-06: the gate exists because invitations email people in his name). An RSVP
@@ -9798,7 +10250,7 @@ def check_hook_writes(tool: str, tool_input: dict, cwd: str, session: dict | Non
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
+    return (shell_tool(tool) or tool in STDIN_TOOLS or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
             or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
@@ -9826,6 +10278,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
     elif shell_tool(tool) and tool_input.get("workdir") and isinstance(tool_input["workdir"], str):  # Codex runs it there (round 1, A5)
         cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))  # where the kernel puts it (round 2, N1)
+    if tool in STDIN_TOOLS:
+        return check_typed(tool_input, config, cwd, session)
     if shell_tool(tool):
         command = shell_command(tool_input)
         verdict = (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
@@ -9843,7 +10297,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                 sends.sender_ticket(paths.session_id(session), run)
         return verdict
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session) or check_hook_writes(tool, tool_input, cwd, session)
+        return (check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+                or check_hook_writes(tool, tool_input, cwd, session) or check_settings_write(tool, tool_input, cwd, session))
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)

@@ -439,7 +439,11 @@ def test_the_user_level_guard_carries_the_plugins_setting_and_failure_tail_and_c
     declared = doctor.codex_user_declaration(REPO_HOOKS)
     guard = declared["PreToolUse"][0]
     assert guard["hooks"][0]["onFailure"] == "block" and doctor.codex_hooks_problem({"hooks": declared}) == ""
-    assert doctor.codex_hook_hash("PreToolUse", guard["matcher"], guard["hooks"][0]) == USER_VECTORS[-1][3] != USER_VECTORS[0][3]
+    event, matcher, handler, listed = USER_VECTORS[-1]
+    assert guard["hooks"][0] == handler and doctor.codex_hook_hash(event, matcher, handler) == listed != USER_VECTORS[0][3]
+    # 22.20, review round 1: the matcher names Codex's write_stdin, so the guard's identity is new, and Codex asks its
+    # approval once more (the hash as the doctor reproduces Codex's, which the vectors above pin)
+    assert "write_stdin" in guard["matcher"].split("|") and doctor.codex_hook_hash(event, guard["matcher"], guard["hooks"][0]) != listed
 
 
 def user_level(tmp_path, declared=None, trusted=True, plugin_off=True, home=None):

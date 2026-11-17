@@ -2260,10 +2260,87 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then core and plugin each 14 more, all in guards.py, so the hook's normal call stays under 50 ms (the coordinator,
 # 2026-11-16: 51.7 ms on the merged head against main's 47.9): _Pattern 12 with its 2 blank lines, a regular expression
 # compiled the first time a call uses it rather than as the module loads, which took 9.4 ms of the guard's 12 ms load.
+# 22.20 with 22.26, the guard's settings, the startup files and the harness programs (fix/startup-and-harness-writes, from
+# main at b8efb5ee):
+# 22.20: core and plugin each 124 more, all in guards.py, so an agent's write of the guard's own settings (config.json)
+# or of a git hook waits for the principal's code (a review of 2026-11-15: a file tool rewrote either with no code).
+# The settings' block 47: the comment 7, SETTINGS_KIND 1, SETTINGS_SAID 6 (what each holds, as a hold names it),
+# _settings 3, _settings_said 3, check_settings_write 19 (a file tool's write bound to the tool, the file and all it
+# writes), with 8 blank lines. The shell's 61, with 10 blank lines among them: Overdue 2 (a reading out of time names no
+# folder), _judged 10 (a reading judged with the settings protected, without them, or alone), _reached 9 (which of the
+# two a hold names), _named_files 14 (the code binds each file the command names as it stood), _settings_hold 16 (the
+# hold, its code and its words). check_self_grant 8 more (with the settings protected, then without, then alone: 5; the
+# settings hold 2; its docstring 1). _protected_roots 4 more (the settings among the folders while a command is judged
+# for them 2, its docstring 2). _check 3 more (the file tools' settings check 1; a shell tool's own `workdir`, where a
+# relative write lands, 2). _shell_writes 1 more, its docstring (`~` put in before a target is joined to its folder: a
+# claimed file written as `~/...` was never looked at). In place: `paths.config_file` among SYNTHESIS_PLACES, a proof
+# cached for its own folders in _shows, the approved-lines store named only where it is protected in _self_grant; hook.py's
+# file tools judged without a config that cannot be read changes 2 lines in place.
+# Then each 140 more, all in guards.py, from 22.20's review round 1 (a shell Codex started on a terminal, then a write typed
+# into it with write_stdin, passed every shell guard): check_typed 32 (a poll and keys that start nothing pass; the text
+# typed before and not yet submitted joins the line; an interpreter started with no script is judged on all it was typed;
+# a shell's or another program's line goes through every shell guard where its session stands, a program's also as its
+# input; a session the record does not show, one a typed line moved, or a shell in a container or on this machine by ssh
+# lets only a reading line through; the hold, its code and its words), _typed_session 35 (how the session started and
+# what was typed into it since, read back from the record's end within 32 MB and the call's time, from function calls and
+# code-mode scripts), _typed_into 17 (what the session reads typed text as, after its start's cd), _logs_in_here 10 (an
+# ssh that may log in to this machine), _only_reads 8, _js 4; the section's comment 5 and its constants 11 (STDIN_TOOLS 1,
+# STDIN_QUIET 1, EDITING 3 with its comment, STATE 2, JS_TEXT 1, JS_CALL 1, TYPED_BACK 1, REMOTE 1); 16 blank lines;
+# _check 2 (write_stdin dispatched to check_typed). In place: `guarded` holds write_stdin when the config cannot be read.
+# 22.26: core and plugin each 164 more, so an agent's write of a shell's startup files, Claude Code's shell snapshots or a
+# harness program waits for the principal's code (a review of 2026-11-15: a written ~/.zshenv ran the agent's code before
+# an ordinary `ls`, and the doctor ran an agent-written codex that wrote the runtime). paths.py 8: PROGRAM_DIRS 3 with its
+# comment 2, PROGRAM_PLACES 3, 2 blank lines (the vendors' known places, read by the doctor and the guard alike);
+# doctor.py 4 fewer (KNOWN_LOCATIONS built from them). guards.py 160: the settings block's comment 7 more (why each new
+# kind runs with no code), SETTINGS_SAID 7 more (each kind's words and what a change there does), STARTUP 1, HARNESS 1,
+# KEPT 1, ZDOTDIR_SET 1, SETTINGS_MAPS 1; _settings 1 more (its docstring); _settings_map 50 (the startup files, also in
+# the folder ~/.zshenv names as ZDOTDIR and the files BASH_ENV and ENV name, the snapshots folder, and each harness
+# program at every folder on PATH and in the known places this user can write, through each link, with its installer's
+# folder and a launcher's own files beside it, read once for the environment); _kinds_at 3; _runs_at_start 4 (sourcing a
+# startup file or a snapshot reads it); PACKAGES 1 and CHANGES 2 with _installs 18 (an installer told to change a harness
+# program); _writable 9 (a folder only the system writes takes no agent write); _expanded 4 (a path as a shell expands
+# it); _settings_said 6 more (by kind, at most three paths a kind, and what a change there does); check_settings_write 2
+# more (its docstring, the kind in its words); _settings_hold 1 more (its docstring); _reached 14 more (a folder a write
+# changes whole, a path the command names, the program an installer changes); _unread 1 more (a startup file a shell
+# runs is read); _joined 6 more (a part whose text a statement does not hold is not looked for, so judging stays in its
+# time with some 60 more paths); _self_grant 5 more (an installer 2, a launcher naming where its program is kept 1, a
+# name the command does not hold is not looked for 2); 14 blank lines. In place: a protected path outside the home folder
+# has no `~` spelling in _self_grant (one matched any `~` in a program); _spellings keeps each part's text beside its
+# pattern and reads no variable a statement gives a value; check_self_grant makes no settings hold of a wait that the
+# settings alone do not change.
+# Then each 26 more, so that judging a recorded command with some 60 more protected paths takes about as long as before
+# (the same 1,500 recorded commands, two rounds each: without these a median of 3.8 ms and 12.3 s in all, against 2.0 ms
+# and 7.5 s on the head before 22.26; with them 2.3 ms and 8.1 s): paths.py 9 (spelled keeps each path as compared, 6,
+# and SPELLED 1, with 2 blank lines); guards.py 17:
+# _protected_roots 3 more and ROOTS_MEMO 1 (the protected paths read once for the environment), _env_key 7 with 2 blank
+# lines (the variables they are read from, which _settings_map now asks, 2 fewer there), _spellings 5 more and ANCHORS
+# 1 (a root's real path asked once a call, and the variables that hold a protected path found once, each value spelled
+# once rather than once for every root). In place: _self_grant asks once a target whether it is the agent's own, not
+# once for every protected path.
+# Then each 3 more, all in guards.py, from the 60-day replay of 22.26: _self_grant 1 and _python_writes 1 (a harness's
+# own variables that name its program or a startup file, CLAUDE_CODE_EXECPATH and BASH_ENV, hold no program that reads
+# the environment or hands it to a child: every such program that writes and that the reader could not follow waited
+# in Claude Code), _settings_map 1 (the
+# ChatGPT and Codex apps held at the folder that keeps their Codex CLI, which KEPT no longer takes as the whole app). In
+# place: _self_grant's names are whole paths, so muse-bin-<version> or ghostscript no longer names muse or gh.
+# Then each 11 more, all in guards.py, so Codex's commands are judged as fast as before (800 recorded Codex commands:
+# 8.0 s in all without these, 5.2 s with them, against 5.3 s on the head before 22.26): _harness_own 7 with 2 blank lines
+# (the real paths of the startup files, snapshots and harness programs read once for the environment, where the reader
+# had asked every path's kinds for every protected path), OWN_MEMO 1, and _env_key 1 more (its clearing). In place: the
+# reader asks a path's real path once a call (`_real`), not once for every protected path.
+# 5.24.0, 22.20 with 22.26 (afc85024) merged into release/next: release/next's ceilings (core 22492, plugin 49150) and
+# its raises in the paragraphs just above (each 124, 140, 164, 26, 3 and 11: 468), measured: core 22960 and plugin
+# 49618. The merge's own lines leave each at that sum: guards.py the same (the workdir read once, release/next's way, by
+# its real path, 2 fewer; the state 22.26 adds to check_self_grant on a line of its own beside release/next's HOME wait,
+# 1 more; a startup file or a snapshot a shell runs or sources is not read as a script of its own in _self_grant, as
+# 22.26 reads it in _unread, 1 more); paths.py 4 fewer (INSTALLS read from PROGRAM_DIRS and PROGRAM_PLACES, so the known
+# places are written once); doctor.py 4 more than the sum (both sides moved KNOWN_LOCATIONS into paths, and its 4 fewer
+# were counted on each side). 22.26's STARTUP, the startup files, is STARTUP_FILES here: release/next's STARTUP names the
+# variables that change how a program starts, and the two bound one name.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22492
-PLUGIN_BUDGET = 49150
+CORE_BUDGET = 22960
+PLUGIN_BUDGET = 49618
 
 
 def _lines(files):
@@ -2324,6 +2401,17 @@ def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
     pass)."""
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
     hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
+                input=payload, cwd=str(tmp_path))
+
+
+FILE_HOOK_NEEDS = tuple(name for name in HOOK_NEEDS if name != "urllib.parse")  # no send to read
+
+
+def test_file_write_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
+    """What a session pays on every file write (22.20): the guard reads where the file really leads and whether it is the
+    guard's own settings or a git hook, beside the protected folders and the board's claims, within the same budget."""
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(tmp_path / "notes.md"), "content": "x\n"}})
+    hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], FILE_HOOK_NEEDS,
                 input=payload, cwd=str(tmp_path))
 
 

@@ -148,10 +148,19 @@ def note_wait(name: str, change, home_: Path | None = None, wait: bool = True) -
             write_json(file, {"seen": seen if new == "drop" else {**seen, name: {**new, "version": __version__}}})
 
 
+SPELLED: dict = {}  # each path as compared, kept: the guard compares the same few protected paths many times a call (22.26)
+
+
 def spelled(path: str) -> str:
     """A path as a Mac's file system compares it: neither the case of a letter nor the form an accent is written in
     makes it another file (2026-11-11: a protected file named in capitals was written)."""
-    return unicodedata.normalize("NFD", str(path)).casefold()
+    key = str(path)
+    found = SPELLED.get(key)
+    if found is None:
+        if len(SPELLED) > 1 << 16:
+            SPELLED.clear()
+        found = SPELLED[key] = unicodedata.normalize("NFD", key).casefold()
+    return found
 
 
 def inside(path: str, root: str) -> bool:
@@ -169,6 +178,14 @@ def session_id(payload: dict | None = None) -> str:
     return ""
 
 
+# Where a harness's own command is found besides PATH, in each vendor's stable install locations (2026-10-30): the
+# doctor and the release tool look there, and the guard holds an agent's write there for the principal's code (22.26).
+PROGRAM_DIRS = ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")
+PROGRAM_PLACES = {"codex": tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
+                                 for app in ("ChatGPT", "Codex")),
+                  "claude": ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",)}
+
+
 def codex_home() -> Path:
     """Codex's own folder: `CODEX_HOME` where it is set, else ~/.codex."""
     return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex")
@@ -182,11 +199,7 @@ def codex_hooks_record() -> Path:
 
 # Each harness's own install locations: where the doctor finds its command line, and the only programs, beside its name
 # on PATH, the judge runs for it (review round 1 of 21.3: a setting never chooses what the Stop hook runs).
-INSTALLS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
-    tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
-          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) + (
-    ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",) if h == "claude" else ())
-    for h in ("claude", "codex", "muse")}
+INSTALLS = {h: tuple(f"{d}/{h}" for d in PROGRAM_DIRS) + PROGRAM_PLACES.get(h, ()) for h in ("claude", "codex", "muse")}
 
 
 def expand_install(candidate: str) -> list:

@@ -209,7 +209,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    sandbox may be granted it without reaching the state folder), a harness's transcript
    folder or the approved commit lines.
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
-     not the command spells a protected folder out: relative to the session's folder, to a
+     not the command spells a protected folder out: relative to the session's folder (or the
+     folder a Codex or Muse shell call names as its own, its `workdir`), to a
      `cd` (`cd -`, `pushd` and `popd` are followed), to where `env -C` or `sudo -D` sends
      the command, through a variable, through a link the same command makes (a relative link
      is read from the folder it is made in). A command is read once for each value it gives
@@ -573,11 +574,86 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      imports); one that loads synthesis's code by a name or a file it hands a loader is
      refused. `synthesis doctor`, `synthesis who`, `synthesis version` and every other
      command pass as before.
+   - **What Codex types into a session.** Codex starts a long-running process with
+     `exec_command` (on a terminal with `tty: true`) and types into it with `write_stdin`,
+     which reaches the hook through its matcher. A typed line is judged in the folder that
+     session's `exec_command` named, found by the session's number in the harness's record
+     (an `exec_command` whose output gave it, or a code-mode script that started one command
+     and whose output gave it): as a command line, by every shell guard, and for a program
+     that is no shell also as what it is fed; typed into an interpreter started with no script
+     (`python3`, `node`), with everything typed into it as its program; typed into ssh to
+     another machine, by every shell guard where it stands, since its own folder is elsewhere.
+     The line is the text typed before it and not yet submitted, then its own
+     characters, so a line split across calls is judged whole. A poll (nothing typed) and
+     keys that start nothing new (Ctrl-C, Ctrl-D, Ctrl-Z, Enter) pass; text carrying keys
+     or history that edit, complete or recall a line (backspace, Tab, an arrow, `!!`,
+     `^a^b`, `fc -s`) waits, since what the terminal runs is not the text. Where the record shows
+     no start, where a typed line changed a shell's folder or variables (`cd`, `pushd`,
+     `export`, an assignment, `alias`, `source`, a bare folder name, which zsh takes as `cd`),
+     and in a shell in a container or one ssh opens on this machine (it starts in the home
+     folder), only a line whose every command just reads goes without a code: what it writes
+     cannot be placed, and a read writes nothing.
    Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
    shipped, 30 days of shell commands recorded on one machine were run through the old
    guard and this one, and every command the new one refused was read.
-3. **No hook text holds the phrase** (see What the hook returns).
-4. **Random codes** mean a code cannot be planted before its request exists, and a
+3. **The guard's own settings and the global commit check's entry points take the
+   person's code.** `config.json` in the synthesis home holds what every approval
+   means: the commit lines the person approved, their own repositories, the hosts their
+   action sheets upload to, the signatures a send window lets through, the forbidden
+   phrases, the account each workspace acts as and the turn-end judge's program and host.
+   `git-hooks` beside it holds what git runs before every commit, merge and commit message
+   in every repository. The person changes both, so a write there is not refused: it waits
+   for their code for exactly that call. A file tool (Write, Edit, MultiEdit, NotebookEdit,
+   Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
+   file and everything it writes; a shell command to the command, the folder it runs in,
+   each script it runs and each file it names, as each stands then, so a file changed after
+   the approval makes it a new command. A shell command is read as for the protected
+   folders above, with these two among them: a redirect, what a file utility changes, a
+   pattern that may name them, a folder changed throughout that holds them, a program that
+   writes there or starts a command that does, and synthesis's own `paths.config_file()`
+   read as the config's path; a program the guard cannot prove only reads that names either
+   waits. A command that also reaches one of the protected folders above is refused, as
+   before. The copy that installs the person's settings from a private repository waits like
+   any other write. A path is judged where it really leads and in any case, so a link made
+   beforehand, `..`, `~`, `$HOME` or capitals change nothing. Reading needs no code (`cat`,
+   `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, and a
+   redirect of `cat` for a copy); `cp` and `ln` of them wait, as for every protected file,
+   since they can link as well as copy. The installer's own route (`synthesis install`,
+   `synthesis update`, the release script's install stage) writes the hooks from the runtime
+   it installs, which the guard trusts as it trusts itself.
+4. **A shell's startup files, Claude Code's shell snapshots and the harness programs take
+   the person's code the same way.** Claude Code runs every command through zsh, which
+   reads `~/.zshenv` and sources a snapshot of the shell from `shell-snapshots` in Claude
+   Code's configuration folder; Codex runs `bash -lc`, which reads `~/.bash_profile`,
+   `~/.bash_login` or `~/.profile`; bash reads the file `BASH_ENV` names. Code there runs
+   before every command, where no guard sees it. The harnesses, `synthesis doctor` and the
+   release tool run `claude`, `codex`, `muse` and `gh` wherever each resolves. So a write
+   to any of these waits for the person's code, bound and read as for the settings above:
+   `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and `~/.zlogout`, and the same names
+   in `ZDOTDIR` (from the environment, or where `~/.zshenv` sets it); `~/.bash_profile`,
+   `~/.bash_login`, `~/.profile`, `~/.bashrc`; the files `BASH_ENV` and `ENV` name; the
+   snapshots folder; and each harness program at every folder on PATH and in the vendors'
+   known places (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, the Codex and
+   ChatGPT apps), whether or not a file is there yet, since one put there runs instead;
+   each link on the way, to the file it ends at; the folder its installer keeps it in
+   (Claude Code's versions under `~/.local/share/claude`, the desktop app's `claude-code`
+   folder, Codex's app-server CLI under `~/.codex/plugins/.plugin-appserver`, a Homebrew keg
+   or cask, an npm package, the Codex CLI folder inside the ChatGPT or Codex app); and the
+   files muse's launcher keeps beside it (`muse-bin-<version>`, `.muse-version`). A folder
+   this user cannot write, the system's own, is left out. An installer told to change one of these programs waits too, since it
+   writes where the guard does not see: Homebrew or a Node package manager installing,
+   upgrading, removing or linking `gh`, `codex`, `claude-code` or its npm package, a bare
+   `brew upgrade` or `npm update -g` while one of them is installed that way, and
+   `claude update` or `claude install`. Reading them needs no code, nor does sourcing a
+   startup file or a snapshot (`source ~/.zshrc` runs what a shell's start runs anyway),
+   running a harness program, by name or by its path (a launcher's text may name where its
+   program is kept), or installing other tools (`brew install`, `pip install --user`,
+   `npm install -g`). A harness's own variables that name its program or a startup file
+   (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`) do not count as a protected path the
+   environment hands a program, so a program that reads its environment is not held for
+   them.
+5. **No hook text holds the phrase** (see What the hook returns).
+6. **Random codes** mean a code cannot be planted before its request exists, and a
    later identical call never reuses the code an earlier approval answered.
 
 ### What remains open
@@ -732,7 +808,12 @@ stay open, and no hook running as that same user can close them:
   through git when the store lives in a synced repository (a pull, a checkout, a restore).
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
-- The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
+- The routes above that the guard cannot read reach the runtime under `~/.synthesis/v5`,
+  its config and its git hooks as they reach the protected folders, and so does a write
+  through a hard link to one of them made by such a route. Git can also be told to skip
+  the commit check without touching its entry points (`git commit --no-verify`, `git -c
+  core.hooksPath=…`, or the global `core.hooksPath` changed with `git config --global`);
+  the guard holds none of these.
 - The first install comes from the harness's plugin folder, and that folder is the agent's to write. Where the
   synthesis home holds no trace of a runtime, the bootstrap in `hooks.json` (and Muse's `session-start.sh`) runs
   `python3 -B -S <plugin>/synthesis/install.py` from PATH while the stable hook is missing, and installs the runtime
@@ -760,8 +841,30 @@ stay open, and no hook running as that same user can close them:
   cannot see stays open: a folder another process removes or makes between the guard's look and the `cd`; a CDPATH,
   cdable_vars or auto_cd set in the user's shell profile without being exported; and a shell startup file (the
   harness's shell snapshot, `~/.zshenv`) that changes folder before a command runs. The agent can start such a process
-  or write those files with no code, so a later command's relative path can land in a protected folder the guard did
-  not place it in.
+  with no code, and a startup file or snapshot written before the guard held them (22.26), or by a route above, still
+  runs, so a later command's relative path can land in a protected folder the guard did not place it in.
+- The guard holds writes to the startup files and the harness programs, not runs of them. A
+  harness program written where the guard never saw it (before the guard held these, by one
+  of the routes above, or by the person) runs when a harness, `synthesis doctor` or the release tool
+  starts it. Nor are these held: a file a startup file sources (`. ~/.cargo/env`, a plugin
+  manager's scripts), a `ZDOTDIR` set other than in the environment or `~/.zshenv`, a
+  package of another name that installs a `claude`, `codex` or `gh` command (`npm install
+  -g`, `pip install --user`), which writes it unseen, and a folder on the PATH an agent's
+  shell builds from its startup files that is neither on the PATH the hook runs with nor
+  one of the known places.
+- A code for a shell command binds the scripts it runs, not the files named inside them: a
+  script that copies a settings file it names only in its own text (`bash install.sh`
+  running `cp v5-config.json …`) still runs on its code after that file changes. It closes
+  once the reading of the scripts a command runs takes in the files they name.
+- What Codex types into a session is judged from the record's last 32 MB: a session started
+  further back is judged as one the record does not show, and an interpreter keeps a name
+  typed further back that the guard no longer sees. A code-mode script that types into a
+  session it names by a variable is not tied to that session. A shell's own state that no
+  typed line shows (its startup files, `PROMPT_COMMAND`, a trap set before) is not read.
+- An interpreter or a shell that Codex starts on a terminal with no command is not held at its
+  start: what is typed into it later is judged line by line, an interpreter's lines with all it
+  was typed as its program, so holding every bare start would add a code for little gain (60
+  days of records held 17 such starts, all interpreters, all on one day).
 - A program of the agent's that loads synthesis by a name no piece of which says synthesis
   as code does (`'synth' + 'esis'`, character codes, a decoded or capitalized string, a
   name read from a file, its environment or its input), through a way of loading the guard
@@ -946,7 +1049,10 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
 
 - **PreToolUse fails closed** for the calls it guards: an unreadable
   `~/.synthesis/v5/config.json` or an exception inside a guard blocks the call
-  with the reason. When the hook itself cannot answer (it times out, crashes,
+  with the reason. A file tool is judged without the config it cannot read, since
+  the folders and settings it guards need none: an ordinary write goes, a write into
+  the state folder is refused and the config's own repair waits for the person's
+  code. When the hook itself cannot answer (it times out, crashes,
   prints output the harness cannot read, or cannot start because the stable hook
   is missing), Claude Code 2.1.295 or later blocks the call too, since the
   plugin's handler sets `"onFailure": "block"` (5.21.0); Claude Code names the

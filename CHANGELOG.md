@@ -646,6 +646,96 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   can check with no false alarm on any skill today: a description in the first or second person, a SKILL.md that limits
   tools or updates in general, and a SKILL.md that asks for the model's reasoning in its output. No skill's text
   changes here; the rewrites that apply the rules come later, each measured against an evaluation.
+- **An agent's write of the guard's own settings or of a git hook waits for the principal's code** (plan item 22.20).
+  `~/.synthesis/v5/config.json` holds the guard's own settings: the commit lines he approved, his own repositories, the
+  hosts his action sheets upload to, the signatures a send window lets through, the forbidden phrases, the account each
+  workspace acts as and the turn-end judge's settings. `~/.synthesis/v5/git-hooks` holds what git runs before every
+  commit, merge and commit message in every repository. A review on 2026-11-15 found that a file tool rewrote either
+  with no code, and a second showed what a written setting reaches: the turn-end check made to run any program, the
+  cloud judge made to post to any host. A write there now waits for his code for exactly that call. A file tool (Write,
+  Edit, MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
+  file and everything it writes. A shell command is read as for the protected folders, with these two among them (a
+  redirect, `cp`, `mv`, `tee`, `install`, `ln`, `sed -i`, `rm`, `dd`, `curl -o`, a pattern that names the config, a
+  folder changed throughout, a Python, node or perl program that writes there or starts a command that does, a program
+  using synthesis's own `paths.config_file()`), and bound to the command, the folder it runs in, each script it runs and
+  each file it names as it stands, so a file changed after the approval makes it a new command. The copy that installs
+  his settings from his private repository after a pull request merges waits like any other write: a change to the
+  guard's settings changes what approvals mean, and no agent grants itself an approval. A path is judged where it really
+  leads and in any case, so a link made beforehand, `..`, `~`, `$HOME` or capitals change nothing. A command that also
+  reaches the state folder, its board or a harness's transcripts is still refused outright. Reading needs no code
+  (`cat`, `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, `cat` for a copy); `cp` and
+  `ln` of them wait, as for every protected file, since they can link as well as copy. Codex's and Muse's shells are
+  now judged in the folder a command names as its own (`workdir`), not the session's, so a bare name written there lands
+  where the guard looks. A config that cannot be read held every shell call and let every file tool through unjudged, so
+  a file tool could rewrite the config or forge a grant in the state folder; a file tool is now judged without it: an
+  ordinary write goes, the config's repair waits for his code, the state folder stays refused. The installer's own
+  route (`synthesis install`, `synthesis update`, the release script's install stage) is unchanged, by his ruling on
+  the sandbox that releases install from the protected tool without a code. Measured first, read only, over 60 days of
+  this Mac's records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, each call
+  counted once): no file tool wrote either; 19 shell commands on 12 days copied his settings into place from his private
+  repository (5 on 2026-10-22, 2 on each of three other days, 1 on the rest), 1 other shell command wrote the config,
+  and the guard's Python reader holds 15 programs on 6 days as writing one or the other. Replayed over the 39,360
+  recorded calls that name the settings, `.synthesis` or `v5-config`, and every file-tool call: 40 newly wait for the
+  code, 19 of them writes of the settings and 21 commands that name them while running a program the guard cannot prove
+  only reads or writing where it cannot read; 41 that already waited for a protected folder now wait for the settings'
+  code; none is newly refused and none newly passes; no file-tool call newly waits. Judging a shell command took a
+  median 3.0 ms against 2.8 before, and its 99th percentile 80 ms against 72; a file write through the hook is held to
+  the hook's budget by a test of its own.
+- **What Codex types into a session is judged as the line it is** (22.20, review round 1). Codex starts a long-running
+  process with `exec_command`, on a terminal with `tty: true`, and types into it with `write_stdin`. No guard read that
+  tool, so a shell started on a terminal and a write typed into it reached the guard's settings, its hooks and
+  everything else the shell guard protects with no code. `write_stdin` now reaches the hook: the PreToolUse matcher in
+  `hooks/hooks.json` names it, which makes Codex ask once more to trust the plugin's hooks (Muse runs the hook for every
+  tool, and its manifest does not change). A typed line is judged in the folder its session's `exec_command` named,
+  found by the session's number in the record (an `exec_command` whose output gave it, or a code-mode script that
+  started one command and whose output gave it): as a command line, by every shell guard, and for a program that is no
+  shell also as its input; typed into an interpreter started with no script, with all it was typed as its program. Text
+  typed before and not yet submitted joins the line, so a line split across calls is judged whole. A poll and keys that
+  start nothing new (Ctrl-C, Ctrl-D, Enter) pass; keys and history that edit or recall a line (backspace, Tab, an arrow,
+  `!!`, `fc -s`) wait. A session the record does not show, a shell whose folder or variables a typed line changed (`cd`,
+  an assignment, `export`, `alias`, a bare folder name), and a shell in a container or reached by ssh on this machine
+  let only a line that just reads go without a code. Measured over 60 days of Codex's records: no `write_stdin` as a
+  function call; inside 119,058 code-mode scripts, 15,325 polls, 143 keys, 804 submitted lines and 463 unsubmitted texts;
+  17 interpreters started on a terminal with no script, all on one day, and no shell. Replayed over the 1,276 typed
+  calls that were neither a poll nor quiet keys, each judged on the record as it stood then: 1,121 pass, 132 wait as
+  typed into a session the record does not show (on two days), 23 for keys or history that edit or recall a line, and
+  none is refused. An interpreter or a shell started on a terminal with no command is still not held at its start.
+- **An agent's write of a shell's startup files, Claude Code's shell snapshots or a harness program waits for the
+  principal's code** (plan item 22.26). Claude Code runs every command through zsh, which reads `~/.zshenv` after
+  sourcing a snapshot of the shell; Codex runs `bash -lc`, which reads `~/.bash_profile`. A review on 2026-11-15 wrote
+  those files with no code, and an ordinary `ls` then ran the agent's code first; it also showed `synthesis doctor`
+  running an agent-written `~/.local/bin/codex`, which wrote the runtime. A write now waits for his code for exactly that
+  call, bound and read as for the guard's own settings: `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and
+  `~/.zlogout` (and the same in `ZDOTDIR`, from the environment or where `~/.zshenv` sets it), `~/.bash_profile`,
+  `~/.bash_login`, `~/.profile`, `~/.bashrc`, the files `BASH_ENV` and `ENV` name, Claude Code's `shell-snapshots`; and
+  `claude`, `codex`, `muse` and `gh` at every folder on PATH and in the vendors' known places that this user can write,
+  whether or not a file is there yet (one put there runs instead), each link on the way to the file it ends at, the
+  folder its installer keeps it in (Claude Code's versions, the desktop app's `claude-code`, Codex's app-server CLI, a
+  Homebrew keg or cask, an npm package, the Codex CLI folder inside an app) and the files muse keeps beside its launcher.
+  An installer told to change one of them waits too, since it writes where the guard does not see: brew or a Node
+  package manager installing, upgrading, removing or linking `gh`, `codex`, `claude-code` or their npm packages, a bare
+  `brew upgrade` or `npm update -g` while one is installed that way, and `claude update` or `claude install`. Reading
+  them, sourcing a startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or
+  by its path (a launcher's text may name where its program is kept), and installing other tools need no code. A
+  harness's own variables that name its program or a startup file (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`)
+  hold no program that reads the environment or hands it to a child, and a name that only begins with a protected path
+  (`muse-bin-<version>` beside muse, `ghostscript` beside gh) names another file. The vendors' known places now live in
+  `paths`, which the doctor and the guard both read. A protected path outside the home folder had a `~` spelling that
+  matched any `~` a program holds (reached only by these paths); a program's text is looked through only for the
+  protected parts it holds, and the protected paths, their real paths and the variables that hold one are
+  read once, so judging a command takes about as long as before with some 60 more paths (1,500 recorded commands: a
+  median of 2.3 ms against 2.0, 8.1 s in all against 7.5; 3.8 ms and 12.3 s without this); a variable given a
+  value (`XDG_DATA_HOME=…`) is no longer read as a path built from that variable; and a command that waits whatever is
+  protected (it names synthesis's own writers, or runs input the guard cannot read) waits for the protected folders'
+  code in those words, not as a settings hold that lists every kind of setting first. Measured first, read only, over
+  60 days of this Mac's records (Claude Code, Codex and Muse, each call counted once): 2 file-tool writes of a harness
+  program (the `codex` launcher in `~/.local/bin`, rewritten on one day), 1 shell write of a startup file (`~/.zshrc`),
+  and at most 8 installer runs told to change a harness program, on 7 days (brew naming gh, codex or claude 3, a bare
+  `brew upgrade` 3, npm installing a harness package 1, `claude update` or `claude install` 1).
+- **A claimed file written as `~/…` is a claimed path.** The shell's writes were joined to the folder a command ran in
+  before the home folder was put in, so `echo x > ~/…/notes.md` into a file another session had claimed was never
+  looked at, and the session export tagged no project for such a write. Each target now has `~` put in first, as the
+  shell does.
 
 ## [5.23.2] - 2026-11-15
 
