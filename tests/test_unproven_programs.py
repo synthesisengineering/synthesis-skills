@@ -1704,7 +1704,10 @@ HELD_LINES = {  # (the line, what holds it); {away} is a folder of no importance
     "a heredoc sourced": ("source /dev/stdin <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF", HOMELESS),
     "a heredoc in a substitution the line evaluates": ("eval \"$(cat <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF\n)\"", HOMELESS),
     "an unquoted heredoc whose substitution moves HOME": ("cat > notes.md <<EOF\n$(for HOME in {away}; do ls $HOME; done)\nEOF", HOMELESS),
+    "a function whose body is no brace group": ("f() if true; then cd {away}; fi\ncd {work}\nf\ntouch made.txt", UNPLACED),
+    "an alias spelled after an empty expansion": ("${{NOT_SET_HERE}}alias c='cd {away}'\nc\ntouch made.txt", UNPLACED),
     "an echo whose word assigns HOME": ('unset HOME; echo "${{HOME:={away}}}"; ls ~', HOMELESS),
+    "an echo whose arithmetic assigns HOME": ("echo $(( HOME = 1 )); ls ~", HOMELESS),
     "printf -v HOME": ("printf -v HOME %s {away}; ls ~", HOMELESS),
     "a loop in a process substitution": ("diff <(for HOME in {away}; do ls $HOME; done) notes.md", HOMELESS),
 }
