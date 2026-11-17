@@ -379,6 +379,265 @@ def test_the_split_rule_finds_a_file_no_job_runs_and_one_that_two_run(tmp_path):
     assert unrun_core_tests(tmp_path, halves + ["tests/test_a*.py"]) == unrun + ["tests/test_alpha.py: run by 2 of the jobs"]
 
 
+# ---- A listed maintainer's own macOS jobs run on a self-hosted Mac; the file is routing, never a control --------------
+
+CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+SELF_HOSTED_MAC = ["self-hosted", "macOS", "ARM64"]
+
+
+def ci_workflow() -> dict:
+    from synthesis.yamlish import load
+    return load(CI_WORKFLOW.read_text(encoding="utf-8"), source=str(CI_WORKFLOW))
+
+
+_GH_TOKEN = re.compile(r"\s*(?:('(?:[^']|'')*')|(==|!=|&&|\|\||[!(),])|([A-Za-z_][\w-]*(?:\.[A-Za-z_][\w-]*)*))")
+
+
+def github_expression(text: str, contexts: dict):
+    """The value GitHub gives `${{ ... }}`, for the part of its expression language the workflow's routing uses:
+    'strings', true, false, null, property paths, ( ), !, ==, !=, && and ||, and the functions contains and fromJSON.
+    Read as GitHub reads them: && and || give one of their operands, strings compare ignoring case, a missing property
+    is null, values of different types compare as numbers, and an array equals only itself. Every operand is evaluated,
+    so an expression that works only when GitHub skips one fails here. Anything else raises."""
+    body = text.strip()
+    assert body.startswith("${{") and body.endswith("}}"), body
+    body, tokens, at = body[3:-2], [], 0
+    while body[at:].strip():
+        match = _GH_TOKEN.match(body, at)
+        if not match:
+            raise ValueError(f"no reading of {body[at:at + 40]!r}")
+        string, operator, name = match.groups()
+        tokens.append(("str", string[1:-1].replace("''", "'")) if string is not None
+                      else ("op", operator) if operator is not None else ("name", name))
+        at = match.end()
+    tokens.append(("end", ""))
+    pos = 0
+
+    def take(kind: str, value: str = ""):
+        nonlocal pos
+        token = tokens[pos]
+        if token[0] != kind or (value and token[1] != value):
+            raise ValueError(f"expected {value or kind}, found {token[1]!r}")
+        pos += 1
+        return token[1]
+
+    def truthy(value) -> bool:
+        return value not in (None, False, "", 0)
+
+    def number(value) -> float:
+        if value is None or isinstance(value, (bool, int, float)):
+            return float(value or 0)
+        if isinstance(value, str):
+            try:
+                return float(value) if value.strip() else 0.0
+            except ValueError:
+                return float("nan")
+        return float("nan")
+
+    def equal(a, b) -> bool:
+        if isinstance(a, str) and isinstance(b, str):
+            return a.casefold() == b.casefold()
+        if isinstance(a, (list, dict)) or isinstance(b, (list, dict)):
+            return a is b
+        return a == b if type(a) is type(b) else number(a) == number(b)
+
+    def call(name: str, args: list):
+        if name.lower() == "fromjson" and len(args) == 1 and isinstance(args[0], str):
+            return json.loads(args[0])
+        if name.lower() == "contains" and len(args) == 2:
+            search, item = args
+            if isinstance(search, list):
+                return any(equal(element, item) for element in search)
+            if isinstance(search, str) and isinstance(item, str):
+                return item.casefold() in search.casefold()
+        raise ValueError(f"no reading of {name}{tuple(args)!r}")
+
+    def primary():
+        kind, value = tokens[pos]
+        if kind == "str":
+            return take("str")
+        if (kind, value) == ("op", "("):
+            take("op", "(")
+            inner = either()
+            take("op", ")")
+            return inner
+        name = take("name")
+        if tokens[pos] == ("op", "("):
+            take("op", "(")
+            args = [] if tokens[pos] == ("op", ")") else [either()]
+            while tokens[pos] == ("op", ","):
+                take("op", ",")
+                args.append(either())
+            take("op", ")")
+            return call(name, args)
+        if name in ("true", "false", "null"):
+            return {"true": True, "false": False, "null": None}[name]
+        found = contexts
+        for part in name.split("."):
+            found = found.get(part) if isinstance(found, dict) else None
+        return found
+
+    def unary():
+        if tokens[pos] == ("op", "!"):
+            take("op", "!")
+            return not truthy(unary())
+        return primary()
+
+    def comparison():
+        left = unary()
+        if tokens[pos] in (("op", "=="), ("op", "!=")):
+            operator = take("op")
+            right = unary()
+            return equal(left, right) == (operator == "==")
+        return left
+
+    def both():
+        left = comparison()
+        while tokens[pos] == ("op", "&&"):
+            take("op", "&&")
+            right = comparison()
+            left = right if truthy(left) else left
+        return left
+
+    def either():
+        left = both()
+        while tokens[pos] == ("op", "||"):
+            take("op", "||")
+            right = both()
+            left = left if truthy(left) else right
+        return left
+
+    value = either()
+    take("end")
+    return value
+
+
+def test_the_expression_reader_reads_as_github_does():
+    contexts = {"a": {"b": "Text", "list": ["x"]}, "vars": {}}
+    assert github_expression("${{ a.b == 'text' }}", contexts) is True                 # strings ignore case
+    assert github_expression("${{ a.missing.deeper }}", contexts) is None              # a missing property is null
+    assert github_expression("${{ a.missing == 'owner/repo' }}", contexts) is False
+    assert github_expression("${{ 'x' && a.b || 'other' }}", contexts) == "Text"       # an operand, not a boolean
+    assert github_expression("${{ '' && a.b || 'other' }}", contexts) == "other"
+    assert github_expression("${{ contains(a.list, 'X') && !contains(a.list, 'y') }}", contexts) is True
+    assert github_expression("${{ fromJSON(vars.LIST || '[\"q\"]') }}", contexts) == ["q"]
+    assert github_expression("${{ a.b == 'It''s' }}", contexts) is False
+    for unread in ("${{ a.b > 1 }}", "${{ format('{0}', a.b) }}", "${{ a.b == }}"):
+        with pytest.raises(ValueError):
+            github_expression(unread, contexts)
+
+
+def route(*, os: str = "macos-latest", event: str = "pull_request", head="org/repo", actor: str = "maintainer",
+          again: str = "", listed='["maintainer"]'):
+    """Where the test job runs, for a run started by `actor` and this attempt of it by `again` (a re-run), from a pull
+    request whose code is on `head` (None: GitHub sent no pull request payload) or from a push."""
+    github = {"event_name": event, "actor": actor, "triggering_actor": again or actor, "repository": "org/repo",
+              "event": {"pull_request": {"head": {"repo": {"full_name": head}}}} if event == "pull_request" and head else {}}
+    contexts = {"matrix": {"os": os}, "github": github, "vars": {} if listed is None else {"SELF_HOSTED_MAC_ACTORS": listed}}
+    return github_expression(ci_workflow()["jobs"]["test"]["runs-on"], contexts)
+
+
+@pytest.mark.parametrize("why, run, runs_on", [
+    ("a listed maintainer's push to main or v5", dict(event="push", head=None), SELF_HOSTED_MAC),
+    ("a listed maintainer's pull request from a branch of this repository", {}, SELF_HOSTED_MAC),
+    ("logins compare ignoring case, as GitHub's do", dict(actor="Maintainer"), SELF_HOSTED_MAC),
+    ("a Linux job of that same run", dict(os="ubuntu-latest"), "ubuntu-latest"),
+    ("the maintainer's own fork is still a fork", dict(head="maintainer/repo"), "macos-latest"),
+    ("a fork's pull request, whose payload GitHub documents as empty", dict(head=None), "macos-latest"),
+    ("a pull request by someone the list does not name", dict(actor="collaborator"), "macos-latest"),
+    ("the maintainer re-running a run someone else started", dict(actor="collaborator", again="maintainer"), "macos-latest"),
+    ("someone else re-running the maintainer's run", dict(again="collaborator"), "macos-latest"),
+    ("no variable set", dict(event="push", head=None, listed=None), "macos-latest"),
+    ("an empty variable", dict(event="push", head=None, listed=""), "macos-latest"),
+    ("an empty list", dict(event="push", head=None, listed="[]"), "macos-latest"),
+])
+def test_only_a_listed_maintainers_own_macos_jobs_are_routed_to_a_self_hosted_mac(why, run, runs_on):
+    """Routing only, never a control: a pull request can rewrite the workflow, so what keeps other people's code off
+    the Mac lives in the repository's settings and on the Mac. The routing keeps to the rule that what anyone else
+    relies on runs on GitHub's machines: a job goes to the self-hosted Mac only when the repository variable
+    SELF_HOSTED_MAC_ACTORS names both the person who started the run and the person who started this attempt of it,
+    and the code is this repository's own (a push, or a pull request from one of its branches)."""
+    assert route(**run) == runs_on, why
+
+
+def test_a_malformed_list_of_maintainers_fails_the_run_instead_of_routing_it():
+    with pytest.raises(ValueError):
+        route(listed="maintainer")
+
+
+def test_ci_jobs_get_a_token_that_only_reads_no_secret_and_no_base_branch_trigger():
+    """A job on a self-hosted Mac runs on someone's own machine. The token GitHub gives every job reads the repository
+    and nothing more, no job asks for one of its own or for a secret, and checkout leaves no token in .git/config for a
+    test or a later job there to find. No workflow starts on pull_request_target or workflow_run: those run with the
+    base branch's rights, which a fork's code would then hold on whatever runner it reached."""
+    workflow, text = ci_workflow(), CI_WORKFLOW.read_text(encoding="utf-8")
+    assert workflow["permissions"] == {"contents": "read"}
+    assert all("permissions" not in job for job in workflow["jobs"].values())
+    assert set(workflow["on"]) == {"pull_request", "push"} and "secrets." not in text
+    for path in sorted((ROOT / ".github" / "workflows").glob("*.y*ml")):
+        assert not re.search(r"pull_request_target|workflow_run", path.read_text(encoding="utf-8")), path.name
+    checkouts = [step for job in workflow["jobs"].values() for step in job.get("steps", [])
+                 if str(step.get("uses", "")).startswith("actions/checkout@")]
+    assert checkouts and all(step.get("with", {}).get("persist-credentials") is False for step in checkouts)
+    assert workflow["jobs"]["ci"]["runs-on"] == "ubuntu-latest"
+
+
+def test_a_new_push_to_a_pull_request_cancels_its_run_and_a_push_to_main_runs_whole():
+    """A self-hosted Mac would otherwise work through every superseded run of a pull request before the newest."""
+    concurrency = ci_workflow()["concurrency"]
+    assert concurrency["cancel-in-progress"] is True
+    group = concurrency["group"]
+    assert "github.event_name == 'pull_request'" in group and "github.event.pull_request.number" in group
+    assert group.rstrip("} ").endswith("|| github.run_id")  # each push to main or v5 is a group of its own
+
+
+def self_hosted_step() -> dict:
+    steps = [step for step in ci_workflow()["jobs"]["test"]["steps"] if step.get("if") == "runner.environment == 'self-hosted'"]
+    assert len(steps) == 1
+    return steps[0]
+
+
+def test_on_a_self_hosted_mac_a_job_uses_the_macs_own_python_in_an_environment_home_and_path_of_its_own():
+    """setup-python cannot serve a self-hosted Mac: its macOS builds install with `sudo installer` into
+    /Library/Frameworks, and the runner there is no administrator. So the job uses the Mac's own Python, python.org's
+    framework build (what setup-python installs on GitHub's macOS machines) or else Homebrew's, and Apple's
+    /usr/bin/python3, in a virtual environment in RUNNER_TEMP, which the runner empties after the job; HOME is a folder
+    there too; and stand-ins for osascript, say, afplay and open come first on PATH, so no test speaks, posts a
+    notification or opens an app on the Mac. All of it before anything installs a package."""
+    steps = ci_workflow()["jobs"]["test"]["steps"]
+    setup = next(step for step in steps if str(step.get("uses", "")).startswith("actions/setup-python@"))
+    assert setup["if"] == "matrix.python != 'apple' && runner.environment == 'github-hosted'"
+    own = self_hosted_step()
+    assert own["env"] == {"PYTHON_VERSION": "${{ matrix.python }}"}
+    for needed in ("/Library/Frameworks/Python.framework/Versions/$PYTHON_VERSION/bin/python$PYTHON_VERSION",
+                   "/opt/homebrew/opt/python@$PYTHON_VERSION/bin/python$PYTHON_VERSION", "/usr/bin/python3",
+                   '-m venv "$RUNNER_TEMP/venv"', 'echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"',
+                   'echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"', "for name in osascript say afplay open"):
+        assert needed in own["run"], needed
+    installs = [i for i, step in enumerate(steps) if "pip install" in str(step.get("run", ""))]
+    assert installs and steps.index(own) < min(installs)
+
+
+def test_the_self_hosted_step_refuses_a_python_the_mac_lacks_and_puts_nothing_on_path(tmp_path):
+    env = {"PATH": "/usr/bin:/bin", "PYTHON_VERSION": "0.0", "RUNNER_TEMP": str(tmp_path), "HOME": str(tmp_path),
+           "GITHUB_PATH": str(tmp_path / "github-path"), "GITHUB_ENV": str(tmp_path / "github-env")}
+    done = subprocess.run(["bash", "-e", "-c", self_hosted_step()["run"]], env=env, capture_output=True, text=True)
+    assert done.returncode == 1 and "::error::This runner has no Python 0.0" in done.stdout
+    assert not (tmp_path / "github-path").exists() and not (tmp_path / "venv").exists()
+
+
+def test_only_the_skills_parts_fetch_chrome_and_a_runner_that_provides_it_is_not_made_to():
+    """The browser tests are all in skills' folders, so only those two parts fetch Chrome's headless shell (about 90 MB
+    each time); a self-hosted runner that already provides one, in its own environment, is not made to fetch another."""
+    chrome = next(step for step in ci_workflow()["jobs"]["test"]["steps"] if "@puppeteer/browsers" in str(step.get("run", "")))
+    assert chrome["if"] == "startsWith(matrix.part, 'skills/')"
+    assert chrome["run"].startswith('if [ -x "${SYNTHESIS_TEST_CHROMIUM:-}" ]; then')
+    this = Path(__file__).resolve()
+    core = [p.name for p in sorted((ROOT / "tests").rglob("*.py")) if p.resolve() != this
+            and "SYNTHESIS_TEST_CHROMIUM" in p.read_text(encoding="utf-8")]
+    assert core == []  # a core test that needs the browser would run in a part that never fetches it
+
+
 # ---- No call passes a limit or flags to re by position -----------------------------
 
 def positional_re_limits(root: Path) -> list:
