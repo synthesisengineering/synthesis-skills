@@ -94,19 +94,19 @@ jobs:
           chmod +x "$RUNNER_TEMP/apple-python/python"
           echo "$RUNNER_TEMP/apple-python" >> "$GITHUB_PATH"
       - name: On a self-hosted Mac, its own Python in a virtual environment, home and PATH of this job's own
-        # The Mac provides each Python the matrix names, python.org's framework build (what setup-python installs on
-        # GitHub's macOS machines) or else Homebrew's, and Apple's /usr/bin/python3. What the job installs goes into a
-        # virtual environment in RUNNER_TEMP, which the runner empties after the job, and HOME is a folder there too, so
-        # no job sees another's packages or files. Stand-ins for osascript, say, afplay and open come first on PATH: no
-        # test speaks, posts a notification or opens an app on the Mac.
+        # The Mac provides python.org's framework build of each Python the matrix names (what setup-python installs on
+        # GitHub's macOS machines) and Apple's /usr/bin/python3. Never Homebrew's: the local-messaging sandbox may read
+        # only under sys.base_prefix, a link there, and cannot start it. What the job installs goes into a virtual
+        # environment in RUNNER_TEMP, which the runner empties after the job, and HOME is a folder there too, so no job
+        # sees another's packages or files. Stand-ins for osascript, say, afplay and open come first on PATH: no test
+        # speaks, posts a notification or opens an app on the Mac.
         if: runner.environment == 'self-hosted'
         env:
           PYTHON_VERSION: ${{ matrix.python }}
         run: |
-          if [ "$PYTHON_VERSION" = apple ]; then candidates=/usr/bin/python3
-          else candidates="/Library/Frameworks/Python.framework/Versions/$PYTHON_VERSION/bin/python$PYTHON_VERSION /opt/homebrew/opt/python@$PYTHON_VERSION/bin/python$PYTHON_VERSION"; fi
-          base=; for candidate in $candidates; do if [ -x "$candidate" ]; then base=$candidate; break; fi; done
-          if [ -z "$base" ]; then echo "::error::This runner has no Python $PYTHON_VERSION (looked for $candidates)"; exit 1; fi
+          if [ "$PYTHON_VERSION" = apple ]; then base=/usr/bin/python3
+          else base="/Library/Frameworks/Python.framework/Versions/$PYTHON_VERSION/bin/python$PYTHON_VERSION"; fi
+          if [ ! -x "$base" ]; then echo "::error::This runner has no Python $PYTHON_VERSION at $base: install python.org's $PYTHON_VERSION on it"; exit 1; fi
           "$base" -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/python" -VV
           mkdir -p "$RUNNER_TEMP/home" "$RUNNER_TEMP/stand-ins"
