@@ -172,12 +172,20 @@ def test_each_harness_program_waits_wherever_it_resolves(world, spot, route):
     assert _held(reason, "harness program") and name in reason, (spot, route)
 
 
-def test_the_zsh_files_in_the_folder_zshenv_names_as_zdotdir_wait(world, tmp_path):
-    """zsh reads the rest of its startup files from where ~/.zshenv sets ZDOTDIR, and a child zsh reads that .zshenv."""
+@pytest.mark.parametrize("xdg", ["unset", "a folder of its own"])
+def test_the_zsh_files_in_the_folder_zshenv_names_as_zdotdir_wait(world, tmp_path, monkeypatch, xdg):
+    """zsh reads the rest of its startup files from where ~/.zshenv sets ZDOTDIR, and a child zsh reads that .zshenv:
+    here under XDG_CONFIG_HOME where that is set (CI's Linux runners set it), else under ~/.config."""
+    if xdg == "unset":
+        monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+        config = world["home"] / ".config"
+    else:
+        config = tmp_path / "xdg-config"
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
     (world["home"] / ".zshenv").write_text('export ZDOTDIR="${XDG_CONFIG_HOME:-$HOME/.config}/zsh"\n', encoding="utf-8")
     for name in (".zshrc", ".zshenv", ".zprofile"):
-        assert _held(_file(world, "Write", {"file_path": str(world["home"] / ".config" / "zsh" / name), "content": "x"}), "startup file")
-    assert _file(world, "Write", {"file_path": str(world["home"] / ".config" / "zsh" / "aliases.md"), "content": "x"}) is None
+        assert _held(_file(world, "Write", {"file_path": str(config / "zsh" / name), "content": "x"}), "startup file"), (xdg, name)
+    assert _file(world, "Write", {"file_path": str(config / "zsh" / "aliases.md"), "content": "x"}) is None
 
 
 def test_the_files_muse_keeps_beside_its_launcher_wait(world):

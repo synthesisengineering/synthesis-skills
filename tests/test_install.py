@@ -359,15 +359,18 @@ def test_the_guard_finds_the_holds_ledgers_reader_in_the_runtime(tmp_path, isola
 # (2026-11-12, measured on 5.8.0).
 
 def _compiled(runtime) -> set:
-    """The runtime's modules this interpreter finds compiled code for, where it looks for it: beside the source, or
-    under the prefix an interpreter keeps its compiled code in (Apple's Python has one, keyed by the path a module
-    is imported from, which for a hook is the path through `current`)."""
-    from importlib.util import cache_from_source
-    prefix, sys.pycache_prefix = sys.pycache_prefix, None  # the launchers run it isolated, where no prefix applies
-    try:
-        return {path.stem for path in (runtime / "synthesis").glob("*.py") if Path(cache_from_source(str(path))).is_file()}
-    finally:
-        sys.pycache_prefix = prefix
+    """The runtime's modules the interpreter its launchers pin finds compiled code for, run as they run it (isolated,
+    where no prefix for compiled code applies): beside the source, under that interpreter's own tag. The pinned
+    interpreter need not be the one running this suite: on CI's Linux runners it is the system's Python, which is
+    root's own, and setup-python's is not (the integration review of 5.24.0: Ubuntu 26.04's Python is a newer one than
+    the suite's, so this suite's own tag found nothing)."""
+    python = install.pinned(runtime.parent)
+    assert python, "the install pinned no interpreter"
+    probe = ("import importlib.util as u, pathlib, sys\nprint('\\n'.join(s.stem for s in pathlib.Path(sys.argv[1]).glob('*.py') "
+             "if pathlib.Path(u.cache_from_source(str(s))).is_file()))")
+    done = subprocess.run([python, "-I", "-S", "-c", probe, str(runtime / "synthesis")], env={}, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return set(done.stdout.split())
 
 
 def test_the_runtime_carries_compiled_code_whatever_the_callers_environment_says(tmp_path, isolated_home, monkeypatch):

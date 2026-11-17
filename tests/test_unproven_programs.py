@@ -1571,7 +1571,20 @@ WRITES_ANOTHER_WAY = {
 }
 
 
-def _another_way(world, body: str, how: str, path: Path = ROOT) -> str:
+def _synthesis_only(world) -> Path:
+    """A module-path folder that holds only `synthesis`, byte for byte the package this guard runs. A checkout's other
+    top-level names (`conftest`, `docs`, `tests`, `tools`) may also be found in a Python's own site-packages, as on CI's
+    Linux runners (the integration review of 5.24.0), and there they rightly make the line wait."""
+    only = world["work"] / "only"
+    if not only.exists():
+        (only / "synthesis").mkdir(parents=True)
+        for source in (ROOT / "synthesis").glob("*.py"):
+            (only / "synthesis" / source.name).write_bytes(source.read_bytes())
+    return only
+
+
+def _another_way(world, body: str, how: str, path: Path = None) -> str:
+    path = path or _synthesis_only(world)
     script = _script(world["work"] / "reads", "tool.py", body)
     line = f"PYTHONPATH={path} python3 {script}" if how == "script file" else f"PYTHONPATH={path} python3 -c {shlex.quote(body)}"
     return _verdict(world, line) or ""
@@ -1630,17 +1643,214 @@ def test_a_module_path_nothing_on_the_line_can_fill_passes(world, line):
 def test_a_module_path_is_judged_against_python_s_own_installation_not_this_process_s_path(world, monkeypatch):
     """What a module-path folder hides is what the program's own Python would find: built in, in its standard library or
     in site-packages, not in folders a test runner or a launcher put on this process's path (the suite, run whole, found
-    a checkout's own top-level folders among them). A folder with no `__init__.py` hides no module or package."""
-    runner = world["work"] / "runner-path"
-    for name in ("docs", "hooks", "skills", "tests", "tools"):
-        (runner / name).mkdir(parents=True)
-        (runner / name / "__init__.py").write_text("", encoding="utf-8")
+    a checkout's own top-level folders among them). A folder with no `__init__.py` hides no module or package. The names
+    here are ones no Python installs, so what this checks holds wherever the suite runs."""
+    runner, only = world["work"] / "runner-path", _synthesis_only(world)
+    for folder in (runner, only):  # a package, and a folder with no __init__.py, both on this process's path alone
+        (folder / "zz_runner_only_package").mkdir(parents=True)
+        (folder / "zz_runner_only_package" / "__init__.py").write_text("", encoding="utf-8")
+        (folder / "zz_runner_only_portion").mkdir(parents=True)
     monkeypatch.syspath_prepend(str(runner))
     body = READS_ANOTHER_WAY["a submodule under another name"]
     for how in ("script file", "line program"):
-        assert _another_way(world, body, how) == "", how
+        assert _another_way(world, body, how, only) == "", how
     (world["work"] / "hides" / "re").mkdir(parents=True)
     (world["work"] / "hides" / "re" / "__init__.py").write_text("", encoding="utf-8")  # the standard library's re, hidden
     (world["work"] / "joins" / "re").mkdir(parents=True)  # no __init__.py: it hides nothing
     assert HELD in _another_way(world, body, "line program", world["work"] / "hides")
     assert _another_way(world, body, "line program", world["work"] / "joins") == ""
+
+
+# --- the integration review of 5.24.0, finding 2: lines an honest agent types that 22.8's folder rule and 22.15's HOME
+# rule held, where main let them through. The folder rule read `alias` anywhere on a line that changes folder, quoted
+# text and heredoc bodies included, and held any `cd` outside a function's body on a line that defines a function; the
+# HOME rule read a heredoc's body as what the shell runs. An alias is one a command the shell runs defines, a function
+# moves the folder when its body does and it is called outside a command substitution (6cb0a2c1), and a heredoc is
+# what the shell runs only when it feeds a shell. Each positive control below still waits for the rule that holds it.
+UNPLACED, HOMELESS = "changes folder in a way this guard does not follow", "gives HOME a value this guard does not read"
+ORDINARY_LINES = {
+    "a heredoc that says 'alias for'": "cd {work} && cat >> notes.md <<'EOF'\nAdded an alias for the command.\nEOF",
+    "an echo of quoted text that says 'alias for'": "cd {work} && echo 'Added an alias for it' >> notes.md",
+    "a commit message that says 'alias'": "cd {work} && git commit -q --allow-empty -m 'Use an alias for the long step'",
+    "a helper function that only reads, after cd": 'cd {work} && q() {{ grep -c x "$1"; }}; q a.md; q b.md',
+    "a helper function that only reads, before cd": 'q() {{ grep -c x "$1"; }}; cd {work} && q a.md',
+    "a heredoc holding a function that changes folder, as text": "cd {work} && cat >> notes.md <<'EOF'\nq() {{ cd elsewhere; }}\nq\nEOF",
+    "a heredoc that says 'for HOME in'": "cd {work} && cat >> notes.md <<'EOF'\nA loop: for HOME in a b; do ls $HOME; done\nEOF",
+    "a Python heredoc that hands a child a HOME of its own": ("cd {work} && python3 - <<'EOF'\nimport os\n"
+                                                             "env = {{**os.environ, 'HOME': '/tmp/child-home'}}\nprint(sorted(env)[0], os.path.expanduser('~/notes'))\nEOF"),
+    "a heredoc that says 'function to'": "cd {work} && cat >> notes.md <<'EOF'\nWrote a function to parse it.\nEOF",
+    "a heredoc that says 'cd into'": "cd {work} && cat >> notes.md <<'EOF'\nThen cd into the folder.\nEOF",
+    "a heredoc that says 'read HOME < f'": "cd {work} && cat >> notes.md <<'EOF'\nThe probe runs read HOME < f and then uses it.\nEOF",
+    "a commit message that says 'printf -v HOME'": "cd {work} && git commit -q --allow-empty -m 'A printf -v HOME x line is held; read it back'",
+    "a subshell's cd in a loop": "cd {work} && for d in sub; do (cd $d && ls); done",
+    "a Python heredoc after cd": "cd {work} && python3 - <<'EOF'\nprint(open('notes.md').read())\nEOF",
+}
+HELD_LINES = {  # (the line, what holds it); {away} is a folder of no importance, so only the rule named can hold it
+    "a function that changes folder, called, then a write": ("q() {{ cd {away}; }}; q; touch made.txt", UNPLACED),
+    "a function calling one that changes folder": ("p() {{ cd {away}; }}; q() {{ p; }}; q; touch made.txt", UNPLACED),
+    "a function named cd": ("cd() {{ builtin cd {away}; }}; cd {work} && touch made.txt", UNPLACED),
+    "an alias that changes folder, used on a later line": ("alias c='cd {away}'\nc\ntouch made.txt", UNPLACED),
+    "an alias defined through builtin": ("builtin alias c='cd {away}'\nc\ntouch made.txt", UNPLACED),
+    "an alias that redefines cd": ("alias cd='builtin cd {away} #'\ncd {work} && touch made.txt", UNPLACED),
+    "an alias that leaves cd doing nothing": ("alias cd=true\ncd {away} && touch made.txt", UNPLACED),
+    "zsh's table of aliases": ("aliases[c]='cd {away}'\nc\ntouch made.txt", UNPLACED),
+    "an alias an eval defines": ("eval \"alias c='cd {away}'\"\nc\ntouch made.txt", UNPLACED),
+    "a heredoc a shell runs": ("bash <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF", HOMELESS),
+    "a heredoc piped into a shell": ("cat <<'EOF' | sh\nfor HOME in {away}; do ls $HOME; done\nEOF", HOMELESS),
+    "a heredoc sourced": ("source /dev/stdin <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF", HOMELESS),
+    "a heredoc in a substitution the line evaluates": ("eval \"$(cat <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF\n)\"", HOMELESS),
+    "an unquoted heredoc whose substitution moves HOME": ("cat > notes.md <<EOF\n$(for HOME in {away}; do ls $HOME; done)\nEOF", HOMELESS),
+}
+
+
+def _notes(world) -> dict:
+    (world["work"] / "sub").mkdir(exist_ok=True)
+    for name in ("notes.md", "a.md", "b.md"):
+        (world["work"] / name).write_text("x\n", encoding="utf-8")
+    (world["work"] / "away").mkdir(exist_ok=True)
+    return {"work": world["work"], "away": world["work"] / "away"}
+
+
+@pytest.mark.parametrize("name", sorted(ORDINARY_LINES))
+def test_an_ordinary_line_that_changes_folder_or_writes_a_note_passes(world, name):
+    assert _verdict(world, ORDINARY_LINES[name].format(**_notes(world))) is None, name
+
+
+@pytest.mark.parametrize("name", sorted(HELD_LINES))
+def test_a_function_an_alias_or_a_shell_s_heredoc_that_moves_the_folder_or_home_still_waits(world, name):
+    line, rule = HELD_LINES[name]
+    reason = _verdict(world, line.format(**_notes(world))) or ""
+    assert HELD in reason and rule in reason, (name, reason[:200])
+
+
+# --- finding 3: the private skills' installer, run after every private merge, waited at every run. Its folder rule hold
+# came from a comment saying the update step "is just an alias" on a line whose substitutions change folder; its tar
+# unpacks into a folder mktemp made. This script has the same shapes; its positive control defines a real alias.
+INSTALLER_SHAPED = """#!/bin/sh
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+source_git() {
+    top=$(cd "$1" 2>/dev/null && pwd -P) || return 1
+    git -C "$top" "$@"
+}
+as_recorded() {
+    unpacked=$(mktemp -d) || return 1
+    if git -C "$SCRIPT_DIR" archive HEAD -- skill 2>/dev/null | tar -x -C "$unpacked" 2>/dev/null; then
+        rm -rf "$unpacked"
+        return 0
+    fi
+    rm -rf "$unpacked"
+    return 1
+}
+do_install() {
+    as_recorded || echo "drifted"
+    echo "installed"
+}
+do_update() {
+    # install already pulls latest; update is just an alias
+    do_install
+}
+case "${1:-install}" in
+    update) do_update ;;
+    *) do_install ;;
+esac
+"""
+
+
+@pytest.mark.parametrize("line", ["cd {work} && ./install.sh update 2>&1 | tail -6", "cd {work} && sh install.sh update", "./install.sh status"])
+def test_an_installer_with_an_alias_in_a_comment_and_a_tar_into_a_folder_mktemp_made_passes(world, line):
+    _script(world["work"], "install.sh", INSTALLER_SHAPED).chmod(0o755)
+    assert _verdict(world, line.format(work=world["work"])) is None, line
+
+
+def test_the_same_installer_with_an_alias_that_changes_folder_still_waits(world):
+    away = _notes(world)["away"]
+    body = INSTALLER_SHAPED.replace("do_install() {\n", f"alias go='cd {away}'\ndo_install() {{\n    go\n    touch made.txt\n")
+    _script(world["work"], "install.sh", body).chmod(0o755)
+    reason = _verdict(world, f"cd {world['work']} && ./install.sh update") or ""
+    assert HELD in reason and UNPLACED in reason, reason[:200]
+
+
+# --- finding 4: a full-suite run that puts every home at a temporary path on its own line waited while the guard read
+# every test file, and ran out of time. The line itself proves the isolation a conftest would: HOME and each folder
+# synthesis finds a protected place under (SYNTHESIS_HOME, CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_DATA_HOME, the desktop
+# app's folder) at absolute paths apart from every protected folder, given on the line of the command or by env, with
+# none left to an inherited value. A test file read without that waits as before.
+HOMES_ON_THE_LINE = ("env -u PYTHONPATH HOME={h} SYNTHESIS_HOME={h}/.synthesis/v5 CLAUDE_CONFIG_DIR={h}/.claude CODEX_HOME={h}/.codex "
+                     "XDG_DATA_HOME={h}/.local/share SYNTHESIS_CLAUDE_DESKTOP_DIR={h}/desktop python3 -m pytest -q -p no:cacheprovider suite")
+
+
+def _unisolated_suite(world) -> Path:
+    _script(world["work"] / "suite", "test_mine.py", WRITER_TEST)  # names a writer, with no conftest that isolates the home
+    return world["work"].parent / "suite-home"
+
+
+def test_a_suite_run_with_every_home_on_its_own_line_passes_without_reading_its_tests(world):
+    h = _unisolated_suite(world)
+    for line in (HOMES_ON_THE_LINE.format(h=h), HOMES_ON_THE_LINE.format(h=h).replace("env -u PYTHONPATH ", "env -i PATH=/usr/bin:/bin "),
+                 f"env -i HOME={h} python3 -m pytest -q suite", HOMES_ON_THE_LINE.format(h=h).replace("env -u PYTHONPATH ", ""),
+                 f"cd {world['work']} && " + HOMES_ON_THE_LINE.format(h=h)):
+        assert _verdict(world, line) is None, line
+
+
+@pytest.mark.parametrize("how", ["one home left to what the line inherits", "HOME inside a protected folder", "the synthesis home the real one",
+                                 "the homes set by an earlier command", "a wrapper the guard does not read before it"])
+def test_a_suite_run_that_leaves_a_home_where_it_was_is_read_and_waits(world, how):
+    h, line = _unisolated_suite(world), HOMES_ON_THE_LINE
+    if how == "one home left to what the line inherits":
+        line = line.replace("CODEX_HOME={h}/.codex ", "")
+    elif how == "HOME inside a protected folder":
+        line = line.replace("HOME={h} ", f"HOME={paths.state()}/home ", 1)
+    elif how == "the synthesis home the real one":
+        line = line.replace("SYNTHESIS_HOME={h}/.synthesis/v5", f"SYNTHESIS_HOME={paths.home()}")
+    elif how == "the homes set by an earlier command":
+        line = "export " + line.replace("env -u PYTHONPATH ", "").replace(" python3 -m pytest", "; python3 -m pytest")
+    else:
+        line = line.replace("env -u PYTHONPATH ", "nice env -u PYTHONPATH ")
+    assert HELD in (_verdict(world, line.format(h=h)) or ""), how
+
+
+# pytest asked only for its version or its help loads the conftests at its start, where it is handed or stands, in the
+# folders above and in the test* folders beside them, and no test file: run so in a folder of many tests (or once per
+# interpreter in a loop), the guard read every test file and ran out of time. A conftest it loads is still read.
+@pytest.mark.parametrize("line", ["python3 -m pytest --version", "pytest -V", "python3 -m pytest --help", "pytest -h suite",
+                                  "for p in python3 python3.12 python3.13; do $p -m pytest --version 2>&1 | head -1; done"])
+def test_pytest_asked_for_its_version_or_help_reads_no_test_file(world, line):
+    _unisolated_suite(world)
+    assert _verdict(world, line) is None, line
+
+
+@pytest.mark.parametrize("where", ["the folder it stands in", "a test* folder beside it", "a folder above it", "a testpaths folder"])
+def test_a_conftest_pytest_loads_at_its_start_is_still_read(world, where):
+    folder = {"the folder it stands in": world["work"], "a test* folder beside it": world["work"] / "tests",
+              "a folder above it": world["work"], "a testpaths folder": world["work"] / "deep" / "er"}[where]
+    _script(folder, "conftest.py", WRITES_THROUGH.replace("COPY", COPY))
+    cwd = world["work"] / "sub" if where == "a folder above it" else world["work"]
+    cwd.mkdir(exist_ok=True)
+    if where == "a testpaths folder":
+        _script(world["work"], "pytest.ini", "[pytest]\ntestpaths = deep/er\n")
+    reason = guards.check("Bash", {"command": "python3 -m pytest --version"}, CONFIG, cwd=str(cwd), session=world["session"])
+    assert HELD in (reason or ""), where
+
+
+# A `case` statement's patterns are no commands: `case "$f" in ./a.md|./b.md) continue;; esac` was read as a pipeline
+# that ran each file as a script, and a long list of notes ran the guard out of time. What a clause runs, and a
+# substitution in a pattern or in the word it tests, still counts.
+CASE_RUNS = "#!/bin/sh\ntouch {state}/approvals/x.json\n"
+
+
+def test_a_case_statement_s_patterns_are_not_run(world):
+    _script(world["work"], "run.sh", CASE_RUNS.format(state=paths.state())).chmod(0o755)
+    _notes(world)
+    for line in ('cd {work} && for f in ./a.md ./run.sh ./b.md; do case "$f" in ./a.md|./run.sh) continue;; esac; echo "$f"; done',
+                 'case "$1" in\n  (./run.sh | ./a.md) echo one ;;\n  ./b.md) echo two ;;\n  *) ;;\nesac\nls',
+                 'f=x; case $f in ./run.sh) ;; esac; case $f in *.md) case $f in ./run.sh) echo inner ;; esac ;; esac; echo done'):
+        assert _verdict(world, line.format(work=world["work"])) is None, line
+
+
+@pytest.mark.parametrize("line", ['case "$f" in x) ./run.sh ;; esac', 'case "$(./run.sh)" in x) ;; esac', 'case x in $(./run.sh)) ;; esac',
+                                  'case x in x) echo ;; esac; ./run.sh'])
+def test_what_a_case_statement_runs_is_still_read(world, line):
+    _script(world["work"], "run.sh", CASE_RUNS.format(state=paths.state())).chmod(0o755)
+    reason = _verdict(world, line) or ""
+    assert HELD in reason or reason.startswith("Refused"), line

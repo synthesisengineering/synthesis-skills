@@ -253,8 +253,10 @@ def test_a7_the_launcher_line_from_codexs_shell_tool_passes_as_it_does_from_the_
     mine.mkdir()  # first, and the first shell of each name the system's own (combined review round 1, C2)
     monkeypatch.setenv("PATH", f"{mine}:/usr/bin:/bin:/usr/sbin:/sbin")
     line = f"{world['launcher']} --repo-root {world['canon']} --dry-run"
-    calls = [("shell", {"command": [shell, flag, line], "workdir": str(world["work"])}, str(world["work"]))
-             for shell, flag in (("bash", "-lc"), ("zsh", "-c"), ("/bin/sh", "-c"))]
+    shells = [(shell, flag) for shell, flag in (("bash", "-lc"), ("zsh", "-c"), ("/bin/sh", "-c"))
+              if shutil.which(shell, path="/usr/bin:/bin")]  # each the system has: CI's Linux runners have no zsh
+    assert ("bash", "-lc") in shells and ("/bin/sh", "-c") in shells
+    calls = [("shell", {"command": [shell, flag, line], "workdir": str(world["work"])}, str(world["work"])) for shell, flag in shells]
     calls += [("exec_command", {"cmd": line, "workdir": str(world["work"])}, str(world["work"])), ("bash", {"command": line},
                                                                                                 str(world["work"]))]
     assert world["judge"](calls) == [None] * len(calls)

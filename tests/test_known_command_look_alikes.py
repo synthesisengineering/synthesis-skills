@@ -434,3 +434,41 @@ def test_a_wrapper_that_does_more_or_hands_its_words_to_a_program_of_its_own_is_
     world["plant"]("evil")  # writes the stub over the runtime's guard
     world["plant"]("python3", HANDS_ON.format(target=world["tools"] / "evil"))
     assert _held(world["verdict"]("python3 -c 'print(1)'"))  # handed to a script of the agent's
+
+
+# --- a command in a system folder the user cannot write (the integration review of 5.24.0, finding 1): on Ubuntu,
+# /usr/bin/open is a link, through /etc/alternatives, to the shell script xdg-open. Root installed every step of that
+# chain, in folders no program of the agent's can write, so nothing can turn it elsewhere: it is that command, whatever
+# the file it leads to is named. A link in a folder the user writes, or a chain that passes through one, is still read.
+# Here a folder of the test's own stands in for the system's, taken as root's (`_root_owned`).
+
+def _system(world, monkeypatch):
+    system = world["tmp"] / "system"
+    script = world["plant"]("xdg-open", folder=system / "bin")  # read as a look-alike, it writes the runtime's guard
+    world["link"](system / "alternatives" / "open", script)
+    world["link"](system / "bin" / "open", system / "alternatives" / "open")
+    owned = guards._root_owned
+    monkeypatch.setattr(guards, "_root_owned", lambda path: paths.inside(path, str(system)) or owned(path))
+    return system
+
+
+def test_a_command_root_installed_as_a_link_to_a_script_of_another_name_is_that_command(world, monkeypatch):
+    system = _system(world, monkeypatch)
+    world["first_on_path"](system / "bin")
+    for line in ("open -a Docker", f"{system}/bin/open -a Docker", "cd {work} && grep -c x notes.md; open -a Docker".format(work=world["work"])):
+        assert world["verdict"](line) is None, line
+
+
+@pytest.mark.parametrize("how", ["a link in a folder the user writes", "a chain through a folder the user writes",
+                                 "a system link to a script the user writes"])
+def test_a_link_to_such_a_script_through_a_folder_the_user_writes_is_still_read(world, monkeypatch, how):
+    system = _system(world, monkeypatch)
+    if how == "a link in a folder the user writes":
+        world["link"](world["tools"] / "open", system / "bin" / "xdg-open")
+    elif how == "a chain through a folder the user writes":
+        world["link"](world["tools"] / "alternatives" / "open", system / "bin" / "xdg-open")
+        world["link"](system / "bin" / "elsewhere" / "open", world["tools"] / "alternatives" / "open")
+    else:
+        world["link"](system / "bin" / "elsewhere" / "open", world["plant"]("open-script"))
+    world["first_on_path"](world["tools"] if how == "a link in a folder the user writes" else system / "bin" / "elsewhere", system / "bin")
+    assert _held(world["verdict"]("open -a Docker")), how
