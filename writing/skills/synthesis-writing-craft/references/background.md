@@ -30,10 +30,10 @@ For more on each book and how to choose where to start, see [`references/recomme
 - [`synthesis-article-writing`](../../synthesis-article-writing/SKILL.md) — End-to-end article workflow
 - [`synthesis-article-refresh`](../../synthesis-article-refresh/SKILL.md) — Revising older articles
 - [`synthesis-reader-briefing`](../../synthesis-reader-briefing/SKILL.md) — Pre-writing audience analysis
-- [`synthesis-concise-messaging`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-concise-messaging/SKILL.md) — Brevity-focused messaging methodology
+- [`synthesis-concise-messaging`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.0/skills/synthesis-concise-messaging/SKILL.md) — Brevity-focused messaging methodology
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.
 
 This skill draws on the writing-craft tradition. For the working bibliography and recommended reading, see [`references/recommended-reading.md`](recommended-reading.md). The skill is intended for AI agents assisting writers; humans should read the original works.

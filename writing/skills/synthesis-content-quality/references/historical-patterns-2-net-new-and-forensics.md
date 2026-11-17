@@ -258,4 +258,4 @@ The audit process that produced this file is documented in [historical-coverage-
 
 ---
 
-*Part of the [synthesis writing](https://synthesiswriting.org) craft. The writer writes, the AI assists, the catalog remembers.*
+*Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. The writer writes, the AI assists, the catalog remembers.*

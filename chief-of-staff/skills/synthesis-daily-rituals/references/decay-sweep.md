@@ -20,8 +20,8 @@ It does not infer that local files represent all history or all workspaces.
 
 ## Source boundary
 
-Run `python3 <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD
---plans-dir <declared-daily-plans-directory> --json` (`<rituals>` is this skill's folder). It
+Run `python3 -s <rituals>/scripts/decay_sweep.py --as-of YYYY-MM-DD
+--plans-dir <declared-daily-plans-directory> --json` (`<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`). It
 prints a JSON report: `status` (`CLEAR`, `REVIEW` or `BLOCKED`), the `due` items with source
 locators, the `critical` view, and the coverage of every root and file. Repeat `--plans-dir` for
 each plan directory declared for this seat, or pass `--workspace <W>` to read the folders the

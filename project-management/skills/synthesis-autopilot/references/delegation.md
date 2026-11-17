@@ -81,6 +81,8 @@ Every decision in an autonomous run falls into one of three classes:
 
 **Never block the whole run on one question.** Re-sequence around it. Halt early only when *every* remaining path depends on an unanswered user-only question — that is a blocked state, reported per the alerts section.
 
+The one exception is the count's stop (the principal's rulings of 2026-11-16; [plan-file.md](plan-file.md#origins-and-the-count)). When the run's own items outran the principal's, or the principal's open items rose two days running, the whole run holds until the principal answers its one line: start nothing new, whatever else is ready, since re-sequencing around the question is how a run keeps itself busy.
+
 ## Cross-Agent Orchestration
 
 When an autonomous plan calls for adversarial or independent review, autopilot owns the
@@ -211,6 +213,8 @@ Autonomous runs fan work out to sub-agents more than supervised ones, so dispatc
 2. **No minimizing vocabulary in briefs.** "Keep changes minimal," "light touch," "conservative pass" license half-done work. Name the job at full size with explicit acceptance criteria.
 3. **Acceptance audit on every non-clean-success return.** Partial completion, timeout, "stalled with substantial progress" — inspect what actually landed, diff it against the brief, and either re-dispatch or finish the gap directly. Accepting the partial state and moving on is forbidden.
 4. **Allocate shared budgets in the brief.** Metered tools with a session-wide budget (web search is the proven one: parallel research agents share a single pool and exhaust it silently) get an explicit per-agent allocation in each brief, plus the fallback when the pool runs dry. A fan-out of N research agents against one undivided budget is a plan to get N partial reports. Each brief carries its share in one line, for example "your share of web searches is 25 (six agents, 150 in all); when it runs out, return what you have and name the unanswered questions". Where `SYNTHESIS_SEARCH_BUDGET_PER_AGENT` is set, it is the per-agent share (25 is a reasonable default — tunable, because the provider pool size is not visible to the skill). Nothing intercepts calls made outside the brief, so the share in the brief is the control.
+
+**At most three agents at once.** The principal's caps of 2026-11-16 bound every fan-out on top of these four rules: however the work divides, no more than three sub-agents run at a time, and the next is dispatched only when one returns. More agents at once spends the principal's model quota faster, and every return still needs its own acceptance audit (rule 3). An adversarial review holds the same cap (synthesis-adversarial-review, `references/review-caps.md`).
 
 ## Completion and Blocked-State Alerts
 

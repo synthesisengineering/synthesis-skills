@@ -17,9 +17,9 @@ For [decisive uncertainty](../../synthesis-thinking-framework/references/decisiv
 
 - **[synthesis-anti-shortcuts](../../synthesis-anti-shortcuts/SKILL.md)** — The effort-side sibling. Anti-shortcuts catches deferral, dismissal, and false consultation; this skill catches fabrication, stale propagation, and false absence. An output can fail both at once — a confabulated "already done" is simultaneously a shortcut and a grounding failure.
 - **[synthesis-checkpoint](../../synthesis-checkpoint/SKILL.md)** — The session-state instance of cache-vs-truth: verified time, git history, and context files re-synced on drift signals. Checkpoint covers "where are we"; this skill covers every fact leaving the session in an output.
-- **[synthesis-fact-checking](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-fact-checking/SKILL.md)** — Verifies claims in *content being reviewed*; this skill governs claims the *agent itself* is about to make.
+- **[synthesis-fact-checking](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.0/skills/synthesis-fact-checking/SKILL.md)** — Verifies claims in *content being reviewed*; this skill governs claims the *agent itself* is about to make.
 - **[synthesis-implementation-integrity](../../synthesis-implementation-integrity/SKILL.md)** — Post-implementation verification that work is actually complete. Its "never claim a check that did not run" is this discipline applied to self-reports.
-- **[synthesis-slack-sync](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-slack-sync/SKILL.md)** — Carries the messaging-platform instance of rules 2, 7, and 9: transcripts-first lookups, provenance for synced content, and bounded reads for absence claims.
+- **[synthesis-slack-sync](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.0/skills/synthesis-slack-sync/SKILL.md)** — Carries the messaging-platform instance of rules 2, 7, and 9: transcripts-first lookups, provenance for synced content, and bounded reads for absence claims.
 
 
 ## The Underlying Principle

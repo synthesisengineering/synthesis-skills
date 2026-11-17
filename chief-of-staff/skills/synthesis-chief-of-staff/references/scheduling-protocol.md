@@ -65,7 +65,7 @@ the config's tiers say it binds for.
 Run it on every time before proposing or placing it, and show its verdict with the proposal:
 
 ```bash
-python3 scripts/slot_check.py --start 2026-11-12T14:00 --end 2026-11-12T14:30 --events read.json \
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-chief-of-staff/scripts/slot_check.py" --start 2026-11-12T14:00 --end 2026-11-12T14:30 --events read.json \
     --attendee a@example.com --requester a@example.com --deadline 2026-11-13
 ```
 

@@ -658,8 +658,10 @@ def configure_claude(dry_run: bool = False) -> list:
 
 # ---- runtime, CLI and first config ----------------------------------------------
 
-def install_runtime(git_hooks: bool) -> list:
-    lines = [install.install(REPO)]
+def install_runtime(git_hooks: bool, session: dict | None = None) -> list:
+    """Over an installed runtime the install spends the principal's code, read in `session`'s record (--session names it
+    from his own terminal, where no harness gives one; review round 2 of 22.18, K2). A first install needs none."""
+    lines = [install.install(REPO, git_hooks=git_hooks, session=session)]
     if git_hooks:
         lines.append(install.register_git_hooks())
     link, target = Path.home() / ".local" / "bin" / "synthesis", install._home() / "bin" / "synthesis"
@@ -883,9 +885,16 @@ def main(argv=None) -> int:
     parser.add_argument("--no-input", action="store_true", help="never ask; fail naming the flag instead")
     parser.add_argument("--compact-brief", action="store_true",
                         help="add the compaction brief to each synthesis workspace's instructions without asking")
+    parser.add_argument("--session", default="", help="the session the principal types an install's or an uninstall's code in, "
+                        "where a runtime is already installed (default: this shell's own)")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     interactive = not args.no_input and can_ask()
+    own = paths.session_id()  # a shell acts only as its own session
+    if args.session and own and args.session != own:
+        print(f"stopped: this shell belongs to session {own}; it cannot act as {args.session}")
+        return 1
+    session = {"session_id": args.session or own}
     clients = [c.strip() for c in (args.clients or "claude,codex,muse").split(",") if c.strip() in doctor.HARNESSES]
     failed, scratch = False, Path(tempfile.mkdtemp(prefix="synthesis-dry-run-")) if args.dry_run else None
 
@@ -897,7 +906,7 @@ def main(argv=None) -> int:
             org_clients, org_ref = workspace.org_preferences(args.org_repo, scratch)
             clients, args.ref = (clients if args.clients else org_clients), args.ref or org_ref
         if args.command == "uninstall":
-            return _uninstall(clients, args.dry_run)
+            return _uninstall(clients, args.dry_run, session)
         if args.command in ("all", "plugin"):
             if not any(doctor.find_client(client) for client in clients):
                 say([f"stopped: {no_harness(clients)}"])
@@ -906,7 +915,7 @@ def main(argv=None) -> int:
                 git_hooks = args.git_hooks or (interactive and args.command == "all" and confirm(
                     "Run the synthesis commit check (secrets, disclosures, other sessions' claims) in every repository?",
                     "--git-hooks", default=True))
-                say(install_runtime(git_hooks))
+                say(install_runtime(git_hooks, session))
             plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run, args.codex_user_hooks)
             say(plugin_lines)
             if args.dry_run:
@@ -934,7 +943,8 @@ def main(argv=None) -> int:
         if args.command in ("all", "workspace", "org"):  # what a compaction summary keeps, in every synthesis workspace
             import workspace
             say(workspace.add_brief(interactive, args.compact_brief, args.dry_run))
-    except (SetupError, ValueError, OSError) as exc:  # a malformed manifest or an unwritable folder: say which
+    except (SetupError, ValueError, OSError, install.Unapproved) as exc:  # a malformed manifest, an unwritable folder, or a
+        # change of an installed runtime that waits for the principal's code: say which
         say([f"stopped: {exc}"])
         failed = True
     except KeyboardInterrupt:
@@ -958,7 +968,7 @@ def _persons_calls() -> list:
     return [event for event, hooks in found.items() if any(group not in recorded.get(event, []) for _, group, _ in hooks)]
 
 
-def _uninstall(clients: list, dry_run: bool) -> int:
+def _uninstall(clients: list, dry_run: bool, session: dict | None = None) -> int:
     theirs = _persons_calls()  # R2-2 of 5.21.0: gone from under them, the runtime's absence holds every guarded call
     if theirs:
         print(f"stopped: nothing was removed, and the runtime stays: your own {', '.join(theirs)} in "
@@ -989,7 +999,7 @@ def _uninstall(clients: list, dry_run: bool) -> int:
                      else f"{client}: removal failed: {_tail(proc)}")
     lines += unregister_day_end(dry_run) + unregister_sessions_export(dry_run)
     try:  # a dry run has left setup's own declarations in place, and checked the person's above
-        lines += install.uninstall(dry_run=dry_run, codex_cleared=dry_run)
+        lines += install.uninstall(dry_run=dry_run, codex_cleared=dry_run, session=session)
     except install.InUse as exc:  # one declared meanwhile
         print("\n".join(lines + [f"stopped: {exc}"]))
         return 1

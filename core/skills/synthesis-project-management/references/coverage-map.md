@@ -212,3 +212,16 @@ synthesis-project-resume's; R2 cases belong to the board in `synthesis/`.
   earlier discovery tests unchanged; the finder's own cases are in tests/test_doctor.py.
 - [codex-dispatch.md](codex-dispatch.md) gained one sentence after "Discovery order": the
   wrapper uses the same finder as `synthesis doctor`. No earlier sentence changed.
+
+## Changes in 3.6.0 (2026-11-16)
+
+- Binding rules 14 to 16 carry the principal's rulings of 2026-11-16 on the backlog: one
+  ordered backlog per project, in the plan CONTEXT.md names, each item marked
+  `origin: principal` or `origin: self`; its daily count of open principal items, which
+  must fall, and the count at every checkpoint of principal items closed against
+  self-generated items added, each stopping new work for the principal's one line; and
+  finish, ship and install before anything new, with the side-quest test.
+  [backlog.md](backlog.md) holds them in full and is listed in Contents. The item
+  convention is synthesis-autopilot's plan-file convention, so one marking serves both.
+  No earlier sentence changed or moved; SKILL.md had room (6,628 bytes before).
+- Review round 1 of plan item 22.37: [backlog.md](backlog.md)'s side-quest test allows an important issue that serves the principal's goals, beside unblocking the current item and the principal's own request, as rule 16 does; it had named only the other two.

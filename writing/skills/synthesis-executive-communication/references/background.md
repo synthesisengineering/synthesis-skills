@@ -15,11 +15,11 @@ This skill was distilled from real report-revision cycles between technology lea
 ## Related Skills
 
 - [`synthesis-reader-briefing`](../../synthesis-reader-briefing/SKILL.md) — pre-writing audience analysis for public articles; this skill is its sibling for workplace reporting and correspondence
-- [`synthesis-concise-messaging`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-concise-messaging/SKILL.md) — brevity discipline for short-form business messages
+- [`synthesis-concise-messaging`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.0/skills/synthesis-concise-messaging/SKILL.md) — brevity discipline for short-form business messages
 - [`synthesis-writing-craft`](../../synthesis-writing-craft/SKILL.md) — the positive craft principles underneath
 - [`synthesis-writing-pitfalls`](../../synthesis-writing-pitfalls/SKILL.md) — universal human bad-writing patterns (credential-stuffing and humble-bragging are near relatives of insider praise)
 - [`synthesis-content-quality`](../../synthesis-content-quality/SKILL.md) — AI-pattern and substance detection for anything drafted with AI assistance
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists. For technology leaders whose most important readers don't read code.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists. For technology leaders whose most important readers don't read code.

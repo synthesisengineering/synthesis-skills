@@ -91,16 +91,28 @@ site's own timeline.
   `pubDate:` or `publishDate:` line is more than 15 minutes in the future refuses the
   deploy (a few minutes is clock skew). Dates without a zone are local time; a date-only
   value means midnight. On 2026-08-29 a post dated the next afternoon went live the
-  evening before.
-- **Published dates never change.** A deploy that changes the date of a page already on
-  the published branch (origin's main) refuses, naming both dates. To move a page to a
-  new date, take it down in one deploy and republish it at that date in another. If the
-  published branch can't be found, the guard asks for `git fetch` rather than guessing.
+  evening before. An article of a catalog `deploy_catalogs` names counts by its
+  `published` time, or by the documented `publishedInstantOverride` instant that replaces it.
+- **Published dates never change.** A deploy that changes the date of a page already
+  published refuses, naming both dates. For a push, what is published is the published
+  branch (origin's main). For an upload it is the commit the site's last approved deploy
+  was approved at, which the guard's deploy record keeps, else origin's main: a site
+  published by upload can have its change on main before the upload (2026-11-16). To move
+  a page to a new date, take it down in one deploy and republish it at that date in
+  another. If the published branch can't be found, the guard asks for `git fetch` rather
+  than guessing.
 - **Both layouts:** `content/posts/**/index.md` (nested by date) and
   `**/src/content/articles/*.md` (flat). On 2026-08-31 the flat-layout site was found to
   have escaped the date scans entirely: a guard covers what it reaches, not what it reads.
   A push checks the committed tree at HEAD; a build deploy checks the working tree,
   untracked files included.
+- **What a build renders from elsewhere:** `deploy_also_renders` applies both rules to the
+  repositories a site's build renders, each compared with its own last approved upload. A
+  `{"variable", "default"}` entry follows the path the deploy command hands the build, so
+  a catalog read from another worktree is the tree checked (2026-11-16: a personal site's
+  build read its article catalog from whichever checkout its command named). Its `default`
+  is the checkout itself, so it names the repository's top folder, never the catalog file:
+  a file there blocks every deploy that does not hand the build the variable.
 
 ## The rapid-redeploy brake
 
@@ -224,5 +236,6 @@ The Bash hook stays under 50 ms (about 31 ms median measured on the principal's 
 `tests/test_shell_classification.py` (every wrapper, substitution, heredoc and data case,
 the unreadable cases, nesting depth, speed), `tests/test_deploy_rules.py` (incident shapes
 of a site push, attribution by directory, worktrees, both date rules in both layouts,
-approval bound to HEAD, the rapid brake, a sheet upload free only to a listed host), `tests/test_guards.py` (approvals, protected
+a catalog's dates, an upload compared with its last approved one, the source a build is
+handed, approval bound to HEAD, the rapid brake, a sheet upload free only to a listed host), `tests/test_guards.py` (approvals, protected
 roots, force pushes, every harness's shell tool, fail-closed config).

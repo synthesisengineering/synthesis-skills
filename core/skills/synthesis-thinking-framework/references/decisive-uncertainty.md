@@ -1,5 +1,7 @@
 # Decisive uncertainty and observation
 
+Use the [decisive-uncertainty method](decisive-uncertainty.md) when a missing fact could change the next decision. Prefer the cheapest credible discriminating observation, retain refuted predictions, and stop when the required decision is supported. In an autopilot run, the journal adapter (synthesis-autopilot, `references/uncertainty-journal.md`) binds actual local execution to the affected acceptance closure; unsupported semantic and external-state questions remain explicit.
+
 Record an uncertainty when resolving it could change the next decision or a
 required acceptance result. Name the decision, why this fact matters, the
 different consequences of the plausible answers, and the cheapest credible

@@ -4,6 +4,7 @@
 
 - [Why release is a script](#why-release-is-a-script)
 - [The procedure](#the-procedure)
+- [Run from the installed runtime, with no code](#run-from-the-installed-runtime-with-no-code)
 - [What the script refuses, and why](#what-the-script-refuses-and-why)
 - [Each harness's own commands](#each-harnesss-own-commands)
 - [Why a client's own version report is not sufficient evidence](#why-a-clients-own-version-report-is-not-sufficient-evidence)
@@ -33,20 +34,72 @@ the script does not rerun the suite.
 2. In a pull request, bump `.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`
    and `.muse-plugin/plugin.json` together and add the CHANGELOG entry for that
    version. Merge once CI passes.
-3. From a clean checkout of the merged default branch:
+3. From a clean checkout of the merged default branch, run the release launcher the installed
+   runtime carries, alone on the line with absolute paths
+   ([below](#run-from-the-installed-runtime-with-no-code)):
 
    ```bash
-   python3 skills/synthesis-skills-manager/scripts/release.py --dry-run
-   python3 skills/synthesis-skills-manager/scripts/release.py
+   ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute checkout path> --dry-run
+   ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute checkout path>
    ```
 
    It prints one line per stage, then `release complete: vX.Y.Z` (exit 0) or
    `release NOT complete: vX.Y.Z` (exit 1), and runs `synthesis doctor` at the end.
 4. A harness line reading `NOT verified` names each missing, differing or extra file.
-   Fix the cause and rerun; `--install-only` reinstalls and re-verifies the tag that
-   HEAD carries without publishing again (also the command for a new Mac).
+   Fix the cause and rerun; `--install-only --tag vX.Y.Z` installs and verifies that tag from
+   a fresh clone without publishing again (also the command for a new Mac, where no runtime is
+   installed yet: there the checkout's copy runs it, `python3
+   skills/synthesis-skills-manager/scripts/release.py --install-only --tag vX.Y.Z`).
 5. On success the script releases the train claim. On failure the claim stays with
    this session, on purpose: the next attempt is still this session's.
+
+## Run from the installed runtime, with no code
+
+Since 5.22.1 the guard holds a program that names synthesis's writers or runs from the
+protected runtime until the principal types a code, so every release waited for one. The
+principal's ruling of 2026-11-15: run releases from the protected installed tool, without a
+code. The runtime carries the release tool and what it imports (the scripts of this skill
+and of `synthesis-onboarding`), and install, and every session start after it, write the launcher
+`~/.synthesis/v5/bin/synthesis-release` beside the hook's. Every launcher runs the
+interpreter pinned at install: its own real path, owned by root with every folder above it,
+writable by neither this user nor its groups, with `-I -S` under `env -i`, keeping only the
+variables the runtime was measured to read, with the system's own folders first on PATH. So
+no `python3` placed earlier on PATH, user site file, `PYTHONPATH`, `DYLD_*` variable or
+compiled file in Apple's cache runs inside it (review round 1 of 5.23.1, P1, P3 and A4).
+
+The guard lets exactly that launcher run with no code: alone on the line in plain words (no
+quote, variable, pipe, redirect or second command), by its absolute path, with only the options
+the tool documents (`--repo-root` by an absolute path for a release, or `--install-only --tag
+vX.Y.Z`; `--dry-run`, `--clients`, `--session` as the asking session's own id; no
+abbreviation), on the canonical checkout above. The same line passes from Codex's shell tool
+(`bash -lc <line>`). A release from a checkout's copy waits for the principal's code, and so
+does every other way of running the tool: by its own path, a copy elsewhere, a copy of the
+launcher, the scripts the runtime carries for it (never trusted as the plugin's own), an option
+it does not document, a program that loads its modules (found by file, so a project's own
+`release` or `setup` runs as before), a wrapper or an interpreter option.
+
+The checkout only says what is released, and the commit preflight read is the one released.
+Everything built, pushed, exported and installed comes from a fresh clone of the repository
+that the run makes from GitHub, with git's own config left out, in a folder of its own in the
+protected releases folder of the launcher's own home (its name the run's pid and a random
+part): git computes each object's id as it fetches it. The collection files go into the clone's
+objects from memory with `git fast-import`, and the tree written is held to the ids their bytes
+give. The stable runtime is installed from that clone, its staged copy checked against the tag's
+listing before `current` moves, and the release refuses a version older than the running runtime
+or GitHub's highest version tag (read from its tags by git, never by a `gh` found on PATH).
+`install.install` replaces an installed runtime only on the principal's code for exactly the
+staged copy, or with the one grant the hook writes when it lets the release launcher's line
+through: an install of that tag, spent once, only for the tool's fresh clone whose HEAD is the
+commit GitHub's tag names, its tracked tree clean and its staged copy that commit's files (it
+trusts no main program or interpreter flag). The harness commands a release runs (`claude`,
+`codex`, `muse`, `gh`) are found where this user writes, so the release reads the install's
+listing from the verified commit before any of them runs and holds its clone to that commit
+after each one, stopping where one changed it. A release
+older than the running one is a rollback, which needs his code on every route, and no keyword
+passes that. One install runs
+at a time in a synthesis home, under a lock (its file is one this user may only write, so no
+program that only reads can hold it). Review rounds 1 to 4 of 5.23.1 found and closed the rest
+(A1 to A3, N2, N3, N7, N8, N10, M2, M4, Q4).
 
 ## What the script refuses, and why
 
@@ -54,11 +107,24 @@ Before anything is pushed it refuses when:
 
 - the repository root is an installed plugin copy (a harness cache or Muse bundle), not
   a source checkout;
-- the tree has uncommitted changes, or HEAD is not on the default branch;
+- the checkout is not the canonical one: origin, and every remote's address for fetching
+  and pushing as git uses it after any rewriting, the synthesis-skills repository on
+  GitHub; on `main`; its own git config, and a worktree's, setting only keys that run no
+  program and send git nowhere (a file monitor, hooks, a credential helper, a proxy or an
+  include is refused before git can run it);
+- the tree has uncommitted changes;
+- HEAD is not the tip of that repository's `main` as GitHub serves it (read with git's own
+  config left out), or GitHub already has the version's tag at another commit; for
+  `--install-only`, GitHub serves no such tag, or its commit is not on `main` in the fresh
+  clone;
+- the version is older than the running runtime or than GitHub's highest version tag, or
+  GitHub's tags cannot be read;
+- the fresh clone cannot be made at that commit, or does not hold that version;
 - the three plugin manifests disagree or lack a version;
 - the CHANGELOG's newest entry is not that version;
 - the version's tag already names another commit;
-- CI has not passed for HEAD (read with `gh run list --commit`; unknown is not passed);
+- CI has not passed for HEAD on that repository (read with `gh run list -R
+  github.com/synthesisengineering/synthesis-skills --commit`; unknown is not passed);
 - another live session holds the release train;
 - the five collections, built from HEAD's commit, fail a check, or the collections file
   cannot be read ([collections.md](collections.md)); a dry run builds and checks them too.
@@ -190,17 +256,25 @@ task when a Codex update deleted that folder (2026-09-02, CHANGELOG 4.90.2).
 
 v5 has two stable paths, both outside the harnesses' caches:
 
-- `~/.synthesis/v5/bin/synthesis-hook` is what every hook calls. Its text never changes
-  between releases, so a deleted plugin folder never breaks a running task. A hook
-  approval is another matter: Muse has kept its approval across every release so far,
-  and Codex asks again after each one, because it ties the approval to a fingerprint of
-  the installed plugin. Until the person approves in `/hooks`, Codex runs none of the
-  hooks; `release.py` names that approval as waiting.
+- `~/.synthesis/v5/bin/synthesis-hook` is what every hook calls. Its path never changes
+  between releases, so a deleted plugin folder never breaks a running task; since 5.24.0
+  its text names the interpreter pinned at install. A hook approval is another matter:
+  Muse has kept its approval across every release so far, and Codex asks again after
+  each one, because it ties the approval to a fingerprint of the installed plugin. Until
+  the person approves in `/hooks`, Codex runs none of the hooks; `release.py` names that
+  approval as waiting.
 - `~/.synthesis/v5/current` is the runtime. At each session start the hook passes the
-  plugin folder the harness loaded; if it is a newer release, it is installed beside the
-  old one and `current` switches atomically, and a session on an older plugin never
-  switches it back. `release.py` installs from a verified install whatever its version,
-  and `synthesis doctor` fails when `current` is missing or its files changed.
+  plugin folder the harness loaded, which installs the runtime only where none exists
+  (the first install), and rewrites any launcher that differs from what the runtime writes.
+  Since 5.24.0 a session start never replaces an installed runtime from a harness's folder,
+  which the guard does not protect (the release launcher installs from a clone of GitHub it
+  verified, on the grant the hook writes for its line; the CLI's `synthesis install
+  <folder>`, in any spelling, waits for the principal's code wherever a runtime is
+  installed, and only a first install into a home no runtime has been in needs none): a
+  session start on a newer plugin says so once and names
+  `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, and the
+  doctor warns while the two differ. Nothing older than the running runtime installs, and
+  `synthesis doctor` fails when `current` is missing or its files changed.
 
 Instruction files and scripts call `synthesis` (or `~/.synthesis/v5/bin/synthesis`),
 never a versioned folder.

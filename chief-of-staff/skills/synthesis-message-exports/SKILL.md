@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-grounding-discipline"]
 metadata:
   author: "Synthesis Engineering"
-  version: "1.0.0"
+  version: "1.0.1"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -47,10 +47,10 @@ chats from secure storage.
    have not given. Messenger history can take two downloads: the regular export (older chats, with the part of
    each chat from before it moved to end-to-end encryption under `e2ee_cutover`) and the secure-storage download
    (the encrypted chats). Import both into the same folder; their transcripts never collide.
-2. **Count first.** From this skill's folder, a dry run reads and checks everything and writes nothing:
+2. **Count first.** A dry run reads and checks everything and writes nothing:
 
    ```bash
-   python3 scripts/import_messages.py EXPORT.zip --out PRIVATE_FOLDER --dry-run
+   python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/import_messages.py" EXPORT.zip --out PRIVATE_FOLDER --dry-run
    ```
 
 3. **Import.** Run the same command without `--dry-run`. Add `--since YYYY-MM-DD` to take only messages from

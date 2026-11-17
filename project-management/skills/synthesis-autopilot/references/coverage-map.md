@@ -239,3 +239,61 @@ check-ins ran without looking at it. No rule was removed. Three tests in
 `tests/test_autopilot.py` cover the item, its evidence at close and the documents, and
 `test_the_documented_helper_path_is_the_copy_the_install_makes_and_it_runs` now checks both
 documented runtime paths and runs the check from there.
+
+**2026-11-16 (4.2.0): the run's own work is counted against the principal's.** Each
+checklist item carries its origin, `principal` or `self`; an item added after
+engagement carries the time it was added, and a checked item the time it closed
+([plan-file.md](plan-file.md#origins-and-the-count), the template and the header
+table, with the new `Principal answer:` line and `## Backlog count` section).
+`cycle` counts, over the last 24 hours, principal items closed and self-generated
+items added, writes the open principal items at each day's first wake, and refuses
+an advance when the second outnumbers the first or the open principal items rose two
+days running, unless a principal answer of continue or narrow is dated inside the
+window; it prints the one line to bring the principal. The turn-end check asks for
+that line instead of the next item ([turn-end-check.md](turn-end-check.md#when-it-asks)),
+from the plan it already reads. A plan without origins counts nothing, and `cycle`
+says so once. Binding rule 14 in [SKILL.md](../SKILL.md) carries it; the
+[re-entry protocol](continuation.md#re-entry-protocol) and
+[runaway control](continuation.md#budget-and-runaway-control) name it. No rule was
+removed. To make room for rule 14 under 8,000 bytes, the Procedure's six numbered
+steps (1,313 bytes, six lines) moved word for word from SKILL.md to
+[procedure.md](procedure.md), which also says what to do when the count stops the
+run; SKILL.md keeps the helper path and a one-line pointer, and Contents lists the
+page. SKILL.md went from 7,922 to 7,344 bytes. The principal's rulings of 2026-11-16
+set the two kinds of item, the count, its day and the one line. In the same release,
+the session-start brief says a run its count stopped waits for the principal's answer,
+and gives the line, instead of naming the next item; and the
+[fan-out rules](delegation.md#sub-agent-fan-out-hygiene) gain a paragraph after their
+four 2.4.0 rules, which stay verbatim: at most three agents at once, the cap the
+principal set for every fan-out. Binding rule 11 gains the same as one sentence after
+its existing text, and SKILL.md is 7,378 bytes.
+
+**2026-11-16 (4.2.0), review round 1 of the count.** The stop holds the whole run: binding
+rule 8 gains one sentence after its existing text naming the count's stop as the one
+exception to never blocking a run on one question, and
+[delegation.md](delegation.md#decision-protocol) gains a paragraph after its 2.4.0 text,
+which stays verbatim, saying the same. A wait recorded while the count stops the run
+opens with "start nothing new until the principal answers", and so do the wake prompt
+and the [re-entry protocol](continuation.md#re-entry-protocol); the turn-end check holds
+a stopped run in any open status but paused, and names every item added or closed after
+the count blocker's alert. The `Principal answer:` line is the principal's reply in
+quotes, with where and when they gave it, read by its first word and counted only when
+dated after the count blocker's alert; it is never written from the agent's own
+judgement. Two days running means three days in a row; a time more than five minutes
+ahead, or one that cannot be read, is rejected and named, so a crafted stamp no longer
+ends `cycle` with a traceback or switches the check off; the stop line names every item
+the count could not read, and `cycle` names each such item once. A plan with no origins
+is told once. [plan-file.md](plan-file.md#origins-and-the-count) and
+[procedure.md](procedure.md#when-the-count-stops-the-run) say all of this, including how
+a run adopting origins mid-run tags every item. SKILL.md is 7,479 bytes.
+
+**2026-11-16 (4.2.0), review round 2 of the count.** With no answer, the stop lapsed once
+its 24 hours slid past the items that caused it; it now holds while the count's blocker is
+open and alerted with no answer after it, and the stop line says the question is still
+waiting ([plan-file.md](plan-file.md#origins-and-the-count),
+[turn-end-check.md](turn-end-check.md#when-it-asks)). A reply that opens with "Yes," was
+quoted whole and read by that word; [plan-file.md](plan-file.md#origins-and-the-count) and
+[procedure.md](procedure.md#when-the-count-stops-the-run) each gain one sentence: quote the
+reply from the word continue, narrow or stop, keep the whole reply on the checked blocker,
+and ask again only when it holds none of the three. The first-word rule stays. What remains
+is on the open list in `docs/runtime-integration.md`.

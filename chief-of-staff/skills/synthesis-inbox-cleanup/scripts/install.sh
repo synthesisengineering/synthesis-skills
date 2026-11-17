@@ -13,7 +13,7 @@
 # durable runtime state must not pin to versioned paths). Private extensions
 # and scheduled jobs import the engine from that path.
 #
-# Usage: <synthesis-inbox-cleanup-root>/scripts/install.sh
+# Usage: "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/install.sh"
 # SYNTHESIS_INBOX_HOME and SYNTHESIS_HOME override the two folders (tests).
 
 set -eu
@@ -81,5 +81,5 @@ fi
 
 echo ""
 echo "✓ synthesis-inbox-cleanup installed ($missing item(s) above to resolve)."
-echo "  Sanity-check: python3 $ENGINE/icloud_census.py"
+echo "  Sanity-check: python3 -s $ENGINE/icloud_census.py"
 echo "  Adversarial fixtures: python3 $SKILL_DIR/tests/run_poisoned.py"

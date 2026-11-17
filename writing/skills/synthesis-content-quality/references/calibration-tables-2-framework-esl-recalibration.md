@@ -200,4 +200,4 @@ The heuristics are conservative: when in doubt, expand the wrapper boundary. Fal
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft. Calibration is the difference between a detector and a guess.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. Calibration is the difference between a detector and a guess.

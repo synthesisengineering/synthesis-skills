@@ -55,6 +55,7 @@
     }
   },
   "needs_the_whole_set": {
+    "skills/synthesis-agent-guardrails/scripts/judge_replay.py": "it replays the runtime's judge and reply check over recorded turn ends",
     "skills/synthesis-autopilot/scripts/autopilot_cli.py": "an autopilot run lives on the runtime's board",
     "skills/synthesis-daily-rituals/scripts/decay_sweep.py": "the rituals' records are the runtime's",
     "skills/synthesis-daily-rituals/scripts/lapse.py": "the rituals' records are the runtime's",
@@ -76,7 +77,6 @@
     "synthesis-git-hooks": "engineering",
     "synthesis-kb-distribution": "project-management",
     "synthesis-message-guard": "chief-of-staff",
-    "synthesis-slack-sync": "chief-of-staff",
     "synthesis-waiting": "project-management"
   }
 }

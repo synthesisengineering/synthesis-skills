@@ -1,7 +1,7 @@
 # Bringing the principal an ask
 
 Read this before putting any invitation, request or choice in front of the principal: in a daily plan, a
-decision packet or a message. `<cos>` is this skill's folder.
+decision packet or a message. `<cos>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-chief-of-staff`.
 
 ## Why a choice needs a view
 

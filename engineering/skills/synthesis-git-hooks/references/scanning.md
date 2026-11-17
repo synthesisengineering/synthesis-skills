@@ -33,6 +33,11 @@ calling `synthesis/commit_check.py` with its own name in `SYNTHESIS_GIT_HOOK`:
 Its own checks run first; the repository's hooks run only after they pass
 (`test_the_synthesis_checks_run_before_any_repository_hook`).
 
+The folder is the commit check's own: an agent's write to anything in it, by a file tool or
+a shell command the guard reads, waits for the principal's code for exactly that write, as a
+write to the guard's `config.json` does (the plugin's `docs/runtime-integration.md`,
+Approvals). The installer writes the three wrappers without one.
+
 ## The staged diff, byte for byte
 
 - Read as bytes from `git diff --cached --no-ext-diff --no-textconv --text --no-renames
@@ -195,7 +200,7 @@ approved the same way as a file line, bound to the repository and the line
 ## An entry's own time
 
 Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
-[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-agent-guardrails/references/config.md)). In a Markdown
+[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.0/skills/synthesis-agent-guardrails/references/config.md)). In a Markdown
 file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
 `skip` list names, the check reads the time an added entry gives for itself. An entry
 states one in four places:
@@ -296,7 +301,7 @@ ending in T for a zone, neither of which those commits bear out
 ## A status and its evidence
 
 Off unless the config has `status_evidence` (`{}` turns it on; see the guardrails'
-[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.23.2/skills/synthesis-agent-guardrails/references/config.md)). On 2026-11-12
+[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.0/skills/synthesis-agent-guardrails/references/config.md)). On 2026-11-12
 obligation statuses said colleagues could use a tool "now" when none of them could: the
 status had been written from an assumption, and nothing asked what it rested on. That a
 line claims a thing works is meaning, which the check does not read. That a table has a

@@ -367,6 +367,10 @@ Replacement framing: real YAGNI is about not building speculative features. Appl
 
 ## How the Catalog Maintains Itself
 
+The v5 Stop hook's judge reads the same costumes by meaning, from a policy in plain words with worked examples drawn
+from this catalog and the case studies (`synthesis/policies/shortcut-phrasing.md` in the plugin). A new costume that
+the judge should know gets a worked example there and a new version number, beside its catalog entry.
+
 When a new costume appears in production output, three steps:
 
 1. Document the incident with enough detail that the failure mode is clear. The anonymized case studies in [`case-studies.md`](case-studies.md) follow a consistent shape — situation, costume, why it counted as a costume, what should have happened.

@@ -239,7 +239,7 @@ UNIT
 }
 
 install_windows() {
-  cat <<'EOF'
+  cat <<EOF
 Windows auto-start is not automated by this script (PRs welcome).
 
 Manual setup using Task Scheduler:
@@ -247,11 +247,11 @@ Manual setup using Task Scheduler:
   2. Trigger: At log on
   3. Action: Start a program
      Program/script: bash.exe (from WSL or Git Bash)
-     Arguments: -c "/path/to/start.sh"
+     Arguments: -c "$SCRIPT_DIR/start.sh"
   4. Or use the Startup folder: place a shortcut to start.sh there
 
 Alternative using PowerShell and a scheduled task:
-  schtasks /Create /SC ONLOGON /TN "WorkspaceMCP" /TR "bash /path/to/start.sh"
+  schtasks /Create /SC ONLOGON /TN "WorkspaceMCP" /TR "bash $SCRIPT_DIR/start.sh"
 
 Set GOOGLE_CLIENT_SECRET_PATH and other env vars in System Properties → Environment Variables before registering the task.
 EOF

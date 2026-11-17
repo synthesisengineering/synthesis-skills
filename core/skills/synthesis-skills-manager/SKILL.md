@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-onboarding"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.6.0"
+  version: "3.7.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -48,20 +48,22 @@ to its source, resolving drift by synthesis merge in source rather than by overw
 1. Claim the train: `synthesis claim <main checkout>/CHANGELOG.md --goal "release vX.Y.Z"`.
 2. In a pull request, bump the three plugin manifests together and add the CHANGELOG
    entry for that version. Merge once CI passes.
-3. From a clean checkout of the merged default branch, run
+3. From a clean checkout of the merged default branch, run the release launcher the installed
+   runtime carries, alone on the line with absolute paths; run so, it needs no code, while a
+   checkout's copy waits for the person's code ([release.md](references/release.md)):
 
    ```bash
-   python3 skills/synthesis-skills-manager/scripts/release.py --dry-run
-   python3 skills/synthesis-skills-manager/scripts/release.py
+   ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute checkout path> --dry-run
+   ~/.synthesis/v5/bin/synthesis-release --repo-root <absolute checkout path>
    ```
 
-   It prints a line per stage: preflight, the push read back from each remote (with the
-   five collections, built from the tag and checked, as the `collections` branch), then per
-   harness `verified, the installed files at <folder> equal vX.Y.Z` or `NOT verified:`
-   with each missing, differing or extra file, then `synthesis doctor`, and finally
-   `release complete: vX.Y.Z` (exit 0) or `release NOT complete` (exit 1).
-4. On `NOT verified`, fix the cause and run `release.py --install-only`, which reinstalls
-   and re-verifies the tag HEAD carries without publishing again (also the new-Mac path).
+   It prints a line per stage: preflight, the push read back from the remote (with the five
+   collections, built from a fresh clone of GitHub's commit and checked, as the `collections`
+   branch), then per harness `verified, the installed files at <folder> equal vX.Y.Z` or
+   `NOT verified:` with each missing, differing or extra file, then `synthesis doctor`, and
+   finally `release complete: vX.Y.Z` (exit 0) or `release NOT complete` (exit 1).
+4. On `NOT verified`, fix the cause and run `--install-only --tag vX.Y.Z`, which installs
+   and verifies that tag from a fresh clone without publishing again (also the new-Mac path).
 5. Relay doctor's hook-trust lines to the person if a hook definition changed, and tell
    them to restart each harness so it loads the new skills and hooks.
 6. The script releases the train on success; on failure it stays claimed by this
