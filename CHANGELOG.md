@@ -795,8 +795,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   a folder the user writes, or a chain through one, is still read. The folder rule reads an alias only where a command
   on the line defines one, never a word in a message, a note or a heredoc's body (the private skills' installer, whose
   comment calls its update step "just an alias", waited at every run), and now catches one whose value changes folder;
-  a function moves the folder only when its body does and it is called outside a command substitution, so a helper that
-  only reads, beside a `cd`, passes; a text the parser cannot read is still left unplaced by a CDPATH it cannot read.
+  a function moves the folder only when its body (any compound command) does and it is called outside a command
+  substitution, so a helper that only reads, beside a `cd`, passes; a text the parser cannot read is still left
+  unplaced by a CDPATH it cannot read.
   The HOME rule reads a heredoc's body only where a shell runs it (fed to a shell, `source` or `eval`, itself or down
   its pipeline, or inside a command substitution), an unquoted body's substitutions always, and what `echo` or `printf`
   only print as data. A process substitution (`diff <(…) file`) is a file's name to its command, where the line was
@@ -807,12 +808,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   conftests it loads at its start, for what they run outside a test. Re-judged on this Mac with the fix, every Claude
   Code call of the review's replay in those classes passes: the 56 the folder rule held (the private installer's runs
   among them), the 20 the HOME rule held, the 12 pytest runs and the four that ran out of the guard's time, one of
-  them a line of two nested scripts now judged in 2.1 s where it took 2.8. A pytest reading is made once a call, and
-  the transcripts' folder is found once a call. The guardrails' config and deploys references and
+  them a line of two nested scripts now judged in 2.1 s where it took 2.8: a pytest reading is made once a call, and
+  the transcripts' folders once for the variables that place them. The guardrails' config and deploys references and
   `docs/runtime-integration.md` say so: `deploy_also_renders`' default names the checkout itself, never a file in it;
   the open list records how the merges narrowed the reading of scripts a line writes (parked for the sandbox on
   2026-11-16) and gains the ritual-script holds' wording and three `eslint`/`tsc` holds. The line budgets rise by the
-  measured 199, itemized.
+  measured 203, itemized.
 
 ## [5.23.2] - 2026-11-15
 

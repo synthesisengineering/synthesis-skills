@@ -2483,7 +2483,7 @@ def _landings(operands: list, cwd: str, back: str, mode: dict) -> list:
 
 
 UNQUOTED = _Pattern(r"\$'((?:[^'\\]|\\.)*)'|\\(.)|['\"]")  # $'…', a backslash and its letter, a quote
-FUNCTION = _Pattern(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*[{(]")  # a function defined
+FUNCTION = _Pattern(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*(?:[{(]|\[\[|(?:if|for|while|until|case|select)\b)")  # a function defined, its body any compound command
 ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "v": "\v"}
 
 
@@ -2506,7 +2506,8 @@ def _aliased(items: list) -> list:
         words = [w for w in item[0] if w not in KEYWORDS]
         found += [" " + w.split("=", 1)[1] for w in words if re.match(r"[gs]?aliases\[[^\]]*\]\+?=", w)]
         words = list(itertools.dropwhile(lambda w: w in ("builtin", "command") or bool(re.match(r"[A-Za-z_]\w*\+?=", w)), words))
-        found += [" " + w.split("=", 1)[1] for w in words[1:] if "=" in w and w[:1] not in "-+"] if words[:1] == ["alias"] else []
+        found += [" " + w.split("=", 1)[1] for w in words[1:] if "=" in w and w[:1] not in "-+"] if words and (words[0] == "alias" or (
+            words[0][:1] in ("$", "`") and words[0].endswith("alias"))) else []  # `${X}alias`: alias, where X is empty
     return found
 
 
@@ -2570,6 +2571,8 @@ def _moves_by_function(text: str) -> bool:
             tokens[at + 1][1] if kind == "w" and value == "function" and at + 1 < len(tokens) else "")
         opened = next((i for i in range(at + 1, min(at + 6, len(tokens))) if tokens[i][:2] == ("w", "{")), None) if name else None
         if opened is None:
+            if name:  # a body that is no brace group (`f() if …; fi`, `f() (…)`): it may hold every word after it
+                bodies.setdefault(name, set()).update(t[1] for t in tokens[at + 1:] if t[0] == "w")
             outside.append(tokens[at])
             at += 1
             continue
@@ -4059,9 +4062,10 @@ def _claude_parts(real: str) -> list:
     """A path's parts below the Claude Code `projects` folder it lies in, the CLI's or a desktop agent-mode session's
     (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words alone;
     [] where it lies in neither. No folder is listed on the hook's path."""
-    if "claude" not in _CALL["looks"]:  # the two folders, read once a call (a line of nested scripts asked 13,188 times)
-        _CALL["looks"]["claude"] = [_real(paths.transcript_roots()["claude-code"]), _real(paths.desktop_dir() / "local-agent-mode-sessions")]
-    root, base = _CALL["looks"]["claude"]
+    key = ("claude", *map(os.environ.get, ("HOME", "CLAUDE_CONFIG_DIR", "SYNTHESIS_CLAUDE_DESKTOP_DIR")))  # what places them
+    if key not in ROOTS_MEMO:  # the two folders, read once for those (a line of nested scripts asked 13,188 times)
+        ROOTS_MEMO[key] = [str(paths.transcript_roots()["claude-code"]), str(paths.desktop_dir() / "local-agent-mode-sessions")]
+    root, base = (_real(p) for p in ROOTS_MEMO[key])
     if paths.inside(real, root):
         return os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)
     parts = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) else []
@@ -6101,8 +6105,8 @@ def _moves_home(text: str, top: bool = True) -> bool:
     on a comment naming HOME and on the names it keeps from the environment). A heredoc's body is input to the program it
     feeds: it counts where a shell runs it (`_shell_fed`) or inside a command substitution, whose output a command may
     run, and an unquoted body's own substitutions always run; and the words echo or printf only print (`echo "HOME:
-    $HOME"`) give nothing a value but by `${HOME:=…}` (the integration review of 5.24.0: a note appended with `cat
-    <<'EOF'` that showed a `for HOME in` loop waited). Text the parser cannot read is read whole."""
+    $HOME"`) give nothing a value but by `${HOME:=…}` or arithmetic (the integration review of 5.24.0: a note appended
+    with `cat <<'EOF'` that showed a `for HOME in` loop waited). Text the parser cannot read is read whole."""
     try:
         tokens, loose = _lex(text), []  # loose: the substitutions in unquoted bodies no shell runs, which run all the same
         fed = _shell_fed(tokens) if top else None
@@ -6123,7 +6127,7 @@ def _moves_home(text: str, top: bool = True) -> bool:
                 at == 2 or tokens[at - 3][0] == "op" or (tokens[at - 3][0] == "w" and tokens[at - 3][1] in KEYWORDS)):
             walking = True
         elif (kind == "sub" and _moves_home(value, False)) or (kind == "in" and (fed is None or value in fed) and MOVES_HOME.search(value)) or (
-                kind == "w" and (not said or "${HOME" in value) and MOVES_HOME.search(re.sub(r"^([A-Za-z_]\w*\+?=)\([\s\S]*", r"\1", value))):
+                kind == "w" and (not said or "${HOME" in value or "$((" in value) and MOVES_HOME.search(re.sub(r"^([A-Za-z_]\w*\+?=)\([\s\S]*", r"\1", value))):
             return True  # (an array's values cut)
         if kind == "w" and not head and value not in KEYWORDS and not re.match(r"[A-Za-z_]\w*\+?=", value):
             head, said = value, value in ("echo", "printf", "print")

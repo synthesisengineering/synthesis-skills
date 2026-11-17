@@ -2417,10 +2417,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # file's reach that nothing read taken out), _claude_parts 1 more (its two folders read once a call: the same line built
 # them 13,188 times, and it now judges in 2.1 s where it took 2.8 against the guard's 3). The new definitions' 20 blank
 # lines.
+# Then each 4 more, all in guards.py, so the narrowed rules let through nothing the old ones held: _moves_by_function 2
+# (a function whose body is no brace group, `f() if ...; fi`, may hold every word after it, and FUNCTION finds such a
+# body), _aliased 1 (`${X}alias` is `alias` where X is empty), _claude_parts 1 (its folders kept for the variables that
+# place them rather than for a call, since a check run outside a call's own start would keep another call's); an echo's
+# arithmetic still gives HOME a value (no line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23473
-PLUGIN_BUDGET = 50142
+CORE_BUDGET = 23477
+PLUGIN_BUDGET = 50146
 
 
 def _lines(files):
