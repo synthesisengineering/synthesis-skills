@@ -404,3 +404,33 @@ def test_codex_and_claude_pass_on_launchers_like_a_macs(world, monkeypatch, line
     world["link"](local / "claude", compiled)
     world["first_on_path"](local)
     assert world["verdict"](line) is None, line
+
+
+# --- a wrapper that only hands its words to the real program (the merge of 22.32 into release/next, 2026-11-16): CI's
+# Apple job puts Apple's Python first as `python` by a two-line script, since a link would break Xcode's shim, and a run
+# that puts another interpreter first does the same. Judged as a look-alike, the wrapper's `"$@"` lost the program it
+# hands on, and an ordinary read through it waited.
+
+HANDS_ON = '#!/bin/sh\nexec {target} "$@"\n'
+SYSTEM_PYTHON = "/usr/bin/python3"
+
+
+@pytest.mark.parametrize("name", ["python", "python3"])
+def test_a_wrapper_that_only_hands_its_words_to_the_real_interpreter_is_that_interpreter(world, name):
+    if not (os.path.isfile(SYSTEM_PYTHON) and guards._root_owned(os.path.realpath(SYSTEM_PYTHON))):
+        pytest.skip("no Python of root's own at /usr/bin/python3 here")
+    world["plant"](name, HANDS_ON.format(target=SYSTEM_PYTHON))
+    world["first_on_path"](world["tools"])
+    for line in (READS.format(record=shlex.quote(str(world["record"]))).replace("python3", name, 1), f"{name} -m pytest -q"):
+        assert world["verdict"](line) is None, line
+
+
+def test_a_wrapper_that_does_more_or_hands_its_words_to_a_program_of_its_own_is_still_read(world):
+    if not (os.path.isfile(SYSTEM_PYTHON) and guards._root_owned(os.path.realpath(SYSTEM_PYTHON))):
+        pytest.skip("no Python of root's own at /usr/bin/python3 here")
+    world["first_on_path"](world["tools"])
+    world["plant"]("python3", HANDS_ON.format(target=SYSTEM_PYTHON) + f"cat {world['stub']} > {world['target']}\n")
+    assert _held(world["verdict"]("python3 -c 'print(1)'"))  # more than the hand-off
+    world["plant"]("evil")  # writes the stub over the runtime's guard
+    world["plant"]("python3", HANDS_ON.format(target=world["tools"] / "evil"))
+    assert _held(world["verdict"]("python3 -c 'print(1)'"))  # handed to a script of the agent's
