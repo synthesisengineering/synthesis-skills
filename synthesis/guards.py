@@ -2114,11 +2114,11 @@ VENV_OPTIONS = frozenset({"--clear", "--copies", "--symlinks", "--system-site-pa
 def _venvs(words: list, here: str) -> tuple | None:
     """(The activate script of each venv it names plainly, or of `.venv`, uv's default; whether it names them) for a venv
     tool, which writes only scripts of its own: `python3 -m venv` or `-m virtualenv` (unless a file beside it could stand
-    in for the module or a module-path variable is set), `virtualenv` or `uv venv`, given no option this does not know.
-    None for anything else (the coordinator, 2026-11-16: a venv made and activated in one line)."""
+    in for the module, which the reader of its program would otherwise read), `virtualenv` or `uv venv`, given no option
+    this does not know. None for anything else (the coordinator, 2026-11-16: a venv made and activated in one line)."""
     head = os.path.basename(words[0]) if words else ""
     if head.startswith("python") and SCRIPT.match(head) and words[1:3] in (["-m", "venv"], ["-m", "virtualenv"]):
-        if _stand_in("", here, words[2]) or os.environ.get("PYTHONPATH") or os.environ.get("PYTHONHOME"):
+        if _stand_in("", here, words[2]):
             return None
         rest = words[3:]
     elif head == "virtualenv" or (head == "uv" and words[1:2] == ["venv"]):
