@@ -6,7 +6,7 @@ Contents:
 - Identify the Collaborators
 - Attribute Errors Correctly
 - No Fake Human Collaborators
-- Scope Appropriateness: which site a topic belongs on
+- Scope Appropriateness: which collection a topic belongs in
 - Open Source Authenticity
 - Confidentiality Boundaries
 - Perception Management
@@ -61,12 +61,15 @@ When describing failures or lessons learned:
 
 ## Scope Appropriateness
 
-| Topic | Belongs On |
+The synthesis practices share one site, synthesiswork.org, with a collection for each; the former
+synthesiscoding.org, synthesisengineering.org and synthesiswriting.org addresses redirect to theirs.
+
+| Topic | Belongs In |
 |-------|-----------|
-| Hands-on coding practices with AI | synthesiscoding.org |
-| Organizational/leadership frameworks | synthesisengineering.org |
+| Hands-on coding practices with AI | the coding collection (synthesiswork.org/engineering/coding/) |
+| Organizational/leadership frameworks | the engineering collection (synthesiswork.org/engineering/) |
 | Human team communication | NOT synthesis coding |
-| Project management for AI workflows | synthesisengineering.org |
+| Project management for AI workflows | the project-management collection (synthesiswork.org/project-management/), also listed under engineering |
 
 **Test:** Does the article describe working with AI agents on software or software project management? If it describes AI-assisted writing or content creation, it doesn't belong in public synthesis content.
 
@@ -130,8 +133,8 @@ Each article should have a clear primary audience.
 | Engineering Lead | Team practices, code quality, process | Workflow patterns, review processes, team coordination |
 | Individual Engineer | Daily workflow, skill development | Hands-on techniques, tool usage, career relevance |
 
-**synthesiscoding.org** — Primarily engineers and engineering leads
-**synthesisengineering.org** — Primarily CTOs, CPOs, and business leaders
+**The coding collection** (synthesiswork.org/engineering/coding/) — Primarily engineers and engineering leads
+**The engineering collection** (synthesiswork.org/engineering/) — Primarily CTOs, CPOs, and business leaders
 
 ---
 
@@ -222,7 +225,7 @@ State the primary audience in the opening paragraphs or as part of the article's
 Each article should acknowledge its place in the broader synthesis engineering/coding series.
 
 **Patterns:**
-- Link to synthesiscoding.org or synthesisengineering.org as the series home
+- Link to the coding collection (https://synthesiswork.org/engineering/coding/) or the engineering collection (https://synthesiswork.org/engineering/) as the series home
 - Reference "the synthesis engineering series" or "the synthesis coding series"
 - Include a closing note like: "This article is part of the synthesis engineering series."
 - Cross-link to related articles for deeper dives on specific topics

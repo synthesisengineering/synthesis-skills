@@ -759,6 +759,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled look-alike (a
   program built, copied or linked under such a name) is judged by its name, on the open list as crafted
   (`docs/runtime-integration.md`).
+- **Site addresses follow the published sites.** The synthesis practices now share one site, synthesiswork.org, with a
+  collection for each, and the former synthesiscoding.org, synthesisengineering.org and synthesiswriting.org addresses
+  redirect to those collections. Each link now names the address its old one redirects to: the "synthesis writing"
+  footer link in 19 skill files (`https://synthesiswork.org/writing/`), the ecosystem footer of the slop-detection
+  manifest and prompt template and the homepage in the Claude Code plugin and marketplace manifests, the Codex
+  manifest and the directory package (`https://synthesiswork.org/engineering/`), and the README's related links,
+  including the two articles' new homes. synthesis-content-framing 2.0.1 routes topics to the coding, engineering and
+  project-management collections and keeps the replaced lines in its coverage map. The content-quality no-removals
+  allowlist records the seven frozen baseline lines whose link changed, each with its exact old and new text.
+  tools.synthesiswriting.org is unchanged.
 
 ## [5.23.2] - 2026-11-15
 

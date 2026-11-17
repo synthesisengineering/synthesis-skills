@@ -74,4 +74,4 @@ Detailed catalog content lives in the [references/](./) subfolder:
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft. The methodology is durable. The catalog refreshes as model behavior shifts. Newsrooms and editorial workflows are the audience this skill serves.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. The methodology is durable. The catalog refreshes as model behavior shifts. Newsrooms and editorial workflows are the audience this skill serves.

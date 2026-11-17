@@ -28,4 +28,4 @@ The methodology in v1.1.0 (the tier system, the confidence-based evaluation proc
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft. The methodology is durable. The catalog refreshes as AI-generated content reshapes the source ecosystem. Newsroom fact-checkers, journalism integrity organizations, and academic citation auditors are the audience this skill serves.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft. The methodology is durable. The catalog refreshes as AI-generated content reshapes the source ecosystem. Newsroom fact-checkers, journalism integrity organizations, and academic citation auditors are the audience this skill serves.

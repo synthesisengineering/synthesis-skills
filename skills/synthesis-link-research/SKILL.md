@@ -119,4 +119,4 @@ For common names or ambiguous entities, confirm the context matches before provi
 
 ## Related
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.

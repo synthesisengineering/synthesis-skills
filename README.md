@@ -536,11 +536,11 @@ and so do each collection's; every collection carries both license files.
 ## Related
 
 - Many of these skills are practical artifacts of
-  [synthesis engineering](https://synthesisengineering.org), including
-  [synthesis coding](https://synthesiscoding.org),
-  [synthesis writing](https://synthesiswriting.org) and
-  [synthesis project management](https://synthesisengineering.org/blog/2025/12/14/ai-native-project-management/).
-- [The article that introduced these skills](https://synthesiscoding.org/blog/2026/03/18/synthesis-skills-install-methodology-into-your-ai-workflow/)
+  [synthesis engineering](https://synthesiswork.org/engineering/), including
+  [synthesis coding](https://synthesiswork.org/engineering/coding/),
+  [synthesis writing](https://synthesiswork.org/writing/) and
+  [synthesis project management](https://synthesiswork.org/blog/2025/12/14/ai-native-project-management/).
+- [The article that introduced these skills](https://synthesiswork.org/blog/2026/03/18/synthesis-skills-install-methodology-into-your-ai-workflow/)
   (March 2026; its install steps predate version 5).
 - [Slopcheck](https://tools.synthesiswriting.org/slopcheck/): the content-quality and
   fact-checking methods as a web page.

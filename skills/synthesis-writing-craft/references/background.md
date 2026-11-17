@@ -34,6 +34,6 @@ For more on each book and how to choose where to start, see [`references/recomme
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.
 
 This skill draws on the writing-craft tradition. For the working bibliography and recommended reading, see [`references/recommended-reading.md`](recommended-reading.md). The skill is intended for AI agents assisting writers; humans should read the original works.

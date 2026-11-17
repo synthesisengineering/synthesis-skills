@@ -22,4 +22,4 @@ This skill is also the procedural workaround for the well-known curse-of-knowled
 - [`synthesis-article-writing`](../../synthesis-article-writing/SKILL.md) — depends on this skill; Phase 0 of the article-writing workflow is the briefing.
 - [`synthesis-fact-checking`](../../synthesis-fact-checking/SKILL.md) — pairs with the article-writing skill's translation-pass re-verification step. After de-jargoning, every concrete claim is re-verified.
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.

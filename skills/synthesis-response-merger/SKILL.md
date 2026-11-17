@@ -68,4 +68,4 @@ Follow the plan and produce the unified output.
 
 ## Related
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.
