@@ -22,4 +22,4 @@ This skill was distilled from real report-revision cycles between technology lea
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists. For technology leaders whose most important readers don't read code.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists. For technology leaders whose most important readers don't read code.

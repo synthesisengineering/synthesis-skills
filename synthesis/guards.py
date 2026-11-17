@@ -20,6 +20,20 @@ from datetime import date, datetime, timezone
 
 from synthesis import approvals, paths
 
+
+class _Pattern:
+    """A regular expression compiled the first time a call uses it, not as the guard loads: a normal call uses few of
+    them, and compiling every one as the module loaded was most of the hook's cost (the coordinator, 2026-11-16). Its
+    first use keeps the compiled pattern's own methods, so each later call goes straight to them."""
+    def __init__(self, pattern: str, flags: int = 0):
+        self.pattern, self._flags = pattern, flags
+
+    def __getattr__(self, name: str):  # only a name it does not hold yet
+        compiled = re.compile(self.pattern, self._flags)
+        vars(self).update((n, getattr(compiled, n)) for n in ("search", "match", "fullmatch", "finditer", "findall", "sub", "subn", "split",
+                                                                "flags", "groups", "groupindex"))
+        return getattr(compiled, name)
+
 DEFAULT_SEND_TOOLS = [
     "mcp__*slack*send_message*", "mcp__*slack*schedule_message*", "mcp__*gmail*send*",
     "mcp__*send_gmail_message*", "mcp__*draft_gmail_message*", "mcp__*create_draft*",
@@ -33,7 +47,7 @@ DEFAULT_DEPLOY_PATTERNS = [
     r"\S*publish_drive\.py\b",  # the knowledge base's Drive copy: a script's own upload is not in the command's text
 ]
 SHEET_SCRIPT = os.path.join("skills", "synthesis-action-sheet", "scripts", "publish_sheet.py")
-SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
+SEPARATORS = _Pattern(r"\s*(?:&&|\|\||;|\||\n)\s*")
 GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"}
 
 # --- sends (R3.1) -------------------------------------------------------------------------------
@@ -68,20 +82,20 @@ FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
 FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
                     "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
 ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
-CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
-CONTENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
+CONTROL = _Pattern(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
+CONTENT_ID = _Pattern(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
 SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
                           "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
 SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
                   "~/.kube", "~/.gnupg", "~/.config/gcloud")
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
-LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
+LOOKS_HTML = _Pattern(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
                         r"(?:\s[^<>]*)?/?>", re.I)
-MARKDOWN = re.compile(r"\]\(\s*(?:https?|mailto):|\*\*[^*\n]+\*\*|^#{1,6} \S", re.M)
-LINKED = re.compile(r"href\s*=\s*(?:\"[^\"]*\"|'[^']*')|<(?:https?|mailto):[^>|\s]*(?:\|[^>]*)?>"
+MARKDOWN = _Pattern(r"\]\(\s*(?:https?|mailto):|\*\*[^*\n]+\*\*|^#{1,6} \S", re.M)
+LINKED = _Pattern(r"href\s*=\s*(?:\"[^\"]*\"|'[^']*')|<(?:https?|mailto):[^>|\s]*(?:\|[^>]*)?>"
                     r"|\]\((?:https?|mailto):[^)]*\)")
-BLOCK_START = re.compile(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
+BLOCK_START = _Pattern(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
 
 
 def is_send_tool(tool: str, config: dict) -> bool:
@@ -171,16 +185,16 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
            ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev",
            ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
-HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
-NAMED = re.compile(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
+HOSTNAME = _Pattern(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
+NAMED = _Pattern(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
 _HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
 # A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
 # name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
 # host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
-LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
+LOCAL = _Pattern(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
 NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")  # the private ranges, the shared one
 # (a carrier's, and a tailnet's addresses: the knowledge-base connector refuses it too) and IPv6's unique-local one
-FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
+FILED = _Pattern(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
 
 
 def _only_here(m, low: str) -> str:
@@ -673,21 +687,24 @@ def check_upload(tool: str, tool_input: dict) -> str | None:
 
 
 @_entry
-def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
-    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none). One
+def check_send(tool: str, tool_input: dict, config: dict, session: dict | None = None, run: dict | None = None) -> str | None:
+    """session: the hook payload, whose transcript shows who typed an approval (a shell's script passes none); run: the
+    messages sender's own run (its file, its arguments, its folder), which takes the ticket its command filed. One
     send is judged at a time: the code that lets a message go spends its other code before an identical call is
     looked at."""
     with approvals.alone():
-        return _judged_send(tool, tool_input, config, session)
+        return _judged_send(tool, tool_input, config, session, run)
 
 
-def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None) -> str | None:
+def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None, run: dict | None = None) -> str | None:
+    from synthesis import sends
+    if tool in ("imessage_send", "messages_send"):  # the messages sender's: the session whose guard let it run, never one it names
+        session = sends.ticket(run)
     files: dict = {}  # each file the connector will read, with the hash of its bytes: an approval of a path alone let
     # a copy replaced in the outbox after the principal's code go out in its place (as the iMessage sender binds a photo)
     problems = message_problems(tool, tool_input, config, session=session) or _unread_files(tool, tool_input, files)
     if problems:
         return "This message can't go out as written: " + "; ".join(problems[:6]) + "."
-    from synthesis import sends
     subject, chan = {"tool": tool, "input": tool_input, **({"files": files} if files else {})}, sends.channel(tool, tool_input)
     summary = f"{tool}: " + " ".join(t for _, t in _strings(tool_input))[:160]
     others = _invited_today(tool, tool_input, config)  # a meeting on today has an approval of its own; no window covers it
@@ -697,13 +714,24 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
     timed = _time_without_calendar([t for _, t in _strings(tool_input)], config, session) if to_a_person(tool, tool_input, config) else None
     if timed and timed.startswith("fresh_calendar"):
         return timed
+    entry = None if files or others or _fetches(tool_input) else (lambda e: sends.call_entry(e, tool, tool_input))  # what
+    # a batch may cover: nothing the connector fetches or reads when the call runs (a batch binds words, not what a path
+    # or a url holds then), and no meeting on today
     if timed is not None and approvals.consume("send-time", subject, session):  # released as it is, by the code that says so
         _void("send", subject)  # one message, one release: a second copy asks again
+        if entry:  # and a batch's entry for it is spent with it, given back if the call is held
+            sends.batch_spend(entry, session, after=_after)
         _logged(chan, tool, summary, "approval", session)
         return None
     if timed:  # asked before any other code, and again when the approved call comes
         code = approvals.request("send-time", subject, f"{tool}, a time in its words and no calendar read: {summary[len(tool) + 2:][:100]}")
         return timed.replace("{code}", approvals.how(code))
+    how = sends.batch_spend(entry, session, after=_after) if entry else ""  # after every check above, before the window
+    if how:  # its records, as the other sends', stand only if the call is let through (review round 7, #3)
+        _logged(chan, tool, summary, how, session)
+        _void("send", subject)
+        _void("send-time", subject)
+        return None
     if not others and sends.covered(chan, [t for _, t in _strings(tool_input)], _project(session), config):
         mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
         _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
@@ -731,6 +759,18 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
                "principal too: one changed before the call needs a new code." if files else ""))
 
 
+FETCHES = _Pattern(r"(?i)url|uri|link|path|file|attach|upload|download|media|image|photo|picture|video|audio|voice|blob"
+                     r"|sticker|thumb|avatar")  # a key naming what a call fetches, reads or carries (a photo: 5.24.0's review)
+
+
+def _fetches(value) -> bool:
+    """Whether a call's input names, at any depth, something its connector fetches or reads when the call runs: a url,
+    a path, an attachment (the review of 5.23.0: a mail's attachment fetched from a url hours after the batch was read)."""
+    if isinstance(value, dict):
+        return any(FETCHES.search(str(k)) or _fetches(v) for k, v in value.items())
+    return isinstance(value, list) and any(_fetches(v) for v in value)
+
+
 # 2026-10-27: a series moved to a new hour brought back an occurrence canceled at the old hour, double-booked.
 RESHAPE = (" This deletes an event or sets its time or recurrence: in the same message, list its occurrences from today"
            " through the next three, canceled and moved ones included, each checked against accepted meetings (a series'"
@@ -751,11 +791,11 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # calendar. Replayed over recorded messages (2026-11-13): of 451 distinct messages sent to people on 76 days, 143
 # named a clock time, about six in ten of those were about when people meet, and 54 went with a calendar read in the
 # ten minutes before.
-CLOCK = re.compile(r"(?i)(?:(?<![\w:=/.+#])(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm, and the 3pm of 2-3pm
+CLOCK = _Pattern(r"(?i)(?:(?<![\w:=/.+#])(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm, and the 3pm of 2-3pm
                    r"|(?<![\w:=/.+#-])(?:(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[ap]\b|h\b)?(?![\w:])"  # 14:00, 3:30p, 14:00h; no part of 1:23:45, of a stamp, of an offset or of an address
                    r"|(?:[01]?\d|2[0-3])h[0-5]\d\b))")  # 15h30
-CALENDAR_READ = re.compile(r"(?:get|list|search|list[_-]all)[_-]events?$")
-CALENDARS = re.compile(r"calendar|gcal|caldav|__(?:google[_-])?workspace(?:[_-]mcp)?__")  # what says, in a tool's whole name, that its events are a calendar's
+CALENDAR_READ = _Pattern(r"(?:get|list|search|list[_-]all)[_-]events?$")
+CALENDARS = _Pattern(r"calendar|gcal|caldav|__(?:google[_-])?workspace(?:[_-]mcp)?__")  # what says, in a tool's whole name, that its events are a calendar's
 PERSON = ("email", "slack", "chat", "messages")  # the channels on which a message reaches a person
 CARRIES = {"send", "reply", "forward", "draft", "drafts", "message", "messages", "dm"}  # what a tool's name says when it carries one
 
@@ -853,9 +893,9 @@ def _time_without_calendar(texts: list, config: dict, session: dict | None) -> s
 # requester had said "tomorrow or Monday". The principal approved every invitation, and no approval said it was today.
 
 START_KEYS = frozenset({"start", "start_time", "startTime", "start_datetime", "startDateTime", "start_date", "startDate"})
-ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+ADDRESS = _Pattern(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
-WRITTEN = re.compile(r"\b(?:(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?|([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?)\s+(\d{4})\b")  # 9 November 2026; Nov 9, 2026
+WRITTEN = _Pattern(r"\b(?:(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?|([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?)\s+(\d{4})\b")  # 9 November 2026; Nov 9, 2026
 
 
 def _today() -> date:
@@ -873,9 +913,9 @@ def _starts(value):
         yield from _starts(item)
 
 
-GUESTS = re.compile(r"attend|guest|invite|particip", re.I)
+GUESTS = _Pattern(r"attend|guest|invite|particip", re.I)
 ADDRESS_KEYS = ("email", "address", "emailAddress", "mail")  # an entry's own address; a display name can look like one
-CALENDAR_WRITE = re.compile(r"(?:create|update|manage|move)[_-]events?$")
+CALENDAR_WRITE = _Pattern(r"(?:create|update|manage|move)[_-]events?$")
 
 
 def _invitees(value, inside: bool = False):
@@ -1247,7 +1287,7 @@ PUTS = ("form_input", "file_upload", "upload_image", "javascript_tool")  # and a
 READS, STILL = ("get_page_text", "read_page", "find"), ("screenshot", "wait", "scroll", "scroll_to", "zoom", "hover")  # what cannot move a tab
 QUIET_KEYS = {"escape", "esc", "tab", "up", "down", "left", "right", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown", "home", "end", "f5"}
 QUIET_CHORDS = {"cmd+r", "ctrl+r", "cmd+c", "ctrl+c", "cmd+a", "ctrl+a", "cmd+f", "ctrl+f"}  # reload, copy, select, find: nothing is put
-MAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+MAIL = _Pattern(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
 def named_sites(meta: dict) -> list | None:
@@ -1373,7 +1413,8 @@ def _puts(step: str, given: dict) -> bool:
     kind = step.rpartition("__")[2]
     chords = [[MODIFIERS.get(part, part) for part in chord.split("+")] for chord in str(given.get("text") or "").lower().split()]
     quiet = bool(chords) and all(chord[-1].replace("_", "") in QUIET_KEYS or "+".join(chord) in QUIET_CHORDS for chord in chords)
-    return kind in PUTS or kind == "computer" and (given.get("action") == "type" or given.get("action") == "key" and not quiet)
+    return kind in PUTS or kind == "computer" and (given.get("action") == "type" or given.get("action") == "key" and not quiet) or (
+        kind == "navigate" and _script_address(str(given.get("url") or "")) is not None)  # a javascript: address is a script
 
 
 def _account_hold(name: str, tool_input: dict, named: list, config: dict, device: str, label: str, session: dict | None) -> str | None:
@@ -1384,7 +1425,7 @@ def _account_hold(name: str, tool_input: dict, named: list, config: dict, device
     steps = tool_input.get("actions") if name == "browser_batch" else [{"name": name, "input": tool_input}]
     if not any(_puts(str(s.get("name", "")), s["input"]) for s in steps or [] if isinstance(s, dict) and isinstance(s.get("input"), dict)):
         return None  # a call that puts nothing reads no record
-    for step, given, address in _steps(name, tool_input, session):
+    for step, given, address, _ in _steps(name, tool_input, session, tool=BROWSER + name):
         if not _puts(step, given):
             continue
         if not address:  # a tab no list of tabs in the record names, or one a step sent where no host is named
@@ -1444,18 +1485,22 @@ OUTPUTS = frozenset({"<>", "&>>!", "&>>|", "&>>", "&>!", "&>|", "&>", ">>&!", ">
 REDIRECTS = OUTPUTS | {"<<<", "<&", "<", ">&"}
 SHIELD = str.maketrans("{},", "\1\2\3")  # a quoted brace or comma takes no part in brace expansion
 UNREAD_INPUT = "\0unread-input"  # stands for a script on a program's input that the guard could not read
-PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
+PLAIN = _Pattern(r"[^\s'\"\\`$#;&|()<>]+")
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
 STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
-INTERPRETER = re.compile(r"(node|bun|deno|python(\d+(\.\d+)*)?)$")  # python3.12 runs scripts too
+INTERPRETER = _Pattern(r"(node|bun|deno|python(\d+(\.\d+)*)?)$")  # python3.12 runs scripts too
 KEYWORDS = frozenset({"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "time", "fi", "done"})
 # Commands that run the command after their own options; the set holds options that take a value.
 WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "command": set(), "exec": {"-a"},
             "nohup": set(), "time": set(), "nice": {"-n", "--adjustment"},
             "timeout": {"-s", "--signal", "-k", "--kill-after"}, "sudo": {"-u", "-g", "-h", "-p", "-C", "-D", "--chdir", "-U"},
             "xargs": {"-I", "-L", "-n", "-P", "-s", "-d", "-E", "-a"}, "npx": {"-p", "--package"},
-            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}}
+            "bunx": set(), "pnpx": set(), "caffeinate": set(), "arch": {"-arch"}, "uvx": {"--from", "--with", "--python", "-p"}}
+RUNNERS = {"uv": {"--with", "--python", "-p", "--project", "--directory", "--package", "--group", "--extra", "--env-file", "--index"},
+           "poetry": {"-C", "--directory", "-P", "--project"}, "pipx": {"--spec", "--python", "--pip-args", "--index-url"},
+           "pdm": {"-p", "--project"}, "hatch": set(), "rye": set(), "pipenv": set(), "conda": {"-n", "--name", "-p", "--prefix", "--cwd"},
+           "mamba": {"-n", "--name", "-p", "--prefix"}}  # `<tool> run`, with each one's options that take a value
 
 
 def _close(s: str, i: int, opener: str) -> int:
@@ -1606,8 +1651,8 @@ def _lex(s: str) -> list:
             tokens += [("sub", x) for x in subs]
             word.append(text.translate(SHIELD))
             started = True
-        elif c == "`" or (s.startswith("$(", i) and not s.startswith("$((", i)):
-            start = i + (1 if c == "`" else 2)
+        elif c == "`" or (s.startswith("$(", i) and not s.startswith("$((", i)) or s.startswith(("<(", ">("), i):
+            start = i + (1 if c == "`" else 2)  # a process substitution is a file's name to the command, its script run beside it
             end = _close(s, start, c if c == "`" else "(")
             tokens.append(("sub", s[start:end - 1]))
             word.append(s[i:end].translate(SHIELD))
@@ -1666,12 +1711,57 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
     return i
 
 
+def _clause(tokens: list, at: int) -> tuple:
+    """Where a `case` clause's patterns that start at `at` end, past their `)`, with False; where the statement's `esac`
+    ends, with True; or (None, False) when what is there is no pattern list on one line. A line with a `)` no pattern
+    list explains is one the shell refuses whole, so a list closed on its line runs nothing whatever the shell reads."""
+    while at < len(tokens) and tokens[at][:2] in (("op", "\n"), ("op", ";")):
+        at += 1
+    if at < len(tokens) and tokens[at][:2] == ("w", "esac"):
+        return at + 1, True
+    at, word = at + (at < len(tokens) and tokens[at][:2] == ("op", "(")), True  # word: a pattern comes next
+    for at in range(at, len(tokens)):
+        kind, value = tokens[at][:2]
+        if kind != "sub" and not ((word and kind == "w") or (not word and kind == "op" and value == "|")):
+            return (at + 1, False) if not word and (kind, value) == ("op", ")") else (None, False)
+        word = word if kind == "sub" else not word
+    return None, False
+
+
+def _uncased(tokens: list) -> list:
+    """The tokens with each `case` statement's own words taken out: `case WORD in`, each clause's patterns with the `(`
+    before them and the `)` after (`_clause`), and `esac`, none of which is a command (the integration review of 5.24.0:
+    `case "$f" in ./a.md|./b.md) continue;; esac` was read as a pipeline that ran each file as a script). A substitution
+    among them stays, since it runs, and so does each clause's body."""
+    out, opened, start, at, expect = [], 0, True, 0, False  # case statements open; a command's first word next; a clause next
+    while at < len(tokens):
+        kind, value = tokens[at][:2]
+        if expect:
+            end, closing = _clause(tokens, at)
+            expect, opened = False, opened - (end is None or closing)
+            if end is not None:
+                out, at, start = out + [t for t in tokens[at:end] if t[0] == "sub"], end, not closing
+                continue
+        words = [k for k in range(at + 1, len(tokens)) if tokens[k][0] != "sub"][:2] if kind == "w" and value == "case" and start else []
+        if len(words) == 2 and tokens[words[0]][0] == "w" and tokens[words[1]][:2] == ("w", "in"):  # the word cased: its substitutions run
+            out, at, opened, expect = out + [t for t in tokens[at + 1:words[1]] if t[0] == "sub"], words[1] + 1, opened + 1, True
+            continue
+        if opened and kind == "w" and value == "esac" and start:  # the last clause, with no `;;` after it
+            opened, start, at = opened - 1, False, at + 1
+            continue
+        out.append(tokens[at])
+        expect = bool(opened) and kind == "op" and (value == ";;" or (value == ";" and tokens[at + 1:at + 2] == [("op", "&")]))
+        at += 1 + (expect and tokens[at + 1:at + 2] == [("op", "&")])  # `;&` and `;;&` go on to the next clause as `;;` does
+        start = kind == "op" or (kind == "w" and value in KEYWORDS)
+    return out
+
+
 def _simple(tokens: list) -> list:
     """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in, files written,
-    link). The link is "&&" when only `&&` stands between a command and the one before it, so it runs only if that
-    one succeeded; "||" when it runs only if that one failed; "" otherwise."""
+    link, the operator after it). The link is "&&" when only `&&` stands between a command and the one before it, so it
+    runs only if that one succeeded; "||" when it runs only if that one failed; "" otherwise."""
     items, words, stdin, scripts, skip, piped, writes, before = [], [], [], [], "", False, [], []
-    for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
+    for kind, *rest in _uncased(tokens) + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
             if skip == "<<<":
                 stdin.append((rest[0], True))
@@ -1691,7 +1781,7 @@ def _simple(tokens: list) -> list:
         else:
             if words or stdin or scripts or writes:
                 link = before[0] if before[:1] in (["&&"], ["||"]) and set(before[1:]) <= {"\n"} else ""  # `&&` may end a line
-                items.append((words, stdin, scripts, piped, writes, link))
+                items.append((words, stdin, scripts, piped, writes, link, rest[0]))
                 before = []
             before.append(rest[0])
             words, stdin, scripts, skip, writes = [], [], [], "", []
@@ -1701,15 +1791,19 @@ def _simple(tokens: list) -> list:
     return items
 
 
-def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[str]]:
+def _bare(words: list[str], moved: list | None = None, started: list | None = None) -> tuple[list[str], list[str]]:
     """The command a line runs, past assignments, keywords and wrappers like env or timeout, plus
-    any script a wrapper takes as text (eval, env -S)."""
+    any script a wrapper takes as text (eval, env -S). `started` collects each program word taken off, with the
+    words after it: a program judged by its name, and looked at (`_look_alike`)."""
     scripts: list[str] = []
     while words:
         head = os.path.basename(words[0])
         if words[0] in KEYWORDS or re.match(r"[A-Za-z_]\w*=", words[0]):
             words = words[1:]
             continue
+        if started is not None and (head == "eval" or head in WRAPPERS or (head == "script" and len(words) > 1) or (
+                head == "launchctl" and words[1:2] in (["asuser"], ["bsexec"]))):
+            started.append((words[0], words[1:]))
         if head == "eval":
             return [], scripts + [" ".join(words[1:])]
         if head == "command" and words[1:2] in (["-v"], ["-V"]):
@@ -1724,6 +1818,15 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
         if head == "launchctl" and words[1:2] in (["asuser"], ["bsexec"]):  # the command it runs as a user or in a session
             words = words[3:]
             continue
+        if head in RUNNERS and words[1:2] == ["run"]:  # `uv run`, `poetry run` and their like: the command they run, a .py file as
+            i = 2  # Python runs it (review round 1 of 22.19, finding 1)
+            while i < len(words) and words[i].startswith("-") and words[i] != "--":
+                i += 2 if words[i] in RUNNERS[head] else 1
+            words = words[i + (words[i:i + 1] == ["--"]):]
+            words = ["python3"] + words if words[:1] and words[0].endswith(".py") else words
+            continue
+        if re.fullmatch(r"ipython[\d.]*", head):  # IPython runs `-c` and a file as Python does
+            return ["python3"] + words[1:], scripts
         if head not in WRAPPERS:
             break
         takes, i = WRAPPERS[head], 1
@@ -1748,8 +1851,8 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
     return words, scripts
 
 
-POSITIONAL = re.compile(r"\$(?:\{(\d+|[@*])\}|([\d@*]))")
-REBOUND = re.compile(r"\bset\s+--|\bshift\b|\(\)\s*[{(]|\bfunction\s")  # the script gives $1 another value: a function's own, `set --`
+POSITIONAL = _Pattern(r"\$(?:\{(\d+|[@*])\}|([\d@*]))")
+REBOUND = _Pattern(r"\bset\s+--|\bshift\b|\(\)\s*[{(]|\bfunction\s")  # the script gives $1 another value: a function's own, `set --`
 
 
 def _placed(script: str, given: list[str]) -> str:
@@ -1835,34 +1938,338 @@ class Quoted(str):
     held for a path it is merely handed, since the word may be a message that mentions one."""
 
 
-PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
+class Run(list):
+    """A command's words; `wrapped` when an assignment or a wrapper (env, timeout, xargs and the rest of WRAPPERS) stood
+    in front of its program, which may give it an environment, a folder or words of its own; `clean` when no command
+    before it on the line may have written a file (`_walk`), which a script it runs is read with; `given`, the words in
+    front of its program as written, or None where the wrapper rewrote them (`_homes_apart`)."""
+    def __init__(self, words, wrapped: bool = False, clean: bool = False, given: list | None = None):
+        super().__init__(words)
+        self.wrapped, self.clean, self.given = wrapped, clean, given
+
+
+PLACE = _Pattern(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
 DEEP = "/**"  # after a folder a command runs in: that folder or any under it (`find -execdir` runs in the folder of what it found)
 OPAQUE = frozenset({"php", "lua", "luajit", "Rscript", "julia", "swift", "tclsh", "groovy", "scala", "elixir", "pwsh", "jshell"})
-MESSAGE = re.compile(r"--?(?:m|msg|message|body|title|subtitle|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
+MESSAGE = _Pattern(r"--?(?:m|msg|message|body|title|subtitle|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
 PROMPTED = frozenset({"codex", "claude", "muse", "gh", "say"})  # their words are prompts and messages: each runs under its own guards
 STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "perl", "tee", "touch", "truncate", "mkdir", "rmdir", "rm",
                       "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
+# A program under the name of a command the guard judges by name is read as what it is (22.32). The review of
+# 2026-11-15 (C9) named a script of its own `bash`, `python3`, `ls` or `git` and ran it by its path, or found first on
+# PATH in a folder the user writes: judged as that command, it was never read, and it replaced the runtime's guard in
+# nine forms of nine. The real commands are compiled programs or links to them; so a command word the guard trusts
+# that leads to a script is also judged as that script, under the rules for scripts, unless it is one of the commands
+# that really are scripts, where its installer puts it (`_installed`). 60 days of records (2026-09-16 to 2026-11-15,
+# 252,649 distinct commands): every such word led to a compiled program, a builtin, nothing, or a script of that list.
+COMPILED = (b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe",
+            b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca")  # ELF; Mach-O, thin and universal
+BUILTINS = frozenset(". : [ alias bg break cd command continue echo eval exec exit export false fc fg getopts hash jobs kill local "
+                     "printf pwd read readonly return set shift test times trap true type ulimit umask unalias unset wait".split())  # bash, zsh and dash each run these themselves
+SHIMS = (".pyenv", ".rbenv", ".nodenv", ".asdf", ".jenv", ".plenv", ".goenv", ".luaenv", ".phpenv")  # version managers: <root>/shims/<name>
+SHIM_ROOTS = ("PYENV_ROOT", "RBENV_ROOT", "NODENV_ROOT", "ASDF_DATA_DIR", "JENV_ROOT", "PLENV_ROOT", "GOENV_ROOT")
+NPM_BINS = ("npx", "pnpx", "tsx", "ts-node")  # the names it trusts that are npm packages' bins (JavaScript files)
+BREWED = ("groovy", "scala", "elixir", "jruby", "7z", "7za", "irb", "shasum", "gunzip", "zcat", "uncompress", "egrep", "fgrep",
+          "synthesis", *NPM_BINS)  # the names it trusts that a Homebrew formula installs as a script
+BREWS = ("/opt/homebrew", "/usr/local")  # Homebrew's prefixes on a Mac, beside HOMEBREW_PREFIX (`brew shellenv` sets it)
+HANDS_ON = _Pattern(r'#![^\n]*\n(?:[ \t]*(?:#[^\n]*)?\n)*[ \t]*exec[ \t]+("?)(/[^"\s$`]+)\1[ \t]+"\$@"[ \t]*(?:\n[ \t]*(?:#[^\n]*)?)*\n?')  # one line, `exec <path> "$@"`
+
+
+class LookAlike(str):
+    """The first word of the command a look-alike script really runs as, carrying where it was found (`found`) and the
+    name it took (`name`), so a hold can say what ran."""
+    found = name = ""
+
+
+def _trusted(name: str) -> bool:
+    """A command the guard judges by its name: a shell, an interpreter, a reader, a file utility, a wrapper, an editor,
+    an unpacker, or a program with rules of its own."""
+    return (name in SHELLS or name in READERS or name in WRITERS or name in OWN_RULES or name in EDITORS or name in WRAPPERS
+            or name in EXTRACTS or name in ("gsed", "open", "script", "launchctl")
+            or bool(SCRIPT.match(name) or UNREAD.match(name) or INTERPRETER.match(name)))
+
+
+def _compiled(real: str):
+    """True for a compiled program, False for any other regular file (a script: the system runs a text file with no `#!`
+    line with a shell), None for what is no regular file or cannot be read. Read once a call, its first four bytes."""
+    memo = _CALL["looks"]
+    if ("kind", real) not in memo:
+        found = _regular(real, 4)
+        memo[("kind", real)] = None if found is None else found[0][:4] in COMPILED
+    return memo[("kind", real)]
+
+
+def _root_owned(path: str) -> bool:
+    """The file and every folder above it owned by root and writable by neither this user nor its groups, as the
+    interpreter the launchers pin is chosen: what root installed, which no program of the agent's rewrites."""
+    memo, spot = _CALL["looks"], path
+    if ("root", path) not in memo:
+        while True:
+            try:
+                ok = not os.lstat(spot).st_uid and not os.access(spot, os.W_OK)
+            except OSError:
+                ok = False
+            if not ok or os.path.dirname(spot) == spot:
+                break
+            spot = os.path.dirname(spot)
+        memo[("root", path)] = ok
+    return memo[("root", path)]
+
+
+def _system_chain(found: str) -> bool:
+    """Whether `found`, each link it leads through and the file it reaches are all root's (`_root_owned`): a command root
+    installed where no program of the agent's can turn it elsewhere."""
+    spot = found
+    for _ in range(40):  # as many links as the kernel follows
+        if not _root_owned(spot):
+            return False
+        try:
+            spot = os.path.join(os.path.dirname(spot), os.readlink(spot)) if os.path.islink(spot) else ""
+        except OSError:
+            return False
+        if not spot:
+            return True
+    return False
+
+
+def _installed(name: str, real: str, found: str) -> bool:
+    """A script that really is the command `name`, where its installer puts it. Found in a system folder by a chain of
+    links root installed, every step in folders the user cannot write, whatever the file it reaches is named (the
+    integration review of 5.24.0: Ubuntu's /usr/bin/open leads through /etc/alternatives to the script xdg-open).
+    Anywhere else no program of the agent's writes, by its own name (a version or a suffix after it: `wish8.5`,
+    `which.debianutils`): one root installed, or the runtime's own launcher in its protected `bin/`. In a folder the
+    user writes, only a name that installer provides:
+    an npm package's bin (NPM_BINS) linked from its global folder (`<prefix>/bin/<name>` into `<prefix>/lib/node_modules/`,
+    or Debian's `<prefix>/share/nodejs/`) or a project's `node_modules/.bin/`; an interpreter's version manager shim;
+    a Homebrew formula's script (BREWED) in Homebrew's own Cellar. Anywhere, a script that only hands its words to a
+    compiled program of that name root installed (`exec /usr/bin/python3 "$@"`, as CI puts Apple's Python first): it is
+    that program. `found` is the path the command was found as, `real` where it leads."""
+    at, base, folder = os.path.dirname(found), os.path.basename(real), os.path.dirname(real)
+    if name in NPM_BINS and ((os.path.basename(at) == "bin" and any(paths.inside(real, _real(os.path.join(os.path.dirname(at), *w)))
+                                                                  for w in (("lib", "node_modules"), ("share", "nodejs")))) or (
+            os.path.basename(at) == ".bin" and os.path.basename(os.path.dirname(at)) == "node_modules" and paths.inside(real, _real(os.path.dirname(at))))):
+        return True
+    if _system_chain(found):
+        return True
+    if not re.fullmatch(re.escape(name) + r"[\d.]*(?:\.[a-z]+)?", base):
+        return False
+    hand = HANDS_ON.fullmatch((_regular(real, 4096) or (b"",))[0].decode("utf-8", "replace"))  # it hands every word on, unchanged
+    if hand and re.fullmatch(re.escape(name) + r"[\d.]*", os.path.basename(_real(hand[2]))) and _compiled(_real(hand[2])) and _root_owned(_real(hand[2])):
+        return True
+    if _root_owned(real) or any(paths.inside(real, _real(paths.home() / part)) for part in ("bin", "releases")):
+        return True
+    roots = {_real(os.environ[k]) for k in SHIM_ROOTS if os.environ.get(k)}
+    if (SCRIPT.match(name) or UNREAD.match(name) or INTERPRETER.match(name) or name in NPM_BINS) and base == name and (
+            os.path.basename(folder) == "shims" and (os.path.basename(os.path.dirname(folder)) in SHIMS or os.path.dirname(folder) in roots)):
+        return True
+    cellars = [os.environ.get("HOMEBREW_CELLAR", "")] + [os.path.join(p, "Cellar") for p in (os.environ.get("HOMEBREW_PREFIX", ""), *BREWS) if p]
+    return name in BREWED and any(c and paths.inside(real, _real(c)) for c in cellars)
+
+
+def _search_paths(command: str, cwd: str) -> list:
+    """The folders a command word may be looked up in, each list in the order the shell reads it: PATH as this process
+    has it, and each value the line gives PATH itself (`PATH=… cmd`, `export PATH=…`, `env PATH=…`), with `$PATH`, `~`
+    and the folder the line starts in (`$(pwd)`, `$PWD`) put in. A folder another substitution names is passed over."""
+    path = os.environ.get("PATH", "")
+    found = [path.split(os.pathsep)]
+    for m in ASSIGNED.finditer(command) if "PATH" in command else ():
+        if m[1] == "PATH":  # `PATH+=…` adds to it
+            value = (path if m[2] else "") + re.sub(r"\$\{PATH\}|\$PATH\b", lambda _: path, m[3].strip("'\""))
+            value = re.sub(r"\$\(\s*pwd\s*\)|`\s*pwd\s*`|\$\{PWD\}|\$PWD\b", lambda _: cwd, value)
+            value = re.sub(r"(^|:)~(?=/|:|$)", lambda u: u[1] + os.path.expanduser("~"), value)
+            found.append([f for f in value.split(os.pathsep) if not re.search(r"[$`]", f)])
+    return found
+
+
+def _look_alike(word: str, here: str, run_from_path: bool, line: dict) -> tuple:
+    """(where a command word the guard trusts was found, where that leads) when it leads to a script and not to the
+    compiled program the command really is, nor to one of the commands that really are scripts where its installer puts
+    it (`_installed`); ("", "") for any other. A word with a slash is that file; any other is looked up on each of
+    the line's search paths as the shell looks it up (a builtin the shell runs itself excepted, unless a program that
+    starts commands from PATH runs it: `run_from_path`), the first regular file it may run winning. A file the line
+    copies or links there is judged as what it copies; one it writes itself is a script, with the line as its text. A
+    word written as a pattern is the first file it names, as the shell expands it (`tools/l?`)."""
+    if re.search(r"[*?\[]", word) and not re.search(r"[$`]", word):
+        import glob  # only for a word written as a pattern
+        try:
+            made = sorted(f for f in (os.listdir(here) if "/" not in word else ()) if fnmatch.fnmatchcase(f, word) and (
+                f[:1] != "." or word[:1] == ".")) or sorted(glob.glob(os.path.join(here, os.path.expanduser(word))) if "/" in word else [])
+        except OSError:
+            made = []
+        word = made[0] if made else word
+    name = os.path.basename(word)
+    if not name or re.search(r"[$`*?\[]", word) or not _trusted(name) or ("/" not in word and not run_from_path and word in BUILTINS):
+        return "", ""
+    written = line["written"] if name in line["names"] else ()  # a file of that name the line writes
+    if "/" in word:
+        lists = [[os.path.normpath(os.path.join(here, os.path.expanduser(word)))]]
+    else:
+        lists = [[os.path.join(folder if os.path.isabs(folder) else os.path.join(here, folder), word) for folder in folders]
+                 for folders in line["paths"]]
+    for spots in lists:
+        for spot in spots:
+            made = written[_real(spot)] if written and _real(spot) in written else None  # "": its own content; else what it copies
+            if made == "" or (made and _compiled(made) is None):
+                return spot, _real(spot)
+            if made or "/" in word or _runnable(spot):
+                real = made or _real(spot)
+                if _compiled(real) is False and not _installed(name, real, spot):
+                    return spot, real
+                break  # the first program found is the one that runs
+    return "", ""
+
+
+def _runnable(spot: str) -> bool:
+    """A regular file this user may run, as the shell's lookup on PATH takes one (a folder or a link to nothing it passes
+    over). Asked once a call."""
+    memo = _CALL["looks"]
+    if ("run", spot) not in memo:
+        try:
+            memo[("run", spot)] = os.stat(spot).st_mode & 0o170000 == 0o100000 and os.access(spot, os.X_OK)
+        except (OSError, ValueError):
+            memo[("run", spot)] = False
+    return memo[("run", spot)]
+
+
+def _as_run(found: str, real: str, words: list, written: bool) -> list:
+    """The command a look-alike script really is, as the system starts it: the interpreter its `#!` line names, with
+    that line's words, then the script and the words it was given, `env` and its options taken off as `_bare` takes
+    them. /bin/sh for a text file with no `#!` line (what the shell does with one), for a file the line itself writes,
+    and for a line that would hand the script over as a command (`#!/bin/sh -c`). Its first word carries where it was
+    found and the name it took."""
+    first = b"" if written else (_regular(real, 256) or (b"",))[0]
+    shebang = first[2:].split(b"\n", 1)[0].decode("utf-8", "replace").split() if first[:2] == b"#!" else []
+    try:
+        run = _bare(shebang + [real] + list(words[1:]))[0] if shebang else []
+    except Unreadable:
+        run = []
+    if not run or run[0] == real or (os.path.basename(run[0]) in SHELLS and _shell_input(run)[0] is not None):
+        run = ["/bin/sh", real] + list(words[1:])
+    head = LookAlike(run[0])
+    head.found, head.name = found, os.path.basename(words[0])
+    return [head] + run[1:]
+
+
+def _made(words: list, here: str) -> list:
+    """(a file a command makes or rewrites, the file it is a copy or a link of, or "" for content of its own): where a
+    copier lands, what tee, dd and truncate write, what sed or perl edit in place. A command that only changes a file's
+    mode, owner or time changes no program it holds."""
+    head = os.path.basename(words[0]) if words else ""
+    if head not in COPIERS:
+        return [(os.path.join(here, os.path.expanduser(t)), "") for t in _landing(words)] if head in ("tee", "dd", "truncate", "sed", "gsed", "perl") else []
+    rest = [w for i, w in enumerate(words) if i and not w.startswith("-") and words[i - 1] not in VALUED.get(head, ())]
+    into = [m[1] or m[2] or "".join(words[i + 1:i + 2]) for i, m in enumerate(map(INTO.fullmatch, words)) if m and head != "rsync"] or rest[-1:]
+    sources, soft = [s for s in rest if s not in into], head == "ln" and any(re.fullmatch(r"-[A-Za-z]*s[A-Za-z]*|--symbolic", w) for w in words[1:])
+    return [(full, os.path.join(os.path.dirname(full) if soft else here, os.path.expanduser(s))) for d in into for s in sources
+            for full in [os.path.join(here, os.path.expanduser(t)) for t in [d] * (len(sources) == 1) + [os.path.join(d, os.path.basename(s.rstrip("/")))]]]
+
+
+def _looked(word: str, rest: list, here: str, from_path: bool, chain, needed: bool, feed, line: dict, found: list, runs, feeds) -> bool:
+    """Whether a command word is a look-alike: the command its script really is, and the one its `#!` line names when
+    that is a look-alike too, three deep, go into what the line runs (`found`, with `runs` and `feeds` beside it)."""
+    look, run, added = _look_alike(word, here, from_path, line), [word] + list(rest), False
+    for _ in range(3) if look[0] else ():
+        run, added = _as_run(look[0], look[1], run, line["written"].get(look[1]) == ""), True
+        found.append((run, here))
+        if runs is not None:
+            runs.append((chain, needed))
+        if feeds is not None:
+            feeds.append(feed())
+        look = _look_alike(run[0], here, True, line)
+        if not look[0]:
+            break
+    return added
+
+
+PLACINGS = 256  # the starting points a line's changes of folder may give its commands; past them the line waits (round 4)
+FOLDER_MOVE = _Pattern(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd|popd)(?=[\s;&|)`}]|$)")  # a change of folder in a script
+FOLDER_BUILTINS = frozenset({"cd", "pushd", "popd", "builtin", "command", "enable"})  # a function named so redefines how folders move
+
 
 def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None, runs: list | None = None,
-              feeds: list | None = None, prose: bool = False) -> list[tuple[list[str], str]]:
+              feeds: list | None = None, prose: bool = False, mode: dict | None = None, bodies: dict | None = None,
+              line: dict | None = None) -> list[tuple[list[str], str]]:
     """Each simple command a shell line runs, with the directory it runs in. Follows `cd`,
     subshells, substitutions, `bash -c`, eval, and scripts a shell reads from its stdin. `writes`
     collects (file, directory) for every redirect that writes a file. `runs` collects, for each
     command found and in the same order, (the `&&` chain it stands in, whether a later command of
     that chain runs only if this one ran and succeeded). `feeds` collects, the same way, the text each
-    command reads on its own stdin (its heredocs and here-strings)."""
+    command reads on its own stdin (its heredocs and here-strings). A command word the guard judges by
+    name that leads to a script (`_look_alike`) adds the command that script really is, after it.
+    `line` is the whole line's: its search paths, what it writes, and each word looked at.
+
+    A command is listed once for each folder it may run in (review rounds 3 and 4 of 5.23.1, M1 and Q1). A change of
+    folder may land where its text leads or where its real path does (`cd -P`, `set -P`, zsh's chase options: the guard
+    cannot know a user's shell options), under a CDPATH or cdpath entry the line or the environment gives, at a
+    variable's value (cdable_vars), at OLDPWD (`cd -`), where zsh's `cd old new` leads, or at a folder named as a
+    command (auto_cd). It may fail (no folder there when the guard looks, or a command before it that may make, remove,
+    move or change one), leaving the commands after its `&&` chain where they were, and a folder a reading found missing
+    stays missing in it; in a pipeline it moves only its own subshell (the last one's moves zsh), and a list sent to the
+    background leaves the shell where it was. Each such landing reads the rest of the line from there. One reading's
+    choices (`mode`) reach the scripts it nests and stay within this call: a check the guard runs for a program's own
+    commands starts its own."""
+    if mode is None:  # a line's own reading: by each change of folder's text, then, if one lands elsewhere physically, by its real path
+        top, line = line is None, line or {"paths": _search_paths(command, cwd), "written": {}, "names": set(), "later": []}
+        mode = {"real": False, "split": False, "quiet": prose, "wrote": 1 - bool(_CALL.get("clean")), "line": line, "sources": {  # wrote: commands that may have written a file
+            "CDPATH": [e for e in os.environ.get("CDPATH", "").split(":") if e], "OLDPWD": [os.environ["OLDPWD"]] if os.environ.get("OLDPWD") else [],
+            "vars": {}, "cdable": False, "autocd": False, "unread": False, "pathdirs": False}}
+        found = _commands(command, cwd, depth, writes, runs, feeds, prose, mode, bodies)
+        if mode["split"]:
+            mode.update(real=True, wrote=1 - bool(_CALL.get("clean")))
+            found += _commands(command, cwd, depth, writes, runs, feeds, prose, mode, bodies)
+        for word, rest, here, from_path, chain, needed, feed in line["later"] if top and line["names"] else ():
+            _looked(word, rest, here, from_path, chain, needed, feed, line, found, runs, feeds)  # a look-alike the line writes after a loop or a function names it
+        return found
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
-    found, outer, upstream, chain, back, stack = [], [], "", object(), cwd, []
-    for item in _simple(_lex(command)):
+    try:
+        items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "", False, frozenset(), frozenset())], set()
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        _cd_sources(command, mode, None)  # what it sets up is still read, its aliases as any it may define
+        raise
+    _cd_sources(command, mode, items)
+    while todo:
+        state = todo.pop()
+        if (*state[:5], repr(state[5]), *state[6:]) in seen:
+            continue
+        seen.add((*state[:5], repr(state[5]), *state[6:]))
+        if len(seen) > PLACINGS:
+            _CALL["unplaced"] = _CALL["unplaced"] or not mode["quiet"]
+            break
+        found += _walk(items, state, depth, writes, runs, feeds, prose, mode, todo, bodies)
+    return found
+
+
+def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: bool, mode: dict, todo: list, bodies: dict | None = None) -> list:
+    """The commands of a line read from one starting point (its item, the folder, the one before it, pushd's stack, the
+    subshells open, what the command before piped, whether a command before may have changed a folder, and the folders
+    this reading found there or missing): each landing of a change of folder past its first, and the folder a failed
+    one leaves the shell in after its `&&` chain, goes on `todo` as a starting point of its own."""
+    start, cwd, back, stack, outer, upstream, changed, present, gone = state
+    found, stack, outer, chain, pending, started, kept, after, made = [], list(stack), list(outer), object(), [], None, True, None, {}
+    line = mode["line"]  # the whole line's: its search paths, what it writes, and each word looked at (22.32)
+    for i, item in enumerate(items[start:], start):
+        if after:  # the list before was sent to the background: its changes of folder stay there
+            (cwd, back, stack), pending, after = after, [], None
+            stack = list(stack)
         if item in ("(", ")"):
             if item == "(":
-                outer.append((cwd, back, list(stack)))
+                outer.append((cwd, back, tuple(stack), tuple(pending)))
+                pending = []
             elif outer:
-                cwd, back, stack = outer.pop()  # a subshell's cd ends with it
+                cwd, back, stack, pending = outer.pop()  # a subshell's cd ends with it
+                stack, pending = list(stack), list(pending)
             continue
-        words, stdin, scripts, piped, targets, link = item
+        words, stdin, scripts, piped, targets, link, ended = item
+        changed, kept = changed or not kept, _keeps(words)
+        if link != "&&":  # a new chain: a change of folder before it may have failed, leaving the shell where it was
+            todo += [(i, *was[:3], tuple(outer), upstream, changed, *was[3:]) for was in pending]
+            pending = []
+        if link == "" and not piped:  # a list starts here: where `&` after it leaves the shell
+            started = (cwd, back, tuple(stack))
+        after = (started or (cwd, back, tuple(stack))) if ended == "&" else None
+        lead = next((os.path.basename(w) for w in words if w not in KEYWORDS and not re.match(r"[A-Za-z_]\w*=", w)), "")
         chain = chain if link == "&&" else object()
         opening = words[:next((i for i, w in enumerate(words) if w not in KEYWORDS), len(words))]
         needed = link != "||" and "!" not in opening  # after `||` it may be skipped; under `!` its failure is what counts
@@ -1870,13 +2277,23 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         for text, literal in stdin:
             if not literal:  # an unquoted heredoc expands its substitutions
                 _dquote(text, 0, scripts, "")
-        moved: list = []
-        words, inner = _bare(words, moved)
+        moved, fronts = [], []  # fronts: each program word _bare takes off in front of the command, with its words (22.32)
+        before, (words, inner) = words, _bare(words, moved, fronts)
+        wrapped = len(words) > len(before) or any(w not in KEYWORDS for w in before[:len(before) - len(words)])
+        given = before[:len(before) - len(words)] if words and before[len(before) - len(words):] == words else None
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
-            here = os.path.normpath(os.path.join(here, os.path.expanduser(folder)))
+            here = os.path.realpath(os.path.join(here, os.path.expanduser(folder)))  # env chdirs as the kernel does (round 2, N1)
         head, script = os.path.basename(words[0]) if words else "", words
+        named = [w for w in words[1:] if w != "--"][:1] if head in ("source", ".") else []
+        aim = os.path.join(here, os.path.expanduser(named[0])) if named else ""
+        own = made.get(os.path.normpath(aim), (-1, None))  # a venv's activate script a tool on the line made: (what had been written then, its && chain)
+        fresh = "/" in "".join(named) and not EXPANDS.search(aim) and not scripts and not mode["sources"]["pathdirs"] and not os.path.lexists(aim) and (
+            not mode["wrote"] or (own[0] == mode["wrote"] and own[1] is chain))  # not there, and nothing on the line may have written it: or the tool's own
+        read_in = [_code_of(aim)] * (bool(named) and not fresh)  # (the coordinator, 2026-11-16: `python3 -m venv .venv && source .venv/bin/activate`)
+        if not mode["quiet"] and (any(FOLDER_MOVE.search(s) for s in inner) or any(not t or FOLDER_MOVE.search(t) for t in read_in)):
+            _CALL["unplaced"] = True  # eval and source run in this shell, a trap between its commands: a cd there is not followed
         takes_in = bool(words) and bool((head in SHELLS and _shell_input(words)[1]) or ((SCRIPT.match(head) or UNREAD.match(head)) and _program(words)[0] == "stdin"))
         stdin = [((_code_of(os.path.join(here, os.path.expanduser(t[2:]))) or f"{UNREAD_INPUT} {t[2:]}") if takes_in else "", True)
                  if t.startswith("\0<") else (t, lit) for t, lit in stdin]  # its script, when it reads one there; else nothing it runs
@@ -1890,12 +2307,18 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
             head in OPAQUE or head in READERS - WORDS or head in ACTORS)  # a reader may still redirect: `date >> file`; a key press handed to `watch`
         if writes is not None and taken:
             writes += [(t, cwd) for t in targets]
+        if bodies is not None and words == ["cat"] and stdin:  # `cat > s.py <<'EOF'`: the file holds the heredoc's body
+            bodies.update({_real(os.path.join(cwd, os.path.expanduser(t))): "\n".join(text for text, _ in stdin) for t in targets})
+        for target, source in [(os.path.join(cwd, os.path.expanduser(t)), "") for t in targets] + _made(words, here) if taken else ():
+            if line["written"].get(_real(target)) != "":  # where a program it then runs may be; what it writes itself stays its own
+                line["written"][_real(target)] = _real(source) if source else ""
+            line["names"].add(os.path.basename(target))
         if words and (not taken or (_named(words) and head not in PROMPTED)):  # a word it is handed may be a script it runs: read as one
             for at, word in enumerate(words[1:], 1):
                 held = ([], [], [])
                 try:
                     said = MESSAGE.fullmatch(words[at - 1]) or (word.startswith("-") and MESSAGE.fullmatch(word.split("=", 1)[0]))
-                    inner = _commands(word, here, depth + 1, *held, prose=True) if " " in word and not said else []  # --body TEXT, --body=TEXT
+                    inner = _commands(word, here, depth + 1, *held, prose=True, line=line) if " " in word and not said else []  # --body TEXT, --body=TEXT
                 except (Unreadable, StopIteration, IndexError, RecursionError):
                     continue
                 found += [(w, Quoted(h)) for w, h in inner]
@@ -1904,35 +2327,60 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
                         mine += more
         if not taken:
             continue
+        venv = None if wrapped else _venvs(words, here)  # it ran only if the tool succeeded: in its && chain, after no `||` or `!`
+        made.update(dict.fromkeys(venv[0] if venv else (), (mode["wrote"], chain if venv and venv[1] and needed else None)))
+        clean = not mode["wrote"] and not scripts and not wrapped  # nothing before it may have written a file, nor its substitutions, nor in its environment
+        mode["wrote"] += bool(set(targets) - {"/dev/null"}) or not (not words or head in QUIET or venv or (head in SHELLS and any(_shell_input(words)[:2])))
         if words:
-            found.append((words, here))
+            found.append((Run(words, wrapped, clean, given), here))
             if runs is not None:
                 runs.append((chain, needed))
             if feeds is not None:
                 feeds.append("\n".join([text for text, _ in stdin] + [_piped(upstream)] * (piped and takes_in)))
-            if words[0] in ("cd", "pushd", "popd"):  # where the next command runs: `cd -` goes back, `popd` to the folder pushd left
-                to = next((w for w in words[1:] if w == "-" or not re.match(r"[-+]", w)), None)
-                turn = next((w for w in words[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
+            verb = words[1:] if words[0] == "builtin" else words
+            if verb[:1] and verb[0] in ("cd", "pushd", "popd") and lead in ("cd", "pushd", "popd", "builtin", "command") and ended not in ("|", "|&"):
+                # where the next command runs (`env cd` and `nohup cd` run a cd of their own, and one piped into another
+                # command moves only its own subshell): `cd -` goes back, `popd` to the folder pushd left
+                operands = [w for w in verb[1:] if w == "-" or not re.match(r"[-+]", w)]
+                to = operands[0] if operands else None
+                turn = next((w for w in verb[1:] if re.fullmatch(r"[-+]\d+", w)), "")  # +N from this folder, -N from the oldest
                 dirs = [cwd] + stack[::-1]  # the stack as the shell shows it: this folder first
                 at = (int(turn[1:]) if turn[:1] == "+" else len(dirs) - 1 - int(turn[1:])) % len(dirs) if turn else 0
-                aim = _led(os.path.expanduser(os.path.expandvars(to or "~")), cwd)
-                went = back if to == "-" else aim if aim[:1] in ("$", "`") else os.path.normpath(os.path.join(cwd, aim))
-                if words[0] == "cd":
-                    dirs[0] = went if to is not None or not turn else dirs[at]
-                elif words[0] == "popd":
-                    dirs = (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
-                else:  # pushd: a folder goes on top; a number turns the stack; alone, the top two change places
-                    dirs = [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
-                cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+                lands = [cwd] if verb[0] == "popd" else _landings(operands, cwd, back, mode)
+                aim = _moved(verb[0], dirs, lands[0], to, turn, at)[0]
+                if not changed and aim in gone:  # this reading had it fail before, and nothing since made it: it fails again
+                    lands = []
+                elif changed or not (aim in present or _enterable(aim)):  # no folder there now, or a command before may have
+                    pending.append((cwd, back, tuple(stack), present, gone | {aim}))  # made, removed or moved one: it may fail
+                    present = present | {aim}
+                for went in lands[1:] + [None] * (piped and bool(lands)):  # each other landing, and the last of a pipeline
+                    moved = _moved(verb[0], dirs, went, to, turn, at) if went else dirs  # in bash's own subshell: unmoved
+                    todo.append((i + 1, moved[0], cwd if went else back, tuple(moved[1:][::-1]), tuple(outer), f"{UNREAD_INPUT} {verb[0]}", changed,
+                                 present, gone))
+                if lands:
+                    dirs = _moved(verb[0], dirs, lands[0], to, turn, at)
+                    cwd, back, stack = dirs[0], cwd, dirs[1:][::-1]
+            elif (mode["sources"]["autocd"] and len(words) == 1) or (re.match(r"[$`]", words[0]) and words[1:]):
+                # a folder named as a command (auto_cd), or a command whose name this cannot read, which may be a cd
+                went = _landings(words[:1] if len(words) == 1 else words[1:2], cwd, back, mode)[0]
+                todo.append((i + 1, went, cwd, tuple(stack), tuple(outer), f"{UNREAD_INPUT} {head}", changed or not kept, present, gone))
             if os.path.basename(words[0]) == "find":  # what it runs with -exec is a command of its own, `{}` a file under each folder it
-                roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found
-                scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && " + shlex.join(w.replace("{}", "./{}") for w in run) if there
-                            else shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run, there in ran if run for root in roots]
+                roots, ran = _find(words)[0], _find(script)[1]  # searches; with -execdir it runs in the folder of what it found; it starts
+                scripts += [f"cd {shlex.quote(root.rstrip('/') + DEEP)} && env " + shlex.join(w.replace("{}", "./{}") for w in run) if there
+                            else "env " + shlex.join(w.replace("{}", os.path.join(root, "{}")) for w in run) for run, there in ran if run
+                            for root in roots]  # each from PATH, as env does, never as a shell's builtin
             script, reads, given = _shell_input(words)
             if script is not None:
                 scripts.append(_placed(script, given))
             elif reads:  # the shell runs whatever reaches its stdin
                 scripts += [_placed(text, given) for text in [text for text, _ in stdin] + ([_piped(upstream)] if piped else [])]
+        texts, up = [text for text, _ in stdin], (upstream if piped else None)  # what a look-alike reads on its stdin
+
+        def feed(texts=texts, up=up) -> str:
+            return "\n".join(texts + ([_piped(up)] if up is not None else []))
+        for at, (word, rest) in enumerate(fronts + ([(words[0], words[1:])] if words else [])):  # a wrapper's command is started from PATH
+            if not _looked(word, rest, here, at > 0, chain, needed, feed, line, found, runs, feeds):
+                line["later"].append((word, rest, Quoted(here) if prose else here, at > 0, chain, needed, feed))
         said, fill = words[1:], iter(words[2:])
         if head == "printf":  # what it prints: its format with its words put in
             said = [re.sub(r"%[-0-9.]*[sbqd]", lambda m: next(fill, ""), w) for w in said[:1]]
@@ -1940,8 +2388,204 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         upstream = (here, files) if files else "\n".join([t for t, _ in stdin] + said).replace("\\n", "\n") if head in ("echo", "printf", "cat") else (
             f"{UNREAD_INPUT} {head}")  # what another program prints into a shell cannot be read (finding 18)
         for script in scripts:
-            found += _commands(script, here, depth + 1, writes, runs, feeds)
+            found += _commands(script, here, depth + 1, writes, runs, feeds, False, mode, bodies)
     return found
+
+
+FOLDER_KEEPERS = frozenset("cd pushd popd dirs echo printf pwd true false : test [ [[ ls cat head tail wc grep egrep fgrep rg sort uniq "
+                           "cut tr date whoami id uname basename dirname realpath readlink stat file which type export set setopt unsetopt "
+                           "shopt unset local declare typeset read sleep wait printenv touch tee diff cmp jq less more".split())
+
+
+def _keeps(words: list) -> bool:
+    """Whether a command can neither make, remove, move nor change a folder, so whether a `cd` after it finds its
+    folder is what the guard sees now (round 4 of 5.23.1, Q1). A folder another process changes meanwhile is not seen."""
+    head = next((os.path.basename(w) for w in words if w not in KEYWORDS and w not in ("builtin", "command") and not re.match(r"[A-Za-z_]\w*=", w)), "")
+    return head in FOLDER_KEEPERS or not head
+
+
+QUIET = frozenset("cd pushd popd pwd echo printf true false : test [ [[ set ls which type dirname basename mkdir rmdir rm touch".split())  # put no text in a file
+EXPANDS = _Pattern(r"[$`*?\[\\]")  # a word the shell may expand: the name it reads is another
+VENV_OPTIONS = frozenset({"--clear", "--copies", "--symlinks", "--system-site-packages", "--without-pip", "--upgrade-deps", "--without-scm-ignore-files",
+                          "--seed", "--no-pip", "--no-setuptools", "--no-wheel", "-q", "--quiet"})  # none of them keeps an activate script that is there
+
+
+def _venvs(words: list, here: str) -> tuple | None:
+    """(The activate script of each venv it names plainly, or of `.venv`, uv's default; whether it names them) for a venv
+    tool, which writes only scripts of its own: `python3 -m venv` or `-m virtualenv` (unless a file beside it could stand
+    in for the module, which the reader of its program would otherwise read), `virtualenv` or `uv venv`, given no option
+    this does not know. None for anything else (the coordinator, 2026-11-16: a venv made and activated in one line)."""
+    head = os.path.basename(words[0]) if words else ""
+    if head.startswith("python") and SCRIPT.match(head) and words[1:3] in (["-m", "venv"], ["-m", "virtualenv"]):
+        if _stand_in("", here, words[2]):
+            return None
+        rest = words[3:]
+    elif head == "virtualenv" or (head == "uv" and words[1:2] == ["venv"]):
+        rest = words[1 + (head == "uv"):]
+    else:
+        return None
+    dests, given = [], iter(rest)
+    for w in given:
+        if w in ("-p", "--python", "--prompt"):
+            next(given, None)
+        elif w[:1] == "-" and w not in VENV_OPTIONS and not w.startswith(("--python=", "--prompt=")):
+            return None
+        elif w[:1] != "-":
+            dests.append(w)
+    plain = [d for d in dests if not EXPANDS.search(d) and ".." not in d.split("/")]  # a name read as the tool reads it
+    return [os.path.normpath(os.path.join(here, os.path.expanduser(d), "bin", "activate")) for d in plain or [".venv"] * (head == "uv" and not dests)], bool(dests)
+
+
+def _enterable(path: str) -> bool:
+    """A folder there now that this user may enter, or one named through what this cannot read, which may be."""
+    return path[:1] in ("$", "`") or (os.path.isdir(path) and os.access(path, os.X_OK))
+
+
+def _moved(verb: str, dirs: list, went: str, to, turn: str, at: int) -> list:
+    """The folder stack, this folder first, after `verb` lands at `went`: `cd` replaces the top (with a number alone,
+    by the folder it names), `popd` takes off the top or the one a number names, `pushd` puts a folder on top, turns the
+    stack by a number, or alone swaps the top two."""
+    if verb == "cd":
+        return [went if to is not None or not turn else dirs[at]] + dirs[1:]
+    if verb == "popd":
+        return (dirs[:at] + dirs[at + 1:]) if len(dirs) > 1 else dirs
+    return [went] + dirs if to is not None else dirs[at:] + dirs[:at] if turn else dirs[1:2] + dirs[:1] + dirs[2:]
+
+
+def _landings(operands: list, cwd: str, back: str, mode: dict) -> list:
+    """Every folder a `cd` or `pushd` with these operands may land in, the one its words name first (review round 4 of
+    5.23.1, Q1): `cd -` at OLDPWD too, wherever the line or the environment sets it; a relative name under each CDPATH
+    or cdpath entry, and under cdable_vars at a variable's value, a folder `hash -d` names or a user's home; zsh's `cd
+    old new` at this folder's path with `old` replaced by `new`, and old bash's, which takes `old`. Each by its text,
+    or in the physical reading by its real path. A relative name on a line that sets CDPATH in a way this cannot read
+    leaves the line unplaced."""
+    src, to = mode["sources"], operands[0] if operands else None
+
+    def placed(aim: str) -> str:  # a substitution it cannot read stays as written
+        aim = _led(os.path.expanduser(os.path.expandvars(aim)), cwd)
+        if aim[:1] in ("$", "`"):
+            return aim
+        text, real = os.path.normpath(os.path.join(cwd, aim)), os.path.realpath(os.path.join(cwd, aim))
+        mode["split"] = mode["split"] or os.path.realpath(text) != real  # a link before a `..` (round 3, M1)
+        return real if mode["real"] else text
+    if to == "-":
+        lands = [back] + [placed(v) for v in src["OLDPWD"]]
+    elif len(operands) > 1:
+        lands = [placed(cwd.replace(operands[0], operands[1], 1))] * (operands[0] in cwd) + [placed(operands[0])]
+    else:
+        lands = [placed(to or "~")]
+        if to and not (to.startswith(("/", "~", "$", "`", "./", "../")) or to in (".", "..")):  # a relative name
+            _CALL["unplaced"] = _CALL["unplaced"] or (src["unread"] and not mode["quiet"])
+            lands += [placed(os.path.join(entry, to)) for entry in src["CDPATH"] if entry]
+            home = os.path.expanduser("~" + to) if re.fullmatch(r"[A-Za-z_][\w.-]*", to) else ""
+            lands += [placed(v) for v in src["vars"].get(to, []) + [os.environ.get(to, ""), home] if src["cdable"] and v and v != "~" + to]
+    return list(dict.fromkeys(lands))
+
+
+UNQUOTED = _Pattern(r"\$'((?:[^'\\]|\\.)*)'|\\(.)|['\"]")  # $'…', a backslash and its letter, a quote
+FUNCTION = _Pattern(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*(?:[{(]|\[\[|(?:if|for|while|until|case|select)\b)")  # a function defined, its body any compound command
+ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "v": "\v"}
+
+
+def _unquoted_line(text: str) -> str:
+    """A line with its quoting taken away, as the shell takes it away before a builtin reads its words: `export
+    "CD""PATH=…"` and `export $'CD\\x50ATH=…'` both name CDPATH."""
+    def ansi(body: str) -> str:
+        return re.sub(r"\\(?:x([0-9A-Fa-f]{1,2})|([0-7]{1,3})|u([0-9A-Fa-f]{1,4})|U([0-9A-Fa-f]{1,8})|(.))", lambda m: chr(min(int(
+            m[1] or m[2] or m[3] or m[4], 8 if m[2] else 16), 0x10FFFF)) if not m[5] else ESCAPES.get(m[5], m[5]), body)
+    return UNQUOTED.sub(lambda m: ansi(m[1]) if m[1] is not None else m[2] or "", text)
+
+
+def _aliased(items: list) -> list:
+    """The value of each alias a line's commands define (`alias name=value`, through `builtin` or `command` too, and
+    zsh's `aliases[name]=value` and its kin), with a space before it as a command line would start: an alias is one a
+    command the shell runs defines, never the word in a message, a note or a heredoc's body (the integration review of
+    5.24.0: the private installer's comment that its update step "is just an alias" made every run wait)."""
+    found = []
+    for item in (i for i in items if i not in ("(", ")")):
+        words = [w for w in item[0] if w not in KEYWORDS]
+        found += [" " + w.split("=", 1)[1] for w in words if re.match(r"[gs]?aliases\[[^\]]*\]\+?=", w)]
+        words = list(itertools.dropwhile(lambda w: w in ("builtin", "command") or bool(re.match(r"[A-Za-z_]\w*\+?=", w)), words))
+        found += [" " + w.split("=", 1)[1] for w in words[1:] if "=" in w and w[:1] not in "-+"] if words and (words[0] == "alias" or (
+            words[0][:1] in ("$", "`") and words[0].endswith("alias"))) else []  # `${X}alias`: alias, where X is empty
+    return found
+
+
+def _cd_sources(text: str, mode: dict, items: list) -> None:
+    """What a line sets up that its changes of folder read (review round 4 of 5.23.1, Q1), read with its quoting taken
+    away: CDPATH (given a value, exported, or in `${CDPATH:=…}`) and zsh's cdpath; OLDPWD; the variables it gives
+    values and the folders `hash -d` names, read under cdable_vars; and whether it turns cdable_vars or auto_cd on (zsh
+    reads option names in any case and without underscores; -T and -J are their letters). A CDPATH or cdpath set in a
+    way this cannot read, or a name set through another name (a nameref, `printf -v`, zsh's (P) flag), leaves a
+    relative `cd` unplaced; so does, for any change of folder, an alias (`_aliased`) or enable/disable on a line that
+    changes folder or an alias that does, a function that moves it (`_moves_by_function`), and BASH_ENV or ZDOTDIR given
+    to the shells it starts. An unplaced line waits."""
+    src, plain = mode["sources"], _unquoted_line(text)
+    aliased = _aliased(items) if items is not None else [" " + m[1] for m in re.finditer(  # a text the parser cannot read: each
+        r"(?m)(?:^|[;&|({]|\b(?:then|do|else)\b)\s*(?:builtin\s+|command\s+)?(?:alias\s+(?:[-+]\w+\s+)*[^\s=]+|[gs]?aliases\[[^\]]*\])\+?=([^\n;&|]*)",
+        plain)]  # `alias name=value` where a command would start, never a comment's or a message's word
+    flat = plain.lower().replace("_", "")
+    letters = "".join(w for words in re.findall(r"\b(?:set|setopt|zsh|emulate)\b([^;&|\n]*)", plain) for w in re.findall(r"(?:^|\s)[-+]([A-Za-z]+)", words))
+    src["cdable"] = src["cdable"] or "cdablevars" in flat or "T" in letters
+    src["autocd"] = src["autocd"] or "autocd" in flat or "J" in letters
+    src["pathdirs"] = src["pathdirs"] or "pathdirs" in flat  # zsh then looks for a sourced file named with a slash along PATH too
+    given = 0
+    for line, counted in ((plain, 1), (text, 0)):  # read unquoted, and as written, where a value may hold a space
+        for m in ASSIGNED.finditer(line):
+            value = m[3].strip("'\"")
+            if m[1] == "CDPATH":
+                src["CDPATH"], given = src["CDPATH"] + value.split(":"), given + counted
+            elif m[1] == "OLDPWD":
+                src["OLDPWD"] = src["OLDPWD"] + [value]
+            src["vars"].setdefault(m[1], []).append(value)
+    for m in re.finditer(r"\bcdpath\+?=\(([^()]*)\)|\$\{(?:cdpath|CDPATH):{0,2}=([^}]*)\}", plain):
+        src["CDPATH"], given = src["CDPATH"] + (m[1].split() if m[1] is not None else m[2].split(":")), given + 1
+    for m in re.finditer(r"\bhash\s+-d\s+([A-Za-z_]\w*)=(\S+)", plain):
+        src["vars"].setdefault(m[1], []).append(m[2])
+    named = len(re.findall(r"(?<![\w${])(?:cdpath|CDPATH)\b|\$\{(?:cdpath|CDPATH):{0,2}=", plain)) - len(re.findall(
+        r"\b(?:unset|export)\s+(?:-\w+\s+)*(?:cdpath|CDPATH)\b(?!\+?=)", plain))  # each place it names CDPATH, but to unset or export it
+    src["unread"] = src["unread"] or named > given or any(re.search(r"[$`(]", e) for e in src["CDPATH"]) or bool(re.search(  # printf -v
+        r"\b(?:declare|typeset|local)\s+(?:-\w+\s+)*-\w*n|\bprintf?\s+(?:-\w+\s+)*-v" + ("" if src["cdable"] else  # of a literal name
+        r"\s*(?:(?:CDPATH|cdpath|OLDPWD|HOME)\b|[^\w\s])") + r"|\$\{\([^)]*P", plain))  # no cd reads sets nothing a cd reads
+    if not mode["quiet"] and (re.search(r"(?:^|[\s;&|(])(?:BASH_ENV|ZDOTDIR)=|\b(?:enable|disable)\s[^;&|\n]*?\b(?:cd|pushd|popd|builtin"
+                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and FUNCTION.search(plain) and text not in _CALL.get(
+                                            "still", ()) and _moves_by_function(text)) or (aliased and (FOLDER_MOVE.search(plain) or any(
+                                                FOLDER_MOVE.search(value) for value in aliased))) or (items is None and src["unread"] and FOLDER_MOVE.search(plain))):
+        _CALL["unplaced"] = True  # a text the parser cannot read is never walked: a CDPATH it cannot read may place any cd in it
+
+
+def _moves_by_function(text: str) -> bool:
+    """Whether a function a line defines may move its folder: one named for a folder builtin, or a function whose body
+    moves (itself or through another) called anywhere but in a command substitution, which runs in a subshell
+    (2026-11-16: Homebrew's own `brew`, read since 22.21, defines `quiet_cd` and calls it only in `$(...)`). A change of
+    folder outside every function's body is the line's own, which the guard follows (the integration review of 5.24.0:
+    `cd <repo> && q() { grep -c x "$1"; }; q a.md` waited). Text the parser cannot read may."""
+    try:
+        tokens = _lex(text)
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        return True
+    bodies, outside, at = {}, [], 0
+    while at < len(tokens):
+        kind, value = tokens[at][:2]
+        name = value if kind == "w" and [t[:2] for t in tokens[at + 1:at + 3]] == [("op", "("), ("op", ")")] else (
+            tokens[at + 1][1] if kind == "w" and value == "function" and at + 1 < len(tokens) else "")
+        opened = next((i for i in range(at + 1, min(at + 6, len(tokens))) if tokens[i][:2] == ("w", "{")), None) if name else None
+        if opened is None:
+            if name:  # a body that is no brace group (`f() if …; fi`, `f() (…)`): it may hold every word after it
+                bodies.setdefault(name, set()).update(t[1] for t in tokens[at + 1:] if t[0] == "w")
+            outside.append(tokens[at])
+            at += 1
+            continue
+        depth, end = 0, opened
+        for end in range(opened, len(tokens)):  # to the brace that closes the body
+            depth += {("w", "{"): 1, ("w", "}"): -1}.get(tokens[end][:2], 0)
+            if depth == 0:
+                break
+        bodies[name], at = {t[1] for t in tokens[opened + 1:end] if t[0] == "w"}, end + 1
+    moving = {n for n, words in bodies.items() if words & {"cd", "pushd", "popd"}}
+    while any(n not in moving and words & moving for n, words in bodies.items()):
+        moving |= {n for n, words in bodies.items() if words & moving}
+    return bool(FOLDER_BUILTINS & set(bodies)) or any(t[0] == "w" and t[1] in moving for t in outside)
 
 
 def _piped(upstream) -> str:
@@ -1958,8 +2602,14 @@ def _parse(command: str, cwd: str, runs: list | None = None, feeds: list | None 
     try:
         return _commands(command, cwd, runs=runs, feeds=feeds), True
     except (Unreadable, StopIteration, IndexError):
-        found = [(_bare(part.split())[0], cwd) for part in SEPARATORS.split(command)]
-        found = [(words, where) for words, where in found if words]
+        found, line = [], {"paths": _search_paths(command, cwd), "written": {}, "names": set()}
+        for part in SEPARATORS.split(command):
+            started: list = []
+            words = _bare(part.split(), None, started)[0]
+            found += [(words, cwd)] * bool(words)
+            for at, (word, rest) in enumerate(started + ([(words[0], words[1:])] if words else [])):  # a look-alike: what it really is too
+                look = _look_alike(word, cwd, at > 0, line)
+                found += [(_as_run(look[0], look[1], [word] + rest, False), cwd)] if look[0] else []
         if runs is not None:
             runs[:] = [(None, False)] * len(found)
         if feeds is not None:
@@ -1974,7 +2624,7 @@ def _git(words: list[str], cwd: str) -> tuple[str | None, str]:
     i = 1
     while i < len(words) and words[i].startswith("-"):
         if words[i] == "-C" and i + 1 < len(words):
-            cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(words[i + 1])))
+            cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(words[i + 1])))  # git chdirs as the kernel does
         i += 2 if words[i] in GIT_VALUE_OPTIONS else 1
     return (words[i] if i < len(words) else None), cwd
 
@@ -2008,7 +2658,7 @@ REDEPLOY_WINDOW = 45 * 60  # a second deploy of one site this soon is the rushed
 FUTURE_SKEW = 15 * 60  # a date this far ahead is a clock artifact, not a post published early
 DEFAULT_CONTENT = ["content/posts/**/index.md", "**/src/content/articles/*.md"]  # nested-date and flat layouts
 DATE_LINE = r"^(date|pubDate|publishDate)[[:space:]]*[:=]"
-DATE_VALUE = re.compile(r"[:=]\s*[\"']?(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?)?")
+DATE_VALUE = _Pattern(r"[:=]\s*[\"']?(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?)?")
 
 
 def _run_git(root: str, *args: str) -> tuple[int, str]:
@@ -2052,6 +2702,35 @@ def _dates(root: str, rev: str | None, globs: list[str]) -> dict[str, float] | N
     return {p: t for p, t in found.items() if t is not None}
 
 
+def _catalog_dates(root: str, rev: str | None, globs: list[str]) -> dict[str, float] | None:
+    """{"<catalog>#<id>": moment} for each article a JSON catalog lists, at rev or in the working tree: its `published`
+    time, or the documented `publishedInstantOverride` instant that replaces it. A unified site keeps an article's
+    published instant there, which no front-matter date line shows (2026-11-16). A catalog that cannot be read, or
+    has no `articles` list, is None, so the deploy blocks."""
+    if not globs:
+        return {}
+    code, out = _run_git(root, "grep", "-z", "-l", "-I", "-e", "", *([rev] if rev else ["--untracked"]),
+                         "--", *[f":(glob){g}" for g in globs])
+    if code not in (0, 1):
+        return None
+    found: dict[str, float] = {}
+    for name in filter(None, out.split("\0")):
+        path = name[len(rev) + 1:] if rev else name
+        try:
+            text = _run_git(root, "show", f"{rev}:{path}")[1] if rev else open(os.path.join(root, path), encoding="utf-8").read()
+            articles = json.loads(text)["articles"]
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+        if not isinstance(articles, list):
+            return None
+        for a in [a for a in articles if isinstance(a, dict) and isinstance(a.get("id"), str) and isinstance(a.get("published"), str)]:
+            instant = a.get("publishedInstantOverride")
+            moment = _moment(f"date: {instant if isinstance(instant, str) else a['published']}")
+            if moment is not None:
+                found[f"{path}#{a['id']}"] = moment
+    return found
+
+
 def _show(moment: float) -> str:
     return time.strftime("%Y-%m-%d %H:%M", time.localtime(moment))
 
@@ -2060,16 +2739,20 @@ def _listing(items: list[str]) -> str:
     return "; ".join(items[:5]) + (f"; and {len(items) - 5} more" if len(items) > 5 else "")
 
 
-def check_dates(root: str, rev: str | None, config: dict) -> str | None:
+def check_dates(root: str, rev: str | None, config: dict, published_at: str | None = None) -> str | None:
     """Refuse a deploy that puts a page live before its stated date or re-dates a live page.
     These hold even for an approved deploy: an approval covers a publish, not a break in the
-    site's own timeline (2026-08-29; the flat layout escaped the old scan until 2026-08-31)."""
-    globs = config.get("deploy_content", DEFAULT_CONTENT)
-    if not isinstance(globs, list) or not all(isinstance(g, str) for g in globs):
-        return "deploy_content in the synthesis config must be a list of path globs; deploy blocked until it is fixed"
-    live = _dates(root, rev, globs)
-    if live is None:
-        return f"could not read the content dates in {root}; deploy blocked until `git grep` works there"
+    site's own timeline (2026-08-29; the flat layout escaped the old scan until 2026-08-31).
+    published_at is the commit the site's last approved upload published, when the guard recorded one: a site
+    published by upload can have its change on origin's main before the upload, so main is not what is live."""
+    globs, catalogs = config.get("deploy_content", DEFAULT_CONTENT), config.get("deploy_catalogs", [])
+    for key, value in (("deploy_content", globs), ("deploy_catalogs", catalogs)):
+        if not isinstance(value, list) or not all(isinstance(g, str) for g in value):
+            return f"{key} in the synthesis config must be a list of path globs; deploy blocked until it is fixed"
+    live, listed = _dates(root, rev, globs), _catalog_dates(root, rev, catalogs)
+    if live is None or listed is None:
+        return f"could not read the content dates in {root}; deploy blocked until `git grep` and its catalogs read there"
+    live.update(listed)
     early = sorted(p for p, t in live.items() if t > time.time() + FUTURE_SKEW)
     if early:
         return ("A page must never go live before its stated date, even with approval: "
@@ -2077,17 +2760,21 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
                 + ". Hold this deploy until then, or have the principal correct the date.")
     if not live:
         return None
-    code, out = _run_git(root, "for-each-ref", "--format=%(objectname)",
-                         "refs/remotes/origin/HEAD", "refs/remotes/origin/main", "refs/remotes/origin/master")
-    base = out.split("\n", 1)[0].strip() if code == 0 else ""
+    if published_at and _run_git(root, "rev-parse", "--verify", "-q", f"{published_at}^{{commit}}")[0] == 0:
+        base = published_at
+    else:
+        code, out = _run_git(root, "for-each-ref", "--format=%(objectname)",
+                             "refs/remotes/origin/HEAD", "refs/remotes/origin/main", "refs/remotes/origin/master")
+        base = out.split("\n", 1)[0].strip() if code == 0 else ""
     if not base:
         if not _run_git(root, "remote")[1].strip():
             return None  # never pushed anywhere: no live dates to protect
         return ("Could not find the published branch (origin's main) to check that no live page's date changes. "
                 f"Run `git -C {root} fetch origin`, then retry.")
-    published = _dates(root, base, globs)
-    if published is None:
+    published, was_listed = _dates(root, base, globs), _catalog_dates(root, base, catalogs)
+    if published is None or was_listed is None:
         return f"could not read the published content dates in {root}; deploy blocked"
+    published.update(was_listed)
     moved = sorted(p for p in live if p in published and live[p] != published[p])
     if moved:
         return ("Published dates never change, even with approval. This deploy re-dates live pages: "
@@ -2099,7 +2786,8 @@ def check_dates(root: str, rev: str | None, config: dict) -> str | None:
 
 def _deploys(words: list[str], patterns: list[str]) -> bool:
     """A deploy pattern matches from the start of the command, or of the script an interpreter runs
-    (`python3 -m twine upload`, `node release.mjs deploy`). Words passed as arguments never match, and a
+    (`python3 -m twine upload`, `node release.mjs deploy`), read also by the names a CLI's own entry script answers to
+    (`node node_modules/wrangler/bin/wrangler.js pages deploy`). Words passed as arguments never match, and a
     `--dry-run` (a site's build checks its deploy that way) or `--help` publishes nothing; `-h` can mean
     something else, such as rsync's human-readable sizes."""
     if "--dry-run" in words or "--help" in words:
@@ -2107,8 +2795,27 @@ def _deploys(words: list[str], patterns: list[str]) -> bool:
     forms = [[os.path.basename(words[0])] + words[1:]]
     if INTERPRETER.match(forms[0][0]):  # the script it runs, or the module after -m, past its options and their values
         kind, at, name = _program(words)
-        forms.append([name] + words[at + 1 + (words[at:at + 2] == [words[at], name] and words[at] != name):] if kind == "file" else [])
+        rest = words[at + 1 + (words[at:at + 2] == [words[at], name] and words[at] != name):] if kind == "file" else None
+        forms += [[cli] + rest for cli in [name] + _cli_names(name)] if rest is not None else []
     return any(form and re.match(p, " ".join(form)) for form in forms for p in patterns)
+
+
+CLI_BINS = {"netlify-cli": "netlify", "firebase-tools": "firebase", "npm-cli": "npm"}  # a bin unlike its package's name
+
+
+def _cli_names(script: str) -> list[str]:
+    """The names a CLI's own entry script answers to when an interpreter runs it by path (2026-11-16: `node
+    node_modules/wrangler/bin/wrangler.js pages deploy` published with no approval asked): the script's basename
+    without a .js, .mjs, .cjs or .ts extension (a .bin shim's name too), and the package it sits in under the last
+    node_modules, by the name after its scope, each read as the bin its package installs. A copy under another name
+    is not read as the CLI (the open list in docs/runtime-integration.md)."""
+    parts = script.split("/")
+    names = [re.sub(r"\.(?:[cm]?js|ts)$", "", parts[-1])]
+    places = [i for i, part in enumerate(parts[:-1]) if part == "node_modules"]
+    package = parts[places[-1] + 1:places[-1] + 3] if places else []
+    if package and package[0] != ".bin":
+        names.append(package[1] if package[0].startswith("@") and len(package) > 1 else package[0])
+    return [CLI_BINS.get(name, name) for name in names]
 
 
 def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:
@@ -2129,7 +2836,7 @@ def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:
 
 SCRIPT_LIMIT = 256 * 1024
 TOO_LARGE = "\0 a script too large to read"  # what such a script runs cannot be told, so it is held (5.20.1's review)
-SHEBANG = re.compile(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
+SHEBANG = _Pattern(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
 
 
 def _script_file(words: list[str], cwd: str) -> str | None:
@@ -2155,12 +2862,11 @@ def _script_file(words: list[str], cwd: str) -> str | None:
         path = words[0]
     if not path:
         return None
-    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 2)  # a regular file, opened without waiting (finding 10)
-    if first is None or (head not in SHELLS and first[0] != b"#!"):
-        return None  # a program, not a script: never read past its first bytes
+    first = _regular(os.path.join(cwd, os.path.expanduser(path)), 8192)  # a regular file, opened without waiting (finding 10)
+    if first is None or (head not in SHELLS and (not SHEBANG.match(first[0]) if first[0][:2] == b"#!" else b"\0" in first[0])):
+        return None  # a program, not a script: a binary, or a file whose first line names another interpreter (a text file
+        # with none is run by the shell as its own script, 22.21)
     text = (_regular(os.path.join(cwd, os.path.expanduser(path)), SCRIPT_LIMIT + 1) or (b"",))[0]
-    if head not in SHELLS and not SHEBANG.match(text):
-        return None
     return TOO_LARGE if len(text) > SCRIPT_LIMIT else text.decode("utf-8", "replace")
 
 
@@ -2287,15 +2993,25 @@ def _last_deploy(identity: str):
     return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
-def _record_deploys(identities) -> None:
+def _published_head(identity: str) -> str | None:
+    """The commit a site's last approved deploy was approved at, from the record that keeps it (2026-11-16)."""
+    try:
+        line = (_last_deploy(identity).read_text(encoding="utf-8").split("\n") + ["", "", ""])[2]
+    except OSError:
+        return None
+    return line if re.fullmatch(r"[0-9a-f]{40,64}", line) else None
+
+
+def _record_deploys(identities, heads: dict | None = None) -> None:
     """The deploy brake's record of a deploy the guard let through, for the 45-minute check: written if the call is let
     through, and put back as it was if a later record of the same call cannot be written (review round 4, finding 4),
-    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole."""
+    unless another call has recorded a deploy since (round 5, finding 4). Each write replaces the file whole. Its third
+    line keeps the HEAD the deploy was approved at, what a site published by upload now serves."""
     kept: list = []
 
     def write():
         for identity in identities:
-            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n".encode("utf-8")
+            record, mine = _last_deploy(identity), f"{identity}\n{time.time()}\n{(heads or {}).get(identity, '')}\n".encode("utf-8")
             kept.append((record, record.read_bytes() if record.exists() else None, mine))
             _swap(record, mine)
 
@@ -2314,6 +3030,26 @@ def _swap(path, data: bytes) -> None:
     os.replace(made, path)
 
 
+def _rendered_checkouts(entries: list, command: str) -> tuple[list[str], str | None]:
+    """The checkouts a site's build renders beside its own: each listed path, and for {"variable": NAME, "default": PATH}
+    the checkout holding the path the deploy command hands the build in NAME, else PATH (2026-11-16: a personal site's
+    build reads the article catalog its command names, from any worktree). A value the guard cannot follow to a
+    checkout, for a variable or a relative path in it or no checkout around it, blocks the deploy."""
+    found: list[str] = []
+    for entry in entries:
+        given = [m.group(3) for m in ASSIGNED.finditer(command) if isinstance(entry, dict) and m.group(1) == entry["variable"]]
+        if not given:
+            found.append(os.path.realpath(os.path.expanduser(entry if isinstance(entry, str) else entry["default"])))
+        for value in given:
+            plain = os.path.expanduser(value[1:-1] if len(value) > 1 and value[0] in "\"'" and value[-1] == value[0] else value)
+            root = _checkout(plain)[0] if os.path.isabs(plain) and not re.search(r"[$`]", plain) and os.path.exists(plain) else None
+            if not root:
+                return [], (f"This deploy hands its build {entry['variable']}={value}, which the guard cannot follow to a checkout, "
+                            "so it cannot check the dates of what the build renders. Name the file by its whole path, then retry.")
+            found.append(root)
+    return list(dict.fromkeys(found)), None
+
+
 @_entry
 def check_deploy(command: str, config: dict, cwd: str | None = None, session: dict | None = None) -> str | None:
     cwd = cwd or os.getcwd()
@@ -2328,14 +3064,21 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
         return None
     heads, identities, recent = {}, [], []
     # A site whose build renders other repositories' working trees publishes their dates too.
-    renders = {os.path.realpath(os.path.expanduser(k)): v for k, v in (config.get("deploy_also_renders") or {}).items()}
+    renders = config.get("deploy_also_renders") or {}
+    if not isinstance(renders, dict) or not all(isinstance(v, list) and all(isinstance(e, str) or (
+            isinstance(e, dict) and set(e) == {"variable", "default"} and all(isinstance(x, str) for x in e.values()))
+            for e in v) for v in renders.values()):
+        return ("deploy_also_renders in the synthesis config must map each site to a list of repository paths or "
+                '{"variable", "default"} entries; deploy blocked until it is fixed')
+    renders = {os.path.realpath(os.path.expanduser(k)): v for k, v in renders.items()}
     for directory, rev in targets:
         root, main = (None, None) if re.search(r"[$`]", directory) or directory.startswith("github:") else _checkout(directory)
         identities.append(main or directory)
         if root:
-            reason = check_dates(root, rev, config)
-            for extra in renders.get(os.path.realpath(main or root), []) if not reason else []:
-                reason = reason or check_dates(os.path.realpath(os.path.expanduser(extra)), None, config)
+            reason = check_dates(root, rev, config, None if rev else _published_head(main or root))
+            extras, reason = ([], reason) if reason else _rendered_checkouts(renders.get(os.path.realpath(main or root), []), command)
+            for extra in extras:
+                reason = reason or check_dates(extra, None, config, _published_head(_checkout(extra)[1] or extra))
             if reason:
                 return reason
             heads[main] = _run_git(root, "rev-parse", "HEAD")[1].strip()  # approval binds to what HEAD is now
@@ -2349,7 +3092,7 @@ def check_deploy(command: str, config: dict, cwd: str | None = None, session: di
     subject = {"command": command, "heads": heads} if heads else command
     # A rapid-redeploy approval is the stronger one, so it still counts if the window has just closed.
     if approvals.consume(kind, subject, session) or (kind == "deploy" and approvals.consume("deploy-rapid", subject, session)):
-        _record_deploys(identities)  # a deploy held later by another check of the call did not happen
+        _record_deploys(identities, heads)  # a deploy held later by another check of the call did not happen
         return None
     if recent:
         name, last = recent[0]
@@ -2633,23 +3376,68 @@ def _gated_push(words: list[str], where: str, rules: dict, readable: bool, branc
             return target if target in defaults else None
         return UNREAD_BRANCH if "" in current else next(iter(sorted(current & defaults)), None)
 
+    follows = options.get("follow-tags") or (options.get("follow-tags") is not False and _run_git(
+        where, "config", "--get", "push.followTags")[1].strip().lower() in ("true", "yes", "on", "1"))
+    there: list = []  # the version tags the remote holds, asked of it once, and only when a push may touch one
+
+    def changes(tag: str, deleting: bool = False, value: str = "") -> bool:
+        """Whether the push makes, moves or deletes the version tag `tag` there (round 4 of 5.23.1, Q3): a tag the
+        remote lacks, or holds at another object than `value` (else the local tag's), or deletes one it holds; True
+        when the remote cannot be asked."""
+        there[:] = there or [_remote_tags(where, named or remote)]
+        if there[0] is None:
+            return True
+        return tag in there[0] if deleting else there[0].get(tag) != _run_git(where, "rev-parse", "--verify", "--quiet", value or tag)[1].strip()
+
+    def carried(sources: list):  # a version tag `--tags` takes along, or `--follow-tags` (annotated, reachable from what is pushed)
+        local = (_run_git(where, "for-each-ref", "--format=%(refname)", "refs/tags/v*")[1].split() if options.get("tags") else [
+            ref for source in sources for kind, _, ref in (row.partition(" ") for row in _run_git(
+                where, "for-each-ref", f"--merged={source}", "--format=%(objecttype) %(refname)", "refs/tags/v*")[1].splitlines())
+            if kind == "tag"] if follows else [])
+        hit = next((ref for ref in dict.fromkeys(local) if changes(ref)), None)
+        return (repo, hit) if hit else None
     if not refspecs:  # git consults its config; `--tags` alone pushes tags and no branch
         hit = None if options.get("tags") else UNREAD_BRANCH if mapped else lands("HEAD")
-        return (repo, hit) if hit else None
-    at = 0
+        return (repo, hit) if hit else carried(["HEAD"])
+    at, sources = 0, []
     while at < len(refspecs):
         spec, at = refspecs[at], at + 1
         if spec == "tag" and at < len(refspecs):  # `tag <name>` pushes that tag
             at += 1
+            if refspecs[at - 1].startswith("v") and changes(f"refs/tags/{refspecs[at - 1]}"):
+                return repo, f"refs/tags/{refspecs[at - 1]}"
             continue
         source, colon, target = spec.lstrip("+").partition(":")
-        target = target or source
-        if target.startswith("refs/tags/"):  # a tag is what gets updated, whatever is pushed onto it
+        target, deleting = target or source, bool(options.get("delete") or (colon and not source))
+        bare = not target.startswith("refs/")
+        tagged = bare and _run_git(where, "rev-parse", "--verify", "--quiet", f"refs/tags/{target}")[0] == 0  # git pushes the tag of that name
+        tag = target if target.startswith("refs/tags/") else f"refs/tags/{target}" if bare else ""
+        # A version tag made, moved or deleted there is a release's alone (round 3, M5): one named in full, a bare name
+        # git takes for a local tag, a bare name a push writes onto, or one it deletes. A branch named v... is a branch.
+        if tag.startswith("refs/tags/v") and (deleting or tagged or not bare or (colon and target != source)) and changes(
+                tag, deleting, source if colon and source != target else ""):
+            return repo, tag
+        if target.startswith("refs/tags/") or tagged:  # another tag is what gets updated, whatever is pushed onto it
             continue
+        sources += [source] if source and not deleting else []
         hit = UNREAD_BRANCH if not colon and mapped else lands(target.replace("refs/heads/", "", 1))
         if hit:
             return repo, hit
-    return None
+    return carried(sources)
+
+
+def _remote_tags(where: str, remote: str) -> dict | None:
+    """The version tags a remote holds, {refs/tags/name: object id}, asked of it with no prompt and a short wait; None
+    when it cannot be asked (round 4 of 5.23.1, Q3: whether a push makes, moves or deletes one)."""
+    import subprocess
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    env.setdefault("GIT_SSH_COMMAND", "ssh -o BatchMode=yes")
+    try:
+        done = subprocess.run(["git", "-C", where, "ls-remote", "--tags", "--refs", remote, "refs/tags/v*"], capture_output=True,
+                              text=True, timeout=5, env=env)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    return None if done.returncode else {ref: oid for oid, _, ref in (row.partition("\t") for row in done.stdout.splitlines()) if ref}
 
 
 def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
@@ -2704,6 +3492,12 @@ def check_pr_gate(command: str, config: dict, cwd: str, session: dict | None = N
         return None
     repo, branch = hits[0]
     code = approvals.request("push-direct", subject, f"DIRECT push to {repo} {branch}: {command[:140]}")
+    if branch.startswith("refs/tags/"):
+        return (f"This makes, moves or deletes the version tag {branch[len('refs/tags/'):]} on {repo} (or {repo} could not be "
+                "asked which version tags it holds), where version tags are made by its release tool alone: a stray one stops "
+                "every release and install as older than it. If the principal wants "
+                f"this one push, show them the exact command and ask them to type {approvals.how(code)}. Then run the "
+                "identical command again.")
     return (f"This pushes straight to {branch} of {repo}, which takes changes only through a pull request: push a "
             "branch, open the pull request, let its checks pass, merge it, then install from the merged branch. If the "
             f"principal wants this one push to go direct, show them the exact command and ask them to type {approvals.how(code)}. "
@@ -2723,8 +3517,8 @@ VALUED = {"touch": ("-r", "--reference", "-t", "-d", "--date"), "truncate": ("-r
           "mkdir": ("-m", "--mode"), "install": ("-m", "--mode", "-o", "--owner", "-g", "--group"),
           "xxd": ("-c", "-cols", "-g", "-groupsize", "-l", "-len", "-s", "-seek", "-o", "-n", "-name")}  # options whose next word is no file
 WRITERS = COPIERS | PACKERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
-IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
-INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
+IN_PLACE = _Pattern(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
+INTO = _Pattern(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
 # Programs that only read the files they are given. A path inside a protected folder may be handed to one of these,
 # to an interpreter or a shell (judged by what it runs), and to git and synthesis's own CLI, which keep the approved
 # lines and the board. Any other program may change what it is given, so the guard does not pass it one (2026-11-11:
@@ -2739,13 +3533,13 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
 WORDS = frozenset("for case select read test [ [[ : true false export readonly local declare typeset unset less more sleep kill wait exit "
                   "return break continue shift trap which file id synthesis".split())  # a shell's own words, and words a sentence starts with
 AWKS = ("awk", "gawk", "mawk", "nawk")
-AWK_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
+AWK_TOKEN = _Pattern(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
 OWN_RULES = ("sed", "perl", "find", "xxd", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
 GIT_READS = frozenset({"status", "log", "diff", "show", "ls-files", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog"})
-SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
+SCRIPT = _Pattern(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
 # read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
-SCRIPTED_WRITE = re.compile(
+SCRIPTED_WRITE = _Pattern(
     r"\bopen\([^)]*(?:,\s*|mode\s*=\s*)['\"][rbtU]*[wax+]|\.open\(\s*['\"][rbtU]*[wax+]"
     r"|\.(?:write_text|write_bytes|writelines|touch|mkdir|rmdir|unlink|symlink_to|hardlink_to|chmod|truncate)\("
     r"|\.(?:rename|replace)\(\s*[^,()]+\)"  # Path.rename/replace(target); str.replace takes two arguments
@@ -2755,14 +3549,41 @@ SCRIPTED_WRITE = re.compile(
     r"|\.(?:write|append)File\w*\(|\.(?:rm|unlink|rename|mkdir|copyFile|truncate|chmod|symlink)Sync\("
     r"|\bFile\.(?:write|rename|delete|unlink)|\bFileUtils\b|\bunlink\b|\brename\s*\("
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
-# A script that opens a send window, grants or spends an approval, or writes into synthesis state. Reading the
-# window, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|grant_from_prompt|consume|put_back|_window_file)\b|\bpaths\.state\b[\s\S]*\b(?:"
+# A script that opens a send window or a batch, grants or spends an approval or a batch's entry, or writes into
+# synthesis state. Reading the window, a batch, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
+SELF_GRANT_CALLS = _Pattern(r"\b(?:open_window|open_batch|batch_spend|batch_unspend|grant_from_prompt|consume|put_back|_window_file|_batch_file)\b"
+                              r"|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
-HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
-ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
-LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
-USED = re.compile(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
+GRANT_NAME = _Pattern(r"[\w.]*\b(?:open_window|grant_from_prompt|consume|put_back|_window_file|write_json|write_text|touch|unlink|paths\.state)")
+RUNS_STRINGS = _Pattern(r"\b(?:exec|eval|compile|execfile|run_path|run_module|runcode|runsource|Function)\s*\(|\bnew\s+Function\b|\bvm\s*\.\s*run"
+                          r"|\b(?:subprocess|child_process|Popen|execSync|execFile|execFileSync|spawn|spawnSync|fork|create_subprocess_\w+)\b"
+                          r"|\bos\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)\b|\bpty\s*\.\s*spawn\b")  # or starts a program with them
+WINDOW_CLI = _Pattern(r"\bsynthesis\b[\s\S]{0,200}?\bsends\b[\s\S]{0,40}?\bopen\b")  # the send window's CLI, started by a program
+
+
+def _granting_text(script: str, head: str) -> str:
+    """The text a self-grant is looked for in: the program's code, a string kept only where it is the bare name or a
+    dotted path to it (as getattr, a subscript or attrgetter takes it) and an f-string only for its expressions, every
+    comment out. A program that runs a string as code, or starts a program (node's child_process, Python's subprocess,
+    os.system, os.exec and os.spawn), keeps every string: a string it hands that program, or writes to a file it starts,
+    is code (22.22 and its review round 1: prose written to a file, a docstring or a log line that names the functions
+    was refused as running them)."""
+    if RUNS_STRINGS.search(script):
+        return script
+
+    def kept(m) -> str:
+        quote = re.match(r"[rRbBuUfF]{0,2}(\"\"\"|'''|\"|'|`)", m[0])
+        body = m[0][quote.end():len(m[0]) - len(quote[1])]
+        if GRANT_NAME.fullmatch(body.strip()):
+            return body
+        return " ".join(re.findall(r"\{([^{}]*)\}", body)) or '""' if "f" in m[0][:quote.start(1)].lower() else '""'
+    text = PROGRAM_STRINGS.sub(kept, script)
+    hashed = not re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node|swift|java|jshell|groovy|scala)", head)
+    return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
+HOOK_RUN = _Pattern(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
+ASSIGNED = _Pattern(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
+LOOPED = _Pattern(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
+USED = _Pattern(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
 READINGS = 32  # past this many, a variable the command gives several values stays as written
 
 
@@ -2831,7 +3652,9 @@ def _own_text(text: str) -> str:
     if not (ASSIGNED.search(text) and re.search(r"python|node|bun|deno|perl|ruby", text)):
         return text
     feeds: list = []
+    unplaced = _CALL.get("unplaced")
     found = _parse(text, "/", feeds=feeds)[0]
+    _CALL["unplaced"] = unplaced  # read from no folder for its programs alone: where the line runs is its own reading's to tell
     for (words, _), fed in zip(found, feeds + [""] * len(found)):
         kind, _, given = _program(words) if SCRIPT.match(os.path.basename(words[0])) else ("", 0, "")
         body = fed if kind == "stdin" else given if kind == "inline" else ""
@@ -3002,7 +3825,7 @@ def _changes(run: list[str]) -> bool:
     return any(w.startswith("{}") for w in _landing(run) + _named(run))
 
 
-PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
+PATCH_PATHS = _Pattern(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
 FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file", "apply_patch"}
 
 
@@ -3020,22 +3843,231 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, the installed runtime (its releases, `current` and `bin`), harness transcripts, approved commit lines."""
-    store = paths.line_allowances(config or {})
-    return [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin")),
-                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
-                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
-                             *([store] if store else [])]]
+    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), harness transcripts, approved commit lines.
+    While a shell command is judged for the guard's own settings (`_CALL["settings"]`, set by check_self_grant), those
+    are among them too, or alone ("only")."""
+    store, mode = paths.line_allowances(config or {}), _CALL.get("settings")
+    if mode == "only":
+        return _settings()
+    key = (_env_key(), str(store), bool(mode))  # read once for the environment: they are paths, not the files at them
+    if key not in ROOTS_MEMO:
+        ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
+                                            *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
+                                            paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
+                                            *([store] if store else [])]] + (_settings() if mode else [])
+    return list(ROOTS_MEMO[key])
+
+
+# The guard's own settings and the global commit check's entry points (22.20). What an approval means rests on both: a
+# setting names the lines the principal approved, his own repositories, the hosts a sheet uploads to, what a send window
+# lets through, the phrases a message may not hold, the account each workspace acts as and the turn-end judge's program
+# and host; a git hook is what git runs before every commit in every repository. A review of 2026-11-15 found that a file
+# tool rewrote either with no code. A write there is not refused, since the principal changes them: it waits for his
+# code for that exact call, the private installer's copy of his settings included (the orchestrating session's ruling
+# under his standing rule that no agent grants itself an approval). Reading them needs none.
+#
+# A shell's startup files, Claude Code's shell snapshots and the harness programs wait the same way (22.26). Claude Code
+# runs every command through zsh, which reads ~/.zshenv (from ZDOTDIR, where that is set) after sourcing a snapshot of
+# the shell; Codex runs `bash -lc`, which reads ~/.bash_profile, ~/.bash_login or ~/.profile, and bash reads the file
+# BASH_ENV names. The harnesses, `synthesis doctor` and the release tool run claude, codex, muse and gh wherever each
+# resolves. The same review wrote ~/.zshenv with no code, and an ordinary `ls` then ran the agent's code; and the doctor
+# ran an agent-written ~/.local/bin/codex, which wrote the runtime. Reading or running any of them needs no code.
+SETTINGS_KIND = "guard-settings"
+SETTINGS_SAID = {  # what each kind is, what it holds or does, and what a change there does
+    "config.json": ("the synthesis guard's own settings", "its line allowances, own repositories, sheet hosts, send-window "
+                    "signatures, forbidden phrases, account routing and the turn-end judge's settings",
+                    "changes what every approval means"),
+    "git-hooks": ("the global commit check's entry points", "what git runs before every commit, merge and commit message in "
+                  "every repository", "changes what every approval means"),
+    "startup": ("a shell's startup file", "zsh or bash runs it before every command a harness runs",
+                "runs before every command, where this guard never sees it"),
+    "snapshots": ("Claude Code's shell snapshots", "one is sourced before every command Claude Code runs",
+                  "runs before every command, where this guard never sees it"),
+    "program": ("a harness program", "what the harnesses, synthesis doctor and the release tool run as `{}`",
+                "runs with no code whenever one of them starts it"),
+}
+STARTUP_FILES = (".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout", ".bash_profile", ".bash_login", ".profile", ".bashrc")
+HARNESS = ("claude", "codex", "muse", "gh")
+KEPT = _Pattern(r"^.*?/(?:(?:Cellar|Caskroom)/[^/]+|node_modules/(?:@[^/]+/)?[^/]+)(?=/|$)")  # the folder its installer keeps a file in
+ZDOTDIR_SET = _Pattern(r"(?m)^[ \t]*(?:export[ \t]+)?ZDOTDIR=([\"']?)([^\"'\s;#]+)\1")
+SETTINGS_MAPS: dict = {}  # the environment it is read from: each path the settings hold covers, with its kind
+ROOTS_MEMO: dict = {}  # the environment, the approved lines' store and whether the settings are among them: the protected paths
+OWN_MEMO: dict = {}  # the environment: the real paths of the startup files, snapshots and harness programs
+
+
+def _settings() -> list[str]:
+    """Every path whose write waits for the principal's code: the guard's settings and the commit check's entry points of
+    the synthesis home this guard runs for, the shells' startup files, Claude Code's shell snapshots, the harness programs."""
+    return list(_settings_map())
+
+
+def _env_key() -> tuple:
+    """What the protected paths are read from: the variables that name a home, a harness's folder or a shell's files."""
+    if len(SETTINGS_MAPS) + len(ROOTS_MEMO) + len(OWN_MEMO) > 512:
+        SETTINGS_MAPS.clear()
+        ROOTS_MEMO.clear()
+        OWN_MEMO.clear()
+    return tuple(os.environ.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
+                                                 "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
+
+
+def _settings_map() -> dict:
+    """Each path `_settings` names, with its kind and program: read once for the environment the guard runs in. A harness
+    program is held at each folder on PATH and in the vendors' known places, whether or not a file is there (one there
+    runs instead), through each link to the file it ends at, with the folder its installer keeps it in (Claude Code's
+    versions, the desktop app's, Codex's app-server CLI and an app's, a Homebrew keg or cask, an npm package) and, beside a
+    launcher, the files it keeps there (muse: muse-bin-<version> and .muse-version)."""
+    env, key = os.environ, _env_key()
+    if key in SETTINGS_MAPS:
+        return SETTINGS_MAPS[key]
+    home = os.path.expanduser("~")
+    found = {str(paths.config_file()): ("config.json", ""), str(paths.home() / "git-hooks"): ("git-hooks", "")}
+    read = _regular(os.path.join(home, ".zshenv"), 1 << 16)
+    zdots = [env.get("ZDOTDIR") or home] + [_expanded(dot) for _, dot in ZDOTDIR_SET.findall(read[0].decode("utf-8", "replace") if read else "")]
+    for folder, name in [(z, n) for z in [home] + zdots for n in STARTUP_FILES[:5]] + [(home, n) for n in STARTUP_FILES[5:]]:
+        found[os.path.join(folder, name)] = ("startup", "")
+    for named in (env.get("BASH_ENV"), env.get("ENV")):
+        if named:
+            found[_expanded(named)] = ("startup", "")
+    found[os.path.join(env.get("CLAUDE_CONFIG_DIR") or os.path.join(home, ".claude"), "shell-snapshots")] = ("snapshots", "")
+    folders = [d for d in dict.fromkeys(os.path.abspath(os.path.expanduser(d)) for d in env.get("PATH", "").split(os.pathsep)
+                                        + list(paths.PROGRAM_DIRS) if d) if _writable(d)]  # the system's own take no agent write
+    kept = {"claude": [os.path.join(env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share"), "claude"),
+                       os.path.join(home, ".local", "share", "claude"), str(paths.desktop_dir() / "claude-code")],
+            "codex": [str(paths.codex_home() / "plugins" / ".plugin-appserver")] + [  # and an app's Codex CLI, not the whole app
+                p.rsplit("/bin/", 1)[0] for p in paths.PROGRAM_PLACES.get("codex", ()) if "/codex-cli/bin/" in p]}
+    for name in HARNESS:
+        spots = [os.path.join(d, name) for d in folders] + [os.path.expanduser(p.split("*")[0].rstrip("/")) for p in paths.PROGRAM_PLACES.get(name, ())]
+        for spot in spots + kept.get(name, []):
+            found.setdefault(os.path.normpath(spot), ("program", name))
+        for spot in [s for s in spots if os.path.lexists(s)]:
+            hop, hops = spot, 0
+            while os.path.islink(hop) and hops < 8:  # each link it passes through, to the file it ends at
+                try:
+                    hop, hops = os.path.normpath(os.path.join(os.path.dirname(hop), os.readlink(hop))), hops + 1
+                except OSError:
+                    break
+                found.setdefault(hop, ("program", name))
+            end = os.path.realpath(spot)
+            for path in [end] + [m[0] for m in [KEPT.match(end)] if m]:
+                found.setdefault(path, ("program", name))
+            try:
+                beside = os.listdir(os.path.dirname(spot)) if os.path.isfile(spot) and not os.path.islink(spot) else []
+            except OSError:
+                beside = []
+            for other in beside:
+                if other.startswith((f"{name}-bin", f".{name}-")):
+                    found.setdefault(os.path.join(os.path.dirname(spot), other), ("program", name))
+    SETTINGS_MAPS[key] = found
+    return found
+
+
+def _harness_own() -> set:
+    """The real paths of the kinds a harness's own variables name (its startup files, snapshots and programs): read once
+    for the environment."""
+    key = _env_key()
+    if key not in OWN_MEMO:
+        OWN_MEMO[key] = {os.path.realpath(p) for p, (kind, _) in _settings_map().items() if kind in ("startup", "snapshots", "program")}
+    return OWN_MEMO[key]
+
+
+def _kinds_at(real: str) -> set:
+    """The kinds of the settings-held paths a path lies in (22.26)."""
+    return {kind for path, (kind, _) in _settings_map().items() if paths.inside(real, _real(path))}
+
+
+def _runs_at_start(name: str, where: str) -> bool:
+    """Whether a script a shell runs or sources is a shell's startup file or a Claude Code shell snapshot: what a shell
+    runs at its start anyway, which only the principal's code changes (22.26), so `source ~/.zshrc` reads it."""
+    return bool(_kinds_at(_real(os.path.join(where, os.path.expanduser(name)))) & {"startup", "snapshots"})
+
+
+PACKAGES = {"gh": "gh", "codex": "codex", "claude-code": "claude", "claude": "claude", "@anthropic-ai/claude-code": "claude", "@openai/codex": "codex"}
+CHANGES = {"brew": frozenset("install reinstall upgrade uninstall remove rm link ln unlink switch".split()),
+           "node": frozenset("install i add update up upgrade uninstall un remove rm r link ln".split())}
+
+
+def _installs(words: list) -> str:
+    """The harness program an installer command changes where its installer keeps it, else '' (22.26): Homebrew or a
+    Node package manager told to install, upgrade, remove or link it, or to upgrade everything while it is installed that
+    way, and Claude Code's own `claude update`, `claude install` and `claude migrate-installer`."""
+    head = os.path.basename(words[0])
+    rest = [w for w in words[1:] if not w.startswith("-")]
+    rest = rest[1:] if head == "yarn" and rest[:1] == ["global"] else rest
+    if head == "claude":
+        return "claude" if words[1:2] in (["update"], ["install"], ["migrate-installer"]) else ""
+    node = head in ("npm", "pnpm", "yarn", "bun") and (any(w in ("-g", "--global", "--location=global") for w in words) or "global" in words[1:2])
+    if not rest or not ((head == "brew" and rest[0] in CHANGES["brew"]) or (node and rest[0] in CHANGES["node"])):
+        return ""
+    named = [PACKAGES.get(re.sub(r"(?<=.)@[^/]*$", "", w.rsplit("/", 1)[-1] if head == "brew" else w), "") for w in rest[1:]]
+    if rest[1:]:
+        return next((n for n in named if n), "")
+    where = "/node_modules/" if node else "/Cellar/"  # everything it installed: a harness program installed that way
+    return next((name for path, (kind, name) in _settings_map().items() if kind == "program" and rest[0].startswith("up")
+                 and (where in path or (head == "brew" and "/Caskroom/" in path))), "")
+
+
+def _writable(folder: str) -> bool:
+    """Whether this user can put a file in a folder: it, or the nearest folder above it that is there, is theirs or open
+    to them."""
+    while not os.path.lexists(folder) and folder != os.path.dirname(folder):
+        folder = os.path.dirname(folder)
+    try:
+        return os.access(folder, os.W_OK) or os.stat(folder).st_uid == os.getuid()
+    except OSError:
+        return False
+
+
+def _expanded(value: str) -> str:
+    """A path as a shell expands it: `${NAME:-default}`, then $NAME and ~."""
+    value = re.sub(r"\$\{(\w+):?-([^}]*)\}", lambda m: os.environ.get(m[1]) or m[2], value)
+    return os.path.abspath(os.path.expanduser(os.path.expandvars(value)))
+
+
+def _settings_said(reached: list) -> tuple:
+    """(what each of the settings a write reaches is and holds, at most three paths of a kind, what a change there does),
+    as a hold names them."""
+    kinds: dict = {}
+    for path in reached:
+        kinds.setdefault(_settings_map().get(path, ("config.json", "")), []).append(path)
+    said = " and ".join(f"{SETTINGS_SAID[kind][0]} ({', '.join(spots[:3])}{f' and {len(spots) - 3} more' if len(spots) > 3 else ''}: "
+                        f"{SETTINGS_SAID[kind][1].format(name)})" for (kind, name), spots in kinds.items())
+    return said, "; it ".join(dict.fromkeys(SETTINGS_SAID[kind][2] for kind, _ in kinds))
+
+
+def check_settings_write(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A file tool's write of the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a harness
+    program waits for the principal's code for exactly that call: the tool, the file it lands in and everything it
+    writes (22.20, 22.26). Judged where the path really leads, in any case, so a link made beforehand, `..` or capitals
+    change nothing."""
+    import hashlib
+    targets = _file_targets(tool, tool_input)
+    real = {t: _real(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
+    reached = [s for s in _settings() if any(paths.inside(real[t], _real(s)) for t in targets)]
+    if not reached:
+        return None
+    hit = next(t for t in targets if any(paths.inside(real[t], _real(s)) for s in reached))
+    subject = {"tool": tool, "writes": sorted(set(real.values())),
+               "input": hashlib.sha256(json.dumps(tool_input, sort_keys=True, default=str).encode("utf-8")).hexdigest()}
+    if approvals.consume(SETTINGS_KIND, subject, session):
+        return None
+    said, does = _settings_said(reached)
+    code = approvals.request(SETTINGS_KIND, subject, f"{tool} writes {real[hit]}, {said.split(' (')[0]}")
+    return (f"{tool} would write {hit}, {said}. A change there {does}, so it waits for the principal: show them the exact "
+            f"change (the file and what the call writes) and ask them to type {approvals.how(code)}; then make the identical "
+            "call again. Reading it needs no code.")
 
 
 def _claude_parts(real: str) -> list:
     """A path's parts below the Claude Code `projects` folder it lies in, the CLI's or a desktop agent-mode session's
     (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words alone;
     [] where it lies in neither. No folder is listed on the hook's path."""
-    root = _real(paths.transcript_roots()["claude-code"])
+    key = ("claude", *map(os.environ.get, ("HOME", "CLAUDE_CONFIG_DIR", "SYNTHESIS_CLAUDE_DESKTOP_DIR")))  # what places them
+    if key not in ROOTS_MEMO:  # the two folders, read once for those (a line of nested scripts asked 13,188 times)
+        ROOTS_MEMO[key] = [str(paths.transcript_roots()["claude-code"]), str(paths.desktop_dir() / "local-agent-mode-sessions")]
+    root, base = (_real(p) for p in ROOTS_MEMO[key])
     if paths.inside(real, root):
         return os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)
-    base = _real(paths.desktop_dir() / "local-agent-mode-sessions")
     parts = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) else []
     return parts[5:] if len(parts) > 5 and parts[2].startswith("local_") and parts[3:5] == [".claude", "projects"] else []
 
@@ -3085,8 +4117,9 @@ def _file_targets(tool: str, tool_input: dict) -> list[str]:
 def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[str]:
     """The files a shell line writes or removes: redirects, what its utilities change (`_landing`), `apply_patch`;
     in every reading of the line (`_resolved`). A reading that cannot be made is passed over, and kept in `unread`
-    for a caller that counts them."""
-    targets = []
+    for a caller that counts them. `~` is put in before a target is joined to its folder, as the shell does (22.20: a
+    claimed file written as `~/…` was joined to the folder the command ran in, and its claim never looked at)."""
+    targets, at = [], lambda where, t: os.path.join(where, os.path.expanduser(t))
     for text in _resolved(command):
         writes = []
         try:
@@ -3095,11 +4128,11 @@ def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[st
             if unread is not None:
                 unread.append(text)
             continue
-        targets += [os.path.join(w, t) for t, w in writes]
+        targets += [at(w, t) for t, w in writes]
         for words, where in found:
-            targets += [os.path.join(where, w) for w in _landing(words)]
+            targets += [at(where, w) for w in _landing(words)]
             if os.path.basename(words[0]) == "apply_patch":
-                targets += [os.path.join(where, a or b) for a, b in PATCH_PATHS.findall(text)]
+                targets += [at(where, a or b) for a, b in PATCH_PATHS.findall(text)]
     return targets
 
 
@@ -3117,18 +4150,28 @@ def check_claimed(targets: list[str], cwd: str, session: dict | None) -> str | N
     return None
 
 
-def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict) -> str | None:
+def check_file_write(tool: str, tool_input: dict, cwd: str, config: dict, session: dict | None = None) -> str | None:
     """An agent's own file tools (Write, Edit, apply_patch) may not write where approvals and send windows live
-    (2026-10-14: those tools never reached the guard, so a window could be written by hand)."""
+    (2026-10-14: those tools never reached the guard, so a window could be written by hand), nor, without the
+    principal's code, a file that is also one in such a folder (a hard link: review round 2 of 5.23.1, R2-4)."""
     targets = _file_targets(tool, tool_input)
     roots = [os.path.realpath(r) for r in _protected_roots(config)]
     real = {t: os.path.realpath(os.path.join(cwd, os.path.expanduser(t))) for t in targets}
     hits = [t for t in targets if any(paths.inside(real[t], r) for r in roots) and not _own(real[t])]
     if hits and _cli_owned(real[hits[0]]):
         return f"Refused: {tool} would write {hits[0]}, {_cli_owned(real[hits[0]])}"
-    return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
-            "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
-            "show them what needs approving.") if hits else None
+    if hits:
+        return (f"Refused: {tool} would write {hits[0]}, inside the synthesis state folder, a harness's session "
+                "transcripts or the approved commit lines. Approvals and send windows come only from the principal; "
+                "show them what needs approving.")
+    for t, shared in ((t, _shared(real[t], roots)) for t in targets):
+        subject = {"tool": tool, "file": real[t], "same_as": shared}
+        if shared and not approvals.consume("shared-file", subject, session):
+            code = approvals.request("shared-file", subject, f"a {tool} to a file that is also {shared}")
+            return (f"This {tool} writes {t}, which is also {shared} in a protected folder (a hard link), so it would change that "
+                    f"file. If the change is meant, show the principal this exact call and ask them to type {approvals.how(code)}; "
+                    "then make the identical call again.")
+    return None
 
 
 def _python_source(words: list, fed: str) -> tuple[str, list]:
@@ -3139,7 +4182,7 @@ def _python_source(words: list, fed: str) -> tuple[str, list]:
     return ("", []) if kind == "file" else (text, ["-c"] + words[i:]) if kind == "inline" else (fed, words[i:] or [""])
 
 
-OS_WRITES = re.compile(r"remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime|open"
+OS_WRITES = _Pattern(r"remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime|open"
                        r"|write|system|popen|exec\w*|(?:posix_)?spawn\w*")
 OPENERS = ("builtins", "io", "codecs", "gzip", "bz2", "lzma", "tarfile", "zipfile")  # their open (or ZipFile) takes the file, then the mode
 COPIES = ("copy", "copy2", "copyfile", "copytree", "copymode", "copystat", "copyfileobj")  # shutil's: only the second place changes
@@ -3156,12 +4199,12 @@ LIBRARY_WRITES = ("basicConfig", "FileHandler", "RotatingFileHandler", "TimedRot
 # when the reader cannot tell (`to_<anything else>`, `write_<anything else>`, another module's `save(a, b)`); and,
 # as a module's own function only, a deletion or a move (`send2trash`), since a list has a `remove` of its own.
 # PATH_KEYS: the keywords such writers take a path under.
-BY_NAME = re.compile(r"(to_(?:csv|json|excel|parquet|pickle|feather|hdf|stata|html|latex|xml|markdown|orc|string|file|netcdf|zarr|disk)|tofile|writeto|savefig|imsave|imwrite"
+BY_NAME = _Pattern(r"(to_(?:csv|json|excel|parquet|pickle|feather|hdf|stata|html|latex|xml|markdown|orc|string|file|netcdf|zarr|disk)|tofile|writeto|savefig|imsave|imwrite"
                      r"|mimsave|mimwrite|dump_stats|write_(?:csv|json|parquet|excel|ipc|ndjson|avro|image|html|videofile|audiofile|gif|png|pdf|svg))"
                      r"|(to_[a-z_]+|write_\w+)|(save\w*)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
 OBJECT_FIRST = {"torch", "joblib", "pickle", "dill", "cloudpickle", "nibabel", "torchvision", "tensorflow", "keras", "pandas", "pyarrow", "networkx"}  # save(what, where)
 PATH_FIRST = {"numpy", "cv2", "imageio", "scipy", "skimage", "matplotlib", "tifffile", "PIL"}  # save(where, what)
-OPENED = re.compile(r"\w*(?:File|Store|Writer)|Dataset|open_\w+|memmap|get_writer")  # a library's own way to open a file: h5py.File(path, "w"), ExcelWriter(path)
+OPENED = _Pattern(r"\w*(?:File|Store|Writer)|Dataset|open_\w+|memmap|get_writer")  # a library's own way to open a file: h5py.File(path, "w"), ExcelWriter(path)
 STRINGS = ("join", "joinpath", "Path", "PurePath", "PosixPath", "str", "fspath", "expanduser", "expandvars", "abspath", "realpath", "normpath", "resolve", "absolute",
            "with_suffix", "with_name", "with_stem", "format", "replace", "dirname", "basename", "getcwd", "cwd", "home", "mkdtemp", "mktemp", "gettempdir", "strip",
            "rstrip", "lstrip", "lower", "upper", "removesuffix", "removeprefix", "relative_to", "relpath", "getenv")  # hand back a string or a path
@@ -3339,8 +4382,9 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
     keyed |= {id(n.func.value) for n in nodes if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "update"} | {id(v) for t, v in pairs if isinstance(t, ast.Name) and getattr(v, "attr", getattr(v, "id", "")) == "environ"} | {
         id(c) for n in nodes if isinstance(n, ast.Compare) and any(isinstance(o, (ast.In, ast.NotIn)) for o in n.ops) for c in n.comparators}  # given a value, kept under a name, asked for a name: each read as the table it is
     wild = any(getattr(n, "attr", getattr(n, "id", "")) in ("environ", "environb", "getenv", "putenv") and id(n) not in keyed for n in nodes)  # copied whole for a child, it is read through the copy
+    inherited = [r for r in roots if r not in _harness_own()]  # a harness's own variables name these (22.26)
     loose = loose or (wild and (any(m in v for v in env.values() for m in names) or any(
-        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in roots)))
+        v[:1] == "/" and paths.inside(v, r) for v in env.values() for r in inherited)))
 
     def source(node):  # what an open call opens: its first argument, or the path whose own open() it is; None for any other node
         if not (isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open"):
@@ -3353,7 +4397,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             map(named, [*node.args, *(k.value for k in node.keywords), *([node.func.value] if isinstance(node.func, ast.Attribute) else [])]))
 
     store = paths.line_allowances(config or {})
-    folders_held = [r for r in roots if not store or r != os.path.realpath(str(store))]  # the approved lines are one file: nothing holds a folder of them
+    folders_held = [r for r in roots if not store or r != _real(str(store))]  # the approved lines are one file: nothing holds a folder of them
 
     def over(n) -> bool:  # a walk or a pattern that may find what lies in a protected folder, from a folder that holds it
         label = getattr(n.func, "attr", getattr(n.func, "id", ""))
@@ -3362,7 +4406,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         top = os.path.join(top, said(n.args[0]) or "\0") if method and label == "glob" and n.args else top
         top = os.path.join(*[spelled(k.value) for k in n.keywords if k.arg == "root_dir"], top)  # glob's root_dir leads its pattern
         top = home(top[top.rfind("\1") + 1:]).replace("\0", "*")
-        return any(_reaches(os.path.realpath(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
+        return any(_reaches(_real(os.path.join(spot, top)), r, label in ("walk", "fwalk", "rglob"), method)
                    for spot in ([""] if os.path.isabs(top) else places) if "\0" not in spot for r in folders_held)
 
     def rooted(n) -> bool:  # what names no folder: a path taken relative to one that holds it, one part of a path, a path flattened, a digest
@@ -3385,7 +4429,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
             return False
         if "\0" not in path:  # spelled out: it must not climb
             return os.path.isabs(path) and ".." not in os.path.relpath(path, start).split(os.sep)
-        return any(paths.inside(os.path.realpath(start), r) or paths.inside(r, os.path.realpath(start)) for r in roots)
+        return any(paths.inside(_real(start), r) or paths.inside(r, _real(start)) for r in roots)
 
     def named(node, apart=()) -> bool:  # built from a protected path: in a string, in an argument, or through a name or an attribute
         todo, met = [node], set()
@@ -3892,7 +4936,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         seen += (id(c),)
         if c is ENV:
             made = [(env[key], ())] if key in env and not re.search(r"[$`]", env[key]) else [] if key is not None else [(None, ())] + [
-                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in roots))]  # any of them: one may name a protected path
+                (v, ()) for v in env.values() if any(m in v for m in names) or (v[:1] == "/" and any(paths.inside(v, r) for r in inherited))]  # any of them: one may name a protected path
         elif isinstance(c, ast.Dict):
             made = [x for k, v in zip(c.keys, c.values) for x in (
                 [y for o in resolve(v, seen) or [None] for y in part(o, sel, None, seen)] if k is None else [(v, ())] * (key is None or key_at(k) in (key, None)))]
@@ -4120,7 +5164,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 
     def elsewhere(raw: str) -> bool:  # a plain folder elsewhere leads this spelling, whatever its end
         lead = os.path.dirname(home(raw).split("\0")[0]) if "\1" not in raw else ""
-        return os.path.isabs(lead) and not any(paths.inside(os.path.realpath(lead), r) or paths.inside(r, os.path.realpath(lead)) for r in roots)
+        return os.path.isabs(lead) and not any(paths.inside(_real(lead), r) or paths.inside(r, _real(lead)) for r in roots)
 
     def inward(raw: str) -> set:  # the names that hold what a walk found from where the program stands: under such a folder they only go further in
         return {k for k in finds if all(v[:1] not in ("/", "~", "\0", "\1") and ".." not in v.split("/") for v in ranges.get(k + "~", ["/"]))} if elsewhere(raw) else set()
@@ -4264,7 +5308,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 
     def within(spot: str) -> bool:  # a folder the program may stand in lies in a protected one; an end that cannot be read lies under the part that can
         lead = spot if "\0" not in spot else os.path.dirname(spot.split("\0")[0])
-        return os.path.isabs(lead) and any(paths.inside(os.path.realpath(lead), r) for r in roots)
+        return os.path.isabs(lead) and any(paths.inside(_real(lead), r) for r in roots)
 
     def lands(node, folder: bool = False, link: bool = False, at=(where,), reach=()) -> bool:  # whether a write's target is, or may be, in a protected folder
         return any(leads(path, node, folder, link, at, reach) for path in spellings(node) if "\2" not in path)  # no value at all writes nothing
@@ -4557,15 +5601,16 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 # in any spelling passes only when its program is proven to read only: Python whose writes the reader follows, an awk
 # or sed program that writes no file and runs no command, a shell's script on the line (each command is judged).
 # Anything else waits for the principal's code for exactly that command, as a send does.
-UNREAD = re.compile(r"(?:pypy[\d.]*|node(?:js)?|bun|deno|tsx|ts-node|perl[\d.]*|ruby[\d.]*|irb|jruby|php[\d.]*|lua(?:jit)?[\d.]*"
+UNREAD = _Pattern(r"(?:pypy[\d.]*|node(?:js)?|bun|deno|tsx|ts-node|perl[\d.]*|ruby[\d.]*|irb|jruby|php[\d.]*|lua(?:jit)?[\d.]*"
                     r"|tclsh[\d.]*|wish[\d.]*|expect|osascript|Rscript|julia|swift|groovy|scala|elixir|pwsh|jshell|java|fish|csh|tcsh)$")
 EDITORS = frozenset({"ed", "ex", "vi", "vim", "nvim", "emacs", "sqlite3"})  # their scripts come on their input or in their words
-AWK_SAFE = re.compile(r"-[Fv].*|--(?:field-separator|assign)(?:=.*)?|-[bcNOPrsSt]+|--(?:sandbox|posix|traditional|re-interval)|--?")
+AWK_SAFE = _Pattern(r"-[Fv].*|--(?:field-separator|assign)(?:=.*)?|-[bcNOPrsSt]+|--(?:sandbox|posix|traditional|re-interval)|--?")
 EXTRACTS = {**dict.fromkeys(("tar", "bsdtar", "gtar"), r"-?[A-Za-z]*x[A-Za-z]*|--extract|--get"), "pax": r"-[A-Za-z]*r[A-Za-z]*",
             "cpio": r"-[A-Za-z]*[ip][A-Za-z]*|--extract|--pass-through", **dict.fromkeys(("unzip", "unar"), r"[^-].*"),
             **dict.fromkeys(("7z", "7za", "ar"), r"-?[a-z]*[xe][a-z]*")}  # the word that says it unpacks where it stands
-CANDIDATE = re.compile(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
+CANDIDATE = _Pattern(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
 SPELLINGS: dict = {}  # (home, roots, anchors): the pattern of every way a program's text spells a protected folder
+ANCHORS: dict = {}  # (roots, the variables that hold a path): those whose folder holds a protected one or lies in one
 
 
 class Unproven(str):
@@ -4573,7 +5618,7 @@ class Unproven(str):
     protected folder. Any reading that is refused outright is refused first."""
 
 
-_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "until": 0.0}  # one call's script texts, their marks, its proofs, where its paths lead, and its deadline
+_CALL: dict = {"codes": {}, "ran": {}, "proofs": {}, "files": {}, "real": {}, "looks": {}, "unplaced": False, "until": 0.0, "approved": False}  # one call's script texts, their marks, its proofs, where its paths lead, what its programs are, whether where its commands run could be told, its deadline, and a run the principal approved
 CALL_SECONDS, PROOFS_A_CALL = 3.0, 8  # under the hook's own 4 s; past either, a command waits rather than spins (finding 12)
 
 
@@ -4587,27 +5632,52 @@ def _real(path) -> str:
 
 READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
                  "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
-GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
-GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
-ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
-SYNTHESIS_IMPORT = re.compile(r"^[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+synthesis\b)", re.M)
+GIT_FIRST = _Pattern(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
+GIT_RUNS = _Pattern(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
+ABSOLUTE = _Pattern(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
+SYNTHESIS_IMPORT = _Pattern(  # wherever a statement may start: a line, after `;` or `:`, in a list (5.23.1: `import sys; from
+    r"(?:^|[;:])[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*synthesis\b)", re.M)  # synthesis ...` passed)
+SYNTHESIS_LOADED = _Pattern(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
+                              r"[ \t]*\([^)\n]*?['\"][^'\"\n]*\bsynthesis(?:[./]|['\"])")  # a name or a file of synthesis's handed to a loader
+# What runs code it is handed by a name or a text, and the modules whose loaders may be imported by another name (review
+# round 4 of 5.23.1's approval fix, finding 1); of them, what runs a file; and how a string or a word says synthesis as
+# code does: the package's name alone or leading a dotted name, an import of it where code starts, a path to its folder
+# or one of its files (a Mac's file system ignores case; Python's imports do not). Finding a module runs none of it
+# (`find_spec`, `spec_from_file_location`): what runs the spec is read for what it was made from. `exec`, `eval` and
+# `compile` are the builtins, never another object's method of that name (`model.eval()`, `re.compile`), and `compile`
+# alone runs nothing, so it counts only for a text that imports synthesis: compiling synthesis's own source reads.
+LOADERS = frozenset({"exec", "eval", "__import__", "import_module", "reload", "exec_module", "load_module", "run_module", "run_path",
+                     "load_source", "load_compiled", "resolve_name", "locate", "runsource", "runcode", "interact", "FunctionType",
+                     "dictConfig", "fileConfig"})
+FILE_RUNNERS = frozenset({"exec", "eval", "exec_module", "load_module", "run_path", "load_source", "load_compiled"})
+LOADER_MODULES = frozenset({"importlib", "runpy", "pkgutil", "imp", "pydoc", "zipimport", "code", "codeop"})
+MAY_LOAD = _Pattern(r"\b(?:%s|compile)\b|^[ \t]*(?:import|from)[ \t]+(?:%s)\b" % ("|".join(sorted(LOADERS)), "|".join(sorted(LOADER_MODULES))), re.M)
+IMPORTS_IT = _Pattern(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+import\b|[ \t]*$)"
+                        r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
+SAYS_SYNTHESIS = _Pattern(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone consume grant_from_prompt put_back remember request void"),
+    ("approvals", "_expire _spend alone answered consume grant_from_prompt put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
-    ("cli", "_main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
+    ("cli", "_batch _main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
-    ("hook", "_carried_since _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_merge _write_exec install move_board register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
+    ("install", "_install_lock _install_locked _merge _spend_release _stage _write_exec approval grant_release install move_board "
+                "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
-    ("reply_check", "check misrouted_accounts unarmed_wait unwatched_sends"), ("sends", "_note close_window log open_window settle undo window_refusal"),
+    ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
+    ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
+    ("sends", "_note batch_refusal batch_spend batch_unspend close_batches close_window log open_batch open_window sender_ticket settle ticket undo window_refusal"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
+GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
+                                                                    "paths"))  # the writers approvals rest on; the board's grant nothing
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
-SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir",
-                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root"})
+SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir", "paths.config_file",
+                              "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
+                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file"})
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -4749,39 +5819,418 @@ def _isolated(words: list) -> bool:
     return "I" in flags or ("P" in flags and "E" in flags)
 
 
-PYTHON_ENV = re.compile(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
+PYTHON_ENV = _Pattern(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
 
 
-def _stand_in(code: str, where: str, module: str = "") -> str:
+def _stand_in(code: str, where: str, module: str = "", written: set | frozenset = frozenset()) -> str:
     """A module a Python program imports (or runs with -m) that a file or package in the folder it starts from could
-    stand in for, since an inline, stdin or module run looks there first; '' for none (the coordinator, 2026-11-14)."""
+    stand in for, since an inline, stdin or module run looks there first, or one the line writes there (`written`, review
+    round 3 of 22.21); '' for none (the coordinator, 2026-11-14)."""
     import sys
     names = {m.split(".")[0] for a, b in re.findall(r"^[ \t]*(?:from[ \t]+([\w.]+)[ \t]+import|import[ \t]+([\w., \t]+))", code, re.M)
              for m in ([a] if a else [part.split()[0] for part in b.split(",") if part.strip()])} | {module.split(".")[0]} - {""}
     return next((m for m in sorted(names - set(sys.builtin_module_names)) if os.path.exists(os.path.join(where, m + ".py"))
-                 or os.path.isdir(os.path.join(where, m))), "")
+                 or os.path.isdir(os.path.join(where, m)) or any(w == _real(os.path.join(where, m + ".py")) or paths.inside(
+                     w, _real(os.path.join(where, m))) for w in written)), "")
+
+
+def _module_path_is_synthesis(line: str, where: str, code: str, written: set | frozenset = frozenset()) -> bool:
+    """Whether the only module-path variable a line sets is PYTHONPATH, and each folder it names shadows nothing Python
+    would import from elsewhere, but for a `synthesis` package byte for byte the one this guard runs: a path that changes
+    nothing the reader proved (review round 3 of 22.21: `PYTHONPATH=<a checkout> python3 -c 'import synthesis.paths as p;
+    print(p.home())'` waited). A folder that holds sitecustomize, a module found elsewhere, or a synthesis unlike the
+    guard's, still waits: any of those may run code the program never names. So does one not there when judged, or one
+    the line writes into (`written`): the line may fill it first. The caller holds a line whose other programs may."""
+    found = [(m[1], m[3].strip("'\"")) for m in ASSIGNED.finditer(line) if PYTHON_ENV.search(" " + m[0])]
+    if not found or any(key != "PYTHONPATH" for key, _ in found):
+        return False
+    here, tops = os.path.dirname(os.path.abspath(__file__)), {name.split(".")[0] for dots, name, _ in _imports(code) if not dots and name}
+    ours = sorted(n for n in os.listdir(here) if n.endswith(".py"))
+    for entry in (os.path.join(where, os.path.expanduser(e)) for _, value in found for e in value.split(":") if e):
+        if not os.path.isdir(entry) or any(paths.inside(w, _real(entry)) for w in written):
+            return False
+        for n in os.listdir(entry):
+            top, path = n[:-3] if n.endswith(".py") else n, os.path.join(entry, n)
+            if not (n.endswith(".py") or os.path.isdir(path)) or not top.isidentifier():
+                continue  # nothing Python imports
+            if top == "synthesis" and os.path.isdir(path):
+                theirs = sorted(f for f in os.listdir(path) if f.endswith(".py"))
+                if theirs != ours or any((_regular(os.path.join(path, f), TEXT_LIMIT) or (None,))[0] != (_regular(os.path.join(here, f), TEXT_LIMIT) or (b"",))[0]
+                                         for f in ours):
+                    return False
+            elif top in tops or top in ("sitecustomize", "usercustomize") or _found_elsewhere(top, _real(entry), True, os.path.isdir(path) and not (
+                    os.path.isfile(os.path.join(path, "__init__.py")))):
+                return False  # a module the program imports, or one it hides from Python's own installation
+    return True
+
+
+# --- the release tool, run from the protected runtime with no code (the principal, 2026-11-15) -----------------------
+# A release installs the runtime this guard runs from, so it runs from that runtime, where no agent can change it,
+# through the launcher install writes in the protected bin/ (review round 1 of 5.23.1, A4): the interpreter pinned at
+# install, isolated, with a fixed environment. Exactly that launcher passes with no code: alone on the line in plain
+# words, by its absolute path, with only the options the tool documents, on the canonical checkout (`release_checkout`)
+# or naming a tag to install. What it publishes and installs then comes from a fresh clone of what GitHub serves, which
+# its own preflight requires to be the tip of main with CI passed. The tool by its own path, a copy of it or of the
+# launcher, the scripts the runtime carries for it and every other way of running them are judged as any other program:
+# `RELEASE_KIT` is never the plugin's own (`_shipped`).
+RELEASE_REPOSITORY = "synthesisengineering/synthesis-skills"
+RELEASE_KIT = ("skills/synthesis-skills-manager/scripts/", "skills/synthesis-onboarding/scripts/")  # its imports with it
+GITHUB_REMOTE = _Pattern(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
+RELEASE_OPTIONS = {"--repo-root": r"/.+", "--tag": r"v\d+\.\d+\.\d+", "--clients": r"(?:claude|codex|muse)(?:,(?:claude|codex|muse))*",
+                   "--session": r"[\w.:-]{1,128}", "--install-only": None, "--dry-run": None}
+RELEASE_CONFIG = _Pattern(  # a checkout's own config keys that run no program and send git nowhere
+    r"core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)|user\.(?:name|email)"
+    r"|remote\.[^.\s]+\.(?:url|fetch|gh-resolved)|branch\..+\.(?:remote|merge|pushremote|rebase|vscode-merge-base|description)"
+    r"|extensions\.(?:worktreeconfig|objectformat)")
+PLAIN_LINE = _Pattern(r"[\w./:@%+,=~-]+(?: +[\w./:@%+,=~-]+)*")  # words no shell changes: no quote, variable, glob or operator
+KIT_FILES = ("skills/synthesis-skills-manager/scripts/release.py", "skills/synthesis-onboarding/scripts/setup.py",
+             "skills/synthesis-onboarding/scripts/workspace.py")  # the release tool's modules that write
+KIT_LOADS = _Pattern(r"\b(?:import_module|__import__)\(\s*['\"](release|setup|workspace)['\"]")
+
+
+def _kit_file(path: str) -> bool:
+    spelt = paths.spelled(os.path.realpath(path))
+    return any(spelt.endswith(paths.spelled(os.sep + rel.replace("/", os.sep))) for rel in KIT_FILES)
+
+
+def _kit_loaded(texts: list, where: str, isolated: bool, named: str) -> str:
+    """The release tool's own module a Python program loads ('' for none): a script or module of its own that is one,
+    or a module named like one that it imports and that is one where Python finds it (the folder it starts from, its
+    script's folder, a folder its text names). Found nowhere while the program names a protected folder, which is a
+    path it builds into the runtime, it is taken to be one. A project's own release or setup is not (round 1, A6)."""
+    for path, text in texts:
+        if path and _kit_file(path):
+            return path
+        wanted = ({m.split(".")[0] for dots, m, _ in _imports(text) if not dots} | set(KIT_LOADS.findall(text))) & {
+            "release", "setup", "workspace"} if "release" in text or "setup" in text or "workspace" in text else set()
+        folders = ([] if isolated else [where]) + [os.path.dirname(path)] * bool(path) + [
+            spot for spot in (os.path.join(where, os.path.expanduser(next(filter(None, c)))) for c in CANDIDATE.findall(text))
+            if os.path.isdir(spot)]
+        for name in sorted(wanted):
+            found = [file for file in (os.path.join(folder, name + ".py") for folder in folders) if os.path.isfile(file)]
+            if any(map(_kit_file, found)) or (not found and named):
+                return next(filter(_kit_file, found), f"`{name}`, which it finds in no folder this guard reads")
+    return ""
+
+
+def _canonical_remote(url: str) -> bool:
+    found = GITHUB_REMOTE.match(url)
+    return bool(found) and found.group(1).lower() == RELEASE_REPOSITORY
+
+
+def release_checkout(repo: str) -> list:
+    """Why `repo` is not the canonical checkout of the synthesis-skills repository, [] when it is: the root of a git
+    checkout; an origin, with every remote's address for fetching and for pushing, as git uses it after any rewriting,
+    the repository on GitHub; on main; its own config, and a worktree's, setting only keys that run no program and send
+    git nowhere. These reads run no program of the checkout's; one git cannot make is a reason (release.py asks too)."""
+    import subprocess
+
+    def git(*args):
+        try:
+            done = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True, timeout=4, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return done.stdout if done.returncode == 0 else None
+    top = git("rev-parse", "--show-toplevel")
+    if not top or os.path.realpath(top.strip()) != os.path.realpath(repo):
+        return [f"{repo} is not the root of a git checkout"]
+    remotes, branch, keys = git("remote", "-v"), (git("symbolic-ref", "--quiet", "--short", "HEAD") or "").strip(), git(
+        "config", "--list", "--show-scope", "--name-only")
+    if remotes is None or keys is None:
+        return [f"git cannot read the remotes or the config of {repo}"]
+    found = [(line.split() + [""])[:2] for line in remotes.splitlines() if line.strip()]
+    wrong = sorted({f"{name} {url}" for name, url in found if not _canonical_remote(url)})
+    odd = sorted({key for scope, _, key in (line.partition("\t") for line in keys.splitlines())
+                  if scope in ("local", "worktree") and not RELEASE_CONFIG.fullmatch(key)})
+    return ([] if any(name == "origin" for name, _ in found) else ["it has no origin remote"]) + (
+        [f"its remotes lead elsewhere than github.com/{RELEASE_REPOSITORY}: {', '.join(wrong[:4])}"] if wrong else []) + (
+        [] if branch == "main" else [f"it is on {branch or 'a detached HEAD'}, not main"]) + (
+        [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
+
+
+def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
+    """The options of a command line that is exactly the release launcher install wrote, on the canonical checkout or
+    naming a tag to install (above); {} for any other. Its paths are absolute, so no folder the command runs from moves
+    them (A5), and a session it names is the one asking (A9)."""
+    try:
+        argv = shlex.split(command)
+    except ValueError:
+        argv = []
+    if len(argv) == 3 and os.path.basename(argv[0]) in ("bash", "zsh", "sh") and argv[1] in ("-lc", "-c"):
+        if not _system_shell(argv[0], cwd):
+            return {}  # a program of the agent's named as a shell would carry the line (combined review round 1, C2)
+        command = argv[2]  # Codex's shell tool hands the line to a shell, exactly as written (round 1, A7)
+    line, release = command.strip(), os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+    words, home = line.split(), os.path.expanduser("~")
+    if not PLAIN_LINE.fullmatch(line) or os.path.basename(words[0]) != "synthesis-release" or os.path.realpath(
+            paths.home() / "current") != release or not paths.inside(release, os.path.realpath(paths.home() / "releases")):
+        return False  # a line a shell changes, another program, or this guard is not the protected runtime's
+
+    def place(word: str, shell: bool) -> str:  # an absolute path as the shell hands it on: `~/` leads home only at a word's start
+        word = home + word[1:] if shell and word.startswith("~/") else word
+        return word if word[:1] == "/" and "~" not in word else ""
+    from synthesis import install
+    target, python = paths.home() / "bin" / "synthesis-release", install.pinned(paths.home())
+    try:
+        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, "synthesis-release")
+    except OSError:
+        written = False
+    if not written or not python or install.interpreter_problems(python) or os.path.realpath(place(words[0], True) or "/") != (
+            os.path.realpath(target)):
+        return False  # not the launcher install wrote, for an interpreter it would still pin
+    given, at = {}, 1
+    while at < len(words):
+        name, joined, value = words[at].partition("=")
+        pattern = RELEASE_OPTIONS.get(name, "")
+        if pattern == "" or name in given or (joined and pattern is None):
+            return False  # an option it does not document, one given twice, or a switch given a value
+        if pattern is not None and not joined:
+            at += 1
+            value = words[at] if at < len(words) else ""
+        if pattern is not None and not re.fullmatch(pattern, place(value, not joined) if name == "--repo-root" else value):
+            return False
+        given[name], at = place(value, not joined) if name == "--repo-root" else value, at + 1
+    if "--session" in given and given["--session"] != paths.session_id(session):
+        return {}  # another session's id would take or drop that session's hold on the release train
+    if "--install-only" in given:
+        return given if "--tag" in given and "--repo-root" not in given else {}
+    return given if "--tag" not in given and given.get("--repo-root") and not release_checkout(given["--repo-root"]) else {}
+
+
+def _grant_release(given: dict, line: str) -> None:
+    """The one install the release launcher's line may make with no code: of `v<version>`, the tag it names or the version
+    its checkout's manifests carry, into this home, written for `install` to spend (review round 2 of 22.18, K1). A dry
+    run installs nothing; a version that cannot be read is granted nothing, and that install waits for the code. The
+    manifest is read as the guard reads any file it may not wait on (combined review round 1, C7a: a FIFO there)."""
+    if "--dry-run" in given:
+        return
+    from synthesis import install
+    version = given["--tag"][1:] if "--install-only" in given else ""
+    if "--install-only" not in given:
+        found = _regular(os.path.join(given["--repo-root"], ".claude-plugin", "plugin.json"), 64 * 1024)
+        try:
+            data = json.loads(found[0]) if found else {}
+        except ValueError:
+            data = {}
+        version = str(data.get("version") or "") if isinstance(data, dict) else ""
+    if re.fullmatch(r"\d+\.\d+\.\d+", version):
+        install.grant_release(version, line)
+
+
+def _sealed(path: str) -> bool:
+    """No user can change what `path` names: as named and as resolved, it and every folder above it are owned by root and
+    writable by neither this user nor its groups. The interpreter pin's test (install.interpreter_problems) without its
+    rule that a path be its own real path, so a link the system put there counts (`/bin` on Linux) and a link of a
+    user's, which can lead elsewhere once the line has passed, does not."""
+    if not os.path.isabs(path) or os.path.normpath(path) != path:
+        return False  # past a link, `..` is not where the system goes
+    for spot in (path, os.path.realpath(path)):
+        while True:
+            try:
+                if os.lstat(spot).st_uid or os.access(spot, os.W_OK):
+                    return False
+            except OSError:
+                return False
+            if spot == os.path.dirname(spot):
+                break
+            spot = os.path.dirname(spot)
+    return True
+
+
+def _system_shell(word: str, cwd: str) -> bool:
+    """Whether the shell a wrapped launcher line names is one no user can write (combined review round 1, C2): named by a
+    path, that file; named bare, the first of that name on the harness's own PATH (the hook's, less what the hook's
+    launcher put first). One put ahead of it after the line has passed is open (crafted), as the guard does not see
+    the harness look it up."""
+    if "/" in word:
+        found = os.path.join(cwd, os.path.expanduser(word))
+        return os.path.isfile(found) and os.access(found, os.X_OK) and _sealed(found)
+    from synthesis import install
+    searched, git = os.environ.get("PATH", ""), install.pinned_git()
+    for put in ([f"{os.path.dirname(git)}:{install.SAFE_PATH}"] if git else []) + [install.SAFE_PATH]:
+        if searched == put or searched.startswith(put + ":"):
+            searched = searched[len(put) + 1:]
+            break
+    for folder in (os.path.join(cwd, entry) for entry in searched.split(os.pathsep)):  # an empty entry is the command's own folder
+        found = os.path.join(folder, word)
+        if os.path.isfile(found) and os.access(found, os.X_OK):
+            return _sealed(found)
+    return False
+
+
+def _release() -> str:
+    """The release this guard runs from: `releases/<hash>/` under the synthesis home, a protected folder."""
+    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 
 def _shipped(path: str) -> bool:
-    """A script of the plugin as it shipped: inside the release this guard runs from (`releases/<hash>/` under the
-    synthesis home, a protected folder), or with the same bytes as that release's copy at the same relative path,
-    as are the modules beside it that it imports (a skill's script in a harness's plugin cache). Nothing else in the
-    synthesis home, and no file beside an unchanged guard elsewhere, is the plugin's (the coordinator, 2026-11-14)."""
-    release = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-    if paths.inside(path, release):
+    """A script of the plugin as it shipped: inside the release this guard runs from, whose every import resolves
+    inside it. A copy anywhere else is never the plugin's own, whatever its bytes, since what lies around it is
+    writable: the plugin's synthesis/ two folders up, the skill's root, a module planted beside it (the review of
+    5.23.1, finding 1). Every skill runs the runtime's copy instead (`_runtime_copy`; the coordinator, 2026-11-15).
+    The release tool and what it imports are the release's alone (2026-11-15): each is judged as any other script,
+    inside the release too."""
+    release = _release()
+    return paths.inside(path, release) and not paths.spelled(os.path.relpath(paths.spelled(path), paths.spelled(release))).replace(
+        os.sep, "/").startswith(tuple(map(paths.spelled, RELEASE_KIT)))
+
+
+PLAIN_OPTIONS = _Pattern(r"-[BEIPSsqu]+")  # Python's options that only take away what it loads, or change no code it runs
+SETTERS = frozenset({"export", "declare", "typeset", "local", "alias", "hash", "enable", "builtin", "source", ".", "function", "read",
+                     "mapfile", "readarray", "autoload", "getopts", "unset", "let", "vared", "zparseopts", "select"})  # each sets one
+STARTUP = _Pattern(r"PYTHON\w*|DYLD_\w*|LD_\w*|PATH|HOME|BASH_ENV|ENV|TMPDIR|path|fpath|manpath|cdpath|module_path")  # zsh ties the last five
+DEFINES = _Pattern(r"(?:^|[\s;&|({])(?:function[ \t]+[^\s;&|()]|(?:functions|aliases|commands|builtins|path|fpath|manpath|cdpath|module_path)\["
+                     r"|[^\s;&|()<>'\"=$]+[ \t]*\([ \t]*\)[ \t\n]*[{(])|\$\{\w+:{0,2}=")  # and a parameter expansion that assigns
+MOVES_HOME = _Pattern(r"(?<![\w${])HOME\b(?!=)|\$\{HOME:{0,2}=")  # HOME given a value by anything but a HOME= the guard reads
+USES_HOME = _Pattern(r"\$\{?HOME\b|(?<![\w$~./-])~(?=/|\s|$|[\"'])|(?:^|[;&|(]\s*)cd\s*(?:$|[;&|)])")
+
+
+def _shell_fed(tokens: list) -> set:
+    """The heredoc bodies of a line that a shell runs: each fed to a shell, `source`, `.` or `eval`, itself or further
+    down its pipeline."""
+    fed, pipeline = set(), []
+    for item in [i for i in _simple(tokens) if i not in ("(", ")")] + [None]:
+        if item is None or not item[3]:  # a pipeline ends where the next command reads no pipe
+            if any({os.path.basename(next((w for w in words if w not in KEYWORDS and not re.match(r"[A-Za-z_]\w*=", w)), "")),
+                    os.path.basename((_bare(list(words))[0] or [""])[0])} & {*SHELLS, "source", ".", "eval"} for words, _ in pipeline):
+                fed |= {text for _, stdin in pipeline for text, _ in stdin}
+            pipeline = []
+        pipeline += [item[:2]] if item else []
+    return fed
+
+
+def _moves_home(text: str, top: bool = True) -> bool:
+    """MOVES_HOME in what the shell runs: never in a comment, an array's values or the words a for or select loop walks,
+    since a list of variable names gives none of them a value (2026-11-16: Homebrew's own `brew`, read since 22.21, waited
+    on a comment naming HOME and on the names it keeps from the environment). A heredoc's body is input to the program it
+    feeds: it counts where a shell runs it (`_shell_fed`) or inside a command substitution, whose output a command may
+    run, and an unquoted body's own substitutions always run; and the words echo or printf only print (`echo "HOME:
+    $HOME"`) give nothing a value but by `${HOME:=…}` or arithmetic (the integration review of 5.24.0: a note appended
+    with `cat <<'EOF'` that showed a `for HOME in` loop waited). Text the parser cannot read is read whole."""
+    try:
+        tokens, loose = _lex(text), []  # loose: the substitutions in unquoted bodies no shell runs, which run all the same
+        fed = _shell_fed(tokens) if top else None
+        for kind, value, *rest in tokens:
+            if kind == "in" and fed is not None and value not in fed and not rest[0]:
+                _dquote(value, 0, loose, "")
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        return bool(MOVES_HOME.search(text))
+    if any(_moves_home(s, False) for s in loose):
         return True
+    walking, head, said = False, "", False  # said: past echo or printf (with no -v), whose words it only prints
+    for at, (kind, value, *_) in enumerate(tokens):
+        if kind == "op" or (kind == "w" and value == "do"):
+            walking, head, said = False, "", False
+        elif walking:
+            continue
+        elif kind == "w" and value == "in" and at >= 2 and tokens[at - 2][:2] in (("w", "for"), ("w", "select")) and (
+                at == 2 or tokens[at - 3][0] == "op" or (tokens[at - 3][0] == "w" and tokens[at - 3][1] in KEYWORDS)):
+            walking = True
+        elif (kind == "sub" and _moves_home(value, False)) or (kind == "in" and (fed is None or value in fed) and MOVES_HOME.search(value)) or (
+                kind == "w" and (not said or "${HOME" in value or "$((" in value) and MOVES_HOME.search(re.sub(r"^([A-Za-z_]\w*\+?=)\([\s\S]*", r"\1", value))):
+            return True  # (an array's values cut)
+        if kind == "w" and not head and value not in KEYWORDS and not re.match(r"[A-Za-z_]\w*\+?=", value):
+            head, said = value, value in ("echo", "printf", "print")
+        elif kind == "w" and said and value == "-v" and head != "echo":
+            said = False  # printf -v NAME, zsh's print -v NAME: it gives NAME a value
+    return False
+SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-workspace-mcp/{name}" for name in (
+    "install-autostart.sh", "uninstall-autostart.sh"))  # they write or load a LaunchAgent or a systemd unit (review round 2, R2-8)
+
+
+SUBSCRIPTED = _Pattern(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
+
+
+def _globbed(path: str) -> list:
+    """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
+    copy and redirect checks read one, else the path as written (review round 2, R2-3)."""
+    import glob
+    try:
+        return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) else [path]
+    except re.error:  # a range Python 3.9 cannot compile (`[t-f]`), which matches nothing in the shell either
+        return [path]
+
+
+def _shared(path: str, roots: list) -> str:
+    """The file in a protected folder that `path` is too (a hard link), else ''; a search past its second is taken to have
+    found one (review round 2, R2-4: a Write through a link rewrote the release in place)."""
+    try:
+        st = os.stat(path)
+    except (OSError, ValueError):
+        return ""
+    if st.st_nlink < 2 or st.st_mode & 0o170000 != 0o100000:
+        return ""
+    until = time.monotonic() + 1.0
+    for root in roots:
+        for top, _, names in os.walk(root):
+            for name in names:
+                try:
+                    if (lambda o: (o.st_ino, o.st_dev) == (st.st_ino, st.st_dev))(os.lstat(os.path.join(top, name))):
+                        return os.path.join(top, name)
+                except OSError:
+                    continue
+            if time.monotonic() > until:
+                return f"a file under {root} (the search for this file's other names ran out of time)"
+    return ""
+
+
+def _follows(code: str, where: str, args: list, env: dict, raw: list, linked: list) -> str:
+    """A protected folder that a configuration file a script's text names (`.agents/<name>`, `.claude/<name>`) names, in
+    the folder it runs in or one above it, or above a folder or workspace its words name: a script of the release writes
+    where such a file says (the meeting fetcher's archive), so the guard reads it as it reads the line; else ''."""
+    names = set(re.findall(r"\.(?:agents|claude)/([\w.-]+\.(?:ya?ml|json|toml))", code))
+    root = os.environ.get("SYNTHESIS_WORKSPACES") or os.path.join(os.path.expanduser("~"), "workspaces")
+    starts = [where] + [p for a, b in zip(args, args[1:] + [""]) for p in (
+        os.path.join(where, os.path.expanduser(a)), os.path.join(root, b) if a == "--workspace" else "") if p and os.path.isdir(p)]
+    seen, found = set(), []
+    for at in (os.path.realpath(s) for s in starts) if names else ():
+        while at not in seen and len(seen) < 64:
+            seen.add(at)
+            found += [p for n in sorted(names) for p in (os.path.join(at, ".agents", n), os.path.join(at, ".claude", n)) if os.path.isfile(p)]
+            at = os.path.dirname(at)
+    for path in found:
+        text = (_regular(path, 1 << 16) or (b"",))[0].decode("utf-8", "replace")
+        named = _spells([text], ["", *re.findall(r"(?:~|\$HOME|/)[^\s\"',\]#]*", text)], where, env, raw, linked)
+        if named:
+            return f"{path}, which names {named}"
+    return ""
+
+
+def _plainly(words: list, where: str, text: str, found: list, given: list) -> str:
+    """'' when a script runs as the plain word of its interpreter runs it: that word with no path, no wrapper or
+    assignment in front of it, handed on by no other program, with no option but Python's that only take away what it
+    loads; on a line that defines no function or alias, reads no file into the shell, exports nothing and gives no value
+    to a variable in the environment or one that moves where a program loads from. Else what the line does instead,
+    which may run or load something other than the release's own code (the review of 5.23.1, finding 4)."""
+    head = os.path.basename(words[0])
+    interpreter = bool(SCRIPT.match(head) or UNREAD.match(head)) or head in SHELLS
+    kind, at, _ = _program(words) if interpreter else ("file", 0, "")
+    python = head.startswith(("python", "pypy"))
+    if getattr(words, "wrapped", True) or isinstance(where, Quoted) or (interpreter and "/" in words[0]) or kind != "file" or words[at:at + 1] == ["-m"] or (
+            words[1:at] and not (python and all(PLAIN_OPTIONS.fullmatch(w) for w in words[1:at]))):
+        return "runs it through more than its interpreter's plain word (a path to it, a wrapper, an option or another program)"
+    if python and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
+        return "runs Python without -s, -S or -I, so a usercustomize.py or a .pth file in the user's own site folder loads into it"
+    upper = {name.upper() for name in os.environ}
+    if DEFINES.search(text) or any(n.upper() in upper or STARTUP.fullmatch(n.upper()) or STARTUP.fullmatch(n.lower()) for n in (
+            m[1] for m in [*given, *LOOPED.finditer(text), *SUBSCRIPTED.finditer(text)])) or any(
+            os.path.basename(w[0]) in SETTERS or (w[0] == "set" and any(re.fullmatch(r"-\w*a\w*|allexport", x) for x in w[1:])) or (
+                w[0] in ("printf", "print") and any(x[:2] == "-v" for x in w[1:])) for w, _ in found):
+        return "gives it an environment of its own (a value for a variable it may read, a function, an alias or a file read into the shell)"
+    return ""
+
+
+def _runtime_copy(path: str) -> str:
+    """The runtime's own copy of the script a copy outside the release stands for: the file at the same place under
+    its last `skills/` folder, spelled through the synthesis home's `current` where that leads to this release; ''
+    when the runtime carries none."""
     parts = path.split(os.sep)
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
-    here, there = os.path.dirname(path), os.path.dirname(os.path.join(release, rel))
-    mine = _regular(path, SCRIPT_LIMIT + 1)
-    names = {m for a, b in re.findall(r"^[ \t]*(?:from[ \t]+(\w+)|import[ \t]+([\w, \t]+))", (mine or (b"",))[0].decode("utf-8", "replace"), re.M)
-             for m in ([a] if a else [x.split()[0] for x in b.split(",") if x.strip()])}
-    return bool(rel) and all(os.path.isfile(os.path.join(there, name)) and (_regular(os.path.join(here, name), SCRIPT_LIMIT + 1) or (b"",))[0] == (
-        _regular(os.path.join(there, name), SCRIPT_LIMIT + 1) or (None,))[0] for name in [os.path.basename(path)] + sorted(
-        n + ".py" for n in names if os.path.exists(os.path.join(here, n + ".py")) or os.path.isdir(os.path.join(here, n))))
+    stable, release = str(paths.home() / "current"), _release()
+    return os.path.join(stable if _real(stable) == release else release, rel) if rel and os.path.isfile(os.path.join(release, rel)) else ""
 
 
-def _unread(words: list, where: str, written: set, line: str) -> tuple:
+def _unread(words: list, where: str, written: set, line: str, bodies: dict | None = None) -> tuple:
     """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs, whether
     its words carry program text, the file of a module run with -m from the folder that holds it), or ("", "", False,
     "") for a known reader: a program on the READERS list with none of
@@ -4790,12 +6239,13 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
     program read with certainty that writes nothing and runs nothing, a shell's script on the line or its input (each
     command is judged). Python is named whatever its program, which its reader proves or not where it is read. Any
     other program is named, wherever it sits (review of 5.22.1: a list of the programs that write never ends). A script
-    file the same line writes is read as the line."""
+    file the same line writes is read as the line, and one `cat` writes from a heredoc as that heredoc's body (review round 1
+    of 22.22: the script it is, so its reach of synthesis's code is judged as a file's would be)."""
     head = os.path.basename(words[0])
 
     def code(name: str) -> str:
         path = os.path.realpath(os.path.join(where, os.path.expanduser(name)))
-        return "" if not name else line if path in written else _code_of(path)
+        return "" if not name else (bodies or {}).get(path) or (line if path in written else _code_of(path))
 
     def files() -> str:  # the program files awk and sed are given with -f
         return "\n".join(code(w.split("=", 1)[1] if w.startswith("--") else after) for w, after in zip(words, words[1:] + [""])
@@ -4809,7 +6259,8 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
         return ("", "", False, "") if free else (head, code(mine or name) if mine or (kind == "file" and not module) else "", True, mine)
     if head in SHELLS or head in (".", "source"):
         inline, reads, _ = _shell_input(words)
-        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) else (head, code(name), True, "")
+        return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) or (
+            kind == "file" and _runs_at_start(name, where)) else (head, code(name), True, "")
     if head in AWKS:
         return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):
@@ -4835,20 +6286,32 @@ def _unread(words: list, where: str, written: set, line: str) -> tuple:
 TEXT_LIMIT, OWN_MODULES = 4 << 20, 64
 
 
-def _found_elsewhere(name: str, first: str) -> bool:
-    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with."""
+def _found_elsewhere(name: str, first: str, installed: bool = False, portion: bool = False) -> bool:
+    """A module Python finds somewhere other than `first`: built in, or on the module path this guard runs with. With
+    `installed`, only in Python's own installation (its standard library and site-packages), as a program the line runs
+    finds it, not in the folders this process was started from or a test runner adds (review round 3 of 22.21: the suite,
+    run whole, found a checkout's top-level folders there); with `portion`, for a folder with no `__init__.py`, which
+    hides no module and only joins a namespace package, only such a package."""
     import importlib.machinery
+    import site
     import sys
+    import sysconfig
+    homes = [os.path.realpath(p) for p in {sys.prefix, sys.base_prefix, sys.exec_prefix, sys.base_exec_prefix}] if installed else []
+    places = [p for p in sys.path if p and (not installed or any(paths.inside(os.path.realpath(p), h) for h in homes))] + ([
+        sysconfig.get_paths().get(k, "") for k in ("stdlib", "platstdlib", "purelib", "platlib")] + [site.getusersitepackages()] if installed else [])
     try:
-        return name in sys.builtin_module_names or importlib.machinery.PathFinder.find_spec(name, [
-            p for p in sys.path if p and os.path.realpath(p) != first]) is not None
+        spec = None if name in sys.builtin_module_names else importlib.machinery.PathFinder.find_spec(name, [
+            p for p in places if p and os.path.realpath(p) != first])
+        return name in sys.builtin_module_names or (spec is not None and (not portion or spec.origin in (None, "namespace")))
     except (ImportError, ValueError, OSError):
         return True  # it cannot be told: a file in `first` named so may stand in for it
 
 
 def _imports(text: str) -> list:
     """(dots, module, names) for each import a program's syntax holds: `import a.b` is (0, "a.b", ()), `from .x import
-    y` is (1, "x", ("y",)); none for a program that cannot be parsed, which its reader judges."""
+    y` is (1, "x", ("y",)), and a module loaded by the name it is written with, `importlib.import_module("a")` or
+    `__import__("a")`, as `import a` (review round 4 of 5.23.1's approval fix); none for a program that cannot be
+    parsed, which its reader judges."""
     import ast
     import warnings
     try:
@@ -4863,6 +6326,9 @@ def _imports(text: str) -> list:
             found += [(0, a.name, ()) for a in n.names]
         elif isinstance(n, ast.ImportFrom):
             found.append((n.level, n.module or "", tuple(a.name for a in n.names)))
+        elif isinstance(n, ast.Call) and getattr(n.func, "attr", getattr(n.func, "id", "")) in ("import_module", "__import__") and n.args and isinstance(
+                n.args[0], ast.Constant) and isinstance(n.args[0].value, str) and n.args[0].value[:1] not in (".", ""):
+            found.append((0, n.args[0].value, ()))
     return found
 
 
@@ -4941,9 +6407,9 @@ def _shows(files: list, words: list, where: str, names: list, raw: list, env: di
     scripts or the call's deadline, it is not read (finding 12). None is refused on this reading."""
     at = _program(words)[1]
     argv = words[at + (words[at:at + 1] == ["-m"]):]  # what Python hands it: its own file first, then the words after it
-    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names))
+    key = (tuple(_CALL["ran"].get(os.path.realpath(f), f) for f, _ in files), tuple(argv), where, tuple(names), tuple(raw))  # a proof holds for its folders
     if key not in _CALL["proofs"]:
-        if len(_CALL["proofs"]) >= PROOFS_A_CALL:
+        if sum(k[-1] == key[-1] for k in _CALL["proofs"]) >= PROOFS_A_CALL:  # each set of protected folders reads as many
             return "is one script more than this guard reads in one call"
         _CALL["proofs"][key] = ""
         for file, text in files:
@@ -5002,8 +6468,10 @@ def _synthesis_reach(text: str) -> tuple:
     writes reads, whoever calls it."""
     import ast
     import warnings
-    if not SYNTHESIS_IMPORT.search(text):
+    loaded = [m[1] for m in SYNTHESIS_LOADED.finditer(text)]  # "open" for a file only opened, which runs only by exec or eval
+    if not (SYNTHESIS_IMPORT.search(text) or loaded):
         return "", "", None
+    runs = ("exec", "eval") if all(loaded) and not SYNTHESIS_IMPORT.search(text) else ("exec", "eval", "compile", "globals", "locals")
     unfollowed = "reaches synthesis's own code in a way its reader cannot follow ({})"
     try:
         with warnings.catch_warnings():
@@ -5029,27 +6497,41 @@ def _synthesis_reach(text: str) -> tuple:
         label = (n.func.id if isinstance(n.func, ast.Name) else "") if isinstance(n, ast.Call) else ""
         called = (getattr(n.func, "attr", "") or label) if isinstance(n, ast.Call) else ""
         said = n.args[0].value if isinstance(n, ast.Call) and n.args and isinstance(n.args[0], ast.Constant) and isinstance(n.args[0].value, str) else None
-        if label in ("exec", "eval", "compile", "globals", "locals") or called in ("run_path", "run_module") or (
+        if label in runs or called in ("run_path", "run_module") or (
                 called in ("import_module", "__import__") and (said is None or said.split(".")[0] == "synthesis")) or (
-                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)):
+                isinstance(n, ast.Attribute) and n.attr == "modules" and isinstance(parents.get(id(n)), ast.Subscript)) or (
+                called in ("spec_from_file_location", "SourceFileLoader", "load_source") and any(  # a file of synthesis's, loaded
+                    isinstance(c, ast.Constant) and re.search(r"(?:^|/)synthesis(?:/|$)", str(c.value)) for a in n.args for c in ast.walk(a))):
             return "follows", unfollowed.format("code or a name it builds"), None
         whole = spelt(n) if isinstance(n, (ast.Name, ast.Attribute)) and isinstance(n.ctx, ast.Load) else ""
         if not whole:
             continue
         parts, up = whole.split("."), parents.get(id(n))
         if ".".join(parts[1:3]) in SYNTHESIS_WRITES:
-            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which writes its state, approvals, windows, board or archive", None
+            runtime = parts[1] == "install" or ".".join(parts[1:3]) in ("cli.cmd_install", "cli.cmd_uninstall")
+            return "names", f"names synthesis's `{'.'.join(parts[1:3])}`, which " + (
+                "installs, removes or rewrites the runtime the guard runs" if runtime else "writes its state, approvals, windows, board or archive"), None
         if ".".join(parts[1:3]) in SYNTHESIS_PLACES:
             places = places or "reaches a protected folder through synthesis's own `" + ".".join(parts[1:3]) + "`"
             plain = isinstance(up, ast.Call) and up.func is n and not up.keywords and len(up.args) == (parts[2] == "_dir") and len(parts) == 3 and not any(
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
-            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in ("old_board", "transcript_roots", "desktop_agent_roots", "line_allowances")
+            spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
+                "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
+                "_requests_file", "_ticket_file")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
         if isinstance(up, ast.Attribute) and up.value is n:  # a longer chain: judged at its end, unless it opens the object
             if up.attr in ("__dict__", "__getattribute__", "__getattr__", "__setattr__", "__call__"):
                 return "follows", unfollowed.format(f"its {up.attr}"), None
+            continue
+        name = up.args[1].value if isinstance(up, ast.Call) and getattr(up.func, "id", "") == "getattr" and up.args[:1] == [n] and len(up.args) > 1 and isinstance(
+            up.args[1], ast.Constant) and isinstance(up.args[1].value, str) and len(parts) == 2 and module else ""
+        if name:  # getattr with the name written out is that name (review round 3 of 22.21); one built at run time is not followed
+            if f"{parts[1]}.{name}" in SYNTHESIS_WRITES:
+                return "names", f"names synthesis's `{parts[1]}.{name}`, which writes its state, approvals, windows, board or archive", None
+            if not _synthesis_own(parts[1], name):
+                return "follows", unfollowed.format(f"`{parts[1]}.{name}`, a name its module imports"), None
             continue
         if isinstance(up, ast.Call) and up.func is not n and getattr(up.func, "id", "") in ("getattr", "setattr", "delattr", "vars") and up.args[:1] == [n]:
             return "follows", unfollowed.format(f"{up.func.id}() on it"), None
@@ -5080,17 +6562,310 @@ def _synthesis_reach(text: str) -> tuple:
     return "places", places, data.decode("utf-8")
 
 
+PYTEST_VALUES = frozenset({"-k", "-m", "-p", "-c", "-o", "-n", "-W", "--rootdir", "--confcutdir", "--basetemp", "--deselect", "--ignore",
+                           "--ignore-glob", "--maxfail", "--tb", "--junitxml", "--import-mode", "--durations", "--timeout"})  # options taking a value
+TEMPORARY = frozenset({"tmp_path", "tmp_path_factory", "tmpdir", "tmpdir_factory"})
+
+
+def _release_script(path: str) -> bool:
+    """A shell script that is the release's own, trusted as before (22.21): inside the synthesis home's bin, current or
+    releases, which only its installer writes (the CLI's launcher, reached by any link, among them), or a script of the
+    release this guard runs from. The launcher names the runtime it runs and the pinned interpreter (22.8), so one
+    anywhere else is read as what it runs (review round 1 of 22.21, finding 2)."""
+    return _shipped(path) or any(paths.inside(path, _real(str(paths.home() / n))) for n in ("bin", "current", "releases"))
+
+
+def _isolates_home(text: str, autouse: bool = True) -> bool:
+    """Whether a conftest puts the synthesis home at a temporary path for every test: an autouse fixture that sets
+    SYNTHESIS_HOME (or HOME, which it falls back on) from the test's own temporary folder, as synthesis's own conftests
+    do; with `autouse` False, a test file's own such fixture, when it is autouse or every test in the file requests it.
+    Read in the code, not taken from where the file sits (a copy isolates the tests beside it the same way). Nothing that
+    runs as the file loads counts: that runs before any fixture (review round 1 of 22.21, finding 1)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    fixtures = {}  # each fixture that sets the home from a temporary folder: whether it is autouse
+    for f in (n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)):
+        marks = [d for d in f.decorator_list if "fixture" in (getattr(getattr(d, "func", d), "attr", "") or getattr(getattr(d, "func", d), "id", ""))]
+        values = {t.id: n.value for n in ast.walk(f) if isinstance(n, ast.Assign) for t in n.targets if isinstance(t, ast.Name)}
+        for c in (n for n in ast.walk(f) if marks and isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "setenv" and n.args[:1]
+                  and getattr(n.args[0], "value", None) in ("SYNTHESIS_HOME", "HOME")):
+            names = {x.id for a in c.args[1:2] for x in ast.walk(a) if isinstance(x, ast.Name)}
+            if (names | {x.id for name in names if name in values for x in ast.walk(values[name]) if isinstance(x, ast.Name)}) & TEMPORARY:
+                fixtures[f.name] = any(k.arg == "autouse" and getattr(k.value, "value", None) is True for d in marks for k in getattr(d, "keywords", []))
+    tests = [f for f in tree.body if isinstance(f, ast.FunctionDef) and f.name.startswith("test")] + [
+        m for c in tree.body if isinstance(c, ast.ClassDef) and c.name.startswith("Test") for m in c.body if isinstance(m, ast.FunctionDef) and m.name.startswith("test")]
+    return any(fixtures.values()) or (not autouse and bool(fixtures) and bool(tests) and all(
+        any(a.arg in fixtures for a in t.args.args + t.args.kwonlyargs) for t in tests))
+
+
+XUNIT = frozenset({"setup_module", "teardown_module", "setUpModule", "tearDownModule", "setup_class", "teardown_class", "setUpClass",
+                   "tearDownClass", "setup_function", "teardown_function", "setup_method", "teardown_method", "setup", "teardown"})
+
+
+def _writers_named(text: str) -> set:
+    """Each of synthesis's writers a program names, under whatever name it imports synthesis's code by (`import
+    synthesis.sends as s`, a function imported under another name), and through `getattr(module, '<name written out>')`,
+    as the reader of a script spells them (review round 2 of 22.21); a name built at run time is not read."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return set()
+    bound = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            bound.update({a.asname or "synthesis": a.name if a.asname else "synthesis" for a in n.names if a.name.split(".")[0] == "synthesis"})
+        elif isinstance(n, ast.ImportFrom) and not n.level and (n.module or "").split(".")[0] == "synthesis":
+            bound.update({a.asname or a.name: f"{n.module}.{a.name}" for a in n.names})
+
+    def spelt(node) -> str:
+        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "getattr" and len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
+            return f"{spelt(node.args[0])}.{node.args[1].value}" if spelt(node.args[0]) else ""
+        return bound.get(node.id, "") if isinstance(node, ast.Name) else (f"{spelt(node.value)}.{node.attr}" if spelt(node.value) else "") if isinstance(
+            node, ast.Attribute) else ""
+    return {w for n in ast.walk(tree) for w in [".".join(spelt(n).split(".")[1:3])] if w in SYNTHESIS_WRITES}
+
+
+def _outside_tests(text: str) -> bool:
+    """Whether what a test module or a conftest runs outside its tests reaches synthesis's code: a writer named, a path
+    of synthesis's taken (`STATE = paths.state()`, written through later), or synthesis loaded another way. That is its
+    top level and its class bodies, decorators and defaults included, with the file's own functions they call; xunit
+    setup and teardown; pytest's hooks; and fixtures scoped wider than a function. Only a test, and the function-scoped
+    fixtures it uses, run under the fixture that isolates the home (review rounds 1 and 2 of 22.21)."""
+    import ast
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return False
+    functions = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    bodies, own = {id(f): f.body for f in functions}, {f.name for f in tree.body if isinstance(f, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    fixture = {id(f) for f in functions for d in f.decorator_list if "fixture" in (getattr(getattr(d, "func", d), "attr", "") or getattr(getattr(d, "func", d), "id", ""))}
+    keep = {id(f) for f in functions if (f.name in XUNIT and id(f) not in fixture) or f.name.startswith("pytest_") or any(  # a fixture by its scope
+        k.arg == "scope" and getattr(k.value, "value", "") != "function" for d in f.decorator_list for k in getattr(d, "keywords", []))}
+    while True:  # the file's own functions that code outside its tests calls run there too
+        for f in functions:
+            f.body = bodies[id(f)] if id(f) in keep else [ast.Pass()]
+        called = {c.func.id for c in ast.walk(tree) if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in own}
+        more = {id(f) for f in functions if f.name in called and f in tree.body} - keep
+        if not more:
+            break
+        keep |= more
+    top = ast.unparse(tree)
+    return bool(_writers_named(top)) or _synthesis_reach(top)[0] in ("names", "places") or bool(_synthesis_loads([top], [], "/"))
+
+
+HOMES = {"SYNTHESIS_HOME": ".synthesis/v5", "CLAUDE_CONFIG_DIR": ".claude", "CODEX_HOME": ".codex", "XDG_DATA_HOME": ".local/share",
+         "SYNTHESIS_CLAUDE_DESKTOP_DIR": "Library/Application Support/Claude"}  # where synthesis finds each protected place, else under HOME
+PYTEST_ASKS = frozenset({"--version", "-V", "--help", "-h"})  # pytest only reports itself: no test file is collected
+PYTEST_INIS = ("pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg")  # where a testpaths setting may say where it starts
+
+
+def _homes_apart(given, where: str, raw: list, command: str) -> bool:
+    """Whether a command's own words in front of its program (assignments, and env with -i or -u) put HOME and each folder
+    synthesis finds a protected place under (HOMES, else under HOME) at absolute paths apart from every protected folder:
+    none inside one, none holding one. A program it starts then reaches only folders of its own, as under a conftest that
+    isolates the home (the integration review of 5.24.0, finding 4: a full-suite run with every home on its line waited
+    while the guard read every test file). Any other word there proves nothing, nor does a home the line spells with `~`,
+    a variable or a substitution other than mktemp's: the shell may put another value there than the guard's reading
+    of the line does, as it expands env's words with the homes the line had and each assignment in front of a program
+    with the ones before it."""
+    if given is None or re.search(r"\b(?:HOME|%s)=[\"']?(?:[~`]|\$(?!\(\s*mktemp\b))" % "|".join(HOMES), command):
+        return False
+    values, cleared, words = {}, False, iter(given)
+    for w in words:
+        if re.match(r"[A-Za-z_]\w*=", w):
+            values[w.split("=", 1)[0]] = w.split("=", 1)[1]
+        elif w in ("-i", "-", "--ignore-environment"):
+            values, cleared = {}, True
+        elif w in ("-u", "--unset") or w.startswith("--unset="):
+            values[w[8:] if "=" in w else next(words, "")] = None
+        elif w != "env":
+            return False
+    home = values["HOME"] if "HOME" in values else None if cleared else os.environ.get("HOME")
+    for place in [home] + [(values[k] if k in values else None if cleared else os.environ.get(k)) or (home and os.path.join(home, rel))
+                           for k, rel in HOMES.items()]:
+        place = _led(place, where) if place else ""
+        if not place.startswith("/") or EXPANDS.search(place) or any(
+                paths.inside(_real(place), _real(r)) or paths.inside(_real(r), _real(place)) for r in raw):
+            return False
+    return True
+
+
+def _first_conftests(root: str) -> list:
+    """The conftests pytest loads before it collects a test, for a folder or a file it is handed or the folder it starts
+    in: there and in every folder above it, and in each folder there whose name starts with `test`."""
+    folder, found = root if os.path.isdir(root) else os.path.dirname(root), []
+    if os.path.isdir(root):
+        found += [os.path.join(root, d, "conftest.py") for d in sorted(os.listdir(root)) if d.startswith("test")
+                  and os.path.isfile(os.path.join(root, d, "conftest.py"))]
+    while True:
+        found += [os.path.join(folder, "conftest.py")] * os.path.isfile(os.path.join(folder, "conftest.py"))
+        if folder == os.path.dirname(folder):
+            return found
+        folder = os.path.dirname(folder)
+
+
+def _test_reach(text: str, where: str) -> str:
+    """What a test file or a conftest reaches of synthesis's code: one of the writers approvals rest on named, or
+    synthesis loaded another way; else ''."""
+    return ("names one of synthesis's writers that approvals rest on" if _writers_named(text) & GRANTING
+            else _synthesis_loads([text], [], where) if "synthesis" in text else "")
+
+
+def _pytest_reach(words: list, where: str, apart: bool = False) -> str:
+    """'' unless pytest, as this command runs it, collects a test file or loads a conftest whose code reaches synthesis's
+    (names one of its writers, reaches it in a way its reader cannot follow, or hands a loader synthesis) with no conftest
+    above it that isolates the synthesis home (_isolates_home); else which file and how. Review round 1 of 22.19, finding 1:
+    an agent's test file opened a send window in plain words through pytest. Synthesis's own suite, under its conftests,
+    runs with no code; `--noconftest` and `--confcutdir` leave no conftest trusted. A command whose own words put every
+    home apart (`apart`, `_homes_apart`) proves what such a conftest would, and nothing is read; asked only for its version
+    or its help, pytest loads the conftests at its start (`_first_conftests`, or every conftest where a testpaths setting
+    may send it) and no test file, and what those run outside a test is read (the integration review of 5.24.0, finding 4).
+    One reading of the same command in the same folder is made once a call and pass."""
+    key = ("pytest", tuple(words), where, apart, repr(_CALL.get("settings")))
+    if key not in _CALL["looks"]:
+        _CALL["looks"][key] = "" if apart else _pytest_read(words, where)
+    return _CALL["looks"][key]
+
+
+def _pytest_read(words: list, where: str) -> str:
+    """`_pytest_reach`'s reading, made once a call."""
+    at = next(i for i, w in enumerate(words) if os.path.basename(w) in ("pytest", "py.test"))
+    args, i = [], at + 1
+    while i < len(words):
+        args, i = (args, i + 1 + (words[i] in PYTEST_VALUES)) if words[i].startswith("-") else (args + [words[i].split("::")[0]], i + 1)
+    for plugin in [os.path.join(where, (w[2:] or "".join(words[k + 1:k + 2])) + ".py") for k, w in enumerate(words) if w.startswith("-p")]:
+        code = _code_of(plugin) if os.path.isfile(plugin) else ""  # a plugin of its own, named with -p: all of it runs outside the tests
+        if code and (_writers_named(code) & GRANTING or _synthesis_loads([code], [], where)):
+            return f"{plugin}, a plugin of its own that reaches synthesis's writers outside every test"
+    roots, asks = [os.path.join(where, os.path.expanduser(a)) for a in args] or [where], bool(PYTEST_ASKS & set(words[at + 1:]))
+    every = asks and not args and any(b"testpaths" in (_regular(os.path.join(where, n), TEXT_LIMIT) or (b"",))[0] for n in PYTEST_INIS)
+    files = []
+    for root in roots if not asks or every else ():
+        for folder, dirs, names in os.walk(root) if os.path.isdir(root) else [(os.path.dirname(root), [], [os.path.basename(root)])] * os.path.isfile(root):
+            dirs[:] = [d for d in dirs if not d.startswith(".") and not d.endswith(".egg") and d not in (
+                "node_modules", "__pycache__", "venv", "site-packages", "build", "dist", "Library")]  # as pytest's norecursedirs
+            files += [os.path.join(folder, n) for n in names if (n == "conftest.py" if every else re.fullmatch(
+                r"test_.*\.py|.*_test\.py", n) or not os.path.isdir(root))]
+            if len(files) > 3000 or time.monotonic() > _CALL["until"]:
+                return "more test files than this guard reads in its time"
+    if asks:  # the conftests it loads at its start, from where it starts if nothing it is handed is there: what they run outside a test
+        for path in dict.fromkeys(files + [c for r in [r for r in roots if os.path.exists(r)] or [where] for c in _first_conftests(r)]) if (
+                "--noconftest" not in words) else ():
+            if _outside_tests(_code_of(path)):
+                return f"{path}, a conftest it loads at its start, whose code outside its tests reaches synthesis's"
+        return ""
+    trusted, conftests, isolating, judged = not any(w == "--noconftest" or w.startswith("--confcutdir") for w in words), {}, {}, set()
+    for file in files:
+        folder = os.path.dirname(_real(file))
+        if folder not in conftests:  # the conftests pytest loads for a test there: its folder's and every one above
+            spot, conftests[folder] = folder, []
+            while True:
+                conftests[folder] += [os.path.join(spot, "conftest.py")] * os.path.isfile(os.path.join(spot, "conftest.py"))
+                if spot == os.path.dirname(spot):
+                    break
+                spot = os.path.dirname(spot)
+        for c in conftests[folder]:
+            isolating[c] = isolating[c] if c in isolating else _isolates_home(_code_of(c))
+        if ((trusted and any(isolating[c] for c in conftests[folder])) or _isolates_home(_code_of(file), False)) and not any(
+                _outside_tests(_code_of(p)) for p in [file] + conftests[folder]):
+            continue  # under a home at a temporary path for every test, with nothing reaching synthesis as the files load
+        if time.monotonic() > _CALL["until"]:
+            return "more test files than this guard reads in its time"
+        for path, text in [(p, _code_of(p)) for p in [file] + conftests[folder] if p not in judged]:
+            judged.add(path)  # a writer named, or synthesis loaded another way; a test that patches a module changes only its process
+            why = _test_reach(text, where)
+            if why:
+                return f"{path}, which {why}, with no conftest that puts the synthesis home at a temporary path for every test"
+    return ""
+
+
+def _joined_text(node) -> str:
+    """The string a sum of string constants makes (`'/a' + '/b.py'`), or ''."""
+    import ast
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    left, right = (_joined_text(node.left), _joined_text(node.right)) if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add) else ("", "")
+    return left + right if left and right else ""
+
+
+def _synthesis_loads(texts: list, words: list, where: str, depth: int = 0) -> str:
+    """'' unless a program's texts (a script and its own modules, or a program on the line or its input) hand a loader
+    (LOADERS: importlib's, runpy's and the builtins exec, eval and __import__; compile only for a text that imports it)
+    a name or a text that says synthesis as code does, code that loads it, or a file whose code reaches it; else what. A
+    call is read for what it is handed: its arguments, a name the program assigns, what the program's own function is
+    called with for a parameter, and the words the program is handed where an argument reads them (its argv, the
+    environment, its input). Review round 4 of 5.23.1's approval fix, finding 1: a program that loaded synthesis through
+    importlib or a built exec string was read as reaching none of its writers, so it could forge the send ledger's lines,
+    open a send window, or point the transcript a script checks at a record it wrote. So `__import__("pathlib")` beside
+    `open("synthesis/guards.py")` reads, as does a test module loaded to call a helper; a name built from pieces none of
+    which says synthesis is not read (docs/runtime-integration.md)."""
+    import ast
+    import warnings
+    for text in texts:
+        if not MAY_LOAD.search(text):
+            continue
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                tree = ast.parse(text)
+        except (SyntaxError, ValueError, RecursionError, MemoryError):
+            continue
+        values, aliases, params, calls = {}, set(), {}, {}  # what a name is given, a loader imported by another name, parameters
+        for n in ast.walk(tree):
+            for t in n.targets if isinstance(n, ast.Assign) else [n.target] if isinstance(n, ast.AnnAssign) and n.value else []:
+                values.setdefault(getattr(t, "id", ""), []).append(n.value)
+            aliases |= {a.asname or a.name for a in n.names if a.name in LOADERS} if isinstance(n, ast.ImportFrom) and (
+                n.module or "").split(".")[0] in LOADER_MODULES else set()
+            params.update({a.arg: n.name for a in n.args.args + n.args.kwonlyargs} if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) else {})
+            name = (getattr(n.func, "id", "") or getattr(n.func, "attr", "")) if isinstance(n, ast.Call) else ""
+            calls.setdefault(name, []).extend(list(n.args) + [k.value for k in n.keywords] if name else [])
+        for n in ast.walk(tree):
+            name = (getattr(n.func, "id", "") or getattr(n.func, "attr", "")) if isinstance(n, ast.Call) else ""
+            if not (name in LOADERS or name in aliases or name == "compile") or not (isinstance(n.func, ast.Name) or name not in (
+                    "exec", "eval", "compile") or getattr(n.func.value, "id", "") in ("builtins", "__builtins__")):
+                continue  # `model.eval()` and `re.compile` are no loaders
+            handed = list(n.args) + [k.value for k in n.keywords] + [getattr(n.func, "value", None)] * isinstance(n.func, ast.Attribute)
+            seen, said, reads = set(), [], False  # with what a method is called on: `spec.loader.exec_module(m)`
+            while handed:
+                for c in ast.walk(handed.pop()):
+                    said += [c.value.decode("latin-1") if isinstance(c.value, bytes) else c.value] if isinstance(c, ast.Constant) and isinstance(c.value, (str, bytes)) else []
+                    said += [_joined_text(c)] if isinstance(c, ast.BinOp) and _joined_text(c) else []  # a path joined from strings
+                    key = getattr(c, "id", "") if isinstance(c, ast.Name) else ""
+                    handed += (values.get(key, []) + calls.get(params.get(key), [])) if key and key not in seen else []
+                    seen.add(key)
+                    reads = reads or (getattr(c, "id", "") or getattr(c, "attr", "")) in ("argv", "environ", "getenv", "stdin", "input")
+            for value in [s.strip() for s in said + (list(words) if reads else [])]:
+                if (name != "compile" and SAYS_SYNTHESIS.search(value)) or IMPORTS_IT.search(value):
+                    return f"it hands {name} a name or a text that says synthesis, {value[:60]!r}"
+                if depth < 2 and re.search(r"(?i)synthesis", value) and _synthesis_loads([value], [], where, depth + 1):
+                    return f"it hands {name} code that loads synthesis, {value[:60]!r}"
+                file = os.path.join(where, os.path.expanduser(value)) if name in FILE_RUNNERS and depth < 2 and value.endswith(".py") else ""
+                code = _code_of(file) if file and os.path.isfile(file) else ""
+                if code and (_synthesis_reach(code)[0] in ("names", "follows") or _synthesis_loads([code], [], where, depth + 1)):
+                    return f"it runs {value}, whose code reaches synthesis"
+    return ""
+
+
 def _spellings(raw: list, env: dict) -> tuple:
     """(each part's pattern, each spelling of a protected folder as the parts it needs, the folders between each
     protected one and the home folder or a variable's folder that holds it, the protected folders as compared). A
     folder's parts count wherever they stand in one program, however they are joined (finding 14)."""
-    home = os.path.realpath(os.path.expanduser("~"))
-    roots = sorted({form for r in raw for form in (os.path.normpath(r), os.path.realpath(r))})
-    low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
-    anchors = tuple(sorted((name, os.path.normpath(os.path.expanduser(value))) for name, value in env.items() if name not in (
-        "HOME", "PWD", "OLDPWD", "_") and isinstance(value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value
-        and any(v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for r in low_roots
-                for v in [paths.spelled(os.path.normpath(os.path.expanduser(value))).rstrip(os.sep)])))
+    home = _real(os.path.expanduser("~"))
+    roots = sorted({form for r in raw for form in (os.path.normpath(r), _real(r))})
+    values = tuple(sorted((name, value) for name, value in env.items() if name not in ("HOME", "PWD", "OLDPWD", "_") and isinstance(
+        value, str) and value[:1] in "/~" and len(value) > 1 and ":" not in value))
+    if (tuple(roots), values) not in ANCHORS:  # a variable's folder that holds a protected one, or lies in one: its value read once
+        low_roots = [paths.spelled(r).rstrip(os.sep) for r in roots]
+        if len(ANCHORS) > 256:
+            ANCHORS.clear()
+        ANCHORS[(tuple(roots), values)] = tuple((name, os.path.normpath(os.path.expanduser(value))) for name, value in values if any(
+            v == r or r.startswith(v + os.sep) or v.startswith(r + os.sep) for v in [paths.spelled(os.path.normpath(
+                os.path.expanduser(value))).rstrip(os.sep)] for r in low_roots))
+    anchors = ANCHORS[(tuple(roots), values)]
     key = (home, tuple(roots), anchors)
     if key not in SPELLINGS:
         spellings = []
@@ -5101,8 +6876,8 @@ def _spellings(raw: list, env: dict) -> tuple:
                 for name, value in anchors if paths.inside(root, value)] + [((f"${name}",), root) for name, value in anchors
                                                                             if paths.inside(value, root) and value != root]
         parts = {part for spelling, _ in spellings for part in spelling}
-        patterns = {part: re.compile(rf"\b{re.escape(part[1:])}\b" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I)
-                    for part in parts}
+        patterns = {part: (re.compile(rf"\b{re.escape(part[1:])}\b(?!=(?!=))" if part[:1] == "$" else rf"(?<![\w.-]){re.escape(part)}(?![\w-])", re.I),
+                           part.lstrip("$").casefold()) for part in parts}  # with the text a statement must hold; a variable given a value is not read
         gates = set()
         for root in roots:  # the folders above each one, up to the home folder or a variable's folder
             at = os.path.dirname(root)
@@ -5112,7 +6887,7 @@ def _spellings(raw: list, env: dict) -> tuple:
     return SPELLINGS[key]
 
 
-LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`[^`\n]*`|(?<![\w$])(?:~|\.{0,2}/)[^\s'\"`;|&()<>,]*")  # a string, or a path written bare
+LITERAL = _Pattern(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`[^`\n]*`|(?<![\w$])(?:~|\.{0,2}/)[^\s'\"`;|&()<>,]*")  # a string, or a path written bare
 
 
 def _statements(text: str) -> list:
@@ -5140,15 +6915,21 @@ def _joined(statement: str, patterns: dict, spellings: list) -> str:
     path join, and with them those of at most one path written whole; parts of two paths written whole never join, and
     one such path alone counts only where they stand one after another in it (the coordinator, 2026-11-15: a script's
     path and a page's path on one line spelled the transcripts between them)."""
+    low = statement.casefold()  # a part whose text the statement does not hold is not looked for (22.26: some 60 more paths)
+    hits = [(part, pattern) for part, (pattern, text) in patterns.items() if text in low]
+    if not hits:
+        return ""
     whole = [(m.start(), m.end(), m.group().strip("'\"`")) for m in LITERAL.finditer(statement)]
     whole = [(a, b, t) for a, b, t in whole if t[:1] in "/~" and len([s for s in t.split("/") if s]) > 1]
     found: dict = {}
-    for part, pattern in patterns.items():
+    for part, pattern in hits:
         for m in pattern.finditer(statement):
             found.setdefault(part, set()).add(next((i for i, (a, b, _) in enumerate(whole) if a <= m.start() < b), -1))
     for spelling, root in spellings:
-        sets = [found.get(part, set()) for part in spelling]
-        if all(sets) and (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
+        if not all(part in found for part in spelling):
+            continue
+        sets = [found[part] for part in spelling]
+        if (all(-1 in s for s in sets) or any(all(-1 in s or i in s for s in sets) and (
                 any(-1 in s for s in sets) or len(spelling) == 1 or any(p[:1] == "$" for p in spelling)
                 or re.search(r"(?:^|/)" + "/".join(map(re.escape, spelling)) + r"(?:/|$)", whole[i][2], re.I)) for i in set().union(*sets) - {-1})):
             return root
@@ -5170,38 +6951,71 @@ def _spells(texts: list, words: list, where: str, env: dict, raw: list, linked: 
     for pick, handed in (picks + [(a or b or c, False) for t in texts if t for a, b, c in CANDIDATE.findall(t)][:100])[:200]:
         pick = re.sub(r"\$\{(\w+)\}|\$(\w+)", lambda m: env[m[1] or m[2]] if isinstance(env.get(m[1] or m[2]), str) else m[0], pick)  # as the shell expands it
         if "/" in pick or pick[:1] == "~" or (handed and os.path.lexists(os.path.join(where, pick))):  # a bare name: a file that is there
-            full = os.path.join(where, os.path.expanduser(pick))
-            forms = {os.path.normpath(full), os.path.realpath(full)}
-            for form in forms | {aim + f[len(link):] for f in forms for link, aim in linked if paths.inside(f, link)}:
-                low = paths.spelled(form)
-                if not (_own(form) or _own(form, True) or _material(form)) and ((handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled)):
-                    return form
+            for full in _globbed(os.path.join(where, os.path.expanduser(pick))) if handed else [os.path.join(where, os.path.expanduser(pick))]:
+                forms = {os.path.normpath(full), os.path.realpath(full)}
+                for form in forms | {aim + f[len(link):] for f in forms for link, aim in linked if paths.inside(f, link)}:
+                    low = paths.spelled(form)
+                    if not (_own(form) or _own(form, True) or _material(form)) and ((handed and low in gates) or any(low == r or low.startswith(r + os.sep) for r in spelled)):
+                        return form
     return ""
 
 
-def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True) -> str | None:
+def check_self_grant(command: str, cwd: str, config: dict | None = None, session: dict | None = None, hold: bool = True,
+                     depth: int = 0, clean: bool = False) -> str | None:
     """The reason a shell command is refused, or waits for the principal's code because a program the guard cannot prove
-    only reads names a protected folder (`hold`: file the code and spend it; else the reason, as a refusal)."""
+    only reads names a protected folder, or because it may change the guard's own settings: what it does with them
+    protected, then without them, then with them alone (`hold`: file the code and spend it; else the reason). `clean`: a
+    script a line runs, with no command before it there that may have written a file (`Run`)."""
+    given = _release_tool(command, cwd, session) if hold else {}  # never for a command a program starts: it is judged
+    if given:
+        codes = approvals.pending()
+        if not (codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command)):
+            _grant_release(given, command)  # the one install this line's run may make with no code (22.18, K1)
+            return None
     home = os.path.expanduser("~")
-    if re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
+    homeless = MOVES_HOME.search(command) and USES_HOME.search(command) and _moves_home(command)  # HOME given a value it does not read, then used
+    if homeless:  # $HOME and ~ stay as written: what they lead to is not known (review round 2, R2-2)
+        readings = [command]
+    elif re.search(r"(?:^|[\s;&|(])(?:export\s+)?HOME=", command):  # a command that gives HOME its own value: `~` is that value too
         readings = _resolved(re.sub(r"(?<![\w$~./-])~(?=/|\s|$)", "$HOME", command))
     else:
         readings = _resolved(command.replace("${HOME}", home).replace("$HOME", home))
     if hold:  # a call of its own: its script texts, their marks and its proofs start over, under its own deadline
-        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)
-    waits = None
-    for text in readings:
-        reason = _self_grant(command, text, cwd, config) if time.monotonic() <= _CALL["until"] else Unproven(
-            "is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
-        if reason and not isinstance(reason, Unproven):
-            return reason
-        waits = waits or reason
+        _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
+    waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
+                     "and then uses it, so what the line names and runs is not known") if homeless else None
+    touched, inside = False, _CALL.get("settings") is not None  # inside: a command a program starts, judged in its pass
+    still, was = _CALL.get("still", frozenset()), _CALL.get("clean")  # readings whose functions move a folder only in a subshell (`_cd_sources`)
+    _CALL["clean"] = hold or clean  # nothing ran before the line itself; before a command a program starts, anything may have
+    if FUNCTION.search(command) and FOLDER_MOVE.search(command) and not _moves_by_function(command):
+        _CALL["still"] = still | frozenset(readings)  # read as written: a reading's values can break the quoting
+    try:
+        for text in readings:  # each command is judged in every folder it may run in (`_commands`)
+            reason = _judged(command, text, cwd, config, _CALL["settings"] if inside else True, depth)
+            if not inside and reason and not isinstance(reason, Overdue):  # held with the settings protected: and without them?
+                base = _judged(command, text, cwd, config, False, depth)
+                if base and not isinstance(base, Unproven):
+                    return base  # refused whatever the settings: the folders every approval rests on take no code
+                if time.monotonic() <= _CALL["until"]:  # judged in its time; else the wait found with the settings protected stands
+                    alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only", depth)
+                    touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
+            if reason and not isinstance(reason, Unproven):
+                return reason
+            waits = waits or reason
+    finally:
+        _CALL["still"], _CALL["clean"] = still, was
+    if hold and _CALL["unplaced"]:  # where its commands run could not be told (review round 4 of 5.23.1, Q1)
+        waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
+                                  "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
+    if touched:
+        return _settings_hold(command, cwd, waits, session, hold)
     if not waits:
         return None
     if not hold:
         return waits  # a command a program starts that waits makes that program wait
     subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items())}  # a rewritten script is a new command
     if approvals.consume("protected-read", subject, session):
+        _CALL["approved"] = True  # this exact run: a program's osascript file is not asked about again (`_osa_files`)
         return None
     code = approvals.request("protected-read", subject, f"a program near the approval records: {command[:140]}")
     return (f"This command {waits}. The protected folders hold what every approval rests on (the synthesis state, its "
@@ -5211,18 +7025,98 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
             "tail, grep or jq, or a Python program whose writes the guard can read.")
 
 
-def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str | None:
-    """One reading of a command: the reason it is refused, or None."""
+class Overdue(Unproven):
+    """A reading the guard ran out of time to judge: it waits, and says nothing of which folder it would have reached."""
+
+
+def _judged(command: str, text: str, cwd: str, config: dict | None, settings, depth: int = 0) -> str | None:
+    """One reading judged with the guard's own settings among the protected paths (True), without them (False), or as the
+    only ones ("only"); a command a program starts is judged the same way as the program (22.20)."""
+    if time.monotonic() > _CALL["until"]:
+        return Overdue("is more than this guard could judge in its time")  # it waits, rather than leave the verdict to the harness
+    before, _CALL["settings"] = _CALL.get("settings"), settings
+    try:
+        return _self_grant(command, text, cwd, config, depth)
+    finally:
+        _CALL["settings"] = before
+
+
+def _reached(command: str, cwd: str) -> list:
+    """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, or in a folder
+    they change whole; else the ones in or above a path it names, else those whose names it spells; all of them, where
+    it shows none of those (a pattern, a path a program builds)."""
+    try:
+        landed = [_real(re.sub(r"/\*\*(?:/\*)?$", "", t)) for t in _shell_writes(command, cwd)]
+    except RecursionError:
+        landed = []
+    home = os.path.realpath(os.path.expanduser("~"))
+    named = [p for w in re.findall(r"(?<![\w$])[~/][^\s'\";|&<>()`]*", command)[:64]
+             for p in [_real(os.path.join(cwd, os.path.expanduser(w)))] if p not in ("/", home)]
+    for group in (landed, named):
+        found = [s for s in _settings() if any(paths.inside(t, _real(s)) or paths.inside(_real(s), t) for t in group)]
+        if found:
+            return found
+    try:
+        installed = {_installs(words) for words, _ in _parse(command, cwd)[0]} - {""}
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        installed = set()
+    found = [s for s, (kind, name) in _settings_map().items() if kind == "program" and name in installed]
+    if found:
+        return found
+    return [s for s in _settings() if re.search(rf"(?<![\w.-]){re.escape(os.path.basename(s))}(?![\w-])", command, re.I)] or _settings()
+
+
+def _named_files(command: str, cwd: str) -> list:
+    """Each regular file a command names, by a word or a `<`, with its size, time and the digest of its first megabyte:
+    a settings write's code binds what it copies and reads as it stood when the principal was shown it (22.20)."""
+    import hashlib
+    marks: dict = {}
+    words = [(w, where) for ws, where in _parse(command, cwd)[0] for w in ws[1:]]
+    words += [(w, cwd) for w in re.findall(r"(?<![<\d])<(?![<(&])\s*([^\s;&|<>()]+)", command)]
+    for word, where in words:
+        word = word.split("=", 1)[-1] if word.startswith("-") else word
+        path = _real(os.path.join(str(where), os.path.expanduser(word))) if word and not word.startswith("-") else ""
+        found = _regular(path, 1 << 20) if path and path not in marks and len(marks) < 32 else None
+        if found is not None:
+            marks[path] = f"{found[1].st_size}:{found[1].st_mtime_ns}:{hashlib.sha256(found[0]).hexdigest()}"
+    return sorted(marks.items())
+
+
+def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool) -> str | None:
+    """A shell command that may change the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a
+    harness program waits for the principal's code for that command, the folder it runs in, each script it runs and each
+    file it names, as they stand (22.20, 22.26)."""
+    said, does = _settings_said(_reached(command, cwd))
+    if not hold:
+        return Unproven(f"may change {said}")
+    subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items()),
+               "files": _named_files(command, cwd)}
+    if approvals.consume(SETTINGS_KIND, subject, session):
+        return None
+    code = approvals.request(SETTINGS_KIND, subject, f"{said.split(' (')[0]}: {command[:140]}")
+    return (f"This command may change {said}" + (f"; it also {also}" if also else "") + f". A change there {does}, so it "
+            "waits for the principal: show them this exact command and what it writes there (the file it copies, the text it "
+            f"puts in), and ask them to type {approvals.how(code)}; then run the identical command again from {cwd}. The code "
+            "binds the command, the folder it runs in and each file it names as it stands now, so a file changed after the "
+            "approval makes it a new command. Reading these files needs no code (cat, head, grep, jq).")
+
+
+def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: int = 0) -> str | None:
+    """One reading of a command: the reason it is refused, or None. A shell script it runs, by a shell, by its path or
+    sourced, is read as the command lines it holds, three scripts deep (22.21)."""
     codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
     raw = _protected_roots(config)
+    inherited = [r for r in raw if _settings_map().get(r, ("",))[0] not in ("startup", "snapshots", "program")]  # a harness's own variables name these (22.26)
 
-    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case
-        return {m[0] for m in re.finditer(re.escape(name), text, re.I)}
-    mine = spelled(store.name) if store else set()  # the store's own name: a write from inside its folder
-    names = sorted({s for r in raw for n in (r, "~" + r[len(home):]) for s in spelled(n)} | mine)
-    redirects, readable = [], True
+    low = text.casefold()
+
+    def spelled(name: str) -> set:  # as the command spells it: a Mac's file system ignores case (one it does not hold is not looked for)
+        return {m[0] for m in re.finditer(re.escape(name) + r"(?![\w.-])", text, re.I)} if name.casefold() in low else set()  # muse-bin-… is no muse
+    mine = spelled(store.name) if store and str(store) in raw else set()  # the store's own name: a write from inside its folder
+    names = sorted({s for r in raw for n in (r, *["~" + r[len(home):]] * paths.inside(r, home)) for s in spelled(n)} | mine)  # `~` spells only the home folder's (22.26)
+    redirects, readable, bodies = [], True, {}  # bodies: what a heredoc the line writes to a file puts in it
     try:  # the files the parsed command writes, named in full or not (2026-11-11: a path relative to the session's
-        _commands(text, cwd, writes=redirects)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
+        _commands(text, cwd, writes=redirects, bodies=bodies)  # folder or to a `cd` was never looked at); a `>` inside quotes is not one
     except (Unreadable, StopIteration, IndexError):
         readable = False
     held = [_real(r) for r in raw if not store or r != str(store)]
@@ -5235,19 +7129,27 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
     if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
         why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
-    feeds, env = [], dict(os.environ)
+    feeds, env, given = [], dict(os.environ), list(ASSIGNED.finditer(_own_text(text)))
     found = _parse(text, cwd, feeds=feeds)[0]
-    for m in ASSIGNED.finditer(_own_text(text)):  # the value the command gives a variable; given two, the one that names a protected path
+    for m in given:  # the value the command gives a variable; given two, the one that names a protected path
         if not m[2] and (env.get(m[1]) is None or m[1] in os.environ or any(n in m[3] for n in names)):
             env[m[1]] = m[3].strip("'\"")
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
         _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
+    fills = [w for w, _ in found if os.path.basename(w[0]) not in (READERS | WRITERS) - PACKERS - {"git", "synthesis"} and not (
+        os.path.basename(w[0]) == "git" and _git_reads(w))]  # a program that may fill a folder where this guard does not look
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
+        others = any(w is not words for w in fills)  # another such program on the line (review round 3 of 22.21)
+        if "/" in words[0] and not SCRIPT.match(os.path.basename(words[0])) and re.match(rb"#![^\n]*\bpython[\d.]*\b", (_regular(
+                os.path.join(where, os.path.expanduser(words[0])), 256) or (b"",))[0]):
+            words = ["python3"] + words  # a Python script run by its path is read as Python runs it (22.21)
         head, own = os.path.basename(words[0]), " ".join(words[1:])
         wheres.add(where)  # a redirect after `cd <root>` writes relative to that root
         if HOOK_RUN.search(words[0]) or ((SCRIPT.match(head) or head in SHELLS) and HOOK_RUN.search(_ran(words))):
             why = why or "runs the synthesis hook, which only the harness may run"
+        if _CALL.get("settings") and _installs(words):  # it writes where that program's installer keeps it, unseen (22.26)
+            why = why or f"runs an installer that changes the harness program {_installs(words)}"
         landed = _landing(words)  # a copy onto a note or a script that is the agent's own lands on it, not inside it
         firm = {w for w in landed if _own(_real(os.path.join(where, os.path.expanduser(w))))}
         roomy = {w for w in landed if head in COPIERS and _own(_real(os.path.join(where, os.path.expanduser(w))), True)
@@ -5267,30 +7169,64 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         within = any(paths.inside(_real(where), _real(r)) for r in raw)
         quoted = isinstance(where, Quoted)  # read out of a word handed to another program: judged for what it writes, runs and starts
         for word in _named(words) if readable and (not quoted or head in OPAQUE) else ():  # words the parser could not read name no program
-            led = _real(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))
-            if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
-                handed.append((head, word, led))
+            for led in {_real(m) for m in _globbed(os.path.join(where, _led(os.path.expanduser(os.path.expandvars(word)), where)))}:
+                if not within or word[:1] in ("~", "/") or word == HANDED or os.path.lexists(led):  # inside the folder, a file that is there
+                    handed.append((head, word, led))
         script = (fed or text) if _program(words)[0] == "stdin" else own  # read from stdin: its own heredoc, else whatever the line pipes in
-        label, code, program, mine = _unread(words, where, written, text) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
+        label, code, program, mine = _unread(words, where, written, text, bodies) if readable else ("", "", False, "")  # a program not known to only read, its script, its text
         python = head.startswith("python") and bool(SCRIPT.match(head))
         ran = _real(mine or os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS)
                                                                             else _program(words)[2]))) if code and code != text else ""  # the script file it runs
         files, stand, missed = _python_files(ran, code, "" if _isolated(words) else _real(where) if mine else os.path.dirname(ran),
                                              _program(words)[2] if mine else "") if python and ran else (([(ran, code)] if ran else []), "", "")
+        missed = missed or next((f"imports {f}, which the same line writes" for f, _ in files[1:] if _real(f) in written), "")  # finding 3
         said = [w for at, w in enumerate(words[1:], 1) if head not in PROMPTED and not MESSAGE.fullmatch(words[at - 1]) and not (
             w[:1] == "-" and MESSAGE.fullmatch(w.split("=", 1)[0])) and not any(f(_real(os.path.join(where, os.path.expanduser(w)))) for f in (_own, lambda x: _own(x, True), _material))]
+        kept = [r for r in raw if _settings_map().get(r, ("",))[0] != "program"] if ran and "program" in _kinds_at(ran) else raw  # a launcher names where its program is (22.26)
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
-            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, raw, linked)
+            [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, kept, linked)
                  or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
-        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and SELF_GRANT_CALLS.search(script):
-            why = why or "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
-        reaches = [(f, _synthesis_reach(t)) for f, t in files] if python and ran and not waits and not _shipped(ran) else []
-        uses = next(((f, r[1]) for f, r in reaches if r[0] in ("names", "follows")), None)
-        if uses:  # finding 17: by what it, or a module of its own, does with synthesis's code
-            waits = Unproven(f"runs `{head}` on {ran}, a script outside the plugin's release that {uses[1]}" + (f" ({uses[0]})" if uses[0] != ran else ""))
+        if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(_granting_text(script, head)) or (
+                RUNS_STRINGS.search(script) and WINDOW_CLI.search(script))):  # a program that starts `synthesis sends open`
+            said = "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
+            why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
+        mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
+        unplain = _plainly(words, where, command + "\n" + text, found, given) if ran and (mine_run or python) else "is not run"  # finding 4
+        args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
+        values = [v for v in (m[3].strip("'\"") for m in given) if not paths.inside(ran, _real(os.path.join(where, os.path.expanduser(v))))]
+        heard = (_spells([fed, *args, *values], [head, *args], where, env, raw, linked) or (where if within else "") or (  # what its line names,
+            "the files xargs hands it" if HANDED in words and names else "")) if ran and not unplain else ""  # past where the script lies
+        heard = heard or (_follows(code, where, args, env, raw, linked) if mine_run and not unplain else "")  # and the config it follows
+        trusted = mine_run and not unplain  # the release's own code, run as the release holds it
+        if trusted and os.path.relpath(ran, _release()) in SERVICE_WRITERS:
+            waits = waits or Unproven(f"runs {ran}, which writes or loads a LaunchAgent or a systemd unit, a service that runs later "
+                                      "with no one asking")
+        shipped = trusted and not heard  # the plugin's own: what its own text names is exempt, never what its line names (finding 2)
+        named = (heard or named) if trusted else named
+        copy = _runtime_copy(ran) if python and ran and not mine_run and not unplain and not heard else ""  # a copy of a script the runtime carries
+        then = (f"; it is a copy outside the installed release, which the guard never vouches for: the runtime's own copy, {copy}, runs with "
+                "no code" if copy else f", while the line {unplain}" if mine_run and unplain else "")
         source, argv = _python_source(words, fed) if head.startswith("python") else ("", [])
+        start = _program(words)[1]  # what it is handed to load, and the values the line gives variables (review round 4 of 5.23.1's approval fix)
+        loaded = [m[3].strip("'\"") for m in given] + (argv[1:] if source else words[start + 1 + (words[start:start + 1] == ["-m"]):])
+        modules = files or (_python_files(os.path.join(where, "-"), source, "" if _isolated(words) else _real(where))[0][1:] if python and source else [])
+        reaches = [(f, _synthesis_reach(t)) for f, t in modules] if python and modules and not waits and not trusted else []
+        uses = next(((f, r[1]) for f, r in reaches if r[0] == "names" or (r[0] == "follows" and ran)), None)  # a line's: one that writes
+        unfollowed = _synthesis_loads([t for _, t in modules], loaded, where) if reaches and not uses else ""
+        uses = uses or ((modules[0][0], f"reaches synthesis's own code in a way its reader cannot follow ({unfollowed})") if unfollowed else None)
+        if uses:  # finding 17: by what it, or a module of its own (one a program on the line imports too), does with synthesis's code
+            waits = Unproven((f"runs `{head}` on {ran}, a script {'of' if mine_run else 'outside'} the plugin's release that {uses[1]}" + (
+                                 f" ({uses[0]})" if uses[0] != ran else "") + then)
+                             if ran else f"runs `{head}` with a program whose own module {uses[0]} {uses[1]}")
+        kit = _kit_loaded(([("", source)] if source else []) + (files if ran and not _shipped(ran) else []), where,
+                          _isolated(words), named) if python else ""
+        if kit and not waits:  # 5.24.0: the release tool runs as itself, from the runtime, or waits
+            waits = Unproven(f"runs `{head}` on a program that imports the release tool's own modules ({kit}), which claim "
+                             "the board, install the runtime and publish; the tool itself, run from the installed runtime, needs no code")
         reach = _synthesis_reach(source) if python and source else next((r for _, r in reaches if r[0] == "places"), ("", "", None))
+        unfollowed = _synthesis_loads([source], loaded, where) if python and source and reach[0] not in ("names", "follows") else ""
+        reach = ("follows", f"reaches synthesis's own code in a way its reader cannot follow ({unfollowed})", None) if unfollowed else reach
         named = named or (reach[1].replace("reaches ", "") if reach[0] == "places" and label else "")  # a folder synthesis's own paths lead to
         # A Python program given inline or on stdin is judged by its own text: what its code writes. A protected
         # path named elsewhere on the line reaches it only through its arguments, its environment or the folder it
@@ -5303,9 +7239,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
         except (RecursionError, TimeoutError):  # nested too deeply to follow, or past the call's time: judged by its text
             hit, wrote = None, None
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
-        wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
+        wrote = bool(SCRIPTED_WRITE.search(source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
-            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in raw))
+            v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in inherited))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
         lost = where[:1] in ("$", "`") and bool(names)  # it runs in a folder the guard cannot read, in a command that names a protected one
         if SCRIPT.match(head) and (hit or (wrote and (reaches or lost or (hit is None and (within or any(n in script for n in names)))))):
@@ -5315,22 +7251,25 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                           "writes while such a path reaches it through an argument, the environment or the folder it runs in "
                           "(spell each file's path inside the program, or run the script alone)")
         if source and ((hit is None and SYNTHESIS_IMPORT.search(source)) or reach[0] == "follows"):  # synthesis's code reached by a name it builds
-            why = why or ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a "
-                          "call handed on), so it may reach the approval or send-window code")
+            said = ("runs a program that imports synthesis's own code and that its reader cannot follow (a name it builds, a call handed "
+                    "on), so it may reach the approval or send-window code")  # a line of a shell script waits, the script bound (22.21)
+            why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         waits = waits or (Unproven(f"runs `{head}`, a program that {reach[1]}") if reach[0] == "names" else None)
         bare = "" if not python or _isolated(words) else "the line sets a variable that moves Python's module path (run it without that variable" if PYTHON_ENV.search(
-            text) else f"a file in {where} could stand in for `{_stand_in(source, where)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where) else ""
-        shipped = bool(ran) and _shipped(ran)  # the plugin's own
+            text) and (others or not _module_path_is_synthesis(text, where, "\n".join([source] + [t for _, t in files]), written)) else f"a file in {where} could stand in for `{_stand_in(source, where, written=written)}`, which it imports (run it from a folder without that file" if source and _stand_in(source, where, written=written) else ""
         shows = "" if not (python and ran and not source) or shipped or not named or waits else (  # a script file judged by what its text shows
             "runs while the line sets a variable that moves Python's module path (without that variable, or with -I, it needs no code)" if bare
             else f"imports `{stand}`, for which a file beside it could stand in (where no such file is, or with -I, it needs no code)" if stand
-            else missed or _shows(files, words, where, names, raw, env, config))
+            else missed or _shows(files, [m for w in words for m in (_globbed(os.path.join(where, os.path.expanduser(w))) if re.search(
+                r"[*?\[]", w) else [w])], where, names, raw, env, config))  # its words as the shell expands a pattern (R2-3)
         proven = shipped or (not shows if python and ran and not source else python and not bare and bool(source) and hit is False and not (
             reach[0] == "places" and not reach[2] and wrote))  # a write to where synthesis's own paths lead, unspelled, cannot be placed
         if named and not waits and not proven:
-            waits = Unproven(f"runs `{label}` on {ran}, which {shows}, and names {named}" if shows else
+            alike = words[0] if isinstance(words[0], LookAlike) else None  # a script under the name of a command it trusts (22.32)
+            ran_as = (f"`{alike.found}`, a script under the name of `{alike.name}`," if alike else f"`{label}` on {ran}," if shows else f"`{label}`,")
+            waits = Unproven(f"runs {ran_as} which {shows}, and names {named}{then}" if shows else
                              f"runs `{label}`, which its reader proves only reads, but {bare}, or with -I, and it needs no code). It names "
-                             f"{named}" if bare and hit is False else f"runs `{label}`, which this guard cannot prove only reads, and names {named}")
+                             f"{named}" if bare and hit is False and not alike else f"runs {ran_as} which this guard cannot prove only reads, and names {named}")
         waits = waits or (Unproven(f"runs `{head}`, which starts a command that {inner}") if inner else None)
         if head in EXTRACTS and not waits and any(re.fullmatch(EXTRACTS[head], w) for w in words[1:]) and (
                 within or head == "pax" or any(ABSOLUTE.fullmatch(w) for w in words[1:]) or paths.spelled(_real(where)) in _spellings(raw, env)[2]):
@@ -5343,6 +7282,34 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")
+        # A shell script it runs, by a shell, by its path or sourced, is judged as the command lines it holds, three scripts
+        # deep, the one the line writes as the line's own bodies; one this guard cannot read waits (22.21: `bash run.sh`
+        # let a `python3 -c` inside it import synthesis and name a writer). Pytest's test files are read as script files.
+        runs = head in SHELLS or head in (".", "source") or "/" in words[0]
+        target = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS else next(
+            (w for w in words[1:] if not w.startswith(("-", "+"))), "")))) if runs else ""
+        runs = runs and not _kinds_at(target) & {"startup", "snapshots"}  # what a shell runs at its start anyway (22.26)
+        body = ("\n".join(f for f in feeds if f.strip()) or _script_file(words, where) or "") if runs and target in written else (
+            _script_file(words, where) if runs else None)  # one the line writes: its bodies, else the file as it stands; built at run time, unread
+        if body == TOO_LARGE:
+            pass  # held already, as a script whose deploys cannot be read (5.20.1)
+        elif (body and depth >= 3) or (runs and body is None and os.path.exists(target) and not os.path.isdir(target)
+                                                       and not target.startswith("/dev/") and _regular(target, 1) is None):
+            waits = waits or Unproven(f"runs a shell script this guard cannot read ({target}), which may reach synthesis's own code")
+        elif body and not _release_script(target):
+            _code_of(target) if target not in written else ""  # the principal's code binds the script as it stood
+            text_ = body if head in (".", "source") else re.sub(r"\$\{?0\}?(?!\w)", lambda m: target, body)  # $0: the script's own path
+            inner = check_self_grant(text_, where, config, None, False, depth + 1, getattr(words, "clean", False))
+            said = re.sub(r"^Refused: this command |\. Approvals come[\s\S]*$", "", inner) if inner else ""
+            alike = words[0].name if isinstance(words[0], LookAlike) else head if "/" in words[0] and head not in SHELLS and _trusted(head) else ""
+            shown = f"{target}, a shell script" + (f" under the name of `{alike}`," if alike else "")  # a look-alike (22.32)
+            why = why or (f"runs {shown} that {said}" if inner and not isinstance(inner, Unproven) else "")
+            waits = waits or (Unproven(f"runs {shown} that {inner}") if isinstance(inner, Unproven) else None)
+            if not inner and re.search(r"\b(?:from|import)\s+synthesis\b|\bsynthesis\.\w", text_) and not _parse(text_, where)[1]:
+                waits = waits or Unproven(f"runs {target}, a shell script this guard cannot read with certainty that names synthesis's code")
+        tested = _pytest_reach(words, where, _homes_apart(getattr(words, "given", None), where, raw, command)) if head in (
+            "pytest", "py.test") or (python and words[_program(words)[1]:][:2] == ["-m", "pytest"]) else ""
+        waits = waits or (Unproven(f"runs pytest, which loads {tested}") if tested else None)
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]
     spelt = "" if why or waits or readable else _spells([text], [], cwd, env, raw, [])  # a line it cannot read with certainty (finding 1)
@@ -5358,8 +7325,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
     if owned:
         return f"Refused: this command writes {owned}"
-    if not why and any(paths.inside(t, _real(r)) for t in real for r in raw
-                       if t in links or not (_own(t) or (t in made and _own(t, True)))):
+    landing = [t for t in real if t in links or not (_own(t) or (t in made and _own(t, True)))]  # each target asked once (22.26)
+    if not why and any(paths.inside(t, _real(r)) for t in landing for r in raw):
         why = "writes into the synthesis state folder, a harness's session transcripts or the approved commit lines"
     # A target outside every protected folder may still change one. The approved lines are one file in a working
     # repository: removing or moving its folder removes it, while a search or a copy across that folder is judged by
@@ -5377,6 +7344,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None) -> str |
                f"approved commit lines, or files it takes from there through xargs, and `{given}` is not a program this "
                "guard knows to only read what it is given (read the file with cat, head, tail, grep or jq and pipe that in, or "
                "copy it out with `cat <file> > <copy>` and work on the copy)")
+    shared = "" if why else next((s for t in real for s in [_shared(t, [_real(r) for r in raw])] if s), "")
+    waits = waits or (Unproven(f"writes a file that is also {shared}, in a protected folder (a hard link)") if shared else None)
     return (f"Refused: this command {why}. Approvals come only from the principal's own prompt; show them "
             "what needs approving and ask them to answer in their own message.") if why else waits
 
@@ -5408,10 +7377,11 @@ APP_NAMES = {"whatsapp": "net.whatsapp.WhatsApp", "messages": "com.apple.MobileS
 CLICKS = {"click", "left_click", "double_click", "triple_click", "right_click", "middle_click", "left_mouse_down", "left_mouse_up"}
 DESKTOP_TOOLS = CLICKS | {"batch", "teach_step", "teach_batch", "app_batch", "app_click", "app_key", "app_type", "app_menu",
                           "key", "hold_key", "type", "request_access", "request_teach_access"}
-BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_input": "browser_form", "javascript_tool": "browser_script"}
+BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_input": "browser_form", "javascript_tool": "browser_script",
+                 "navigate": "browser_navigate"}  # a javascript: address runs a page script (round 4 of 5.24.0's review, #1)
 RETURNS = {"return", "enter", "kp_enter", "kp_return", "numpadenter"}  # the last as Playwright names it
 MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl", "controlormeta": "cmd"}
-SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
+SAYS_SENT = _Pattern(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
                        r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
                        r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?send\b)|\bto send\b", re.I)
 # A click whose summary says it publishes waits too, in every app and on every page: an effect-first verb that posts
@@ -5419,32 +7389,34 @@ SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|
 # label a word or three after it ("Clicks the blue Post button"). It passes when what follows the label says it only
 # opens or closes a box, when it signs in or searches and names nothing that posts, and on the principal's own app on a
 # local host (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram; the second review).
-PUBLISHES = re.compile(r"^\W*(?:submit|repost|retweet|quote|rate)(?:s|d|ed|ted|ting|ing)?\b|\b(?:click|press|tap|hit|choose"
+PUBLISHES = _Pattern(r"^\W*(?:submit|repost|retweet|quote|rate)(?:s|d|ed|ted|ting|ing)?\b|\b(?:click|press|tap|hit|choose"
                        r"|select)(?:s|es|ed|ing)?\s+(?:on\s+)?(?:the\s+)?(?:[\w'’-]+\s+){0,3}?[\"'“‘]?(?:send|post|comment"
                        r"|reply|repost|share|publish|submit|tweet|done)\b", re.I)
-OPENS = re.compile(r"^\W*(?:box|field|input|area|composer|editor)\b|\b(?:to\s+(?:open|expand|focus|show|reveal|close)|opens"
+OPENS = _Pattern(r"^\W*(?:box|field|input|area|composer|editor)\b|\b(?:to\s+(?:open|expand|focus|show|reveal|close)|opens"
                    r"|opening|expands|focuses|shows|reveals|closes)\s+(?:[\w'’-]+\s+){0,3}?(?:box|field|input|area|composer"
                    r"|editor|menu|dialog|options|panel|sheet|form|window|list|modal|pop-?up|drawer)s?\b", re.I)
-POSTS = re.compile(r"\bto\s+(?:post|publish|send|submit)\b|\b(?:posting|publishing|sending|submitting)\b", re.I)
-ROUTINE = re.compile(r"\b(?:sign(?:s|ing|ed)?[\s-]?in|log(?:s|ging|ged)?[\s-]?(?:in|on)|search\w*|quer(?:y|ies)|filter\w*"
+POSTS = _Pattern(r"\bto\s+(?:post|publish|send|submit)\b|\b(?:posting|publishing|sending|submitting)\b", re.I)
+ROUTINE = _Pattern(r"\b(?:sign(?:s|ing|ed)?[\s-]?in|log(?:s|ging|ged)?[\s-]?(?:in|on)|search\w*|quer(?:y|ies)|filter\w*"
                      r"|look(?:s|ing)?\s?up|password|passcode|verification code)\b", re.I)
-MESSAGE_WORDS = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
+MESSAGE_WORDS = _Pattern(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
 # Off a messaging site, typed words then a key that submits wait only when the call names one of these (the principal, 2026-11-14)
-NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|repl(?:y|ies|ied|ying)|tweet\w*)\b", re.I)
+NAMES_POST = _Pattern(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|repl(?:y|ies|ied|ying)|tweet\w*)\b", re.I)
 # A page script that can send (the second review: one that clicked a comment's submit button went out): on a messaging
 # site's page one that clicks, submits, sends a key or an event, writes by fetch, sets a value or moves the tab (a chat's
 # address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
 # fetch or clicks a control that publishes, unless it searches or signs in.
+ASSIGN = r"(?:[-+*/%&|^]|\*\*|<<|>>>?|&&|\|\||\?\?)?=(?![=>])"  # every assignment operator (review round 7 of 5.23.1, Y3)
 WRITES = r"method\s*:\s*['\"`](?:post|put|patch|delete)|\.open\s*\(\s*['\"`](?:post|put|patch|delete)|sendBeacon"
-MOVES = r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*=(?!=)|\bwindow\s*\.\s*open\s*\("
+MOVES = (r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?\s*" + ASSIGN + r"|(?:\b(?:window|globalThis|self|top|"
+         r"parent|frames)\s*(?:\.\s*open|\[\s*['\"`]open['\"`]\s*\])|(?<![\w$.])open)\s*\(")  # open( by any name (5.24.0)
 # A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
 DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
 PRESSES_ENTER = r"\.press\s*\(\s*['\"`](?:[^'\"`]*\+)?(?:Enter|Return|NumpadEnter)['\"`]"
-SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*=[^=]|execCommand|"
+SCRIPT_ACTS = _Pattern(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
                          + WRITES + "|" + MOVES + "|" + DRIVES, re.I)
-SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
+SCRIPT_SENDS = _Pattern(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
-SCRIPT_ROUTINE = re.compile(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
+SCRIPT_ROUTINE = _Pattern(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
 
 
 def _publishes(said: str, local: bool) -> bool:
@@ -5471,7 +7443,8 @@ def _submits(actions: list) -> bool:
 def desktop_tool(tool: str) -> str:
     """The computer-use action a tool performs ("batch", "app_click"...), or "" for any other tool: the desktop
     app's computer-use server by any id, a linked device's computer_* tools, or a browser's computer, browser_batch,
-    form_input and javascript_tool tools ("browser", "browser_batch", "browser_form", "browser_script")."""
+    form_input, javascript_tool and navigate tools ("browser", "browser_batch", "browser_form", "browser_script",
+    "browser_navigate")."""
     server, _, name = tool.rpartition("__")
     if tool.startswith("mcp__") and name in BROWSER_STEPS and re.search(r"browser|chrome", server, re.I):
         return BROWSER_STEPS[name]
@@ -5509,10 +7482,211 @@ def _desktop_actions(name: str, tool_input: dict) -> list:
 
 def _browser_item(step: str, given: dict) -> dict:
     """A browser step as a computer-use action: a form's value is text typed into the page, and a page script is a
-    script, which reached no send rule until the second review."""
+    script, which reached no send rule until the second review; so is a navigate to a javascript: address, as the
+    code it runs (round 4 of 5.24.0's review, #1). Any other navigate does nothing to anyone."""
+    if step.endswith("navigate"):
+        code = _script_address(str(given.get("url") or ""))
+        return {**given, "action": "script", "text": code} if code is not None else {}
     return ({**given, "action": "type", "text": str(given.get("value", ""))} if step.endswith(("form_input", "browser_form"))
             else {**given, "action": "script", "text": str(given.get("text") or "")} if step.endswith(("javascript_tool", "browser_script"))
             else given)
+
+
+def _url_read(url: str) -> str:
+    """An address as a URL parser reads it (WHATWG, as a browser does): C0 controls and spaces stripped from both ends,
+    every tab and line break removed (round 4 of 5.24.0's review, #1: `java\\tscript:` and `\\x01javascript:` ran as
+    scripts while the guard read them as written)."""
+    return re.sub(r"[\t\n\r]", "", str(url).strip("".join(map(chr, range(0x21)))))
+
+
+def _script_address(url: str):
+    """The code a javascript: address runs, percent-decoded as the browser decodes it before running it; None for any
+    other address."""
+    import urllib.parse
+    read = _url_read(url)
+    return urllib.parse.unquote(read[len("javascript:"):]) if read[:len("javascript:")].lower() == "javascript:" else None
+
+
+# On a messaging site's page a page script is read as code, its strings, comments and patterns out (_osa_code), an
+# optional call read as a call and `X.call(` as a call of X where X is a dotted name: one that calls what it names only
+# as it runs (UNREAD_FORMS) or puts code where the page runs it (CODE_SINKS) is refused; one that acts waits for the code
+# (PAGE_ACTS, SCRIPT_ACTS_MORE, a write by fetch, Request or XHR); a read passes (the coordinator's ruling on round 4's
+# measurement, 2026-11-15, and review round 1 of 5.23.1: a release refuses no ordinary read, and leaves no ordinary way).
+UNREAD_FORMS = (("a member named as it runs", r"\]\s*\)?\s*(?:\(|\0)"), ("Reflect", r"\bReflect\s*\."),
+                ("call, apply or bind", r"\.\s*(?:call|apply|bind)\s*\("), ("eval", r"\beval\s*\("), ("Function", r"\bFunction\s*\("),
+                ("with", r"\bwith\s*\("), ("import()", r"\bimport\s*\("), ("a timer given a string", r"\b(?:setTimeout|setInterval)\s*\(\s*\0"),
+                ("a name written in escapes", r"\\u[0-9a-fA-F{]"))
+CODE_SINKS = _Pattern(r"\bcreateElement\s*\(\s*\0(\d+)\0|(?:\bsetAttribute|\bsetAttributeNS)\s*\(\s*\0(\d+)\0|(?:innerHTML|outerHTML"
+                        r"|srcdoc)\s*" + ASSIGN + r"\s*\0(\d+)\0|(?:insertAdjacentHTML|\bwrite(?:ln)?|\bBlob)\s*\(([^()]*)"
+                        r"|(?:\blocation(?:\s*\.\s*href)?|\.\s*(?:href|src))\s*" + ASSIGN + r"\s*\0(\d+)\0|\blocation\s*\.\s*(?:assign|replace)\s*\(\s*\0(\d+)\0")
+HANDLERS = r"on(?:click|dblclick|submit|keydown|keyup|keypress|input|change|mousedown|mouseup|pointerdown|pointerup|touchstart|touchend)"
+PAGE_ACTS = _Pattern(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
+                       + WRITES + "|" + MOVES, re.I)  # SCRIPT_ACTS but a browser server's own calls, which no page script makes (#8)
+SCRIPT_ACTS_MORE = _Pattern(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
+                              r"|\.\s*on[a-z]+\s*\(|\.\s*" + HANDLERS + r"\b(?!\s*=[^=])|(?<![\w$.])" + HANDLERS + r"\b"
+                              r"|\.\s*postMessage\s*\("
+                              r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*navigate\s*\("
+                              r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
+SHOWS_PAGE = _Pattern(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
+BARE_SENDS = _Pattern(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
+MEMBER_SENDS = _Pattern(r"(?:\bnew\s+([A-Za-z_$][\w$]*)\s*\([^()]*\)|(?<![\w$.])([A-Za-z_$][\w$]*))?\s*\.\s*((?:send|post|submit|publish|reply"
+                          r"|share|tweet)\w*)\s*\(", re.I)  # (a class the receiver is made by, the receiver, the method)
+SERVER_CODE = "/* the browser server's own code */ "
+
+
+def _script_code(text: str) -> tuple:
+    """(code, literals, whole) of a page script as the rules read it: _osa_code's, with `x?.(` and `x?.[` read as `x(`
+    and `x[` (#2), and `X.call(`, `.apply(` or `.bind(` read as `X(` where X is a dotted name (#5) or an empty array's
+    method (review round 2, #4: `[].slice.call(`)."""
+    code, literals, whole = _osa_code(text, True)
+    code = re.sub(r"\?\.\s*(?=[(\[\0])", "", code).replace("?.", ".")
+    code = re.sub(r"((?:\[\s*\]|[A-Za-z_$][\w$]*)(?:\s*\.\s*[A-Za-z_$][\w$]*)+)\s*\.\s*(?:call|apply|bind)\s*\(", r"\1(", code)
+    return code, literals, whole
+
+
+def _unread_script(text: str) -> str:
+    """What makes a page script one the guard cannot read, named in fixed words; "" for none."""
+    code, literals, whole = _script_code(text)
+    if not whole:
+        return "holds a string, a comment or a pattern it never closes"
+    form = next((name for name, pattern in UNREAD_FORMS if re.search(pattern, code)), "")
+    if form:
+        return f"calls what it names only as it runs ({form})"
+    for found in CODE_SINKS.finditer(code):
+        n = next(i for i, g in enumerate(found.groups()) if g is not None)
+        values = [literals[int(i)] for i in re.findall(r"\0(\d+)\0", found[n + 1])] if n == 3 else [literals[int(found.groups()[n])]]
+        if any(n == 0 and v.strip().lower() == "script" or n == 1 and v.strip().lower().startswith("on")
+               or n in (2, 3) and re.search(r"(?i)<\s*script\b|\bon[a-z]+\s*=", v) or n >= 4 and _script_address(v) is not None for v in values):
+            return "puts code where the page runs it (a script element, an inline handler, a javascript: address)"
+    return ""
+
+
+def _bracketed(code: str, at: int) -> str:
+    """The bracketed text that opens at `at`, to its closing bracket (the rest of the code when it never closes)."""
+    depth = 0
+    for j in range(at, len(code)):
+        depth += (code[j] in "([{") - (code[j] in ")]}")
+        if not depth:
+            return code[at:j + 1]
+    return code[at:]
+
+
+def _writes_by_fetch(code: str, literals: list) -> bool:
+    """A fetch, Request or XHR that may write: the init of fetch or Request (its second argument, or the object a variable
+    given there holds and what is set on it) with a body or a method that is not one literal GET or HEAD, or keyed by a
+    name built as it runs; an init the reader cannot follow otherwise (spread into, a variable set again or handed on, a
+    parameter, any other expression) when the script sets such a method as an object key or a member assignment, or puts
+    a body in an object it passes to a call or one a variable it passes holds (review rounds 3 to 6 of 5.23.1, T1, U1,
+    W4); an XHR opened with a method that is not one (rounds 1 and 2, #1 and #2: a `body` read from a response is no write)."""
+    def group(at: int) -> str:
+        return _bracketed(code, at)
+
+    def given(name: str) -> int:  # where the one value a variable is ever given starts, else -1
+        sets = [m.end() for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*{ASSIGN}", code)]
+        declared = re.search(rf"\b(?:const|let|var)\s+{re.escape(name)}\s*=(?!=)", code)
+        return len(code) - len(code[sets[0]:].lstrip()) if len(sets) == 1 and declared else -1
+
+    def reads(value: str) -> bool:  # one literal GET or HEAD, whole
+        found = re.match(r"\s*\0(\d+)\0\s*(?:[,;)}\]]|$)", value)
+        return bool(found) and literals[int(found[1])].strip().upper() in ("GET", "HEAD")
+
+    def writes(init: str) -> bool:  # an init written out as an object
+        for key in re.finditer(r"[{,]\s*(?:([A-Za-z_$][\w$]*)|\0(\d+)\0)\s*(?=([:,}]))", init):
+            name, at = key[1] or literals[int(key[2])], given("method") if key[3] != ":" else -1
+            if name == "body" or name == "method" and not reads(init[key.end() + 1:] if key[3] == ":" else code[at:] if at >= 0 else ""):
+                return True
+        return False
+
+    def arguments(at: int) -> list:  # the arguments of the call whose `(` is at `at`
+        args, depth, start, inner = [], 0, 0, group(at)[1:-1]
+        for j, c in enumerate(inner + ","):
+            depth += (c in "([{") - (c in ")]}")
+            if c == "," and not depth:
+                args, start = args + [inner[start:j].strip()], j + 1
+        return args
+
+    def anywhere() -> bool:  # a method that is no literal GET or HEAD, as an object key (a shorthand by the one literal its
+        # const holds) or a member assignment anywhere in the script (rounds 5 and 6, W4: an init its own helper returned
+        # passed, then a parameter or a property read named method held a read), or a body in an object it passes to a call
+        # or one a variable passed or spread into one holds or is given (round 4, U1: not in what a callback returns or names)
+        for found in re.finditer(r"[{,]\s*(method)\b(?=\s*(?::|[,}]|=(?!=)))|\.\s*(method)\b(?=\s*" + ASSIGN + r")|\0(\d+)\0(?=\s*\]?\s*(?::|" + ASSIGN + r"))", code):
+            if found[3] is not None and literals[int(found[3])] != "method":
+                continue
+            rest, at = code[found.end():], given("method")
+            value = ((code[at:] if at >= 0 else "") if found[1] and re.match(r"\s*[,}]", rest) else re.sub(r"^\s*\]?\s*(?::|=)", "", rest, count=1)
+                     if re.match(r"\s*\]?\s*(?::|=(?!=))", rest) else "")
+            if not reads(value):
+                return True
+        passed = set()
+        for call in re.finditer(r"(?:(?<![\w$])(?!(?:if|for|while|switch|catch|with|function|return|typeof)\b)[A-Za-z_$][\w$]*|[)\]])\s*\(", code):
+            for arg in arguments(call.end() - 1):
+                if arg.startswith("{") and writes(arg):
+                    return True
+                passed |= set(re.findall(r"\.\.\.\s*([A-Za-z_$][\w$]*)", arg) if arg.startswith("{") else re.findall(r"^[A-Za-z_$][\w$]*$", arg))
+        for name in map(re.escape, passed):
+            if any(writes(group(m.end())) for m in re.finditer(rf"(?<![\w$.]){name}\s*=\s*(?=\{{)", code)):
+                return True
+            for member in re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*(method|body)\b|\[\s*\0(\d+)\0\s*\])\s*{ASSIGN}", code):
+                prop = member[1] or literals[int(member[2])]
+                if prop == "body" or prop == "method" and not reads(code[member.end():]):
+                    return True
+        return False
+
+    inits = [(lambda args: args[1] if len(args) > 1 else "")(arguments(call.end() - 1)) for call in re.finditer(r"\b(?:fetch|Request)\s*\(", code)]
+    for init in filter(None, inits):
+        name = re.escape(init)
+        at = -1 if init.startswith("{") or not re.fullmatch(r"[A-Za-z_$][\w$]*", init) else given(init)
+        held = init if init.startswith("{") else group(at) if at >= 0 and code[at:at + 1] == "{" else ""
+        members = list(re.finditer(rf"(?<![\w$.]){name}\s*(?:\.\s*([A-Za-z_$][\w$]*)|\[\s*(?:\0(\d+)\0\s*(?=\]))?)", code)) if at >= 0 else []
+        if re.search(r"\]\s*:", held) or any(not (m[1] or m[2]) for m in members):  # keyed by a name built as it runs
+            return True
+        if not held or "..." in held or not init.startswith("{") and len(re.findall(rf"(?<![\w$.]){name}\b(?!\s*[.\[])", code)) != 1 + inits.count(init):
+            if anywhere():  # not followed: the script's own words decide
+                return True
+            continue
+        if writes(held):
+            return True
+        for member in members:
+            prop, set_ = member[1] or literals[int(member[2])], re.match(r"\s*\]?\s*=(?!=)", code[member.end():])
+            if prop == "body" or prop == "method" and not (set_ and reads(code[member.end() + set_.end():])):
+                return True
+    opened = re.findall(r"\.\s*open\s*\(\s*(\0(\d+)\0)?", code) if "XMLHttpRequest" in code else []
+    return any(not lit or literals[int(lit)].strip().upper() not in ("GET", "HEAD") for _, lit in opened)
+
+
+def _defined_names(code: str) -> set:
+    """The names a script defines itself: a function, a parameter, an object's or a class's method, a property or a field
+    given a function (review rounds 2 and 3 of 5.23.1, #3 and T2: a read helper named for what it reads). A name bound
+    from another object (`const {sendMessage} = TS.client.ui`) is none, and a method's head is on one line, so a call and
+    a block after it are none."""
+    fn = r"\s*(?:async\s+)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)"
+    found = re.findall(r"\bfunction\s+([A-Za-z_$][\w$]*)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=" + fn + r"|(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>"
+                       r"|(?:^|[{,;}\n])\s*(?:(?:static|async|get|set)\s+)*\*?\s*([A-Za-z_$][\w$]*)\s*\([^()]*\)[ \t]*\{"
+                       r"|(?:[{,]\s*|\.\s*|(?:^|[;{}\n])\s*(?:static\s+)?)([A-Za-z_$][\w$]*)\s*[:=]" + fn, code)
+    params = re.findall(r"\bfunction\s*[A-Za-z_$]*\s*\(([^()]*)\)|\(([^()]*)\)\s*=>", code)
+    return {n for row in found for n in row if n} | {n for row in params for part in row for n in re.findall(
+        r"(?:^|,)\s*[{\[]?\s*(?:\.\.\.)?\s*([A-Za-z_$][\w$]*)", part)}
+
+
+def _script_acts(text: str) -> bool:
+    """A page script that acts on a messaging site's page: PAGE_ACTS over its text or its code (`el['click']()` is
+    `el.click()` there; a browser server's own code is read with SCRIPT_ACTS), SCRIPT_ACTS_MORE over its code, a call
+    whose name says it sends (a page's own: by a bare name the script does not define, or by a method unless the script
+    defines it and calls it on `this` or on an object it defines; review round 3 of 5.23.1, T2), or a write by fetch,
+    Request or XHR. `.send(` on an XHR opened only with GET or HEAD is a read."""
+    code, literals, _ = _script_code(text)
+    acts = SCRIPT_ACTS if text.startswith(SERVER_CODE) else PAGE_ACTS
+    xhr_read = "XMLHttpRequest" in code and not _writes_by_fetch(code, literals) and not re.search(r"\bWebSocket\b|\bRTCDataChannel\b", code)
+    read = re.sub(r"\.\s*send\s*\(\s*(?:null\s*)?\)", ".read()", code) if xhr_read else code
+    defined, classes = _defined_names(code), set(re.findall(r"\bclass\s+([A-Za-z_$][\w$]*)", code))
+    objects = {"this"}
+    for m in re.finditer(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:(\{)|new\s+([A-Za-z_$][\w$]*)|(\())", code):
+        iife = _bracketed(code, m.start(4)) if m[4] else ""  # round 4, U4: what an IIFE of its own returns, an object it writes
+        if m[2] or m[3] in classes or iife and re.match(r"\s*\(", code[m.start(4) + len(iife):]) and re.search(r"=>\s*\(\s*\{|\breturn\s*\{", iife):
+            objects.add(m[1])
+    member = any(not (m[3] in defined and (m[1] in classes or m[2] in objects)) for m in MEMBER_SENDS.finditer(read))
+    bare = {found[1] for found in BARE_SENDS.finditer(code)} - defined
+    return bool(acts.search(text) or acts.search(code) or SCRIPT_ACTS_MORE.search(read) or member or bare or _writes_by_fetch(code, literals))
 
 
 def _messaging(config: dict) -> dict:
@@ -5550,7 +7724,8 @@ WEB_MESSAGING = (  # (site, and every host under it; path prefix, or * for every
     ("fb.me", "*", "facebook+messenger", "shift"), ("instagram.com", "*", "instagram", "shift"), ("instagr.am", "*", "instagram", "shift"),
     ("linkedin.com", "*", "linkedin", "shift"), ("x.com", "*", "x", "shift"), ("twitter.com", "*", "x", "shift"),
 )
-TAB_LINE = re.compile(r'tabId (\d+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until August 2026
+TAB_LINE = _Pattern(r'tabId ([\w-]+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until
+# August 2026 and the built-in pane writes it still; Chrome's tab ids are numbers, the pane's `tab-N` as well (round 4 of 5.24.0's review, #5)
 
 
 def _web_app(url: str):
@@ -5573,41 +7748,137 @@ def _browser_call(lines: list, i: int, ident: str) -> dict | None:
     return call if call and re.search(r"browser|chrome", str(call.get("name", "")).rpartition("__")[0], re.I) else None
 
 
-def _tabs(transcript: str) -> tuple:
-    """({tab id: address}, the tab the newest call ran on), from the newest browser result's tab list."""
-    lines = _tail(transcript)
+def _record(session: dict | None) -> str:
+    """The record that shows this call's own earlier calls: a sub-agent's own when the hook names one (its reads and
+    pages are kept out of its session's record), else the session's (review round 1 of 5.23.1, #3)."""
+    main, agent = str((session or {}).get("transcript_path") or ""), str((session or {}).get("agent_id") or "")
+    name = agent if agent.startswith("agent-") else f"agent-{agent}"
+    return os.path.join(os.path.splitext(main)[0], "subagents", f"{name}.jsonl") if main and agent else main
+
+
+def _tabs(transcript: str, server: str = "") -> tuple:
+    return _tab_list(transcript, server)[:2]
+
+
+def _tab_list(transcript: str, server: str = "") -> tuple:
+    """({tab id: address}, the tab the newest call ran on, when its line was written), from the newest result of this browser server (of any
+    browser server when none is named) that shows its tabs: a list of tabs (Claude in Chrome's, and the built-in pane's),
+    the pane's own tabs_context (each tab's origin, the active one in front), or a navigate's or the pane's preview_start's
+    own result, `navigated to`, `opened` or `Opened tab "..." at` and the address; `Browser pane opened` names none and
+    changes no page, so an earlier result's page stands, else a new pane's blank one (review round 2 of 5.23.1, #1). Each
+    browser has tab ids of its own (round 4 of 5.24.0's review, #5: the pane's results were read as none, and its tab 1
+    could be read as Chrome's)."""
+    lines, blank = _tail(transcript), None
     for i in range(len(lines) - 1, -1, -1):
-        for block in reversed(_blocks(lines[i]) if "Tab Context" in lines[i] else []):
+        marked = any(m in lines[i] for m in ("Tab Context", "browserOpen", "avigated to ", "pened ", "pane opened"))
+        for block in reversed(_blocks(lines[i]) if marked else []):
             text = _said(block) if block.get("type") == "tool_result" else ""
-            if "Tab Context" in text and _browser_call(lines, i, str(block.get("tool_use_id") or "")):
+            call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if text else None
+            named = str((call or {}).get("name", ""))
+            if not call or server and named.rpartition("__")[0] != server:
+                continue
+            if "Tab Context" in text:
                 context = text[text.rindex("Tab Context"):]
-                front = re.search(r"Executed on tabId: (\d+)", context)
-                return {tab: address or "about:blank" for tab, address in TAB_LINE.findall(context)}, front.group(1) if front else ""  # a new tab's address is empty
-    return {}, ""
+                front = re.search(r"Executed on tabId: ([\w-]+)", context)
+                return {tab: address or "about:blank" for tab, address in TAB_LINE.findall(context)}, front.group(1) if front else "", _when(lines[i])  # a new tab's address is empty
+            if named.endswith("tabs_context") and "browserOpen" in text:
+                try:
+                    shown = json.JSONDecoder().raw_decode(text.lstrip())[0]["tabs"]
+                    return ({str(t["tabId"]): str(t.get("origin") or "") for t in shown},
+                            next((str(t["tabId"]) for t in shown if t.get("isActive")), ""), _when(lines[i]))
+                except (ValueError, KeyError, TypeError, IndexError):
+                    continue
+            went = re.match(r"\s*(?:navigated to|opened) (\S+)", text, re.I) if named.endswith(("navigate", "preview_start")) else None
+            if named.endswith("preview_start") and not went:
+                shown, tab = re.search(r'Opened tab "[^"\n]*" at (\S+?)\.?(?:\s|$)', text), (re.search(r'"tabId":\s*"([^"]+)"', text) or ["", ""])[1]
+                if shown:
+                    return {tab: shown[1]}, tab, _when(lines[i])
+                if blank is None and "Browser pane opened" in text:
+                    blank = {tab: "about:blank"}, tab, _when(lines[i])
+                continue  # an error opens no page
+            if went:
+                tab = str((call.get("input") or {}).get("tabId") or "")
+                return {tab: went[1]}, tab, _when(lines[i])
+    return blank or ({}, "", 0.0)
 
 
-def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False):
-    """(step, its input, the address of the page it acts on) for a browser call, or for each step of a batch: its
-    tab's address in the newest list of tabs, or the one a navigate step earlier in the batch went to. With `keep`, a
-    navigate that names no host leaves a messaging site's page as it was, since the page it opens may be that site's."""
-    tabs, front = _tabs(str((session or {}).get("transcript_path") or ""))
+_LISTS: dict = {}
+
+
+def _listed(record: str, server: str) -> tuple:
+    """A record's newest list of this browser's tabs, (tabs, front, when), read once per version of the file; `when` is the
+    list's line's time, else the file's."""
+    try:
+        state = os.stat(record)
+    except OSError:
+        return {}, "", 0.0
+    key = (record, server, state.st_size, state.st_mtime_ns)
+    if key not in _LISTS:
+        tabs, front, when = _tab_list(record, server)
+        _LISTS[key] = tabs, front, when or (state.st_mtime if tabs else 0.0)
+    return _LISTS[key]
+
+
+def _shared_tabs(session: dict | None, server: str) -> tuple:
+    """({tab: address}, the tab this call's own record ran on last). Claude in Chrome is one browser, whose tab ids a
+    session shares with its sub-agents, so each tab is read at the newest list that names it across the session's record
+    and its sub-agents' records of the last 12 hours, as the batch reads other sessions' lists (review round 3 of 5.23.1,
+    T3: a sub-agent was judged by its own list after its session moved the tab; round 1's #3 the other way). Any other
+    browser is read by the call's own record."""
+    main, own = str((session or {}).get("transcript_path") or ""), _record(session)
+    tabs, front, when = _listed(own, server)
+    if "claude-in-chrome" not in server or not main:
+        return tabs, front
+    folder, newest = os.path.join(os.path.splitext(main)[0], "subagents"), {tab: (when, address) for tab, address in tabs.items()}
+    try:
+        others = [os.path.join(folder, n) for n in os.listdir(folder) if n.startswith("agent-") and n.endswith(".jsonl")]
+    except OSError:
+        others = []
+    for record in dict.fromkeys([main] + others):
+        try:
+            if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
+                continue  # nothing in it is newer than this call's own list
+            with open(record, "rb") as handle:  # one whose last 8 MB name no tab list is not parsed (round 4: a busy
+                handle.seek(max(0, os.path.getsize(record) - TRANSCRIPT_TAIL))  # session's 70 records, 0.9 s of the 4)
+                if b"Tab Context" not in handle.read():
+                    continue
+        except OSError:
+            continue
+        listed, _, at = _listed(record, server)
+        for tab, address in listed.items():
+            if at > newest.get(tab, (-1.0, ""))[0]:
+                newest[tab] = at, address
+    return {tab: address for tab, (_, address) in newest.items()}, front
+
+
+def _steps(name: str, tool_input: dict, session: dict | None, keep: bool = False, tool: str = ""):
+    """(step, its input, the address of the page it acts on, its tab) for a browser call, or for each step of a batch:
+    its tab's address in the newest list of tabs of the browser `tool` belongs to, or the one a navigate step earlier in
+    the batch went to, read as a URL parser reads it. With `keep`, a navigate that names no host leaves a messaging site's
+    page as it was, since the page it opens may be that site's. One to a javascript: address runs on the page it is on,
+    and what its code does to the page after is not known."""
+    tabs, front = _shared_tabs(session, tool.rpartition("__")[0]) if keep else _tabs(str((session or {}).get("transcript_path") or ""), tool.rpartition("__")[0])
+    unknown = keep and bool(re.search(r"claude-in-chrome|claude[_-]browser", tool, re.I))  # its own lists show its pages (round 1 of 5.23.1, #3)
+    own = bool(driven_tool(tool))  # the guard's own steps for a driven browser; an agent's `exact` places nothing (round 5, #1)
     steps = [(name, tool_input)] if name != "browser_batch" else [
         (str(s.get("name", "")), s["input"]) for s in tool_input.get("actions") or []
         if isinstance(s, dict) and isinstance(s.get("input"), dict)]
     for step, given in steps:
-        tab = str(given.get("tabId") or front)
+        tab, before = str(given.get("tabId") or front), None
         if step.endswith("navigate"):  # the steps after it act on the new page; `back`, a path or a script names no host, and that page is not known
-            url = str(given.get("url") or "").strip().replace("\\", "/")
-            tabs[tab] = url if given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
-                tabs.get(tab, "") if keep and _web_app(tabs.get(tab, "")) else "")
-        yield step, given, tabs.get(tab, "")
+            url, before = _url_read(given.get("url") or "").replace("\\", "/"), tabs.get(tab, "")
+            tabs[tab] = url if own and given.get("exact") or url == UNKNOWN_PAGE or re.match(r"(?i)(?:https?:|//|localhost\b|[\w-]+(?:\.[\w-]+)+(?:[:/?#]|$))", url) else (
+                before if keep and _web_app(before) else "")
+        address = before if before is not None and _script_address(str(given.get("url") or "")) is not None else (
+            tabs.get(tab) or (tabs[""] if set(tabs) == {""} else ""))  # the pane's first page, which no list files under its tab (#7)
+        yield step, given, address or (UNKNOWN_PAGE if unknown else ""), tab
 
 
-def _pages(name: str, tool_input: dict, session: dict | None) -> tuple:
+def _pages(name: str, tool_input: dict, session: dict | None, tool: str = "") -> tuple:
     """({page: (channel, line-break modifier)} for each messaging site this browser call acts on, whether a box on every
     one of them may be a search, and whether every page it acts on is the principal's own app on a local host."""
     reached, search, local = {}, True, True
-    for _, _, address in _steps("computer" if name == "browser" else name, tool_input, session, keep=True):
+    for _, _, address, _ in _steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool):
         page, host = _web_app(address), _where(address)[0]
         local = local and (host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test")))
         if page:
@@ -5652,6 +7923,317 @@ def _sends_key(chords: str, apps: dict) -> bool:
     return False
 
 
+# A batch's Messenger entry goes in one step (the third round of 5.24.0's review, #1, #2, #3 and #6: a check read in one
+# call and a Return pressed in another left room for a page script, a typist or another session between them): one
+# browser_batch on a tab already showing the conversation, which loads its address there again (what any earlier script
+# did to the page goes with it), types the words, and last runs the entry's send script (sends.send_script), which reads
+# the composer and sends in the same synchronous run. On a Messenger site's tab, whose pages share the chat's origin, no
+# page script runs but the shipped read-only ones and that send script: any other can change what the send reads or
+# sends, then or later. On every other messaging site's page none runs but the shipped read-only ones (5.24.0, round 4
+# of this review, #3: `el['cli' + 'ck']()` clicked Send on Slack, WhatsApp, LinkedIn, Gmail and X, where a script was read
+# for a click, a submit or a key). Refused, not held: the 60 days to 2026-11-15 held 178 other scripts on those pages, all
+# in 4 sessions, 173 of which the old rule passed, so a code for each would have asked the principal 173 times about
+# scripts no one can read for what they do; the browser's own read tools (get_page_text, read_page, find) read a page
+# with no code, and a click goes through the computer tool with a summary that says what it does.
+PAGE_READERS = (("synthesis-daily-rituals", "messenger_messages.py"), ("synthesis-message-exports", "chat_page.py"))
+STEP_KEYS = {"shift+return", "shift+enter", "cmd+a", "ctrl+a", "delete", "backspace"}  # a line break, and clearing the box
+
+
+def _read_only_scripts() -> set:
+    """The page scripts the plugin ships that only read a page, as their own commands print them: the composer check, and
+    5.23.0's extractors (messenger_messages.py prints one for each inbox it names)."""
+    import ast
+    from synthesis import sends
+    found = {sends.COMPOSER_CHECK}
+    for skill, name in PAGE_READERS:
+        try:
+            tree = ast.parse(open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "skills", skill,
+                                               "scripts", name), encoding="utf-8").read())
+            kept = {n.targets[0].id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                    and [getattr(t, "id", "") for t in n.targets] in (["EXTRACTOR"], ["GRIDS"])}
+        except (OSError, SyntaxError, ValueError):
+            continue
+        grids = kept.get("GRIDS") if isinstance(kept.get("GRIDS"), dict) else {}
+        if isinstance(kept.get("EXTRACTOR"), str):
+            found |= {kept["EXTRACTOR"].replace("__GRID__", json.dumps(g)) for g in grids.values()} if grids else {kept["EXTRACTOR"]}
+    return {script.strip() for script in found}
+
+
+def _messenger_site(address: str) -> bool:
+    """A page of facebook.com or messenger.com (a host under them included), or of a host WEB_MESSAGING counts as
+    Messenger's, where the browser lands on a chat (m.me, fb.com, fb.me, Business Suite's inbox; round 4, #2)."""
+    from synthesis import sends
+    page = _web_app(address) if address and address != UNKNOWN_PAGE else None
+    return bool(address) and (any(_on_site(address, site) for site, _, _ in sends.CONVERSATIONS)
+                              or bool(page and "messenger" in page[1][0].split("+")))
+
+
+def _local(address: str) -> bool:
+    host = _where(_url_read(address or ""))[0]
+    return host in ("localhost", "127.0.0.1", "::1") or host.endswith((".localhost", ".test"))
+
+
+# A page script that can move its tab (round 6, #4, as ruled): a location change, by name, alias or Object.assign (#1),
+# `open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event.
+NAVIGATES = _Pattern(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*"
+                       r"navigate\s*\(|\bhistory\s*\.\s*(?:go|back|forward)\s*\(|\bObject\s*\.\s*assign\s*\(\s*(?:\w+\s*\.\s*)?location\b", re.I)
+
+
+def _navigates(text: str, local: bool = False) -> bool:
+    code = _script_code(text)[0]
+    names = {a or b for a, b in re.findall(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\w+\s*\.\s*)?location\b(?!\s*\.)"
+                                          r"|\{\s*location\s*:\s*([A-Za-z_$][\w$]*)\s*\}\s*=", code)}
+    aliased = any(re.search(rf"(?<![\w$.]){re.escape(n)}\s*\.\s*(?:(?:href|pathname|search|hash|host|hostname|port|protocol)\s*{ASSIGN}"
+                            r"|(?:assign|replace)\s*\()", code) for n in names)
+    return bool(_unread_script(text) or NAVIGATES.search(code) or aliased
+                or not local and re.search(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent", code))
+
+
+def _moves(kind: str, given: dict, own: bool = False, address: str = "") -> bool:
+    """Whether a browser step may leave its tab on a page no list of tabs shows yet (round 4, #2: a batch that reached a
+    Messenger chat by a short link or a followed link ran its script there): a navigate, but the guard's own first step
+    for a driven browser (`exact`, never an agent's word) or one to a local app; a click, a key, a drag, words typed with
+    a line break, a form value or an upload, but on a local app's page (round 6, #4, as ruled: a local page that sends the
+    tab on is on the open list); a page script that can navigate (`_navigates`), on any page."""
+    if kind.endswith("navigate"):
+        return not (own and given.get("exact")) and not _local(str(given.get("url") or ""))
+    if kind.endswith(("javascript_tool", "browser_script")):
+        return _navigates(str(given.get("text") or ""), _local(address))
+    action = str(given.get("action") or "")
+    return not _local(address) and (kind.endswith(("form_input", "upload_image", "file_upload")) or kind.endswith("computer") and (
+        action in CLICKS or action in ("key", "left_click_drag") or action == "type" and bool(re.search(r"[\r\n]", str(given.get("text") or "")))))
+
+
+def _when(line: str) -> float:
+    try:
+        stamp = datetime.fromisoformat(str(json.loads(line).get("timestamp")).replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return 0.0
+    return (stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)).timestamp()
+
+
+def _send_template(text: str) -> bool:
+    """Whether a page script is the shipped send script for some conversation and digest, and nothing more."""
+    from synthesis import sends
+    head, _, tail = sends.SEND_SCRIPT.partition("__WANT__")
+    try:
+        want = json.loads(text[len(head):len(text) - len(tail)]) if text.startswith(head) and text.endswith(tail) else None
+    except ValueError:
+        return False
+    return isinstance(want, dict) and set(want) == {"to", "digest"} and isinstance(want["to"], str) and bool(
+        re.fullmatch(r"[0-9a-f]{64}", str(want["digest"])))
+
+
+QUIET_ACTIONS = {"screenshot", "zoom", "scroll", "scroll_to", "wait", "hover", "mouse_move", "cursor_position"}  # they change no page
+
+
+def _made_here(tab: str, session: dict | None, server: str) -> str:
+    """"" when this session made the tab with this browser's tabs_create (that call's own result in its record, worded as
+    the extension words it: `Created new tab. Tab ID: N`, read over 60 days of records) and, since, no page script but the
+    shipped ones ran on it in its record or its sub-agents' (a window a script opens keeps an opener's handle to the tab)
+    and no other session's record, Claude Code's or a Codex rollout, shows a call to this browser that names the tab or
+    no tab and can change its page; a call a hook refused counts for nothing (round 4, #10: another session's screenshot
+    in the built-in pane voided the step). Else why the send step may not run there (the coordinator's ruling on the
+    opener, 2026-11-15: a page holds a handle to another window only by opening it, and none opened a tab the browser
+    tool made)."""
+    from pathlib import Path
+    record, made, readers = str((session or {}).get("transcript_path") or ""), 0.0, _read_only_scripts()
+    for i, line, lines in ((i, line, lines) for path in dict.fromkeys([_record(session), record]) if path  # a sub-agent's own
+                           for lines in [_tail(path)] for i, line in enumerate(lines)):  # tabs_create too (round 5, #5)
+        for block in _blocks(line) if '"tool_result"' in line and "Created new tab" in line else ():
+            call = _browser_call(lines, i, str(block.get("tool_use_id") or "")) if block.get("type") == "tool_result" else None
+            named = str((call or {}).get("name", ""))
+            if call and named.rpartition("__")[0] == server and named.endswith(("__tabs_create_mcp", "__tabs_create")) and not block.get(
+                    "is_error") and re.search(rf"\bCreated new tab\. Tab ID: {re.escape(tab)}\b", _said(block)):
+                made = max(made, _when(line))
+    if not made:
+        return ("This send step's tab was not made by this session's tabs_create, so a page may hold a handle to it: open a "
+                "fresh tab with tabs_create, navigate it to the conversation, then run the send step there.")
+    others = [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
+    mine = [record, *map(str, Path(os.path.splitext(record)[0], "subagents").glob("*.jsonl"))]
+    for path in mine + [p for p in others if p and os.path.isfile(p) and not os.path.samefile(p, record)
+                        and time.time() - os.path.getmtime(p) <= 12 * 3600]:
+        tail = [line for line in _tail(path) if _when(line) >= made]
+        refused = {ident for line in tail if "PreToolUse" in line for kind, ident, _, said in _line_events(line)
+                   if kind == "result" and REFUSED_BY_HOOK.match(said)}
+        for line in tail:
+            for event, ident, name, given in _line_events(line) if "tool_use" in line or "function_call" in line else ():
+                if event != "call" or ident in refused or name.rpartition("__")[0] != server:
+                    continue
+                short = name.rpartition("__")[2]
+                for kind, step in ([(str(s.get("name", "")), s.get("input")) for s in given.get("actions") or [] if isinstance(s, dict)]
+                                   if short == "browser_batch" else [(short, given)]):
+                    step = step if isinstance(step, dict) else {}
+                    here = str(step.get("tabId") or "") in (tab, "")
+                    text = (str(step.get("text") or "") if kind == "javascript_tool" else
+                            _script_address(str(step.get("url") or "")) if kind == "navigate" else None)
+                    if path in mine and here and text is not None and not (text.strip() in readers or _send_template(text)):
+                        return ("A page script ran on this send step's tab since this session made it, and a window it opened "
+                                "keeps a handle to the tab: open a fresh tab with tabs_create and navigate it to the conversation.")
+                    if path not in mine and here and (kind in ("navigate", "javascript_tool", "form_input", "upload_image", "file_upload")
+                                                      or kind == "computer" and str(step.get("action") or "") not in QUIET_ACTIONS):
+                        return ("Another session's record shows a call that can change this send step's tab, on it or naming no "
+                                "tab, since this session made it: open a fresh tab with tabs_create and navigate it to the conversation.")
+    return ""
+
+
+def _listed_on_messenger(tab: str, server: str, session: dict | None) -> str:
+    """The Messenger page another session's list of this browser's tabs shows this tab on, when that list is the newest
+    of every session active in the last 12 hours that names the tab, this one's included: sessions share one browser and
+    its tab ids, so the newest list decides (round 4, #13: an older list of another session's refused a script on the
+    document this session's newer list showed); '' for any other (each record is where 5.22.1's prompt hook recorded it)."""
+    mine = str((session or {}).get("transcript_path") or "")
+    records = [mine] + [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
+    newest, shown, whose = -1.0, "", ""
+    for record in dict.fromkeys(r for r in records if r):
+        try:
+            if record != mine and time.time() - os.path.getmtime(record) > 12 * 3600:
+                continue
+        except OSError:
+            continue
+        tabs, _, when = _tab_list(record, server)
+        if tab in tabs and when > newest:
+            newest, shown, whose = when, tabs[tab], record
+    return shown if whose != mine and _messenger_site(shown) else ""
+
+
+def _refused_scripts(name: str, tool: str, tool_input: dict, session: dict | None, step) -> str | None:
+    """Why a page script this browser call runs is refused: on a Messenger site's tab, by this call's own navigates, this
+    session's newest list of tabs or another active session's, only the shipped read-only scripts run, and a send script
+    only last in its send step (`step`); on every other messaging site's page main's rule refuses one the guard cannot
+    read (5.24.0); a navigate to a javascript: address, as a URL parser reads it, is such a script. A page no list of tabs
+    names may be a Messenger site's, so it takes none (the third round's opener ran on a tab no list had named yet). After
+    a step earlier in the call that may have moved the tab (`_moves`), a script there runs in a call of its own unless it
+    only reads and the move was from and onto pages that are no Messenger site's (round 4, #2; round 5, #1 and #2, kept
+    as protection by the coordinator's ruling: one more call, and no code)."""
+    from synthesis import sends
+    readers, steps = None, list(_steps("computer" if name == "browser" else name, tool_input, session, keep=True, tool=tool))
+    own = bool(driven_tool(tool))
+
+    def on_messenger(kind: str, where: str) -> str:
+        return (f"This {'navigate to a javascript: address runs a page script' if kind.endswith('navigate') else 'page script runs'}"
+                f" on a Messenger site's tab ({where}), where only the plugin's shipped read-only scripts run (the composer check "
+                "and the extractors) and a batch's send script in its send step: any other can change what those read or what a "
+                "send sends, then or later. Read the page with the browser's own read tools (get_page_text, read_page, find) instead.")
+    moved, went = {}, set()  # tab: "strict" or "ordinary", by the page a step of this call may have moved it from or to; tabs it navigated
+    for n, (kind, given, address, tab) in enumerate(steps):
+        text = (str(given.get("text") or "") if kind.endswith(("javascript_tool", "browser_script")) else
+                _script_address(str(given.get("url") or "")) if kind.endswith("navigate") else None)
+        text = text.strip() if text is not None else None
+        other = text and not (step and n == len(steps) - 1) and sends.SEND_MARK not in text and text not in (
+            readers := _read_only_scripts() if readers is None else readers)
+        if text and sends.SEND_MARK in text and not (step and n == len(steps) - 1):
+            return ("This page script is a batch's Messenger send, which runs only as the last step of its send step: one "
+                    "browser_batch that navigates its tab, already on the entry's conversation, to that address, types the words "
+                    "there and runs the script `synthesis sends script` prints.")
+        if other and tab in moved and (moved[tab] == "strict" or _unread_script(text) or _script_acts(text)):  # a read after a
+            # move from a page that is no messaging site's runs (the principal's bar: no ordinary work refused)
+            if _messenger_site(address):  # that page's own rule says what runs there (round 5, #3)
+                return on_messenger(kind, address)
+            return (f"This page script follows a step in this call that may have moved tab {tab or 'in front'} to another page "
+                    "(a navigate, a click, a key, a form value, an upload or a page script that can navigate), and no list of tabs shows "
+                    "where it landed, which may be a Messenger chat: run the script in a call of its own, once a list of tabs "
+                    "shows the page.")
+        earlier = tab in went  # an address an earlier step of this call went to decides the page, not any session's list
+        if kind.endswith("navigate") and text is None:  # an address places the page anew
+            moved.pop(tab, None)
+        if _moves(kind, given, own, address):  # onto, or from, a Messenger site's page or one no list shows: strict (every other
+            # messaging site's page takes main's rule by itself, and a read there runs)
+            strict = not address or address == UNKNOWN_PAGE or _messenger_site(address) or moved.get(tab) == "strict"
+            moved[tab] = "strict" if strict else "ordinary"
+        went = went | ({tab} if kind.endswith("navigate") and text is None else set())  # a javascript: one goes nowhere
+        if not other:
+            continue
+        if address == UNKNOWN_PAGE:  # round 4, #9; review round 1 of 5.23.1, #3: it may be a Messenger site's
+            return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names or the record does not "
+                    "show (a tab not listed yet, a sub-agent's, a driven browser's after a tab change), and which may be a "
+                    "Messenger site's: read the page first (list the tabs, or take a snapshot), then run it again.")
+        if not address:
+            return (f"This page script runs on tab {tab or 'in front'}, whose page no list of tabs names (a tab not listed yet, "
+                    "or one a navigate sent where no host is named), and which may be a Messenger site's: list the tabs or "
+                    "navigate to an address first.")
+        listed = "" if earlier or _messenger_site(address) else _listed_on_messenger(tab, tool.rpartition("__")[0], session)
+        if _messenger_site(address) or listed:
+            return on_messenger(kind, f"tab {tab}, which another session's newer list of tabs shows on {listed}" if listed else address)
+        if _web_app(address):  # every other messaging site's page: main's rule (5.24.0)
+            where = ("a page the browser's record does not show, which may be a messaging site's (take a snapshot so its page "
+                     "shows)" if address == UNKNOWN_PAGE else f"a messaging site's page ({address})")
+            unread = "runs it as a javascript: address" if kind.endswith("navigate") else _unread_script(text)
+            if unread:
+                return (f"This page script runs on {where} and {unread}, so the guard cannot read what it does there, where a "
+                        "click or a key sends in the principal's name. Write each call out by its own name, or read the page with "
+                        "get_page_text, read_page or find.")
+    return None
+
+
+def _send_step(tool: str, tool_input: dict, session: dict | None):
+    """(channel, conversation, its send script) when this browser_batch is a batch's Messenger send step: first a navigate,
+    on a tab it names, to a conversation's https address with no query or fragment, which loads the page again; then on
+    that tab only words typed with no line break, the keys of STEP_KEYS and waits; last a page script there. The tab must
+    already show that conversation in this session's newest list of tabs, so the load changes no address any session's
+    guard reads. None where no step holds the send mark; else why the step is refused."""
+    import urllib.parse
+    from synthesis import sends
+    steps = [(str(s.get("name", "")), s.get("input")) for s in tool_input.get("actions") or [] if isinstance(s, dict)]
+    if not any(isinstance(given, dict) and sends.SEND_MARK in str(given.get("text") or "") for _, given in steps):
+        return None
+    refused = ("This browser_batch runs a batch's Messenger send script, but not as its send step: first a navigate, on the "
+               "tab that already shows the entry's conversation, to that conversation's https address (no query or fragment); "
+               "then on that tab only the words typed (shift+Return for a line break, select-all and Delete to clear) and "
+               "waits; last, exactly the script `synthesis sends script` prints for the entry.")
+    if len(steps) < 2 or not all(isinstance(given, dict) for _, given in steps):
+        return refused
+    (first, go), (last, run) = steps[0], steps[-1]
+    tab, url, place = str(go.get("tabId") or ""), str(go.get("url") or ""), sends.conversation(str(go.get("url") or ""))
+    try:
+        split = urllib.parse.urlsplit(url)
+        loads = first == "navigate" and bool(tab) and "#" not in url and split.scheme == "https" and not split.query
+    except ValueError:
+        loads = False
+    typing = all(kind == "computer" and str(given.get("tabId") or "") == tab and (
+        given.get("action") == "type" and not re.search(r"[\r\n]", str(given.get("text") or "")) or given.get("action") == "wait"
+        or given.get("action") == "key" and str(given.get("text") or "").strip() != "" and all(
+            chord in STEP_KEYS for chord in str(given.get("text") or "").lower().split())) for kind, given in steps[1:-1])
+    shown = _shared_tabs(session, tool.rpartition("__")[0])[0].get(tab, "")  # a sub-agent's own list too (round 5, #5)
+    if not (loads and place and typing and last == "javascript_tool" and run.get("action") == "javascript_exec"
+            and str(run.get("tabId") or "") == tab and sends.conversation(shown) == place):
+        return refused
+    return _made_here(tab, session, tool.rpartition("__")[0]) or (*place, str(run.get("text") or ""))
+
+
+def _batch_send(tool: str, tool_input: dict, step: tuple, config: dict, session: dict | None) -> str | None:
+    """A send step: the entry its script names (the conversation, and its words' digest) passes every check a message
+    passes, then is spent once; a time in its words asks for the code of this exact call, which is the conversation's
+    address and the words' digest."""
+    from synthesis import sends
+    chan, place, script = step
+    match = lambda e: "to" in e and sends.conversation(e["to"]) == (chan, place) and sends.send_script(e) == script  # noqa: E731
+    entry = next((e for data in sends.batches() for e in data["entries"] if match(e)), None)
+    if entry is None:
+        return "This send step's script matches no entry of an open batch: run, unchanged, the one `synthesis sends script` prints."
+    problems = message_problems("desktop_type", {"message_text": entry["text"]}, config, {chan}, session)
+    if problems:
+        return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
+    timed = _time_without_calendar([entry["text"]], config, session)
+    if timed and timed.startswith("fresh_calendar"):
+        return timed
+    subject, summary = {"tool": tool, "input": tool_input}, f"{tool} on {place}: a batch's Messenger send"
+    with approvals.alone():  # each entry goes once, whichever call asks first
+        released = timed is not None and approvals.consume("send-time", subject, session)
+        how = sends.batch_spend(match, session, spend=released or not timed, after=_after)
+        if how and timed and not released:
+            code = approvals.request("send-time", subject, f"{summary}, a time in its words and no calendar read")
+            return timed.replace("{code}", approvals.how(code))
+    if not how:
+        return ("This send step matches no entry this session can spend (spent, closed, past its 12 hours, opened by another "
+                "session, or its code not in this session's record): a Messenger send outside a batch is the Return after the "
+                "words, on the principal's code.")
+    _logged("browser", tool, summary, how, session, {"record": str((session or {}).get("transcript_path") or ""),  # what its script did
+                                                     "call": str((session or {}).get("tool_use_id") or ""), "since": time.time()})
+    _void("send-time", subject)
+    return None
+
+
 @_entry
 def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
     from synthesis import sends
@@ -5661,24 +8243,34 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             asked = {_bundle(a, apps) for a in tool_input["apps"]} - {""}
             paths.write_json(record, {"apps": sorted(set(paths.read_json(record).get("apps", [])) | asked), "at": time.time()})
         return None
+    if name.startswith("browser"):  # a batch's Messenger send step, and the page scripts a page takes (5.24.0)
+        step = _send_step(tool, tool_input, session) if name == "browser_batch" else None
+        refused = step if isinstance(step, str) else _refused_scripts(name, tool, tool_input, session, step)
+        if refused or step:
+            return refused or _batch_send(tool, tool_input, step, config, session)
     actions = _desktop_actions(name, tool_input)
     if not actions:
         return None
     seen = paths.read_json(record) if record else {}
     unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
-    pages, search, local = _pages(name, tool_input, session) if name.startswith("browser") else ({}, False, False)
+    pages, search, local = _pages(name, tool_input, session, tool) if name.startswith("browser") else ({}, False, False)
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
                else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
     typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
     said = " ".join(s for _, _, s in actions)  # the second review: words, then Return, Tab and Space or a line break, submit a form
-    formed = bool(name.startswith("browser") and not reached and typed and not local and NAMES_POST.search(said)
+    formed = bool(name.startswith("browser") and typed and not local and NAMES_POST.search(said)
                   and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
+
+    def goes(kind: str, v: str, s: str, pages: dict) -> bool:  # an action that sends, with these messaging pages reached
+        return bool(SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
+            _script_acts(v) if pages else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
+            or pages and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
+                          or kind == "key" and _sends_key(v, pages) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", pages)))
     sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
-               if SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
-                   SCRIPT_ACTS.search(v) if reached else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
-               or reached and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
-                               or kind == "key" and _sends_key(v, reached) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", reached))]
-    sending += ["a key that submits the form after the typed words"] * (formed and not sending)
+               if goes(kind, v, s, reached)]
+    sending += ["a key that submits the form after the typed words"] * (formed and not reached and not sending)
+    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) for k, v, s in actions) and bool(
+        SHOWS_PAGE.search(tool))  # another browser's results may never show its page: its call keeps the code
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
         c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
     if problems and search and not sending and all(k == "type" for k, _, _ in actions) and not temporary_addresses(typed, config):
@@ -5713,6 +8305,10 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             _logged(chan, tool, summary, "approval", session)
             _released(session, list(reached), drop=True)
             return None
+        if unplaced:  # it sends only if the page is a messaging site's (review round 2 of 5.23.1, #1: a local app's click waited for a code)
+            return (f"This call may send on a page the record does not show ({what}): read the page first, with tabs_context in "
+                    "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
+                    "make this call again.")
         code = approvals.request("send", subject, summary[:300])
     return (f"This call sends in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
@@ -5742,7 +8338,7 @@ INPUT_WORDS = {"cliclick": r"(?:c|dc|tc|rc|kd|ku|kp|t|dd|du|dm):.*|-f|--file|-|.
                "xdotool": r"key|keydown|keyup|type|click|mousedown|mouseup|exec|script|behave|.*\$.*", "ydotool": r"key|type|click|mousedown|mouseup",
                "tmux": r"send-keys|send|send-prefix|paste-buffer|pasteb", "screen": r"stuff", "kitty": r"send-text|send-key",
                "wezterm": r"send-text"}  # the words that act; a program with none named acts on every run (hs is read by its Lua)
-HS_ACTS = re.compile(r"\b(?:eventtap|keyStrokes?|osascript|applescript|execute|task|axuielement|uielement|mouse|selectMenuItem|urlevent"
+HS_ACTS = _Pattern(r"\b(?:eventtap|keyStrokes?|osascript|applescript|execute|task|axuielement|uielement|mouse|selectMenuItem|urlevent"
                      r"|messages|shortcuts|loadstring|load|dofile|require|http)\b")
 KEYS = "presses keys or clicks in whatever app is in front"
 OTHER = "runs code in another app"
@@ -5755,37 +8351,37 @@ ACTING_APPS = {**dict.fromkeys(("systemuiserver", "com.apple.systemuiserver", "b
                                 "com.runningwithcrayons.alfred", "osascript"), OTHER)}
 SENDING_APPS = {"messages": "messages", "com.apple.mobilesms": "messages", "com.apple.ichat": "messages", "mail": "email",
                 "com.apple.mail": "email", "microsoft outlook": "email", "com.microsoft.outlook": "email"}
-OSA_KEYS = re.compile(r"\bkeystroke\b|\bkey\s+code\b|\bkey\s+(?:down|up)\b|\bkey(?:Code|Down|Up)\b", re.I)
-SE_VERBS = re.compile(r"\bclick\b|\bperform\b|\bselect\b|\bset\s+(?:the\s+)?(?:value|focused|selected)\b|\bconfirm\b|\bpick\b"
+OSA_KEYS = _Pattern(r"\bkeystroke\b|\bkey\s+code\b|\bkey\s+(?:down|up)\b|\bkey(?:Code|Down|Up)\b", re.I)
+SE_VERBS = _Pattern(r"\bclick\b|\bperform\b|\bselect\b|\bset\s+(?:the\s+)?(?:value|focused|selected)\b|\bconfirm\b|\bpick\b"
                       r"|\b(?:in|de)crement\b|\.value\s*=(?!=)|\bAX(?:Press|Confirm)\b", re.I)  # System Events' UI verbs, where it is named
-OSA_OTHER = re.compile(r"\bdo\s+script\b|\bdoScript\b|\bdo\s+javascript\b|\bdoJavaScript\b|\bexecute\b[^\n]*\bjavascript\b"
+OSA_OTHER = _Pattern(r"\bdo\s+script\b|\bdoScript\b|\bdo\s+javascript\b|\bdoJavaScript\b|\bexecute\b[^\n]*\bjavascript\b"
                        r"|\bexecute\s*\(|\bwrite\s+text\b|\bcommand\s+\0\d+\0|\brun\s+trigger\b|\bexecute\s+lua\b", re.I)
-OSA_UNREAD = re.compile(r"\bdo\s+shell\s+script\b|\bdoShellScript\b|\b(?:run|load|store)\s+script\b|\b(?:run|load|store)Script\b"
+OSA_UNREAD = _Pattern(r"\bdo\s+shell\s+script\b|\bdoShellScript\b|\b(?:run|load|store)\s+script\b|\b(?:run|load|store)Script\b"
                         r"|«\s*(?:event|class)|\buse\s+(?:framework|script)\b|\bcurrent\s+application's\b|\beval\s*\(|\bFunction\s*\("
                         r"|\bscript\s+\0\d+\0|\bLibrary\s*\(|=\s*\$\s*[;,)\n]|NSAppleEvent\w*"
                         r"|ObjC\s*\.\s*(?:bindFunction|castRefToObject|registerSubclass)|\$\s*(?:\[|\.\s*(?:system|popen|exec\w*|fork"
                         r"|NSTask|NSAppleScript|NSUserAppleScriptTask|NSUserUnixTask|CGEvent\w*|NSWorkspace|dlopen|dlsym|NSBundle"
                         r"|NSClassFromString|performSelector\w*)\b)", re.I)
-OSA_CALLED = re.compile(r"\[(?!\s*(?:\0\d+\0|\d+)\s*\])[^\]\n]*\]\s*(?:\(|\.\s*(?:call|apply|bind)\s*\()")  # a member named when it runs, called
+OSA_CALLED = _Pattern(r"\[(?!\s*(?:\0\d+\0|\d+)\s*\])[^\]\n]*\]\s*(?:\(|\.\s*(?:call|apply|bind)\s*\()")  # a member named when it runs, called
 OBJC_SAFE = ("Foundation", "AppKit", "Cocoa", "stdlib")  # stdlib's system and popen are held by name
-AUTOMATION_URL = re.compile(r"(?i)^(?:shortcuts|kmtrigger|keyboardmaestro|alfred|hammerspoon|raycast|btt|bettertouchtool|x-callback-url):")
+AUTOMATION_URL = _Pattern(r"(?i)^(?:shortcuts|kmtrigger|keyboardmaestro|alfred|hammerspoon|raycast|btt|bettertouchtool|x-callback-url):")
 TERMINALS = ("terminal", "iterm", "warp", "kitty", "alacritty", "wezterm", "ghostty", "hyper")  # `open -a` one of these runs the file
-INPUT_LIBS = re.compile(r"\b(?:pyautogui|pynput|autopy|pydirectinput|pywinauto|robotjs|CGEvent\w*|CGPost(?:Keyboard|Mouse)Event"
+INPUT_LIBS = _Pattern(r"\b(?:pyautogui|pynput|autopy|pydirectinput|pywinauto|robotjs|CGEvent\w*|CGPost(?:Keyboard|Mouse)Event"
                         r"|AXUIElement\w*|NSAppleScript|NSUserAppleScriptTask|SBApplication|ScriptingBridge|appscript)\b"
                         r"|\b(?:import|from)\s+(?:osascript|applescript|py_applescript)\b")
-INPUT_MODULES = re.compile(r"pyautogui|pynput|robotjs|@nut-tree/.*|nut-js|node-key-sender|keysender|@jxa/run|applescript|run-applescript"
+INPUT_MODULES = _Pattern(r"pyautogui|pynput|robotjs|@nut-tree/.*|nut-js|node-key-sender|keysender|@jxa/run|applescript|run-applescript"
                            r"|node-osascript|osascript")  # a module a program imports by a string (`require("…")`)
-IMPORTED = re.compile(r"""(?:\b(?:require|import|__import__|import_module)\s*\(\s*|\bfrom\s+|\bimport\s+)(["'`])([^"'`\n]+)\1""")
-SPAWNS = re.compile(r"\b(?:subprocess|Popen|check_output|check_call|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)"
+IMPORTED = _Pattern(r"""(?:\b(?:require|import|__import__|import_module)\s*\(\s*|\bfrom\s+|\bimport\s+)(["'`])([^"'`\n]+)\1""")
+SPAWNS = _Pattern(r"\b(?:subprocess|Popen|check_output|check_call|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)"
                     r"|pty\s*\.\s*spawn|create_subprocess_\w+|child_process|execSync|execFileSync|spawnSync|Open3|NSTask|execa"
                     r"|Runtime\s*\.\s*getRuntime|executableURL|launchPath)\b|\b(?:system|exec|spawn|popen|Process)\s*\("
                     r"|\b(?:system|exec|spawn)\s+[\w\"'\[(]|\bIO\s*\.\s*popen|\bDeno\s*\.\s*(?:Command|run)\b|\bBun\s*\.\s*(?:spawn|\$)"
                     r"|\bsh\s*\.\s*[\w-]+\s*\(")
-QUOTED_RUN = re.compile(r"`([^`\n]*)`|%x[({\[]([^)}\]\n]*)[)}\]]|\bqx\s*[({/'\"]([^)}/'\"\n]*)")  # Perl's and Ruby's commands
-CALLED_WITH = re.compile(r"(?:\b(?:system|popen|run|call|check_call|check_output|getoutput|getstatusoutput|Popen|execSync|exec|spawn|spawnSync"
+QUOTED_RUN = _Pattern(r"`([^`\n]*)`|%x[({\[]([^)}\]\n]*)[)}\]]|\bqx\s*[({/'\"]([^)}/'\"\n]*)")  # Perl's and Ruby's commands
+CALLED_WITH = _Pattern(r"(?:\b(?:system|popen|run|call|check_call|check_output|getoutput|getstatusoutput|Popen|execSync|exec|spawn|spawnSync"
                          r"|execFile|execFileSync|execa|create_subprocess_shell)\s*\(|\b(?:system|exec)\s+)\s*$")  # a string handed to one starts
-LOOKS_OSA = re.compile(r"\btell\s+(?:application|app)\b|\bApplication\s*\(|\bdo\s+shell\s+script\b|«", re.I)  # an AppleScript itself
-PROGRAM_STRINGS = re.compile(r'''[rRbBuUfF]{0,2}(?:"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)''')
+LOOKS_OSA = _Pattern(r"\btell\s+(?:application|app)\b|\bApplication\s*\(|\bdo\s+shell\s+script\b|«", re.I)  # an AppleScript itself
+PROGRAM_STRINGS = _Pattern(r'''[rRbBuUfF]{0,2}(?:"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)''')
 
 
 def _osa_code(text: str, jxa: bool) -> tuple:
@@ -5821,7 +8417,8 @@ def _osa_code(text: str, jxa: bool) -> tuple:
             out.append("name")
             i = j + 1
             continue
-        if jxa and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase)\s*$", "".join(out[-40:])):
+        if jxa and c == "/" and re.search(r"(?:^|[(,=:\[!&|?{};+\-*%<>~^]|\breturn|\btypeof|\bcase)\s*$", "".join(out[-40:])) and not re.search(
+                r"(?:\+\+|--)\s*$", "".join(out[-40:])):  # after `++` or `--` it divides (review round 1 of 5.23.1, #5)
             j, cls = i + 1, False
             while j < n and (text[j] != "/" or cls) and text[j] not in "\n\r":
                 cls = (cls or text[j] == "[") and text[j] != "]"
@@ -5945,9 +8542,10 @@ def _code_only(text: str, head: str) -> str:
     return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
 
 
-def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -> str:
+def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0, path: str = "", args: tuple = ()) -> str:
     """What a program's text does that waits: an input or Apple Event library it uses, or a command it starts that
-    presses keys, clicks or acts through another app (each read where the program runs, through the files it names).
+    presses keys, clicks or acts through another app (each read where the program runs, through the files it names),
+    and a script it hands osascript from a file (`_osa_files`, with `path` the program's file and `args` its words).
     A program that starts nothing is only read, and so is the prose in its strings and comments."""
     code = _code_only(text, head)
     if INPUT_LIBS.search(code) or any(INPUT_MODULES.fullmatch(m[2]) for m in IMPORTED.finditer(text)):
@@ -5962,23 +8560,31 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -
     found = list(PROGRAM_STRINGS.finditer(text))
     runs_osa = any(re.match(r"\s*(?:\S*/)?osa(?:script|compile)\b", line) for line, _ in lines) or any(  # an osascript list, whole or cut short
         os.path.basename(_unquoted(m[0]).strip()) in ("osascript", "osacompile") for m in found)
+    cuts: list = []  # how each osascript list that shows no whole script is cut short ("file", "read" or "built")
     for at, literal in enumerate(found):
         value = _unquoted(literal[0])
         first = os.path.basename(value.split(None, 1)[0]) if value.strip() else ""
         program = first in ACTORS or first in SHELLS or bool(SCRIPT.match(first) or UNREAD.match(first))
         if program and value.strip() == value.split(None, 1)[0]:  # a list of words: this one and the strings after it
             words, last = [value], literal
-            for later, nxt in zip(found[at:], found[at + 1:]):
-                if not re.fullmatch(r"\s*,\s*", text[later.end():nxt.start()]):
+            osa = first in ("osascript", "osacompile")
+            for later, nxt in zip(found[at:], found[at + 1:]):  # osascript's words may follow in an array of their own (Node's)
+                if not re.fullmatch(r"\s*,\s*" + (r"\[?\s*" if osa and later is literal else ""), text[later.end():nxt.start()]):
                     break
                 words.append(_unquoted(nxt[0]))
                 last = nxt
             if first in INPUT_PROGRAMS:
                 return KEYS + ", or acts through another app"
             whole = text[last.end():].lstrip()[:1] in ("]", ")")  # a list a computed word cuts short shows no script
-            if first not in ("osascript", "osacompile") or (whole and len(words) > 1):  # osascript alone is a lookup or a message
+            run = len(words) > 1 or text[:literal.start()].rstrip().endswith("[") or CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()])
+            cut = _osa_cut(words, whole, text[last.end():], text) if osa and run else ""  # `which("osascript")` is a lookup
+            if cut == "args" and _writes_script(text, [w for w in words[1:] if not w.startswith("-")][:1]):
+                cuts.append("file")  # a script file it names, which it writes before it runs it
+            if not osa or cut in ("args", "lines") or (whole and len(words) > 1):  # osascript alone is a lookup, a message or its input
                 lines.append((shlex.join(words), where))
-                runs_osa = runs_osa or first in ("osascript", "osacompile")
+                runs_osa = runs_osa or osa
+            elif cut:
+                cuts.append(cut)
         elif program and CALLED_WITH.search(text[max(0, literal.start() - 40):literal.start()]):  # a command line handed to a shell
             lines.append((value, where))
             runs_osa = runs_osa or first in ("osascript", "osacompile")
@@ -5998,6 +8604,90 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0) -
             acts = _osa_judge(value, bool(re.search(r"\bApplication\s*\(", value)))
             if acts:
                 return acts[1]
+    return _osa_files(text, head, where, path, cuts, args) if {"file", "read"} & set(cuts) else ""
+
+
+# A program that hands osascript a script it read from a file ran with no code while `osascript <file>` waited: pointed at
+# the local-messaging skill's transport, a Messages send (review of the runtime's carried scripts, 2026-11-15, problem B).
+OSA_EXT = _Pattern(r"\.(?:js|jxa|scpt|scptd|applescript|osa)$", re.I)
+FILE_READS = _Pattern(r"\bopen\s*\(|\.read_(?:text|bytes)\s*\(|\breadFile(?:Sync)?\s*\(|\bFile\s*\.\s*(?:read|open)\b|\bIO\s*\.\s*read"
+                        r"|\bslurp\b|\bfile_get_contents\s*\(|\bDeno\s*\.\s*readTextFile|\bjson\s*\.\s*load\s*\(|\bload\s*\(")
+WRITE_TARGET = _Pattern(r"""\bopen\s*\(\s*([^,\n]{1,300}?)\s*,\s*['"][wax]|\.write_(?:text|bytes)\s*\(|"""
+                          r"""\b(?:writeFile(?:Sync)?|File\s*\.\s*write|IO\s*\.\s*write|file_put_contents|Deno\s*\.\s*writeTextFile)\s*\(\s*([^,\n]+)""")
+
+
+def _writes_script(text: str, names: list) -> bool:
+    """Whether a program writes a script file it hands osascript: a write whose target spells one of `names` or any
+    script file, or is a name the program gives one (a log or a record it writes is none)."""
+    given = set(re.findall(r"(?m)^[ \t]*([A-Za-z_]\w*)[ \t]*=[^\n]*['\"][^'\"\n]*\.(?:js|jxa|scpt|scptd|applescript|osa)['\"]", text))
+    for found in WRITE_TARGET.finditer(text):
+        at = start = found.start()
+        while not (found[1] or found[2]) and start > 0 and at - start < 200 and (text[start - 1].isalnum() or text[start - 1] in "_.()[]'\"/ "):
+            start -= 1  # a path's own write method: its receiver, read back from the call
+        target = found[1] or found[2] or text[start:at]
+        var = re.match(r"\s*\(?\s*([A-Za-z_]\w*)", target)
+        if any(n and n in target for n in names) or OSA_EXT.search(target.strip("'\"` )")) or (var and var[1] in given):
+            return True
+    return False
+
+
+def _osa_cut(words: list, whole: bool, after: str, text: str) -> str:
+    """What an osascript argument list hands it: "args" when it names its script file (any computed words are the
+    script's own), "lines" when its -e lines are shown, "file" when its script file (or an option's value) is computed,
+    "read" when it hands -e or its input a script from a file, "built" for one built from the program's own strings."""
+    i, given = 1, False
+    while i < len(words):
+        word = words[i]
+        if word in ("-e", "-l", "-s", "-o", "-t", "-c"):
+            if i + 1 >= len(words):
+                return _osa_from(after, text) if word == "-e" else "file"
+            given, i = given or word == "-e", i + 2
+        elif word.startswith("-") and word != "-":
+            given, i = given or word.startswith("-e"), i + 1
+        else:
+            return "lines" if given else "args"
+    if given:
+        return "lines"
+    return _osa_from(after, text) if whole else "file"  # alone, on its input; cut short, at its script file
+
+
+def _osa_from(after: str, text: str) -> str:
+    """"read" for a computed script (the expression after the list, or osascript's input) that comes from a file: a read
+    in the expression, or in what a name it uses is given; "built" for one the program builds from its own strings."""
+    expression = (re.match(r"\s*,\s*([^,\]\n]+)", after) or re.search(r"\binput\s*=\s*([^,\n]+)", after[:300]) or [None, ""])[1]
+    if FILE_READS.search(expression):
+        return "read"
+    name = re.match(r"\s*\*?([A-Za-z_]\w*)", expression)
+    given = re.findall(rf"(?m)^\s*(?:(?:const|let|var)\s+)?{re.escape(name[1])}\s*(?::[^=\n]*)?=(?!=)\s*(.+)$", text) if name else []
+    if any(FILE_READS.search(g) for g in given):
+        return "read"
+    return "built" if given and all(re.match(r"""[rRbBuUfF]{0,2}['"`]""", g) for g in given) else "read" if FILE_READS.search(text) else "built"
+
+
+def _osa_files(text: str, head: str, where: str, path: str, cuts: list, args) -> str:
+    """For a program that starts osascript with a script file it computes or a script it reads from a file: each script
+    file it names, or takes from its arguments, judged as `osascript <file>` is; a file it writes, one it does not name
+    and one the guard cannot read wait. The plugin's own script as shipped is judged by its own gate (a sender asks the
+    send guard itself), and a run the principal approved by its exact command in this call is not asked about twice."""
+    if (path and _shipped(path)) or _CALL.get("approved"):
+        return ""
+    code = _code_only(text, head)
+    names = [n for n in (_unquoted(m[0]).strip() for m in PROGRAM_STRINGS.finditer(text)) if OSA_EXT.search(n)]
+    names += [a for a in args if OSA_EXT.search(a)] if re.search(r"\bargv\b|\bARGV\b|\$ARGV\b", code) else []
+    if not names:
+        return UNREAD_OSA + " (a script it reads from a file it does not name)"
+    if _writes_script(text, names):
+        return UNREAD_OSA + " (a script file the program writes before it runs it)"
+    jxa = bool(re.search(r"""['"`]-l['"`]\s*,\s*\[?\s*['"`]JavaScript['"`]""", text, re.I))
+    for name in dict.fromkeys(names):
+        file = next((p for p in (os.path.realpath(os.path.join(f, _home(name))) for f in ([os.path.dirname(path)] if path else []) + [where])
+                     if os.path.isfile(p)), "")
+        body = _code_of(file) if file else ""
+        if not body:
+            return UNREAD_OSA + f" (a script file it names that the guard cannot read: {name})"
+        acts = _osa_judge(body, jxa or name.lower().endswith((".js", ".jxa")) or "javascript" in body.split("\n", 1)[0].lower())
+        if acts:
+            return acts[1]
     return ""
 
 
@@ -6072,7 +8762,8 @@ def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, writt
             return "desktop", UNREAD_OSA + " (a program the line writes before it runs it)", ""
         files = (_python_files(module or path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(where if kind != "file" else os.path.dirname(path)), given if module else "")[0]
                  if head.startswith("python") and text else [(path, text)])
-        acts = next((a for _, body in files for a in [_program_acts(body, head, where, depth)] if a), "")
+        args = words[_program(words)[1] + (kind == "file" or words[_program(words)[1]:][:1] == ["-"]):]  # the words it is handed
+        acts = next((a for file, body in files for a in [_program_acts(body, head, where, depth, file if file and os.path.basename(file) != "-" else "", args)] if a), "")
         return ("desktop", acts, "") if acts else None
     if "/" in words[0]:
         first = _code_of(os.path.join(where, os.path.expanduser(words[0])))
@@ -6080,7 +8771,8 @@ def _acts_outside(words: list, where: str, feed: str = "", depth: int = 0, writt
         if "osascript" in shebang:
             return _osa_judge(first, "javascript" in shebang.lower())
         if re.search(r"\b(?:python[\d.]*|node|bun|deno|perl|ruby|swift)\b", shebang):
-            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth)
+            acts = _program_acts(first, os.path.basename(shebang.split()[-1]) if shebang.split() else "", where, depth,
+                                 os.path.realpath(os.path.join(where, os.path.expanduser(words[0]))), words[1:])
             return ("desktop", acts, "") if acts else None
     runs_file = head in SHELLS or head in (".", "source") or "/" in words[0]
     target = os.path.realpath(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] and head not in SHELLS
@@ -6142,7 +8834,7 @@ def _acts_in_line(command: str, cwd: str, written: set, bodies: str, parsed: tup
 # its own results, or its own last navigate, show; a click is read by the control the page's newest snapshot names as
 # well as the agent's words for it; a tool the guard does not know is a step that may send; and where nothing shows the
 # page, it is held as one that may send. The code binds the call itself, not the steps read from it.
-DRIVERS = re.compile(r"browser|chrome|chromium|playwright|puppeteer|devtools|webdriver|selenium|firefox|safari|stagehand", re.I)
+DRIVERS = _Pattern(r"browser|chrome|chromium|playwright|puppeteer|devtools|webdriver|selenium|firefox|safari|stagehand", re.I)
 DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), **dict.fromkeys(("press_key", "press", "key", "keyboard"), "key"),
           **dict.fromkeys(("click", "double_click", "dblclick", "tap", "select_option", "select", "check", "drag", "handle_dialog"), "click"),
           **dict.fromkeys(("fill_form", "form_input"), "form"), "drop": "drop",
@@ -6150,10 +8842,10 @@ DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), 
           **dict.fromkeys(("evaluate", "evaluate_script", "run_code", "run_code_unsafe", "execute_script", "script", "javascript"), "script"),
           **dict.fromkeys(("snapshot", "take_screenshot", "screenshot", "console_messages", "network_requests", "network_request", "wait_for",
                            "find", "hover", "resize", "close", "emulate_media", "install", "file_upload", "list_pages", "select_page"), "read")}
-READ_WORDS = re.compile(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
+READ_WORDS = _Pattern(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
                         r"|title|url|cookies|logs?|status|info|search)(?:_|$)")  # an unknown tool that says it only reads
 UNKNOWN_PAGE = "a page the record does not show"
-PAGE_LINE = re.compile(r"^- Page URL: (\S+)\s*$|^\d+: (\S+) \[selected\]\s*$|^- \d+: \(current\) \[[^\]\n]*\]\((\S+?)\)\s*$|^Navigated to (\S+)", re.M)
+PAGE_LINE = _Pattern(r"^- Page URL: (\S+)\s*$|^\d+: (\S+) \[selected\]\s*$|^- \d+: \(current\) \[[^\]\n]*\]\((\S+?)\)\s*$|^Navigated to (\S+)", re.M)
 PAGE_MARKS = ("Page URL", "[selected]", "(current)", "Navigated to", "[ref=")
 
 
@@ -6183,16 +8875,31 @@ def _caller(lines: list, i: int, ident: str) -> dict | None:
     return None
 
 
+REFUSED_BY_HOOK = _Pattern(r"\s*(?:PreToolUse:|(?:Command|Tool call) blocked by PreToolUse hook: )")  # Claude Code's, then Codex's
+
+
+def _mcp_name(server: str, tool: str) -> str:
+    """The name Codex's hook gives the MCP tool its record names by server and tool: `workspace-mcp` and `github.fetch`
+    make `mcp__workspace_mcp__github__fetch`, as the refusals in its records name them (2026-11-15)."""
+    return "mcp__" + re.sub(r"\W", "_", server) + "__" + re.sub(r"\W", "_", tool.replace(".", "__"))
+
+
 def _line_events(line: str) -> list:
     """(call or result, its id, the tool's name, its input or its text) for each tool call and result on a line of a
-    Claude Code record or a Codex rollout."""
+    Claude Code record or a Codex rollout, where a call a code-mode script makes is recorded only as an
+    `item_completed` event, its call and its result together (a direct call's event carries the call's own id)."""
     try:
         entry = json.loads(line)
     except ValueError:
         return []
     payload = entry.get("payload") if isinstance(entry, dict) else None
     if isinstance(payload, dict):
-        kind, ident = payload.get("type"), str(payload.get("call_id") or "")
+        kind, ident, item = payload.get("type"), str(payload.get("call_id") or ""), payload.get("item")
+        if kind == "item_completed" and isinstance(item, dict) and item.get("type") == "McpToolCall":
+            given, done, ident = item.get("arguments"), item.get("result"), str(item.get("id") or "")
+            return [("call", ident, _mcp_name(str(item.get("server") or ""), str(item.get("tool") or "")),
+                     given if isinstance(given, dict) else {}),
+                    ("result", ident, "", _said(done) if isinstance(done, dict) else str(item.get("error") or ""))]
         if kind in ("function_call", "custom_tool_call"):
             given = payload.get("arguments") if kind == "function_call" else payload.get("input")
             try:
@@ -6211,18 +8918,20 @@ def _line_events(line: str) -> list:
 
 
 def _driver_events(transcript: str, server: str) -> list:
-    """(call or result, the tool's name, its input, its text) for this server's own calls and results, newest first."""
-    calls, events = {}, []
+    """(call or result, the tool's name, its input, its text) for this server's own calls and results, newest first; a
+    call a hook refused, and its result, are left out (review round 1 of 5.23.1, #4)."""
+    calls, events, refused = {}, [], set()
     for line in _tail(transcript):
-        if server + "__" not in line and not any(m in line for m in PAGE_MARKS):
+        if server + "__" not in line and "McpToolCall" not in line and "PreToolUse" not in line and not any(m in line for m in PAGE_MARKS):
             continue
         for kind, ident, name, data in _line_events(line):
-            if kind == "call" and name.startswith(server + "__"):
+            if kind == "call" and name.startswith(server + "__") and ident not in calls:  # a direct call's event: once
                 calls[ident] = name
-                events.append(("call", name, data, ""))
+                events.append((ident, "call", name, data, ""))
             elif kind == "result" and ident in calls:
-                events.append(("result", calls[ident], {}, data))
-    return events[::-1]
+                refused |= {ident} if REFUSED_BY_HOOK.match(str(data)) else set()
+                events.append((ident, "result", calls[ident], {}, data))
+    return [event[1:] for event in events[::-1] if event[0] not in refused]
 
 
 def _driver_page(events: list) -> str:
@@ -6236,7 +8945,8 @@ def _driver_page(events: list) -> str:
         if kind == "call" and driven_tool(name) == "navigate" and not (bare == "tabs" and given.get("action") == "list"):
             if bare in ("navigate_back", "go_back") or (bare == "tabs" and given.get("action") != "new"):
                 return ""  # a step back or a tab change whose result shows no page
-            return str(given.get("url") or "")
+            if _script_address(str(given.get("url") or "")) is None:  # a javascript: address runs on the page; it is none
+                return str(given.get("url") or "")
     return ""
 
 
@@ -6254,7 +8964,7 @@ def _driver_ref(events: list, page: str, ref: str) -> tuple | None:
 def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) -> list:
     """The steps a browser tool performs, as a browser batch reads them, after a navigate step to the page they act on."""
     server, name = tool.rpartition("__")[0], tool.rpartition("__")[2]
-    events = _driver_events(str((session or {}).get("transcript_path") or ""), server)
+    events = _driver_events(_record(session), server)
     page = _driver_page(events) or UNKNOWN_PAGE
     urls = [v for v in tool_input.values() if isinstance(v, str) and _web_app(v)] if kind == "unknown" else []
     page = urls[0] if urls else page
@@ -6283,10 +8993,13 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
         steps = [step(action="type", text=str(v)) for v in (tool_input.get("data") or {}).values()] if isinstance(tool_input.get("data"), dict) else []
     elif kind == "script":
         code = str(tool_input.get("function") or tool_input.get("code") or tool_input.get("script") or tool_input.get("expression") or "")
-        steps = [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": code + (f" /* on {on} */" if on else "")}}]
+        own = SERVER_CODE if tool.endswith(("run_code", "run_code_unsafe")) else ""  # the server's own code drives its page (#8)
+        steps = [{"name": "javascript_tool", "input": {"action": "javascript_exec", "text": own + code + (f" /* on {on} */" if on else "")}}]
     elif kind == "unknown":
         given = [str(tool_input[k]) for k in ("text", "value", "keys", "message") if isinstance(tool_input.get(k), str)]
         steps = [step(action="type", text=t) for t in given] + [step(action="left_click", action_summary="")]
+    elif kind == "navigate":  # to a javascript: address, which runs on the page it is on (round 4 of 5.24.0's review, #1)
+        steps = [{"name": "navigate", "input": {"url": str(tool_input.get("url") or "")}}]
     else:
         steps = []
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
@@ -6294,7 +9007,7 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
 
 @_entry
 def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: dict | None = None) -> str | None:
-    if kind in ("read", "navigate"):
+    if kind == "read" or kind == "navigate" and _script_address(str(tool_input.get("url") or "")) is None:
         return None
     if tool.endswith("run_code_unsafe"):  # code for the server's own process: from a file it reads, or starting commands
         acts = "runs code from a file the guard does not read" if tool_input.get("filename") else _program_acts(str(tool_input.get("code") or ""), "node")
@@ -6309,6 +9022,125 @@ def check_driven(kind: str, tool: str, tool_input: dict, config: dict, session: 
     return check_desktop("browser_batch", tool, {"actions": steps, "call": {"tool": tool, "input": tool_input}}, config, session) if steps else None
 
 
+# --- the runtime the guard runs (5.24.0) ------------------------------------------------------------
+# Review round 2 of 5.23.1: `synthesis install <folder>` made any folder the runtime (N5), and `synthesis uninstall`
+# removed it so that the next session start took the harness's folder (N6), both with no code, by PATH and by the stable
+# path. The principal's sandbox rulings of 2026-11-15: a command that writes what the guard trusts waits for his code of
+# that exact command. A program that calls the installer itself waits in check_self_grant (_synthesis_reach).
+
+RUNNER_PROGRAMS = ("uv", "uvx", "poetry", "pdm", "hatch", "pipenv", "pipx", "conda", "mamba")  # run the program they are handed
+CLI_MODULES = {"synthesis": "cli", "synthesis.cli": "cli", "synthesis.__main__": "cli", "synthesis.install": "install"}
+
+
+def _named_cli(word: str, where: str) -> bool:
+    """The synthesis CLI by its name: on PATH, by its stable path, a link to it or a copy named so, or a program word the
+    guard cannot read that names it."""
+    return os.path.basename(word) == "synthesis" or (word[:1] in ("$", "`") and "synthesis" in word) or (
+        "/" in word and os.path.basename(_real(os.path.join(where, os.path.expanduser(word)))) == "synthesis")
+
+
+def _cli_words(words: list, where: str) -> tuple | None:
+    """(the words the CLI is handed, the folder its own install takes) for a command that runs it, by any spelling the
+    guard can read: its name, `python -m synthesis.cli` (or `synthesis`, `synthesis.install`), its module or an
+    install.py run by path, its script read by a shell, behind a runner. install.py hands `install` unless it is told
+    `uninstall` (this release's adds --first; a copy of another's may not). A bare `synthesis` that PATH finds anywhere
+    but the stable launcher is a program of its own, judged as that (review round 1 of 22.18, H2). None otherwise."""
+    if os.path.basename(words[0]) in RUNNER_PROGRAMS:
+        words = next((words[i:] for i, w in enumerate(words) if i and (_named_cli(w, where) or SCRIPT.match(os.path.basename(w)))), [])
+    head = os.path.basename(words[0]) if words else ""
+    if words and _named_cli(words[0], where):
+        import shutil
+        found = shutil.which("synthesis") if words[0] == "synthesis" and {"install", "uninstall"} & set(words[1:]) else ""
+        if found and _real(found) != _real(str(paths.home() / "bin" / "synthesis")):
+            return None
+        launcher = _real(os.path.join(where, os.path.expanduser(words[0] if "/" in words[0] else str(paths.home() / "bin" / "synthesis"))))
+        return words[1:], _real(os.path.join(os.path.dirname(os.path.dirname(launcher)), "current"))
+    if not (head in SHELLS or (head.startswith("python") and SCRIPT.match(head))):
+        return None
+    kind, at, name = _program(words)
+    if kind != "file" or not name:
+        return None
+    if words[at] != name:  # -m, alone or after other letters: the package from the folder it starts in, if it is there
+        entry, rest, own = CLI_MODULES.get(name), words[at + 1 + words[at].endswith("m"):], where if os.path.isdir(os.path.join(where, "synthesis")) else ""
+    else:
+        path, rest = _real(os.path.join(where, os.path.expanduser(name))), words[at + 1:]
+        inside, own = os.path.basename(os.path.dirname(path)) == "synthesis", os.path.dirname(os.path.dirname(path))
+        entry = ("cli" if _named_cli(name, where) or (inside and os.path.basename(path) in ("cli.py", "__main__.py"))
+                 else "install" if inside and os.path.basename(path) == "install.py" else None)
+    return ((rest if entry == "cli" or rest[:1] == ["uninstall"] else ["install", *rest]), own) if entry else None
+
+
+def _cli_reads(argv: list) -> tuple:
+    """(what the CLI does with these words, its namespace), read by its own parser as it dispatches them: ("install", ...),
+    ("uninstall", ...), or ("", None) for another command, its help, a dry run or words it refuses. A word the guard cannot
+    read may be anything when it runs (empty, an option), so with one an install or an uninstall is taken as asked."""
+    import contextlib
+    import io
+    from synthesis import cli
+    name = "".join(argv[cli.command_at(argv):][:1])
+    if not (name in ("install", "uninstall") or name.startswith(("$", "`"))):
+        return "", None
+    if any(re.search(r"[$`*?\[]", w) for w in argv):
+        return (name if name in ("install", "uninstall") else "install or uninstall"), None
+    try:
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            args = cli.parsed(argv)
+    except SystemExit:
+        return "", None
+    return ("uninstall" if args.fn is cli.cmd_uninstall and not args.dry_run else "install" if args.fn is cli.cmd_install else ""), args
+
+
+def _runtime_change(words: list, where: str, subjects: list) -> str:
+    """What a command does to the runtime the guard runs, in words for the principal; '' for nothing. The subject the CLI
+    spends for it goes into `subjects`: the change, the home, and every byte the install takes from its folder as it is
+    now (install.subject), so the code binds the install that happens."""
+    from pathlib import Path
+    from synthesis import install
+    argv, own = (_cli_words(words, where) if words else None) or (None, "")
+    action, args = _cli_reads(argv) if argv is not None else ("", None)
+    home = paths.home()
+    if action and args is None:
+        subjects.append({"action": "unreadable", "command": shlex.join(words), "where": str(where)})
+        return f"runs the synthesis CLI with a word this guard cannot read, so it may {action} the runtime under {home}"
+    if action == "uninstall":
+        subjects.append(install.subject("uninstall", home))
+        return (f"removes the installed synthesis runtime under {home} (`current`, its launchers and its releases); until one is "
+                "installed again every guarded call is held, and no session start installs one there")
+    if action != "install":
+        return ""
+    folder = os.path.normpath(os.path.join(where, os.path.expanduser(args.plugin))) if args.plugin else own
+    try:
+        digest = install.package_digest(Path(folder)) if folder and os.path.isfile(os.path.join(folder, "synthesis", "hook.py")) else ""
+    except OSError:
+        digest = "unreadable"
+    source = folder if args.plugin else f"{own or 'a folder this guard cannot find'}, the CLI's own folder, writing its launchers again,"
+    wanted, said = install.change(home, Path(folder or os.devnull), source, digest, args.git_hooks)
+    subjects.append(wanted)  # the same subject the install computes from its staged copy, a rollback named as one
+    return said
+
+
+def check_runtime(command: str, cwd: str, session: dict | None = None) -> str | None:
+    """A command that installs a synthesis runtime from a folder, removes the installed one or rewrites its launchers
+    waits for the principal's code for that exact command, run where it was asked and with each folder it takes as it is
+    now. Help and a dry run need no code: the CLI's own parser says what its words do. The line is read with its variables
+    put, and also as written when it uses one it does not set, whose value where it runs the guard cannot be sure of."""
+    found, subjects = [], []
+    unset = {m[1] or m[4] for m in USED.finditer(command)} - {m[1] for m in ASSIGNED.finditer(_own_text(command))} - {
+        m[1] for m in LOOPED.finditer(command)}
+    for text in dict.fromkeys([command] * bool(unset) + _resolved(command)):
+        if "synthesis" in text.lower():
+            for words, where in _parse(text, cwd)[0]:
+                said = "" if isinstance(where, Quoted) else _runtime_change(words, where, subjects)
+                found += [said] if said and said not in found else []
+    waiting = [s for i, s in enumerate(subjects) if s not in subjects[:i] and not approvals.backed("runtime", s, session)]
+    if not found or not waiting:  # the hook checks the code and spends nothing: the CLI spends it (review round 1 of 22.18)
+        return None
+    code = approvals.request("runtime", waiting[0], f"the synthesis runtime: {command[:150]}")
+    return (f"This command {'; it '.join(found)}. That runtime is what the guard runs, so it changes only on the principal's "
+            f"word: show them this exact command and ask them to type {approvals.how(code)}; then run the identical command "
+            "again, with each folder it installs from left as it is now. The install itself spends the code.")
+
+
 # --- dispatch -----------------------------------------------------------------------------------
 
 SHELL_TOOLS ={"Bash", "bash", "exec_command", "exec", "shell", "shell_command", "local_shell", "run_shell_command"}  # "bash": Muse
@@ -6321,9 +9153,190 @@ def shell_tool(tool: str) -> bool:
 
 
 def shell_command(tool_input: dict) -> str:
-    """The command text, whichever harness spelled it: a string or an argv list."""
-    value = tool_input.get("command", tool_input.get("cmd", ""))
+    """The command text, whichever harness spelled it: a string or an argv list, under `command` or `cmd`, else what an
+    `exec` call that is no code-mode script sent under `input` or `code`."""
+    value = next((tool_input[k] for k in ("command", "cmd", "input", "code") if k in tool_input), "")
     return shlex.join(value) if isinstance(value, list) else str(value)
+
+
+# Codex's code-mode tool `exec` runs JavaScript in a V8 isolate with no file system, network or process of its own; each
+# tool its script calls on the global `tools` object reaches this hook as a call of its own (2026-11-15: in 60 days of
+# records, 792 script results held a hook's refusal, each of a nested call). The script's signs: the grammar's first-line
+# pragma, a call on the global `tools`, or one of its global helpers, each working inside Codex by the tool's own
+# description: on the script's result (text, image, audio, generatedImage, notify, yield_control; a remote media URL is
+# refused), its session's store (store, load) or its run (exit). None reaches a person, a service, a file or a process.
+CODE_MODE_SIGN = _Pattern(r"\A\s*//\s*@exec:|(?<![.\w$])tools\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]\n]+\])\s*\(|(?<![.\w$])ALL_TOOLS\b"
+                            r"|(?<![.\w$])(?:text|image|audio|generatedImage|store|load|notify|exit|yield_control)\s*\(")
+
+
+def code_mode_script(tool: str, tool_input, session: dict | None = None) -> bool:
+    """Whether a call is a Codex code-mode script, passed on purpose and never read as a shell line. A bare string, or the
+    text under `input` or `code`, is one when it reads as such a script: no shell tool sends those shapes. Under
+    `command`, where a shell's command line arrives, it is one only when Codex's record of this very call shows its
+    `exec` tool with this text: a command line can be written to look like a script, so how it looks never decides."""
+    if tool != "exec" or not isinstance(tool_input, (str, dict)) or isinstance(tool_input, dict) and "cmd" in tool_input:
+        return False
+    if isinstance(tool_input, str) or "command" not in tool_input:
+        text = tool_input if isinstance(tool_input, str) else next(
+            (tool_input[k] for k in ("input", "code") if isinstance(tool_input.get(k), str)), "")
+        return bool(CODE_MODE_SIGN.search(text))
+    text = tool_input["command"]
+    return isinstance(text, str) and bool(CODE_MODE_SIGN.search(text)) and _recorded_script(text, session or {})
+
+
+def _recorded_script(text: str, session: dict) -> bool:
+    """Whether the session's Codex record, in Codex's own sessions folder where only Codex writes, holds the hook's
+    `tool_use_id` as a call of its `exec` tool with this text (its last 8 MB are read)."""
+    ident, transcript = str(session.get("tool_use_id") or ""), str(session.get("transcript_path") or "")
+    if not ident or not transcript or not paths.inside(os.path.realpath(transcript), _real(paths.transcript_roots()["codex"])):
+        return False
+    for line in reversed(_tail(transcript)):
+        if ident in line and "custom_tool_call" in line:
+            try:
+                payload = json.loads(line).get("payload") or {}
+            except (ValueError, AttributeError):
+                continue
+            if payload.get("type") == "custom_tool_call" and payload.get("call_id") == ident:
+                return payload.get("name") == "exec" and payload.get("input") == text
+    return False
+
+
+# Codex's write_stdin types characters into a session its exec_command started (review round 1 of 22.20: a shell started
+# on a terminal, then a write typed into it, passed every shell guard). A typed line is judged in the folder the session's
+# exec_command named, found by the session's number in the harness's record: as a command line, by every shell guard,
+# or, typed into an interpreter started with no script, with all it was typed as its program. A session the record does
+# not show, or one whose folder or variables a typed line changed, lets through only a line that just reads.
+STDIN_TOOLS = {"write_stdin"}
+STDIN_QUIET = _Pattern(r"[\x03\x04\x1a\x1c\r\n]*")  # Ctrl-C, Ctrl-D, Ctrl-Z, Ctrl-\ and Enter: they start nothing not typed before
+EDITING = _Pattern(r"[\x00-\x09\x0b\x0c\x0e-\x1f\x7f]|(?<![\w'\\])!(?:!|-?\d|[A-Za-z?#$])|(?:^|\n)\s*\^|(?:^|[\n;&|(]\s*)(?:fc|r)(?![^\s;&|])")
+# keys, history expansions and history commands (`!!`, `!git`, `^a^b`, `fc -s`, zsh's `r`) that edit, complete or recall a
+# line: what runs is not the text
+STATE = _Pattern(r"(?:^|[\n;&|(]|\b(?:then|do|else)\b)\s*(?:(?:cd|pushd|popd|export|alias|source|\.|set|unset|shopt|setopt|declare|"
+                 r"typeset|readonly|local|eval|function)\b|[A-Za-z_]\w*\+?=|\w+\s*\(\s*\)\s*\{|[~./][^\s;&|]*\s*(?:\n|$))")  # a bare folder: zsh's cd
+JS_TEXT = r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|`(?:\\.|[^`\\])*`)"""
+JS_CALL = _Pattern(r"tools\.(exec_command|write_stdin)\(\s*\{(.{0,20000}?)\}\s*\)", re.S)  # a code-mode script's calls
+TYPED_BACK = 32 << 20  # how far back a session's record is read for its start and what was typed into it
+
+
+def _js(literal: str) -> str:
+    """A JavaScript string literal's text."""
+    return re.sub(r"\\(u[0-9a-fA-F]{4}|.)", lambda m: chr(int(m[1][1:], 16)) if len(m[1]) == 5 and m[1][0] == "u" else
+                  {"n": "\n", "t": "\t", "r": "\r", "0": "\0"}.get(m[1], m[1]), literal[1:-1], flags=re.S)
+
+
+def _typed_session(transcript: str, sid: str) -> tuple:
+    """(how the session numbered `sid` started, {"cmd", "workdir"}, or None; what was typed into it since, oldest first),
+    read back from the record's end to that start, at most TYPED_BACK bytes and within the call's time: an exec_command
+    whose output gave the number, or a code-mode script whose output gave it that started one command and typed nothing
+    into it. A script that started several is no start the guard can name."""
+    if not transcript or not sid or not os.path.isfile(transcript):
+        return None, []
+    named = re.compile(rf"(?:session_id|[Ss]ession ID)\W{{0,6}}{re.escape(sid)}(?!\d)")  # also as JSON quoted inside an output's JSON
+    mine = re.compile(rf"\bsession_id\s*:\s*{re.escape(sid)}(?!\d)")
+    outputs, typed, start = set(), [], None
+    try:
+        for line in approvals._lines_back(transcript, stop=max(0, os.path.getsize(transcript) - TYPED_BACK)):
+            if time.monotonic() > _CALL["until"] or start is not None:
+                break
+            body = json.loads(line).get("payload") if "_call" in line and '"payload"' in line else None
+            kind, ident = (str(body.get("type") or ""), body.get("call_id")) if isinstance(body, dict) else ("", None)
+            if kind.endswith("_call_output"):
+                outputs |= {ident} if named.search(body["output"] if isinstance(body.get("output"), str) else json.dumps(body.get("output"))) else set()
+            elif kind == "function_call" and body.get("name") in ("exec_command", "write_stdin"):
+                args = json.loads(body.get("arguments") or "{}")
+                if body["name"] == "write_stdin" and str(args.get("session_id")) == sid:
+                    typed.append([str(args.get("chars") or "")])
+                elif body["name"] == "exec_command" and ident in outputs:
+                    start = {"cmd": shell_command(args), "workdir": args.get("workdir")}
+            elif kind == "custom_tool_call" and body.get("name") == "exec":
+                calls = [(name, {k: _js(v) for k, v in re.findall(rf"\b(cmd|workdir|chars)\s*:\s*{JS_TEXT}", fields)}, fields)
+                         for name, fields in JS_CALL.findall(str(body.get("input") or ""))]
+                here = [given.get("chars", "") for name, given, fields in calls if name == "write_stdin" and mine.search(fields)]
+                runs = [given for name, given, _ in calls if name == "exec_command"]
+                if ident in outputs and not here:
+                    start = {"cmd": runs[0]["cmd"], "workdir": runs[0].get("workdir")} if len(runs) == 1 and "cmd" in runs[0] else {}
+                typed.append(here)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return start or None, [chars for chunk in reversed(typed) for chars in chunk]
+
+
+REMOTE = frozenset({"ssh", "mosh", "docker", "podman", "kubectl", "vagrant", "multipass", "lxc", "incus", "limactl", "orb"})  # a shell elsewhere
+
+
+def _logs_in_here(words: list) -> bool:
+    """Whether the machine an ssh or mosh command logs in to may be this one: its destination is a local address or this
+    machine's own name, or one the guard cannot read. A name an ssh config maps to this machine is not followed."""
+    import socket
+    at = 1
+    while at < len(words) and words[at].startswith("-"):
+        at += 2 if re.fullmatch(r"-[bcDEeFIiJLlmOopQRSWw]", words[at]) else 1
+    host = re.sub(r"^(?:ssh://)?(?:[^@/]*@)?([^/]*?)(?::\d+)?(?:/.*)?$", r"\1", words[at]).lower() if at < len(words) else ""
+    name = socket.gethostname().lower()
+    return not host or _here(host) or host.strip("[]") in ("::1", "0.0.0.0", name, name.split(".")[0], name.split(".")[0] + ".local")
+
+
+def _typed_into(cmd: str, folder: str) -> tuple:
+    """(what a session reads what is typed as: "shell", "program" for an interpreter with no script of its own or one told
+    to stay interactive, "remote" for a shell on another machine, "elsewhere" for a shell in a container or one that may
+    be this machine's own, "" for another program; the folder it stands in, after a leading `cd`)."""
+    while (lead := re.match(r"\s*cd\s+(\"[^\"]*\"|'[^']*'|[^\s;&|]+)\s*(?:&&|;)\s*", cmd)):
+        folder, cmd = os.path.normpath(os.path.join(folder, os.path.expanduser(lead[1].strip("'\"")))), cmd[lead.end():]
+    try:
+        words = shlex.split(cmd)
+    except ValueError:
+        words = []
+    while words and (re.fullmatch(r"[A-Za-z_]\w*=.*", words[0]) or words[0] in ("env", "exec", "command")):
+        words = words[1:]
+    head = os.path.basename(words[0]) if words else ""
+    reads = bool(words) and _program(words)[0] == "stdin"
+    return ("shell" if head in SHELLS and reads else "program" if SCRIPT.match(head) and (reads or ("-i" in words and re.match(
+        r"python|node", head))) else "remote" if head in ("ssh", "mosh") and not _logs_in_here(words) else "elsewhere" if head in REMOTE
+            else ""), folder
+
+
+def _only_reads(text: str, cwd: str) -> bool:
+    """A line whose every command is a known reader that writes nothing."""
+    writes: list = []
+    try:
+        found = _commands(text, cwd, writes=writes)
+    except (Unreadable, StopIteration, IndexError):
+        return False
+    return not writes and all(not _landing(words) and not _unread(words, where, set(), text)[0] for words, where in found)
+
+
+def check_typed(tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """What Codex's write_stdin types, judged as the session it goes to runs it (see STDIN_TOOLS). A poll and keys that
+    start nothing new pass; a line is the unsubmitted text before it on the record, then its own characters."""
+    chars = str(tool_input.get("chars") or "")
+    if STDIN_QUIET.fullmatch(chars):
+        return None
+    sid = "" if tool_input.get("session_id") is None else str(tool_input.get("session_id"))
+    start, before = _typed_session(str((session or {}).get("transcript_path") or ""), sid)
+    before = [t for t in before if t != chars]  # the record may hold this very call already, as a try that was held
+    text, cmd = re.split(r"[\r\n]", "".join(before))[-1] + chars, str((start or {}).get("cmd") or "")
+    began = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(start.get("workdir") or "")))) if start else cwd
+    reads, folder = _typed_into(cmd, began) if start else ("", cwd)
+    if EDITING.search(text):
+        why = "carries keys that edit, complete or recall a line, so what the terminal runs is not the text the guard reads"
+    elif reads == "program":  # an interpreter with no script of its own: all it was typed is its program, its start's cd and all
+        return _check("Bash", {"command": f"{cmd} <<'SYNTHESIS_TYPED'\n{''.join(before) + chars}\nSYNTHESIS_TYPED"}, config, began, session)
+    else:  # a shell, or any other program: a command line where the session stands, and for a program also its input
+        reason = _check("Bash", {"command": text}, config, folder, session) or (start and not reads and _check(
+            "Bash", {"command": f"{cmd} <<'SYNTHESIS_TYPED'\n{text}\nSYNTHESIS_TYPED"}, config, began, session)) or None
+        moved = not start or reads == "elsewhere" or (reads == "shell" and STATE.search("".join(before)))
+        if reason or not moved or _only_reads(text, folder):
+            return reason
+        why = ("types into a shell " + ("the record does not show starting" if not start else "in a container, or one that may be "
+               "this machine's own, whose folder is not the one it started in" if reads == "elsewhere" else
+               "whose folder or variables an earlier line changed") + ", so where its writes land and what it runs cannot be placed")
+    subject = {"session": sid, "typed": text, "start": cmd, "runs_in": folder}
+    if approvals.consume("typed-input", subject, session):
+        return None
+    code = approvals.request("typed-input", subject, f"typed into session {sid}: {text[:120]!r}")
+    return (f"Codex's write_stdin {why}. Show the principal the exact text and the session it goes to and ask them to type "
+            f"{approvals.how(code)}; then make the identical call again. A line that only reads (ls, cat, git status), a "
+            "poll and Ctrl-C need no code.")
 
 
 def _quiet_calendar_write(tool: str, tool_input: dict) -> bool:
@@ -6355,14 +9368,969 @@ def _project(session: dict | None) -> str:
     return me.project if me else ""
 
 
+# --- a local MCP server's tools, called from the shell (5.24.0) --------------------------------------------------------
+# The meeting skill's client (`mcp_client.py <tool> <json>`) calls any tool of the local workspace server, whose default
+# tier holds send_gmail_message, and a write to this machine is no post to another host: neither the client nor a curl of
+# the same JSON-RPC waited (review of the runtime's carried scripts, 2026-11-15, problem A). A command that calls a local
+# server's tool, by an HTTP client to its endpoint or by a program that posts its JSON-RPC (the client is one), is judged
+# as that tool's call is, by `_connector`; one whose tool or arguments the guard cannot read waits when it may send.
+LOCAL_MCP = "workspace-mcp"  # the server the meeting skill runs here, as the harnesses name it
+MCP_CALLS = _Pattern(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
+MCP_LINE = _Pattern(r"tools/call|call_?[tT]ool|mcp_client|:8765\b|/mcp\b")  # a line that names a local MCP server or its call
+MCP_NAMED = _Pattern(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
+MCP_HOST = _Pattern(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$", re.I)
+BODIES = {"-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--post-data",
+          "--body-data", "--post-file", "--body-file", "-T", "--upload-file", "-F", "--form"}
+ADDRESSLESS = BODIES | {"--raw", "-H", "--header", "-X", "--request", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie",
+                        "-c", "--cookie-jar", "-o", "--output", "-w", "--write-out"}  # options whose word is no address
+ARGV = "\0argv"  # a tool name a program takes from its own arguments
+
+
+def _mcp_endpoint(word: str) -> str:
+    """'mcp' for a local MCP server's endpoint (the workspace server's port, or the one WORKSPACE_MCP_PORT names, or an
+    MCP path), 'local' for any other address on this machine, '' for a word that names none."""
+    found = MCP_HOST.match(word)
+    if not found or not (found[1] or found[3] or found[4]):
+        return ""
+    return "mcp" if (found[3] or "") in {"8765", os.environ.get("WORKSPACE_MCP_PORT") or "8765"} or re.search(
+        r"/(?:mcp|sse|messages)/?$", found[4] or "") else "local"
+
+
+def _rpc_calls(text: str) -> list:
+    """(tool or None, arguments or None) for each tools/call request a JSON-RPC body holds, a batch's included; text
+    that names the method and cannot be parsed is read for the names it gives."""
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return [(a or b, None) for a, b in MCP_NAMED.findall(text)] or [(None, None)] if "tools/call" in text else []
+    calls = []
+    for item in data if isinstance(data, list) else [data]:
+        params = item.get("params") if isinstance(item, dict) and item.get("method") == "tools/call" else None
+        if params is not None:
+            name, given = (params.get("name"), params.get("arguments", {})) if isinstance(params, dict) else (None, None)
+            calls.append((name if isinstance(name, str) else None, given if isinstance(given, dict) else None))
+    return calls
+
+
+def _unfilled(text: str, bare: str | None) -> bool:
+    """Whether a word still holds what the shell fills in, which the guard cannot read: a substitution, a parameter, or a
+    variable the line does not set, where the shell expands it (`bare`, the line without its single-quoted parts; None
+    when that is not known). Round 3: `curl -d "$BODY"` to the server passed."""
+    return any(bare is None or m[0] in bare for m in re.finditer(r"\$(?:\(|[0-9@*#?!$-]|\{[^}]*\}?|[A-Za-z_]\w*)|`", text))
+
+
+def _away(start: str, whole: bool = False) -> bool:
+    """Whether an address's spelled start names a scheme and a host that is not this machine, on a port that is not a
+    local MCP server's, closed by /, ? or # before anything a program or the shell fills in (`whole`: nothing is): it goes
+    to that host whatever is filled in after it (a name that resolves here reaches no server on a port it does not
+    name). From the ruling's suite on a fresh clone: the Drive publisher's query from the environment made its host's
+    address read as one the environment gives."""
+    m = re.match(r"\s*[a-z][\w+.-]*://(?:[^/?#@\s]*@)?(([^/?#@\s]+?)(?::(\d+))?)" + ("(?:[/?#]|$)" if whole else "[/?#]"), start, re.I)
+    return bool(m) and not _here(m[1].lower()) and not _here(_carried(m[2].lower())) and m[3] not in {
+        "8765", os.environ.get("WORKSPACE_MCP_PORT") or "8765"}
+
+
+def _http_body(words: list, where: str, feed: str, written: set, bare: str | None = None) -> tuple:
+    """(text, readable) of what an HTTP client posts: its data words, a file named with @ or a file option, its input,
+    or HTTPie's fields and --raw; a body the guard cannot read (a file it lacks, one the line writes, input another
+    program writes, a substitution, a variable the line does not set) is not readable."""
+    from synthesis import sends
+    parts, readable, fields, httpie = [], True, {}, os.path.basename(words[0]) in ("http", "https", "xh")
+    for i, word in enumerate(words[1:], 1):
+        key, eq, given = word.partition("=")
+        if word in BODIES or (httpie and word == "--raw"):
+            value, form = (words[i + 1] if i + 1 < len(words) else ""), word
+        elif eq and (key in BODIES or (httpie and key == "--raw")) and key.startswith("--"):
+            value, form = given, key
+        elif re.match(r"-[dFT].", word):
+            value, form = word[2:], word[:2]
+        elif httpie and re.match(r"[\w.\[\]-]+:?=[^=]", word) and not word.startswith("-"):
+            name, raw = re.split(r":?=", word, maxsplit=1)
+            try:
+                fields[name] = json.loads(raw) if ":=" in word else raw
+            except ValueError:
+                readable = False
+            continue
+        else:
+            continue
+        name = value[1:] if value.startswith("@") and form not in ("--data-raw", "--raw") else value if form in ("--post-file", "--body-file", "-T", "--upload-file") else None
+        if name is None:
+            inner, rest = sends._substitutions(value) if ("$(" in value or "`" in value) else ([], value)
+            cat = [sends.CAT.fullmatch(s) for s in inner]
+            if not all(c and os.path.isfile(os.path.join(where, os.path.expanduser(c[2]))) for c in cat) or _unfilled(rest, bare):
+                readable = False
+            parts += [_code_of(os.path.join(where, os.path.expanduser(c[2]))) for c in cat if c] + ([rest] if rest.strip() else [])
+        elif name == "-":
+            readable, parts = readable and bool(feed.strip()) and UNREAD_INPUT not in feed, parts + [feed]
+        else:
+            path = os.path.realpath(os.path.join(where, _home(name)))
+            text = "" if "$" in name or "`" in name or path in written else _code_of(path)
+            readable, parts = readable and bool(text or (os.path.isfile(path) and path not in written and "$" not in name)), parts + [text]
+    if httpie:
+        parts += [json.dumps(fields)] if fields else [feed] if feed.strip() and UNREAD_INPUT not in feed else []
+    return "\n".join(parts), readable
+
+
+def _curl_config(words: list, where: str) -> list:
+    """The options curl's config files give (-K, --config), as words, read as cheaply as its -d @file (round 2); one the
+    guard cannot read gives a word the shell would fill in, so the call is unknown."""
+    out = []
+    for k, word in enumerate(words[1:], 1):
+        name = words[k + 1] if word in ("-K", "--config") and k + 1 < len(words) else word[9:] if word.startswith("--config=") else word[2:] if re.match(r"-K.", word) else ""
+        text = (_code_of(os.path.join(where, _home(name))) if name != "-" else "") if name else None
+        out += ["$unread-config"] if text == "" else []
+        for line in (text or "").splitlines():
+            found = re.match(r"\s*(-{0,2}[A-Za-z][\w-]*)\s*(?:[=:]\s*|\s+|$)(.*?)\s*$", line)
+            key, value = (found[1].lstrip("-"), found[2].strip("\"'")) if found and not line.lstrip().startswith("#") else ("", "")
+            out += [value] if key == "url" else [("-" if len(key) == 1 else "--") + key] + [value][:bool(value)] if key else []
+    return out
+
+
+def _bindings(nodes: list) -> tuple:
+    """(each name's assignments, loops, `with` targets, unpackings and parameters; each function's calls; each lambda's
+    name; the names a program changes in place, by an item or attribute it sets, an augmented assignment or a method
+    that adds to it) in a parsed Python program."""
+    import ast
+    binds: dict = {}
+    calls: dict = {}
+    lambdas: dict = {}
+    changed: set = set()
+    for node in nodes:
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and node.value is not None:
+            for target in node.targets if isinstance(node, ast.Assign) else [node.target]:
+                root = target
+                while isinstance(root, (ast.Subscript, ast.Attribute)):
+                    root = root.value
+                if root is not target or isinstance(node, ast.AugAssign):
+                    changed.add(getattr(root, "id", None))
+                for at, part in enumerate(target.elts) if isinstance(target, (ast.Tuple, ast.List)) else ():
+                    binds.setdefault(getattr(part, "id", None), []).append(("unpack", node, at))
+                if isinstance(target, ast.Name) and not isinstance(node, ast.AugAssign):
+                    binds.setdefault(target.id, []).append(("assign", node, None))
+                    lambdas.update({id(node.value): target.id} if isinstance(node.value, ast.Lambda) else {})
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.comprehension)) and isinstance(node.target, (ast.Name, ast.Tuple, ast.List)):
+            for at, target in enumerate([node.target] if isinstance(node.target, ast.Name) else node.target.elts):
+                binds.setdefault(getattr(target, "id", None), []).append(("loop", node, None if isinstance(node.target, ast.Name) else at))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+            for at, arg in enumerate(node.args.args):
+                binds.setdefault(arg.arg, []).append(("param", node, at))
+        elif isinstance(node, ast.withitem) and isinstance(node.optional_vars, ast.Name):
+            binds.setdefault(node.optional_vars.id, []).append(("with", node, None))
+        elif isinstance(node, ast.Call):
+            calls.setdefault(getattr(node.func, "id", getattr(node.func, "attr", "")), []).append(node)
+            if getattr(node.func, "attr", "") in ("append", "extend", "insert", "update", "setdefault", "add") and isinstance(node.func.value, ast.Name):
+                changed.add(node.func.value.id)
+    return binds, calls, lambdas, changed
+
+
+def _constant(expr, binds: dict, changed: set):
+    """The literal an expression is: a constant, or a name every assignment of which gives that one constant."""
+    import ast
+    if isinstance(expr, ast.Constant):
+        return expr.value
+    given = binds.get(expr.id, ()) if isinstance(expr, ast.Name) and expr.id not in changed else ()
+    values = {repr(node.value.value) for how, node, _ in given if how == "assign" and isinstance(node.value, ast.Constant)}
+    whole = given and len(values) == 1 and all(how == "assign" and isinstance(node.value, ast.Constant) for how, node, _ in given)
+    return given[0][1].value.value if whole else None
+
+
+def _tools_called(text: str, python: bool, own: bool = True) -> list:
+    """(tool, arguments) for each tool call a program's text makes on an MCP server: a literal name, ARGV for one it takes
+    from its arguments, None for one it builds or reads while it runs; arguments when they are a literal, else None. A
+    module the program imports (own=False) counts only its literal names: a name it is handed is its caller's."""
+    if not MCP_CALLS.search(text):
+        return []
+    import ast
+    try:
+        tree = ast.parse(text) if python else None
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        tree = None
+    if tree is None:  # another language, or Python that does not parse: by the names its text gives
+        return [(a or b, None) for a, b in MCP_NAMED.findall(text)] or [(None, None)]
+
+    def literal(node):
+        try:
+            value = ast.literal_eval(node) if node is not None else None
+        except (ValueError, TypeError, SyntaxError, MemoryError, RecursionError):
+            return None
+        return value if isinstance(value, dict) else None
+
+    nodes, sites = list(ast.walk(tree)), []
+    binds, calls, lambdas, changed = _bindings(nodes)
+    for node in nodes:  # the method by a literal or by a name only that literal is given (round 3)
+        if isinstance(node, ast.Call) and re.fullmatch(r"call_?[tT]ool", getattr(node.func, "attr", getattr(node.func, "id", ""))):
+            named = next((k.value for k in node.keywords if k.arg in ("name", "tool", "tool_name")), node.args[0] if node.args else None)
+            given = next((k.value for k in node.keywords if k.arg == "arguments"), node.args[1] if len(node.args) > 1 else None)
+            sites.append((named, given))
+        elif isinstance(node, ast.Call) and any(_constant(a, binds, changed) == "tools/call" for a in node.args):
+            at = next(i for i, a in enumerate(node.args) if _constant(a, binds, changed) == "tools/call")  # rpc("tools/call", params)
+            params = next((k.value for k in node.keywords if k.arg == "params"), node.args[at + 1] if len(node.args) > at + 1 else None)
+            inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
+            sites.append((inner.get("name"), inner.get("arguments")))
+        elif isinstance(node, ast.Dict):
+            keys = {k.value: v for k, v in zip(node.keys, node.values) if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+            if _constant(keys.get("method"), binds, changed) == "tools/call":
+                params = keys.get("params")
+                inner = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)} if isinstance(params, ast.Dict) else {}
+                sites.append((inner.get("name"), inner.get("arguments")))
+        elif isinstance(node, ast.Constant) and isinstance(node.value, (str, bytes)) and len(node.value) < TEXT_LIMIT:
+            spelled = node.value.decode("utf-8", "replace") if isinstance(node.value, bytes) else node.value
+            sites += [(ast.Constant(n) if n else None, ast.Constant(a)) for n, a in _rpc_calls(spelled)] if (
+                "tools/call" in spelled and spelled.strip()[:1] in "{[") else []
+
+    def names(expr, depth=0, part=None) -> list:  # part: the place in each item a loop unpacks, as `for name, args in CALLS`
+        if isinstance(expr, ast.Constant) and isinstance(expr.value, str) and part is None:
+            return [expr.value]
+        if expr is None or depth > 4 or not own:
+            return [None]
+        if any(isinstance(n, ast.Name) and n.id == "argv" or isinstance(n, ast.Attribute) and n.attr == "argv" for n in ast.walk(expr)):
+            return [ARGV]
+        if isinstance(expr, ast.Subscript) and isinstance(expr.slice, ast.Constant) and part is None:  # spec["name"], pair[0]
+            return names(expr.value, depth + 1, expr.slice.value)
+        if isinstance(expr, ast.Dict) and isinstance(part, str):
+            return next((names(v, depth + 1) for k, v in zip(expr.keys, expr.values) if isinstance(k, ast.Constant) and k.value == part), [None])
+        if isinstance(expr, (ast.List, ast.Tuple, ast.Set)):  # a literal collection a loop walks: each item, or its part
+            return [x for e in expr.elts for x in (names(e, depth + 1) if part is None else names(e, depth + 1, part) if isinstance(e, ast.Dict)
+                                                   else names(e.elts[part], depth + 1) if isinstance(part, int) and isinstance(e, (ast.Tuple, ast.List))
+                                                   and len(e.elts) > part else [None])]
+        if isinstance(expr, ast.Dict) or (isinstance(expr, ast.Call) and getattr(expr.func, "attr", "") in ("keys", "items")):
+            keys = expr.keys if isinstance(expr, ast.Dict) else None  # a dict walked gives its keys
+            return [x for k in keys for x in names(k, depth + 1)] if keys is not None and part in (None, 0) else (
+                names(expr.func.value, depth + 1) if keys is None and part in (None, 0) else [None])
+        if not isinstance(expr, ast.Name):
+            return [None]
+        found = [None] if expr.id in changed else []  # a name changed in place may hold what no assignment shows
+        for how, node, at in binds.get(expr.id, ()):
+            if how == "assign":
+                found += names(node.value, depth + 1, part)
+            elif how == "loop":
+                found += names(node.iter, depth + 1, at)
+            elif how == "param":  # what each call of its function passes there
+                called = node.name if not isinstance(node, ast.Lambda) else lambdas.get(id(node), "")
+                for call in calls.get(called, ()) if called else ():
+                    spot = at - (isinstance(call.func, ast.Attribute) and [a.arg for a in node.args.args][:1] in (["self"], ["cls"]))  # a method's own
+                    given = next((k.value for k in call.keywords if k.arg == expr.id), call.args[spot] if 0 <= spot < len(call.args) else None)
+                    found += names(given, depth + 1)
+                found += [] if called else [None]
+            else:  # a `with` target or a name unpacked from a tuple
+                found += [None]
+        return found or [None]
+
+    strong = sites or any(isinstance(n, ast.Constant) and n.value == "tools/call" or getattr(n, "attr", getattr(n, "id", "")) in ("call_tool", "callTool")
+                          for n in nodes)  # a method or a client call it uses, not prose in a string that names one
+    sites = sites[:64] + [(None, None)] * (len(sites) > 64)  # past 64 calls, one more is unknown: each name is followed through the program
+    return [(n, literal(given) if isinstance(n, str) and n != ARGV else None) for named, given in sites for n in names(named)
+            if own or n is not None] or ([(None, None)] if own and strong else [])
+
+
+def _line_values(line: str) -> dict:
+    """{name: [each value]} for each variable a line sets for its own commands (`B=…; curl -d "$B"`, a `for` list, the
+    environment it gives a program)."""
+    found: dict = {}
+    for m in ASSIGNED.finditer(_own_text(line)) if ASSIGNED.search(line) else ():
+        found.setdefault(m[1], {})[m[3][1:-1] if len(m[3]) > 1 and m[3][0] == m[3][-1] and m[3][0] in "'\"" else m[3]] = None
+    for m in LOOPED.finditer(line) if "$" in line else ():
+        found.setdefault(m[1], {}).update(dict.fromkeys(["$("] if re.search(r"\$\(|`", m[2]) else [w.strip("'\"") for w in m[2].split()]))
+    return {name: list(values) for name, values in found.items()}
+
+
+def _filled(words: list, values: dict) -> list:
+    """Each reading of a command's words with the line's own values put where they are used, so a body a variable holds
+    is read whole (round 3: put into the line's text, a JSON value's quotes split it). A variable the line does not
+    set, or one past READINGS readings, stays as written, which the guard cannot read."""
+    used = [n for n in values if any("$" + n in w or "${" + n in w for w in words)]
+    used = used if math.prod(len(values[n]) for n in used) <= READINGS else [n for n in used if len(values[n]) == 1]
+    return [[USED.sub(lambda u: _put(u, dict(zip(used, choice))) if (u[1] or u[4]) in used else u[0], w) for w in words]
+            for choice in itertools.product(*(values[n] for n in used))]
+
+
+def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies: str = "", depth: int = 0) -> list:
+    """(tool or None, arguments or None, how, folder, program file) for each call a parsed line makes on a local MCP
+    server: an HTTP client to an address here, a program whose text posts JSON-RPC or calls a client's call_tool (with
+    the modules of its own it imports), and the shell files it runs. Each command is read with the variables the line
+    sets put in its words."""
+    from synthesis import sends
+    calls: list = []
+    values, bare = _line_values(line), re.sub(r"'[^'\n]*'", "", line) if line else None
+    for (words, where), feed in [((w, where), feed) for (raw, where), feed in zip(commands, feeds + [""] * (len(commands) - len(feeds)))
+                                 for w in (_filled(raw, values) if values else [raw])]:
+        head = os.path.basename(words[0]) if words else ""
+        if head in sends.WEB:
+            words = words + (_curl_config(words, where) if head == "curl" else [])
+            aims = [a for a in (_mcp_endpoint("http://localhost" + w if head in ("http", "https", "xh") and re.match(r":\d*(?:/|$)", w) else w)
+                                for w in words[1:]) if a]
+            shown = "$unread-config" in words or any(("$" in w or "`" in w) and words[i - 1] not in ADDRESSLESS and not (  # an address the shell
+                head in ("http", "https", "xh") and "://" not in w and re.match(r"[\w.\[\]-]+(?::=|==|=|:)", w)) and not _away(  # fills in, not a body,
+                re.split(r"[$`]", w)[0]) for i, w in enumerate(words[1:], 1) if not w.startswith(("-", "@")))  # a header, a field, another
+            # host's address with its path filled in, or a config unread
+            redirect = re.search(r"(?<![<\d])<\s*(['\"]?)([^\s'\"<>|;&]+)\1", line) if head in ("http", "https", "xh") and not feed else None
+            feed = (_code_of(os.path.join(where, _home(redirect[2]))) or UNREAD_INPUT) if redirect else feed
+            if not aims and not shown:
+                continue
+            text, readable = _http_body(words, where, feed, written, bare)
+            readable = readable and "$unread-config" not in words  # a config file it could not read
+            found = _rpc_calls(text) if text else []
+            calls += [(t, a, f"`{head}` to an address here", where, "") for t, a in found]
+            if not readable and ("mcp" in aims or shown):
+                calls.append((None, None, f"`{head}` to a local MCP server, with a body the guard cannot read", where, ""))
+        elif SCRIPT.match(head) or UNREAD.match(head) or head in ("deno", "php"):
+            kind, at, given = _program(words)
+            module = _module_file(given, "" if _isolated(words) else os.path.realpath(where)) if words[at:at + 1] == ["-m"] else ""
+            path = module or (os.path.realpath(os.path.join(where, _home(given))) if kind == "file" and given else "")
+            text = given if kind == "inline" else feed if kind == "stdin" else bodies if path in written else _code_of(path) if path else ""
+            if UNREAD_INPUT in text or (not text and path in written):  # input another program writes, or a file the line
+                text = "'tools/call'" if MCP_LINE.search(line) else ""  # writes with no heredoc: unknown where the line names a server
+            files = (_python_files(path or os.path.join(where, "-"), text, "" if _isolated(words) else os.path.realpath(
+                where if not path else os.path.dirname(path)), given if module else "")[0] if head.startswith("python") and text else [(path, text)])
+            args = words[at + 1:] if kind == "file" else words[at + (words[at:at + 1] == ["-"]):] if kind == "stdin" else words[at:]
+            aimed = bool(re.search(r":8765\b|/mcp\b", line)) or any(_mcp_endpoint(w) == "mcp" for w in args)  # handed the endpoint
+            calls += _posted_bodies(files, head, where, path, args, "" if kind == "stdin" else feed, written, depth, aimed, values, bare) if text else []
+            for file, body in files:
+                for tool, given_args in _tools_called(body, head.startswith("python"), own=file == files[0][0]):
+                    how = f"`{head}` running {'a program that' if kind != 'file' else os.path.basename(path) + ', which'} calls a tool"
+                    if tool != ARGV:
+                        calls.append((tool, given_args, how, where, path))
+                        continue
+                    named = [w for w in args if re.fullmatch(r"[A-Za-z][\w.-]{1,80}", w) or ("$" in w or "`" in w) and re.fullmatch(
+                        r"(?:[\w.-]+|\$\{?\w+\}?|\$\([^()]*\)|`[^`]*`)+", w)]  # a word the shell fills in counts when it can make a name
+                    objects = [o for o in (_json_object(w) for w in args if "$" not in w and "`" not in w) if o is not None]
+                    calls += [(None if "$" in w or "`" in w else w, objects[0] if len(named) == 1 and len(objects) == 1 else None,
+                               how + " named in its arguments", where, path) for w in named]
+        elif depth < 2:
+            script = _script_file(words, where)
+            if script and script != TOO_LARGE:
+                inner: list = []
+                try:
+                    parsed = _parse(script, where, feeds=inner)[0]
+                except (Unreadable, ValueError):
+                    continue
+                calls += _mcp_calls(parsed, inner, written, script, "\n".join(f for f in inner if f.strip()), depth + 1)
+    return calls
+
+
+# A program's posts to a local MCP endpoint (rounds 1 and 3). Round 3 stopped reading them spelling by spelling: a Python or
+# node program whose text names this machine's MCP endpoint, its host with the port or the path together or apart, and
+# makes any HTTP write (a write method, a request call handed a body by position or by keyword, a request's .write() or
+# .end(), a client it starts) is judged by every body it hands over that the guard can read, and waits when one cannot be
+# read. A program that only reads (a GET, a liveness check) hands over none.
+LOCAL_IN = _Pattern(r"(?:^|[/@\s\[])(?:localhost|127\.0\.0\.1|::1|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?=$|[\]:/\s])", re.I)
+BODY_KEYS = ("data", "json", "body", "content", "files")
+WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
+SHELLED = ("system", "popen", "run", "call", "check_output", "check_call", "Popen", "getoutput", "getstatusoutput")
+LOGGED = ("print", "log", "debug", "info", "warning", "warn", "error", "exception", "critical")
+KINDS = 256  # the distinct values a body expression is read as, past which one more is a value the guard cannot read
+HTTP_HINT = _Pattern(r"\burlopen\b|\bRequest\b|\b(?:requests|httpx|aiohttp|urllib3|pycurl|socket|axios|got|curl|wget|xh|subprocess|child_process)\b"
+                       r"|http\.client|HTTPConnection|\bfetch\s*\(|\.(?:request|post|put|patch)\s*\(|\b(?:execSync|spawn|spawnSync|execFile)\b"
+                       r"|\bos\s*\.\s*(?:system|popen)\b|['\"](?:POST|PUT|PATCH|DELETE)['\"]", re.I)  # a request a file may make
+CLIENT_LINE = _Pattern(r"""[`'"]?\s*(?:\S*/)?(?:curl|wget|https?|xh)(?:\s|$)""")  # a command line that starts an HTTP client
+JS_SITES = _Pattern(r"(?<![\w$.])(body|data|json)\s*:(?!:)|[{,]\s*(body|data|json)\s*(?=[,}])|\.\s*(write|end|send)\s*\(|\.\s*(post|put|patch)\s*\(|\.\s*(pipe)\s*\(")
+JS_RUNS = _Pattern(r"(?<![\w$])(exec|execSync|spawn|spawnSync|execFile|execFileSync|execa|execaSync)\s*\(")
+JS_FUNCS = _Pattern(r"\bfunction\s+([\w$]+)\s*\(([^()]*)\)|([\w$]+)\s*[=:]\s*(?:async\s+)?(?:function\s*[\w$]*\s*)?\(([^()]*)\)\s*(?:=>|\{)"
+                      r"|(?<![\w$.])(?!(?:if|for|while|switch|catch|function)\b)([\w$]+)\s*\(([^()]*)\)\s*\{")
+
+
+def _names_mcp(text: str, head: str) -> bool:
+    """Whether a program's text names this machine's MCP endpoint: an address that reads as one, the variable that sets
+    it, or a local host with the server's port or an MCP path, written together or apart (round 3)."""
+    if not re.search(r"8765|/mcp|WORKSPACE_MCP_", text):
+        return False
+    strings = [_unquoted(m[0]) for m in PROGRAM_STRINGS.finditer(text)]
+    port = re.search(r"(?<![\w.])8765(?![\w.])", _code_only(text, head)) or any(re.search(r"(?<![\w.])8765(?![\w.])", s) for s in strings)
+    path = any(re.search(r"(?:^|[^\w.-])/mcp(?:/|$|[?#\s])", s) for s in strings)
+    return bool(re.search(r"WORKSPACE_MCP_(?:URL|PORT)", text) or any(_mcp_endpoint(w) == "mcp" for s in strings for w in s.split()[:64])
+                or (port or path) and (port and path or any(LOCAL_IN.search(s) for s in strings)))
+
+
+def _joinings(parts: list) -> list:
+    """What a body joined from parts can be: each joining of the parts' texts when every part is text, while there are
+    at most KINDS of them within TEXT_LIMIT in all (else one the guard cannot read); otherwise each part's own kinds."""
+    texts = [[k[1] for k in p] if p and all(isinstance(k, tuple) and k[0] == "text" for k in p) else None for p in parts]
+    if any(t is None for t in texts):
+        return [x for p in parts for x in p]
+    if math.prod(len(t) for t in texts) * max(sum(max(map(len, t)) for t in texts), 1) > TEXT_LIMIT or math.prod(len(t) for t in texts) > KINDS:
+        return [None]
+    return [("text", "".join(c)) for c in itertools.product(*texts)]
+
+
+def _py_bodies(text: str) -> tuple | None:
+    """(what each HTTP write in a Python program hands over, the command lines it hands a shell or starts), or None for
+    one that does not parse. A body is ("text", words) for what the program spells, "built" for a JSON-RPC request it
+    builds with a method the guard reads (its tools/call read by _tools_called), ("file", names) for a file it reads,
+    "stdin", "argv" for its own arguments, or None for a value the guard cannot read."""
+    import ast
+    from synthesis import sends
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError, RecursionError, MemoryError):
+        return None
+    nodes = list(ast.walk(tree))
+    binds, calls, lambdas, changed = _bindings(nodes)
+    defs = {n.name: n for n in nodes if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    named = lambda f: getattr(f, "attr", getattr(f, "id", ""))  # noqa: E731
+    uses = lambda e, name: any(named(n) == name for n in ast.walk(e))  # noqa: E731
+    text_of = lambda k: k[0][1] if len(k) == 1 and isinstance(k[0], tuple) and k[0][0] == "text" else None  # noqa: E731
+    parsed = {t for t, ways in binds.items() if any(how == "assign" and named(getattr(node.value, "func", None)) in ("parse_args", "parse_known_args")
+                                                    for how, node, _ in ways)}  # argparse's namespace: its own arguments
+    argued = lambda e: uses(e, "argv") or isinstance(e, ast.Attribute) and getattr(e.value, "id", None) in parsed  # noqa: E731
+    configured = {id(k.value) for n in nodes if isinstance(n, ast.Call) for k in n.keywords if k.arg == "method"} | {id(n.value) for n in nodes if isinstance(
+        n, ast.Assign)} | {id(v) for n in nodes if isinstance(n, ast.Dict) for k, v in zip(n.keys, n.values) if getattr(k, "value", None) == "method"}
+
+    def passed(fn, at, name) -> list:  # what each call of a function hands a parameter, else its default; [False] with no call here
+        called, first, out = fn.name if not isinstance(fn, ast.Lambda) else lambdas.get(id(fn), ""), len(fn.args.args) - len(fn.args.defaults), []
+        for call in calls.get(called, ()) if called else ():
+            spot = at - (isinstance(call.func, ast.Attribute) and [a.arg for a in fn.args.args][:1] in (["self"], ["cls"]))
+            given = next((k.value for k in call.keywords if k.arg == name), call.args[spot] if 0 <= spot < len(call.args) else None)
+            out.append(given if given is not None else fn.args.defaults[at - first] if at >= first else None)
+        return out or [False]
+
+    def files(e, depth=0) -> list:  # the file names an expression gives: a literal, ARGV for one of its arguments, or None
+        if isinstance(e, ast.Constant) and isinstance(e.value, (str, int)):
+            return [e.value]
+        if not isinstance(e, ast.AST) or depth > 6:
+            return [None]
+        if argued(e):
+            return [ARGV]
+        if isinstance(e, ast.Name):
+            return [f for how, node, _ in binds.get(e.id, ()) for f in (files(node.value, depth + 1) if how == "assign" else [None])] or [None]
+        parts = [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div) else e.args if isinstance(e, ast.Call) and named(
+            e.func) in ("join", "Path", "PurePath", "expanduser", "abspath", "realpath", "str", "fspath") else []
+        found = [files(p, depth + 1) for p in parts]
+        return [os.path.expanduser(os.path.join(*[f[0] for f in found]))] if found and all(len(f) == 1 and isinstance(f[0], str) for f in found) else [None]
+
+    def opened(e, depth=0) -> list:  # what a file object, or the thing a read is called on, reads: a file, its input, or None
+        if not isinstance(e, ast.AST) or depth > 6:
+            return [None]
+        if isinstance(e, ast.Attribute) and uses(e, "stdin"):
+            return ["stdin"]
+        if isinstance(e, ast.Call) and named(e.func) == "open" and isinstance(e.func, ast.Attribute) and not e.args:
+            return opened(e.func.value, depth + 1)  # Path(name).open()
+        if isinstance(e, ast.Call) and named(e.func) in ("open", "Path", "PurePath", "FileIO"):
+            return [("file", tuple(files(e.args[0] if e.args else next((k.value for k in e.keywords if k.arg in ("file", "path")), None))))]
+        if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Div):
+            return [("file", tuple(files(e)))]
+        return [x for how, node, _ in binds.get(e.id, ()) for x in (opened(node.value, depth + 1) if how == "assign" else opened(
+            node.context_expr, depth + 1) if how == "with" else [None])] or [None] if isinstance(e, ast.Name) else [None]
+
+    read: dict = {}  # each expression read once a program; one met again while it is read (a cycle) is unknown
+
+    def kind(e) -> list:  # each kind once, and at most KINDS of them (past that, one more the guard cannot read)
+        if id(e) not in read:
+            read[id(e)] = [None]
+            found = list(dict.fromkeys(reading(e)))
+            read[id(e)] = found if len(found) <= KINDS else found[:KINDS] + [None]
+        return read[id(e)]
+
+    def reading(e) -> list:
+        if e is None or isinstance(e, ast.Constant) and e.value is None:
+            return []
+        if not isinstance(e, ast.AST):
+            return [None]
+        if isinstance(e, ast.Constant):
+            return [("text", e.value.decode("utf-8", "replace") if isinstance(e.value, bytes) else str(e.value))]
+        if isinstance(e, ast.Dict):  # a request it builds: judged by its method, its tools/call by _tools_called
+            keys = {k.value: v for k, v in zip(e.keys, e.values) if isinstance(k, ast.Constant)}
+            method = kind(keys["method"]) if "method" in keys else [("text", "")]
+            return [None] if None in e.keys or not method or any(not isinstance(m, tuple) or m[0] != "text" for m in method) else ["built"]
+        if isinstance(e, (ast.List, ast.Tuple, ast.Set)):
+            return [x for item in e.elts for x in kind(item)] or ["built"]
+        if isinstance(e, (ast.ListComp, ast.SetComp, ast.GeneratorExp)):
+            return kind(e.elt)
+        if isinstance(e, (ast.Await, ast.Starred, ast.FormattedValue, ast.NamedExpr)):
+            return kind(e.value)
+        if isinstance(e, (ast.IfExp, ast.BoolOp, ast.BinOp, ast.JoinedStr)):  # parts it joins: each joining when all are text
+            parts = [kind(p) for p in ([e.body, e.orelse] if isinstance(e, ast.IfExp) else [e.left, e.right] if isinstance(e, ast.BinOp) else e.values)]
+            return _joinings(parts) if isinstance(e, (ast.BinOp, ast.JoinedStr)) else [x for p in parts for x in p]
+        if isinstance(e, ast.Call):
+            f, n = e.func, named(e.func)
+            if n in ("read", "read_text", "read_bytes", "readlines", "readline", "getvalue") and isinstance(f, ast.Attribute):
+                return opened(f.value)
+            if n in ("open", "Path") or (n == "load" and e.args):
+                return opened(e.args[0] if n == "load" else e)
+            if n == "input":
+                return ["stdin"]
+            if n in defs and (isinstance(f, ast.Name) or named(f.value) in ("self", "cls")):  # what a function of its own returns
+                return [x for r in ast.walk(defs[n]) if isinstance(r, ast.Return) for x in kind(r.value)]
+            if n in ("dumps", "loads", "str", "bytes", "bytearray", "deepcopy", "dict", "list", "tuple"):
+                return [x for a in e.args[:1] + [k.value for k in e.keywords if n == "dict"] for x in kind(a)] or ["built"]
+            if n in ("encode", "decode", "strip", "format", "replace", "lower", "upper", "copy", "get", "items", "values", "keys", "join") and isinstance(f, ast.Attribute):
+                return kind(f.value) + [x for a in e.args for x in kind(a)]
+            return [None]
+        if isinstance(e, (ast.Subscript, ast.Attribute, ast.Name)) and argued(e):
+            return ["argv"]
+        if isinstance(e, ast.Attribute) and uses(e, "stdin"):
+            return ["stdin"]
+        if isinstance(e, ast.Subscript):
+            return kind(e.value)
+        if not isinstance(e, ast.Name) or e.id in changed:  # a value it reads from elsewhere, or one it changes in place
+            return [None]
+        found = []
+        for how, node, at in binds.get(e.id, ()):
+            given = [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, e.id) if how == "param" else None
+            found += opened(node.context_expr) if how == "with" else [None] if given is None else [x for g in given for x in kind(g)]
+        return found or [None]
+
+    by_name: dict = {}  # where each name's values come from, read once a program (a name met again while it is read adds nothing)
+
+    def sources(e) -> set:  # where a value comes from: each environment variable it reads ("?" for one it cannot name), "argv"
+        found, inner = set(), list(ast.walk(e)) if isinstance(e, ast.AST) else []
+        for n in inner:
+            got = n.slice if isinstance(n, ast.Subscript) and named(n.value) == "environ" else n.args[0] if isinstance(n, ast.Call) and n.args and (
+                named(n.func) == "getenv" or named(n.func) == "get" and named(getattr(n.func, "value", None)) == "environ") else None
+            found |= {got.value if isinstance(got, ast.Constant) else "?"} if got is not None else set()
+            found |= {"argv"} if named(n) == "argv" or isinstance(n, ast.Attribute) and getattr(n.value, "id", None) in parsed else set()
+            if isinstance(n, ast.Name) and n.id not in by_name:
+                by_name[n.id] = set()
+                by_name[n.id] = set().union(*[sources(g) for how, node, at in binds.get(n.id, ()) for g in (
+                    [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, n.id) if how == "param" else []) if isinstance(g, ast.AST)], set())
+            found |= by_name.get(n.id, set()) if isinstance(n, ast.Name) else set()
+        return found | ({"?"} if not found and any(named(n) in ("environ", "getenv") for n in inner) else set())
+
+    def start(e, depth=0) -> tuple:  # the text an address spells before anything it fills in, and whether that is all of it
+        whole = _constant(e, binds, changed)
+        if isinstance(whole, str):
+            return whole, True
+        if isinstance(e, ast.Call) and named(e.func) == "format" or isinstance(e, ast.BinOp) and isinstance(e.op, ast.Mod):  # "{}".format(), "%s" %
+            spelled = _constant(getattr(e.func, "value", None) if isinstance(e, ast.Call) else e.left, binds, changed)
+            return (re.split(r"[{%]", spelled)[0] if isinstance(spelled, str) else ""), False
+        parts, out = e.values if isinstance(e, ast.JoinedStr) else [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) else [], ""
+        for p in parts if depth < 8 else ():
+            got, whole = start(p.value if isinstance(p, ast.FormattedValue) and p.conversion == -1 and p.format_spec is None else p, depth + 1)
+            out += got
+            if not whole:
+                return out, False
+        return out, bool(parts) and depth < 8
+
+    aimed_at: dict = {}  # where each name's address comes from, read once a program
+
+    def targets(e) -> set:  # where an address comes from, as sources() reads it, but none from one it spells for another host
+        if _away(*start(e)):
+            return set()
+        if isinstance(e, (ast.List, ast.Tuple, ast.Set, ast.IfExp)):
+            return set().union(*[targets(x) for x in ([e.body, e.orelse] if isinstance(e, ast.IfExp) else e.elts)], set())
+        if not isinstance(e, ast.Name) or e.id in changed or e.id not in binds:
+            return sources(e)
+        if e.id not in aimed_at:
+            aimed_at[e.id] = set()
+            aimed_at[e.id] = set().union(*[targets(g) for how, node, at in binds[e.id] for g in (
+                [node.value] if how == "assign" else [node.iter] if how == "loop" else passed(node, at, e.id) if how == "param" else []) if isinstance(g, ast.AST)], set())
+        return aimed_at[e.id]
+
+    def aims(node, f, n, spots) -> set:  # where a write's address comes from: its URL, host or base URL, or the connection it is made on
+        made = f.value if isinstance(f, ast.Attribute) and isinstance(f.value, ast.Call) else next((b.value for how, b, _ in binds.get(
+            getattr(getattr(f, "value", None), "id", None), ()) if how == "assign" and isinstance(b.value, ast.Call)), None)
+        joined = made is not None and named(made.func) in ("HTTPConnection", "HTTPSConnection", "HTTPConnectionPool", "HTTPSConnectionPool")
+        given = [] if joined else [k.value for k in node.keywords if k.arg in ("url", "base_url", "host")] + (  # a connection's path names no host
+            node.args[spots[0] + 1:spots[0] + 2] if spots else [] if n in ("send", "sendall", "endheaders") else node.args[:1])
+        return set().union(*[targets(x) for x in given + (list(made.args) + [k.value for k in made.keywords] if made is not None else [])], set())
+
+    def handed_line(e, q=str) -> str | None:  # a line a program hands a shell (q=shlex.quote: a word of a client it starts), a value it
+        if text_of(kind(e)) is not None:  # cannot read standing as a word the shell fills in
+            return q(text_of(kind(e)))
+        parts = e.values if isinstance(e, ast.JoinedStr) else [e.left, e.right] if isinstance(e, ast.BinOp) and isinstance(e.op, ast.Add) else None
+        spelled = [q(str(p.value)) if isinstance(p, ast.Constant) else handed_line(p.value if isinstance(p, ast.FormattedValue) else p, q) or (
+            "$ENV_TARGET" if sources(p) else "$UNREAD") for p in parts or ()]
+        return "".join(spelled) if parts else None
+
+    low = any(named(n) in ("HTTPConnection", "HTTPSConnection", "putrequest", "socket", "create_connection") for n in nodes)  # sends by hand
+    modules = {a.asname or a.name.split(".")[0] for n in nodes if isinstance(n, ast.Import) for a in n.names}  # os.open() opens a file
+    bodies, lines, wrote, marked, aimed = [], [], False, False, []
+    for node in nodes:
+        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Attribute) and t.attr in BODY_KEYS for t in node.targets):
+            bodies, wrote = bodies + kind(node.value), True  # request.data = ...
+        elif isinstance(node, (ast.List, ast.Tuple)) and node.elts and isinstance(node.elts[0], ast.Constant) and os.path.basename(
+                str(node.elts[0].value)) in sends.WEB:  # a client it starts: its words, each one it builds read as a body is
+            spelled = [kind(x) for x in node.elts]
+            lines.append(" ".join(handed_line(x, shlex.quote) or ("$ENV_TARGET" if sources(x) else "$UNREAD") for x in node.elts))
+            bodies, wrote = bodies + [x for k in spelled if text_of(k) is None for x in k], True
+        elif (isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value.upper() in WRITE_METHODS and id(node) in configured
+              or isinstance(node, ast.Attribute) and node.attr in WRITE_METHODS):  # a write method set where no write found here takes it
+            marked = True
+        elif isinstance(node, ast.Call) and named(node.func) not in LOGGED:
+            f, n = node.func, named(node.func)
+            attr = isinstance(f, ast.Attribute)
+            mine = n in defs and (not attr or named(f.value) in ("self", "cls"))  # a function of the program's own is read where it writes
+            given = [] if mine else [k.value for k in node.keywords if k.arg in BODY_KEYS]
+            spots = [] if mine else [i for i, a in enumerate(node.args) if str(_constant(a, binds, changed)).upper() in WRITE_METHODS]
+            request = n in ("request", "Request", "putrequest", "build_request", "stream", "urlopen")
+            if not mine:  # a library's request call
+                given += (node.args[1:2] if n in ("urlopen", "Request") or (attr and n == "open" and getattr(f.value, "id", None) not in modules)
+                          else node.args[1:3] if attr and n in ("post", "put", "patch")
+                          else node.args[spots[0] + 2:spots[0] + 3] if n == "request" and spots else node.args[:1] if attr and n in (
+                              "send", "sendall", "endheaders") and low else [])
+            if n in SHELLED and node.args and not isinstance(node.args[0], (ast.List, ast.Tuple)) and (attr or n not in binds and n not in defs):
+                handed = handed_line(node.args[0])  # a line it hands a shell, judged as on the line; one it cannot spell that starts a client waits
+                lines += [handed] if handed is not None else []
+                bodies += [None] if handed is None and any(isinstance(k, tuple) and k[0] == "text" and CLIENT_LINE.match(k[1]) for k in kind(node.args[0])) else []
+            if given or spots and (request or len(node.args) + len(node.keywords) > 1) or (attr and n in ("post", "put", "patch", "delete")) or any(
+                    k.arg == "method" and str(_constant(k.value, binds, changed)).upper() in WRITE_METHODS for k in node.keywords):
+                handed = [x for g in given for x in kind(g)] + ([None] if spots and not given and not request else [])  # a write method a call it
+                wrote, bodies, aimed = True, bodies + handed, aimed + [(handed, aims(node, f, n, spots))]  # does not know takes waits
+    return bodies + ([None] if marked and not wrote else []), lines, [(k, s) for k, s in aimed if s and k]
+
+
+def _js_scan(text: str, i: int, stops: str) -> int:
+    """Where a JavaScript expression that starts at i ends: at a character of `stops` outside strings and brackets, at a
+    bracket it did not open, or, when `stops` holds one, at a line's end where no operator carries the expression on."""
+    depth = 0
+    while i < len(text):
+        c = text[i]
+        if c in "'\"`":
+            found = PROGRAM_STRINGS.match(text, i)
+            i = found.end() if found else len(text)
+            continue
+        if depth == 0 and (c in ")]}" or c in stops and (c != "\n" or not (
+                re.search(r"[-+*/%&|^<>=?:,.(]\s*$", text[max(0, i - 80):i]) or re.match(r"\s*[-+*/%&|^<>=?:.]", text[i + 1:i + 80])))):
+            return i
+        depth += (c in "([{") - (c in ")]}")
+        i += 1
+    return i
+
+
+def _js_expr(text: str, i: int) -> str:
+    return text[i:_js_scan(text, i, ",;\n")].strip()
+
+
+def _js_parts(expr: str, sep: str) -> list:
+    """A JavaScript expression's parts at each `sep` outside strings and brackets."""
+    out, i = [], 0
+    while True:
+        j = _js_scan(expr, i, sep)
+        out.append(expr[i:j].strip())
+        if j >= len(expr) or expr[j] != sep:
+            return out
+        i = j + 1
+
+
+def _js_props(expr: str) -> dict | None:
+    """An object literal's properties as {key: its value's expression}, a shorthand name being its own value; None for
+    one with a spread, a computed key or a method, whose contents the guard cannot read."""
+    props = {}
+    for item in filter(str.strip, _js_parts(expr[1:-1], ",")):
+        found = re.match(r"""\s*(['"]?)([\w$/.-]+)\1\s*(:)?""", item)
+        if not found or item.strip().startswith("...") or (not found[3] and item[found.end():].strip()):
+            return None
+        props[found[2]] = item[found.end():].strip() if found[3] else found[2]
+    return props
+
+
+def _js_called(name: str, text: str) -> list:
+    """For each function a JavaScript program defines with `name` among its parameters: (its parameters, the arguments
+    each call of it hands over), a definition's own name being no call. The program's functions are found once a call."""
+    known = _CALL.setdefault("jsf", {})
+    if id(text) not in known:  # each function's name, parameters and place
+        known[id(text)] = [(next(m[g] for g in (1, 3, 5) if m[g]), [p.split("=")[0].strip() for p in next(m[g + 1] for g in (1, 3, 5) if m[g]).split(",")],
+                            m.start(), m.end()) for m in JS_FUNCS.finditer(text)]
+    return [(given, [_js_parts(text[c.end():_js_scan(text, c.end(), "")], ",") for c in re.finditer(rf"(?<![\w$]){re.escape(fn)}\s*\(", text)
+                     if not start <= c.start() < end]) for fn, given, start, end in known[id(text)] if name in given]
+
+
+def _js_values(name: str, text: str) -> list:
+    """The expressions a JavaScript name stands for: what each declaration or assignment gives it, and for a function's
+    parameter what each call hands it there; read once a call."""
+    known = _CALL.setdefault("jsv", {})
+    if (name, id(text)) not in known:
+        found = [_js_expr(text, m.end()) for m in re.finditer(rf"(?<![\w$.]){re.escape(name)}\s*=(?![=>])", text)]
+        known[(name, id(text))] = found + [args[given.index(name)] for given, calls in _js_called(name, text) for args in calls if len(args) > given.index(name)]
+    return known[(name, id(text))]
+
+
+def _js_pairs(method: str, params: str, text: str) -> list:
+    """(method, params) for each request a JavaScript program builds: one pair for each call of the function both are
+    parameters of (a helper's `initialize` call hands no tool name), else the two as written."""
+    for given, calls in _js_called(method, text):
+        if params in given:
+            return [tuple(args[given.index(p)] if len(args) > given.index(p) else "" for p in (method, params)) for args in calls]
+    return [(method, params)]
+
+
+def _js_files(expr: str, text: str, depth: int = 0) -> list:
+    """The file names a JavaScript expression gives: a literal, ARGV for one of its arguments, or None."""
+    expr = expr.strip()
+    if PROGRAM_STRINGS.fullmatch(expr) and not (expr[0] == "`" and "${" in expr) or expr == "0":
+        return [_unquoted(expr) if expr != "0" else 0]
+    if re.match(r"process\s*\.\s*argv\b", expr):
+        return [ARGV]
+    joined = re.fullmatch(r"path\s*\.\s*(?:join|resolve)\s*\(([\s\S]*)\)", expr)
+    parts = [_js_files(p, text, depth + 1) for p in _js_parts(joined[1], ",")] if joined and depth < 6 else []
+    if parts and all(len(p) == 1 and isinstance(p[0], str) for p in parts):
+        return [os.path.join(*[p[0] for p in parts])]
+    if re.fullmatch(r"[A-Za-z_$][\w$]*", expr) and depth < 6:
+        return [f for v in _js_values(expr, text) for f in _js_files(v, text, depth + 1)] or [None]
+    return [None]
+
+
+def _js_kind(expr: str, text: str) -> list:
+    """What a JavaScript expression hands over as a body, read as _py_bodies reads Python's, with ("call", name) for
+    each tools/call it builds, its name read through the program's own names and the calls that hand its functions
+    their parameters. Each expression is read once a program (`_js_bodies` starts the record); one met again while it
+    is read is unknown."""
+    seen = _CALL.setdefault("js", {})
+    if expr not in seen:
+        seen[expr] = [None]
+        found = list(dict.fromkeys(_js_read(expr, text)))
+        seen[expr] = found if len(found) <= KINDS else found[:KINDS] + [None]
+    return seen[expr]
+
+
+def _js_read(expr: str, text: str) -> list:
+    e = re.sub(r"^(?:await|new)\s+", "", (expr or "").strip().rstrip(";").strip())
+    while e[:1] == "(" and _js_scan(e, 1, "") == len(e) - 1:
+        e = e[1:-1].strip()
+    if not e or e in ("undefined", "null"):
+        return []
+    if PROGRAM_STRINGS.fullmatch(e):
+        return [None] if e[0] == "`" and "${" in e else [("text", _unquoted(e))]
+    parts = _js_parts(e, "+")
+    if len(parts) > 1:
+        return _joinings([_js_kind(p, text) for p in parts])
+    inside = re.fullmatch(r"(?:JSON\s*\.\s*(?:stringify|parse)|Buffer\s*\.\s*from|String|new\s+TextEncoder\s*\(\s*\)\s*\.\s*encode)\s*\(([\s\S]*)\)", e) or (
+        re.fullmatch(r"([\s\S]+?)\s*\.\s*(?:toString|trim|valueOf)\s*\(\s*\)", e))
+    if inside:
+        return _js_kind(_js_parts(inside[1], ",")[0], text)
+    read = re.match(r"(?:(?:[\w$]+|require\s*\([^()]*\))\s*\.\s*)*(?:readFileSync|readFile|createReadStream)\s*\(", e)
+    if read:
+        return [("file", tuple(_js_files(_js_parts(e[read.end():_js_scan(e, read.end(), "")], ",")[0], text)))]
+    if re.fullmatch(r"process\s*\.\s*stdin", e):
+        return ["stdin"]
+    if re.match(r"process\s*\.\s*argv\b", e):
+        return ["argv"]
+    if e[0] == "[" and e[-1] == "]":
+        return [x for item in filter(None, _js_parts(e[1:-1], ",")) for x in _js_kind(item, text)] or ["built"]
+    if re.fullmatch(r"[A-Za-z_$][\w$]*", e):  # a name: what it is given, unless the program changes it in place
+        member = r"(?:\s*(?:\.\s*[\w$]+|\[[^\]]*\]))"
+        changed = re.search(rf"(?<![\w$.]){re.escape(e)}(?:{member}+\s*[-+*/]?=(?!=)|{member}*\s*\.\s*(?:push|unshift|splice)\s*\(|\s*[-+]=)"
+                            rf"|Object\s*\.\s*assign\s*\(\s*{re.escape(e)}\b", text)
+        return [None] if changed else [x for v in _js_values(e, text) for x in _js_kind(v, text)] or [None]
+    props = _js_props(e) if e[0] == "{" and e[-1] == "}" else None
+    if props is None:
+        return [None]
+    out = ["built"]
+    for method, given in _js_pairs(props["method"], props.get("params", ""), text) if "method" in props else ():
+        methods = _js_kind(method, text)
+        if not methods or any(not isinstance(m, tuple) or m[0] != "text" for m in methods):
+            return [None]
+        values = (_js_values(given, text) if re.fullmatch(r"[A-Za-z_$][\w$]*", given) else [given]) if "tools/call" in {m[1] for m in methods} else []
+        shapes = [_js_props(v) if v[:1] == "{" and v[-1:] == "}" else None for v in values]
+        tools = [n for p in shapes or [None] for n in (_js_kind(p["name"], text) if p and "name" in p else [None])] if values else []
+        out += [("call", t[1]) if isinstance(t, tuple) and t[0] == "text" else None for t in tools]
+    return out
+
+
+def _js_sources(expr: str, text: str, depth: int = 0) -> set:
+    """Where a JavaScript value comes from: each environment variable it reads (`process.env`; "?" for one it cannot
+    name) and "argv" for the program's arguments, through its own names (round 3's ruling)."""
+    seen = _CALL.setdefault("jss", {})
+    if (expr, depth) not in seen:
+        found = {a or b or "?" for a, b in re.findall(r"process\s*\.\s*env\b(?:\s*\.\s*([A-Za-z_]\w*)|\s*\[\s*['\"]([^'\"]+)['\"]\s*\])?", expr)}
+        found |= {"argv"} if re.search(r"process\s*\.\s*argv\b", expr) else set()
+        for name in set(re.findall(r"(?<![\w$.])[A-Za-z_$][\w$]*", PROGRAM_STRINGS.sub('""', expr))) if depth < 4 else ():
+            found |= set().union(*[_js_sources(v, text, depth + 1) for v in _js_values(name, text) if v != expr], set())
+        seen[(expr, depth)] = found
+    return seen[(expr, depth)]
+
+
+def _js_start(expr: str, text: str, depth: int = 0) -> tuple:
+    """The text a JavaScript address spells before anything it fills in, and whether that is all of it: its strings and
+    templates joined by +, to a template's first ${, through a name that stands for one value."""
+    s, out = expr.strip(), ""
+    while s:
+        m = re.match(r"""(['"])((?:\\.|(?!\1)[^\\])*)\1|`((?:\\.|\$(?!\{)|[^`\\$])*)(`|\$\{)""", s)
+        name = re.match(r"[A-Za-z_$][\w$]*(?![\w$.(\[])", s) if not m and depth < 4 else None
+        values = _js_values(name[0], text) if name else []
+        got, whole = (m[2] if m[1] else m[3], m[4] != "${") if m else _js_start(values[0], text, depth + 1) if len(values) == 1 else ("", False)
+        out, s = out + got, s[(m or name).end():].lstrip() if whole else ""
+        if not whole or not s or s[0] != "+":
+            return out, whole and not s
+        s = s[1:].lstrip()
+    return out, False
+
+
+def _js_targets(expr: str, text: str, depth: int = 0) -> set:
+    """_js_sources for an address, but none from one that spells another host before anything it fills in."""
+    if _away(*_js_start(expr, text)):
+        return set()
+    values = [v for v in _js_values(expr.strip(), text) if v != expr] if depth < 4 and re.fullmatch(r"\s*[A-Za-z_$][\w$]*\s*", expr) else []
+    return set().union(*[_js_targets(v, text, depth + 1) for v in values]) if values else _js_sources(expr, text)
+
+
+def _js_enclosing(masked: str, places: list) -> list:
+    """For each place, in order, in a program's text with its strings and comments blanked: (where the innermost call's
+    bracket opens, where the innermost object's opens), read in one pass."""
+    stack, out, i = [], [], 0
+    for at in places:
+        while i < at:
+            if masked[i] in "([{":
+                stack.append(i)
+            elif masked[i] in ")]}" and stack:
+                stack.pop()
+            i += 1
+        out.append((next((s for s in reversed(stack) if masked[s] == "("), None), next((s for s in reversed(stack) if masked[s] == "{"), None)))
+    return out
+
+
+def _js_bodies(text: str) -> tuple:
+    """(what each HTTP write in a JavaScript program hands over, the command lines it starts, and for each write whose
+    address the environment or the program's arguments give, its bodies and where its address comes from), read as
+    _py_bodies reads Python's: a request's body, data or json; what .write(), .end() or .send() hands a request; the body
+    of a .post(), .put() or .patch(); what it pipes into a request; a client it runs. A write method no write found here
+    takes waits."""
+    _CALL.update(js={}, jss={}, jsv={}, jsf={})  # what this program's readers have read of it
+    masked = re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", lambda m: " " * len(m[0]), PROGRAM_STRINGS.sub(lambda m: m[0][:1] + " " * max(len(m[0]) - 2, 0) + m[0][-1:], text))
+    streams = set(re.findall(r"([\w$]+)\s*=\s*(?:fs\s*\.\s*)?createWriteStream\s*\(", masked)) | {"process.stdout", "process.stderr", "console"}
+    bodies, lines, wrote, aimed = [], [], False, []
+    sites = list(JS_SITES.finditer(masked))
+    around = dict(zip([m.start() for m in sites], _js_enclosing(masked, [m.start() for m in sites])))
+    for m in sites:
+        key, short, verb, post, pipe = m.groups()
+        args = _js_parts(text[m.end():_js_scan(text, m.end(), "")], ",") if verb or post or pipe else []
+        receiver = re.search(r"([\w$.]+)\s*$", masked[:m.start()])
+        if (verb and receiver and receiver[1] in streams) or (pipe and args[0] in streams):
+            continue
+        wrote = True
+        if pipe:
+            source = re.search(r"(?:createReadStream\s*\(([^()]*)\)|process\s*\.\s*(stdin))\s*$", text[:m.start()])
+            handed = [("file", tuple(_js_files(source[1], text)))] if source and source[1] else ["stdin"] if source else [None]
+        else:
+            handed = _js_kind(_js_expr(text, m.end()) if key else short or (args[0] if verb else args[1] if len(args) > 1 else ""), text)
+        if key or short:  # its address: the call the options go to, or their url, host or baseURL
+            paren, brace = around[m.start()]
+            given = [a for a in _js_parts(text[paren + 1:_js_scan(text, paren + 1, "")], ",")[:1] if a[:1] != "{"] if paren is not None else []
+            shape = _js_props(text[brace:_js_scan(text, brace + 1, "") + 1]) if brace is not None else None
+            given += [shape[k] for k in ("url", "host", "hostname", "baseURL") if shape and k in shape]
+        else:  # the request a write or a pipe goes to, as the program makes it, or a .post()'s address
+            given = args[:1] if post else _js_values(receiver[1], text) if verb and receiver else _js_values(args[0], text) if pipe and args else []
+        bodies, aimed = bodies + handed, aimed + [(handed, set().union(*[_js_targets(g, text) for g in given], set()))]
+    for m in JS_RUNS.finditer(masked):  # a client it runs: a shell line, or a program and the array of its arguments
+        args = _js_parts(text[m.end():_js_scan(text, m.end(), "")], ",")
+        first = _js_kind(args[0], text)
+        if len(first) != 1 or not isinstance(first[0], tuple) or first[0][0] != "text":
+            bodies += [None] if CLIENT_LINE.match(args[0]) else []
+            continue
+        items = [_js_kind(x, text) for x in filter(None, _js_parts(args[1][1:-1], ","))] if len(args) > 1 and args[1][:1] == "[" else []
+        spelled = [k[0][1] if len(k) == 1 and isinstance(k[0], tuple) and k[0][0] == "text" else "" for k in items]
+        lines.append(first[0][1] if m[1] in ("exec", "execSync") else shlex.join([first[0][1], *spelled]))
+        bodies += [x for k, s in zip(items, spelled) if not s for x in k]
+        wrote = wrote or bool(CLIENT_LINE.match(first[0][1]))
+    marked = re.search(r"""['"](?:POST|PUT|PATCH|DELETE)['"]""", text, re.I)
+    return bodies + ([None] if marked and not wrote else []), lines, [(k, s) for k, s in aimed if s and k]
+
+
+def _posted_bodies(files: list, head: str, where: str, path: str, args, feed: str, written: set, depth: int = 0, aimed: bool = False,
+                   values: dict | None = None, bare: str | None = None) -> list:
+    """Calls for what a program that names a local MCP endpoint hands over in its HTTP writes (rounds 1 and 3): each body
+    it spells, reads from a file or its input, or takes from its arguments, read as curl's -d @file is; each client it
+    starts, judged as on the line; a body the guard cannot read is an unknown call. One that only reads hands over none.
+    `aimed`: the line hands the program the endpoint (in its arguments, a variable it sets, a file another command writes).
+    A program that names none is judged by the bodies of each write whose address comes from a variable an earlier
+    command exported, or from an argument the shell fills in (`values` and `bare`, the line's own), as curl to an address
+    the shell fills in is (round 3's ruling)."""
+    named, values = aimed or _names_mcp("\n".join(t for _, t in files), head), values or {}
+    if not named and not re.search(r"\b(?:environ|getenv)\b|process\s*\.\s*env\b|\bargv\b|parse_args", "\n".join(t for _, t in files)):
+        return []
+    hit = lambda srcs: any(s == "argv" and any(_unfilled(w, bare) and not _away(re.split(r"[$`]", w)[0]) for w in args) or s != "argv" and (  # noqa: E731
+        s not in values or any(_mcp_endpoint(v) == "mcp" for v in values[s])) for s in srcs)
+    how = f"`{head}` posting a body it reads or builds to " + ("a local MCP server" if named else "an address the environment gives")
+    calls, bodies, lines = [], [], []
+    for _, text in files if named else [(f, t) for f, t in files if HTTP_HINT.search(t)]:  # a file with no request in it posts nothing
+        try:
+            found = _py_bodies(text) if head.startswith("python") else _js_bodies(text) if re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node)$", head) else None
+        except RecursionError:  # nested past what the reader follows: a body it cannot read
+            found = ([None], [], [([None], {"?"})])
+        found = found or (([None] if named and re.search(r"""['"](?:POST|PUT|PATCH|DELETE)['"]|\b(?:data|body|json)\s*[=:]""", text, re.I) else []), [], [])
+        bodies, lines = bodies + (found[0] if named else [k for kinds, srcs in found[2] if hit(srcs) for k in kinds]), lines + found[1]
+    readable = feed.strip() and UNREAD_INPUT not in feed
+    for body in bodies:
+        texts = [body[1]] if isinstance(body, tuple) and body[0] == "text" else [feed if readable else None] if body == "stdin" else [
+            None if "$" in w or "`" in w else w for w in args if not w.startswith("-")] if body == "argv" else [] if body == "built" or isinstance(
+            body, tuple) and body[0] in ("call", "file") else [None]
+        for name in body[1] if isinstance(body, tuple) and body[0] == "file" else ():
+            spots = [w for w in args if not w.startswith("-")] if name == ARGV else [name] if isinstance(name, str) else []
+            found = [p for w in spots if "$" not in w and "`" not in w for p in (os.path.realpath(os.path.join(f, _home(w))) for f in (
+                [os.path.dirname(path)] if path else []) + [where]) if os.path.isfile(p) and p not in written]
+            texts += [feed if readable else None] if name in (0, "/dev/stdin") else [_code_of(p) or (None if os.path.getsize(p) else "") for p in dict.fromkeys(found)][:32] or [None]
+        calls += [(body[1], None, how, where, path)] if isinstance(body, tuple) and body[0] == "call" else []
+        calls += [c for t in texts for c in ([(None, None, how, where, path)] if t is None else [(x, a, how, where, path) for x, a in _rpc_calls(t)])]
+    for line in lines if depth < 2 else []:
+        inner: list = []
+        try:
+            parsed = _parse(line, where, feeds=inner)[0]
+        except (Unreadable, ValueError):
+            calls.append((None, None, how, where, path))
+            continue
+        calls += _mcp_calls(parsed, inner, written, line, "\n".join(f for f in inner if f.strip()), depth + 1)
+    return calls
+
+
+def _json_object(word: str) -> dict | None:
+    try:
+        value = json.loads(word)
+    except ValueError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _check_mcp(calls: list, command: str, config: dict, session: dict | None) -> str | None:
+    """A call whose tool and arguments are read is judged as that tool's own call; one that may send and cannot be read
+    exactly waits for the principal's code for this exact command and the programs it runs."""
+    from synthesis import sends
+    unsure, seen = [], set()
+    for tool, given, how, where, path in calls:
+        key = (tool, json.dumps(given, sort_keys=True, default=str), where)
+        if key in seen:  # one call read twice (a client's two call sites) is judged once, so one code releases it
+            continue
+        seen.add(key)
+        name = f"mcp__{LOCAL_MCP}__{tool}" if tool else ""
+        if tool and given is not None:
+            reason = _connector(name, given, config, where, session)
+            if reason:
+                return (f"This command calls `{tool}` on a local MCP server ({how}), judged as that tool's own call: "
+                        + reason.replace("make this identical call again", "run the identical command again"))
+        elif not tool or _sends(name, {}, config):
+            unsure.append((tool, how, where, path))
+    if not unsure:
+        return None
+    tools, dirs = sorted({t or "a tool whose name the guard cannot read" for t, _, _, _ in unsure}), sorted({w for _, _, w, _ in unsure})
+    subject = {"command": command, "runs_in": dirs, "tools": tools,
+               "programs": sorted((p, _CALL["ran"].get(os.path.realpath(p), "")) for _, _, _, p in unsure if p)}
+    summary = f"local MCP {', '.join(tools)} (runs in {', '.join(dirs)}): {command[:160]}"
+    with approvals.alone():
+        if approvals.consume("send", subject, session):
+            sends.log(sends.channel(tools[0], {}), "shell", summary, "approval", session)
+            return None
+        code = approvals.request("send", subject, summary)
+    return (f"This command calls {', '.join(tools)} on a local MCP server ({'; '.join(dict.fromkeys(h for _, h, _, _ in unsure))}), "
+            "and the guard cannot read exactly what it sends, so it waits as a send does. Show the principal the exact command "
+            f"and what it sends, and ask them to type {approvals.how(code)}. Then run the identical command again; a changed "
+            "program needs a new code.")
+
+
+def _sender_runs(words: list, where: str) -> list:
+    """The messages sender's run a command makes, as its program is resolved for the write rules (an interpreter's file or
+    module, a script run by its path, each through its links): its real file, its arguments and its real folder; [] when
+    the program is anything else (round 4, #6: `cat`, `grep` or `git diff` of the sender's file filed a ticket)."""
+    head = os.path.basename(words[0])
+    if SCRIPT.match(head) and head.startswith("python"):
+        kind, at, name = _program(words)
+        module = words[at:at + 1] == ["-m"]
+        program = (_module_file(name, "" if _isolated(words) else os.path.realpath(where)) if module else name) if kind == "file" else ""
+        args = words[at + 1 + module:]
+    else:
+        program, args = (words[0], words[1:]) if "/" in words[0] else ("", [])
+    real = os.path.realpath(os.path.join(where, os.path.expanduser(program))) if program else ""
+    shown = [os.path.expanduser(w) if w.startswith("~") else w for w in (words[1:] if SCRIPT.match(head) and head.startswith("python") else words)]
+    return [{"program": real, "argv": [os.path.expanduser(a) if a.startswith("~") else a for a in args],
+             "cwd": os.path.realpath(where), "line": " ".join(shown)}] if os.path.basename(real) == "messages_send.py" else []
+
+
 @_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
     """A shell command that posts words to people waits for the principal's code, as a connector send does, and
     opening a send window needs it too. The register scan reads the message the command sends (its text words and
-    any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule)."""
+    any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule). Opening a batch needs the
+    principal's code for its digest; no shell post is a batch's entry (the local messages sender asks check_send itself)."""
     import hashlib
     from synthesis import sends
-    posts, windows, writes = [], [], []
+    posts, calls, writes = [], [], []
     try:  # files this command writes, so a body file it rewrites before posting is not read stale (2026-10-13)
         _commands(command, cwd, writes=writes)
     except (Unreadable, StopIteration, IndexError):
@@ -6376,8 +10344,8 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     acts = [a[1] for _, _, a in found]
     posts += [(a[0], a[2], where) for _, where, a in found]
     for words, where in commands:
-        window = sends.window_asked(words)
-        windows += [window] if window and window not in windows else []  # every request in the line, each with its own code
+        calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
+        _CALL.setdefault("senders", []).extend(_sender_runs(words, where))  # check() files a ticket for each
         if any(words == w and where == h for w, h, _ in found):
             continue
         chan = sends.command_send(words, where, config)
@@ -6386,14 +10354,38 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             if problem:
                 return f"This command posts to {chan}, but {problem}. Put the text in the command or a readable file."
             posts.append((chan, text, where))
-    for window in windows:  # each command spends its own grant (`synthesis sends open` refuses without one)
-        try:  # never ask the principal to approve a window the command would refuse
-            sends.check_window(window["hours"], window["channels"], window["sends"])
-        except ValueError as exc:
-            return f"This send window can't open: {exc}."
-    waiting = [sends.window_refusal(w) for w in windows if not approvals.held("send-window", w)]
+    found_calls = _mcp_calls(commands, feeds, written, command, "\n".join(f for f in feeds if f.strip()))  # `U=…; curl "$U"` read whole
+    reason = _check_mcp(found_calls, command, config, session)  # 5.24.0
+    if reason:
+        return reason
+    waiting = []  # every request of the line, read as the CLI reads it (the review of 5.23.0), each with its own code (5.22.1)
+    for args, argv, where in calls:
+        if args is None:
+            if not approvals.held("sends-command", argv):
+                code = approvals.request("sends-command", argv, "a sends command the guard cannot read: " + " ".join(argv)[:120])
+                waiting.append(f"This command runs `synthesis {' '.join(argv)}`, which the guard cannot read as the CLI reads it (a "
+                               "word the shell changes first, or one the CLI refuses). Write it out in full, or show the principal "
+                               f"the exact command and ask them to type {approvals.how(code)}; then run the identical command again.")
+        elif args.file and args.action != "batch":
+            return "This command can't run as written: a file goes only with `synthesis sends batch`."
+        elif args.action == "open":  # each command spends its own grant (`synthesis sends open` refuses without one)
+            window = sends.asked(args.hours, args.channels, args.project, args.sends)
+            try:  # never ask the principal to approve a window the command would refuse
+                sends.check_window(window["hours"], window["channels"], window["sends"])
+            except ValueError as exc:
+                return f"This send window can't open: {exc}."
+            if not approvals.held("send-window", window):  # held, the rest of the line is still judged below
+                waiting.append(sends.window_refusal(window))
+        elif args.action == "batch" and not args.show:  # so does `sends batch`, for exactly the digest of the file it reads
+            file = os.path.join(where, os.path.expanduser(args.file))
+            try:
+                asked = sends.read_batch(file)
+            except (OSError, ValueError) as exc:
+                return f"This batch can't open: {exc}."
+            if not approvals.held("send-batch", sends.batch_digest(asked)):
+                waiting.append(sends.batch_refusal(asked, file))
     if waiting:
-        return " ".join(waiting)
+        return " ".join(dict.fromkeys(waiting))  # one request asked twice in the line is one code
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
@@ -6434,9 +10426,346 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
             "identical command again from any directory: the approval binds where it runs, not where the shell started.")
 
 
+# --- a git command and the programs its configuration names (5.24.0) ----------------------------------------------------
+# `git status`, a read, runs the program a repository's own core.fsmonitor names, and an agent may make the repository:
+# the reviewer's wrote into the state folder (review of the runtime's carried scripts, 2026-11-15, problem D). A git
+# command is judged as running each program the configuration it reads names, as if the line ran it where git does: the
+# repository's own config (with the files it includes and its worktree's) and a file the line points git at, the line's
+# own (-c, --config-env, GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS), and the programs the line's environment gives git. A
+# value the guard cannot read waits, and an alias counts only when it is the command run.
+GIT_PROGRAMS = _Pattern(r"core\.(?:fsmonitor|hookspath|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor"
+                          r"|pager\..+|credential\.(?:.+\.)?helper|diff\.(?:external|.+\.(?:command|textconv))|filter\..+\.(?:clean|smudge|process)"
+                          r"|merge\..+\.driver|gpg\.(?:.+\.)?program|gpg\.ssh\.defaultkeycommand|interactive\.difffilter|web\.browser"
+                          r"|remote\..+\.(?:uploadpack|receivepack)|submodule\..+\.update|trailer\..+\.(?:command|cmd)"
+                          r"|(?:difftool|mergetool|man|browser)\..+\.(?:cmd|path)|sendemail\.smtpserver|alias\..+")
+GIT_PROGRAM_ENV = ("GIT_SSH_COMMAND", "GIT_SSH", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF", "GIT_ASKPASS",
+                   "SSH_ASKPASS", "GIT_PROXY_COMMAND")
+GIT_DEPTH = [0]  # how deep one call follows a program a git command's configuration names that itself runs git
+
+
+def _git_config(path: str, depth: int = 0) -> list:
+    """(key, value) for each entry of a git config file and the files it includes, as git reads them; none for a file
+    that is not there or no regular file (a FIFO would stop git, not the guard)."""
+    found = _regular(path, 1 << 20) if depth <= 10 else None
+    lines, section, entries, i = (found[0].decode("utf-8", "replace").replace("\r\n", "\n").split("\n") if found else []), "", [], 0
+    while i < len(lines):
+        line, i = lines[i], i + 1
+        while line.rstrip().endswith("\\") and i < len(lines):  # a value continued on the next line
+            line, i = line.rstrip()[:-1] + lines[i], i + 1
+        head = re.match(r'\s*\[\s*([\w.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]\s*(.*)$', line)
+        if head:
+            section, line = head[1].lower() + ("." + re.sub(r"\\(.)", r"\1", head[2]) if head[2] is not None else ""), head[3]
+        entry = re.match(r"\s*([A-Za-z][\w-]*)\s*(?:=\s*(.*))?$", line)
+        if not entry or not section:
+            continue
+        out, quoted, raw, j = [], False, entry[2] or "", 0
+        while j < len(raw) and (quoted or raw[j] not in "#;"):
+            out.append({"n": "\n", "t": "\t", "b": "\b"}.get(raw[j + 1], raw[j + 1]) if raw[j] == "\\" and j + 1 < len(raw) else "" if raw[j] == '"' else raw[j])
+            quoted, j = quoted != (raw[j] == '"'), j + 1 + (raw[j] == "\\" and j + 1 < len(raw))
+        key, value = f"{section}.{entry[1].lower()}", "".join(out).strip() if entry[2] is not None else "true"
+        entries.append((key, value))
+        if re.fullmatch(r"include(?:if\..+)?\.path", key) and value:
+            entries += _git_config(os.path.join(os.path.dirname(path), os.path.expanduser(value)), depth + 1)
+    return entries
+
+
+def _git_scopes(cwd: str, look, gitdir: str | None = None, deep: bool = False) -> tuple:
+    """(the user's entries: the system file, the global and XDG files or the one GIT_CONFIG_GLOBAL names, with what they
+    include; the repository's own: its config and its worktree's; each submodule's own when `deep`; git dir; top; common
+    dir) for the repository holding cwd, as git reads them (review round 1, S1 and S3). `look` reads a variable from the
+    line, else from this process's environment."""
+    home = look("HOME") or os.path.expanduser("~")
+    system = [] if look("GIT_CONFIG_NOSYSTEM").lower() in ("1", "true", "yes", "on") else [look("GIT_CONFIG_SYSTEM")] if look(
+        "GIT_CONFIG_SYSTEM") else list(SYSTEM_GITCONFIG)
+    mine = [look("GIT_CONFIG_GLOBAL")] if look("GIT_CONFIG_GLOBAL") else [os.path.join(home, ".gitconfig"), os.path.join(
+        look("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "git", "config")]
+    user = [e for f in system + mine + [look("GIT_CONFIG")][:bool(look("GIT_CONFIG"))] for e in _git_config(os.path.join(cwd, os.path.expanduser(f)))]
+    top, here = cwd, cwd
+    while not gitdir and here:
+        dot = os.path.join(here, ".git")
+        if os.path.isdir(dot) or os.path.isfile(dot):
+            given = re.match(r"gitdir:\s*(.+)", (_code_of(dot) if os.path.isfile(dot) else "").strip())
+            gitdir, top = (os.path.join(here, given[1].strip()) if given else dot) if os.path.isfile(dot) else dot, here
+        here = "" if os.path.dirname(here) == here else os.path.dirname(here)
+    common = os.path.join(gitdir, _code_of(os.path.join(gitdir, "commondir")).strip() or ".") if gitdir else ""
+    local = _git_config(os.path.join(common, "config")) + _git_config(os.path.join(gitdir, "config.worktree")) if gitdir else []
+    mods = os.path.join(common, "modules") if deep and common else ""
+    found = [os.path.join(mods, n) for n in (sorted(os.listdir(mods)) if mods and os.path.isdir(mods) else [])]  # a submodule's git dir,
+    found += [os.path.join(f, "modules", n) for f in found if os.path.isdir(os.path.join(f, "modules")) for n in sorted(os.listdir(os.path.join(f, "modules")))]
+    subs = [_git_config(os.path.join(f, "config")) for f in found[:16]]  # and one nested in it
+    return user, local, subs, gitdir, top, common
+
+
+def _git_programs(words: list, where: str, line: str) -> list:
+    """(what names it, the command line git runs, the folder it runs in, "repo" when the repository's own config or a
+    submodule's names it, else "user") for each program the configuration a git command reads names; the command line
+    is None for a value the guard cannot read. Hooks count only for a command that runs them, a credential helper or an
+    SSH command only for one that reaches a remote, and synthesis's own installed git-hooks folder never."""
+    given = {m[1]: m[3].strip("'\"") for m in ASSIGNED.finditer(_own_text(line))}  # every variable the line sets (--config-env names any)
+    env = {k: v for k, v in given.items() if k.startswith(("GIT_", "SSH_", "XDG_")) or k == "HOME"}
+    look = lambda name: env.get(name, os.environ.get(name, ""))  # noqa: E731
+    entries, cwd, gitdir, exec_path, i = [], where, env.get("GIT_DIR"), env.get("GIT_EXEC_PATH"), 1
+    while i < len(words) and words[i].startswith("-"):
+        word, after = words[i], (words[i + 1] if i + 1 < len(words) else "")
+        key, eq, value = word.partition("=")
+        if word == "-C":
+            cwd = os.path.normpath(os.path.join(cwd, _home(after)))
+        elif word == "-c":
+            entries.append((after.split("=", 1)[0].lower(), after.split("=", 1)[1] if "=" in after else "true"))
+        elif key == "--config-env":  # a value the line's variable gives; one the guard cannot read is None
+            name, _, var = (value if eq else after).partition("=")
+            entries.append((name.lower(), next((v for v in [given.get(var, os.environ.get(var))] if v is not None and not re.search(r"[$`]", v)), None)))
+        elif key == "--git-dir":
+            gitdir = value if eq else after
+        elif key == "--exec-path" and eq:
+            exec_path = value
+        i += 2 if word in GIT_VALUE_OPTIONS else 1
+    sub = words[i].lower() if i < len(words) else ""
+    count = env.get("GIT_CONFIG_COUNT", "")
+    entries += [((env.get(f"GIT_CONFIG_KEY_{n}") or "").lower(), env.get(f"GIT_CONFIG_VALUE_{n}")) for n in range(int(count) if count.isdigit() else 0)]
+    try:
+        entries += [(p.split("=", 1)[0].lower(), p.split("=", 1)[1] if "=" in p else "true") for p in shlex.split(env.get("GIT_CONFIG_PARAMETERS", ""))]
+    except ValueError:
+        entries.append(("GIT_CONFIG_PARAMETERS", None))
+    unread = [k for k, v in entries if v is None and re.fullmatch(r"include(?:if\..+)?\.path", k)]  # an include whose file it cannot read
+    entries = [e for k, v in entries for e in [(k, v)] + (_git_config(os.path.join(cwd, os.path.expanduser(v)))
+                                                          if v and re.fullmatch(r"include(?:if\..+)?\.path", k) else [])]  # followed as in a file
+    user, local, subs, gitdir, top, common = _git_scopes(cwd, look, os.path.normpath(os.path.join(cwd, _home(gitdir))) if gitdir else None,
+                                                         sub not in GIT_QUIET)
+    found, own = [(f"the file {k} names, a name the line does not give", None, top, "user") for k in unread], os.path.realpath(
+        str(paths.home() / "git-hooks"))
+    for scoped in [[(k, v, "user") for k, v in user] + [(k, v, "repo") for k, v in local] + [(k, v, "user") for k, v in entries]] + [
+            [(k, v, "repo") for k, v in s] for s in subs]:
+        last: dict = {}
+        for key, value, scope in scoped:  # the value git uses: the last one read, all of a helper list since it was emptied
+            last[key] = ([*last.get(key, []), (value, scope)] if value != "" else []) if re.fullmatch(r"credential\.(?:.+\.)?helper", key) else [(value, scope)]
+        for key, values in last.items():
+            if not GIT_PROGRAMS.fullmatch(key) or (key.startswith("alias.") and key[6:] != sub) or (GIT_REMOTE_KEYS.fullmatch(key) and sub not in GIT_NET):
+                continue
+            for value, scope in values:
+                low = (value or "").strip().lower()
+                if value is not None and ((key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and low in BOOLEAN_WORDS
+                                          or key == "core.hookspath" or not value.strip()
+                                          or (key.startswith(("submodule.", "sendemail.")) and not value.startswith(("!", "/")))):
+                    continue
+                text = None if value is None else value[1:] if value.startswith("!") else (
+                    f"git {value} {shlex.join(words[i + 1:])}" if key.startswith("alias.") else
+                    shlex.quote(f"git-credential-{value}") if key.startswith("credential.") and "/" not in value.split()[0] else value)
+                found.append((key, text, top, scope))
+    hooked, chosen = _hook_names(sub), ""
+    path_value, path_scope = next(((v, s) for k, v, s in reversed([(k, v, "user") for k, v in user] + [(k, v, "repo") for k, v in local]
+                                                             + [(k, v, "user") for k, v in entries]) if k == "core.hookspath"), (None, "repo"))
+    folder = os.path.join(top, _home(path_value)) if path_value else os.path.join(common, "hooks") if common else ""
+    if hooked and folder and os.path.realpath(folder) != own:  # git runs the folder's hooks for this command
+        chosen = folder
+    elif hooked and folder:  # synthesis's own: its commit check runs the repository's own hooks after its checks
+        for name in sorted(hooked & {"pre-commit", "pre-merge-commit", "commit-msg"}):
+            for hook in (os.path.join(top, ".githooks", "pre-commit" if name == "pre-merge-commit" else name), os.path.join(common, "hooks", name)):
+                found += [(f"the repository's own {name} hook, which the commit check runs", shlex.quote(hook), top, "repo")] if os.access(hook, os.X_OK) and os.path.isfile(hook) else []
+    for name in sorted(hooked) if chosen else ():
+        hook = os.path.join(chosen, name)
+        found += [(f"core.hooksPath ({name})", shlex.quote(hook), top, path_scope)] if os.path.isfile(hook) and os.access(hook, os.X_OK) else []
+    found += _receiving_hooks(words[i + 1:], local, top, look, own) if sub == "push" else []  # a push to a repository here
+    found += [(var, shlex.quote(env[var]) if var == "GIT_SSH" else env[var], top, "user") for var in GIT_PROGRAM_ENV
+              if env.get(var) and (sub in GIT_NET or var in ("GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_PAGER", "GIT_EXTERNAL_DIFF"))]
+    run = os.path.join(cwd, _home(exec_path), f"git-{sub}") if exec_path and sub else ""
+    return found + ([("--exec-path", shlex.quote(run), top, "user")] if run and os.path.isfile(run) else [])
+
+
+RECEIVE_HOOKS = ("pre-receive", "update", "post-receive", "post-update", "proc-receive", "push-to-checkout", "reference-transaction")
+
+
+def _receiving_hooks(rest: list, local: list, top: str, look, own: str) -> list:
+    """The hooks a push to a repository on this disk runs there (round 2): its own hooks folder, or the one its config or
+    the user's names, unless that is synthesis's own installed folder, which holds none of these."""
+    named = next((w for w in rest if not w.startswith("-")), "origin")
+    url = next((v for k, v in reversed(local) if k in (f"remote.{named}.pushurl", f"remote.{named}.url")), named) or named
+    if not url.startswith("file://") and (re.match(r"[\w+.-]+://", url) or re.match(r"[^/]*:", url)):
+        return []  # another host
+    path = os.path.join(top, _home(url[7:] if url.startswith("file://") else url))
+    recv = path if os.path.isfile(os.path.join(path, "HEAD")) else os.path.join(path, ".git")
+    if not os.path.isdir(recv):
+        return []
+    user, theirs, _, _, rtop, common = _git_scopes(path, look, recv)
+    value = next((v for k, v in reversed(user + theirs) if k == "core.hookspath"), None)
+    folder = os.path.join(rtop, _home(value)) if value else os.path.join(common, "hooks")
+    return [] if os.path.realpath(folder) == own else [(f"the receiving repository's {n} hook", shlex.quote(os.path.join(folder, n)), rtop, "repo")
+                                                      for n in RECEIVE_HOOKS if os.path.isfile(os.path.join(folder, n)) and os.access(os.path.join(folder, n), os.X_OK)]
+
+
+def _hook_names(sub: str) -> set:
+    """The hooks a git subcommand may run: none for a read, an index refresh's for status and diff, its own and those of
+    any command that writes the index or a ref for the rest."""
+    if sub in GIT_QUIET:
+        return set()
+    return {"post-index-change"} if sub in ("status", "diff", "ls-files") else set(GIT_HOOKS.get(sub, "").split()) | set(GIT_ANY_HOOKS.split())
+
+
+BOOLEAN_WORDS = {"", "true", "false", "yes", "no", "on", "off", "1", "0", "keep"}
+GIT_NET = frozenset({"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule", "archive", "fetch-pack", "send-pack"})
+GIT_REMOTE_KEYS = _Pattern(r"credential\.(?:.+\.)?helper|core\.(?:sshcommand|askpass|gitproxy)|remote\..+\.(?:uploadpack|receivepack)")
+GIT_QUIET = frozenset({"log", "show", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog", "rev-list", "ls-tree", "for-each-ref",
+                       "show-ref", "merge-base", "name-rev", "count-objects", "config", "help", "version", "var", "check-ignore", "check-attr",
+                       "reflog", "whatchanged", "diff-tree", "ls-remote", ""})  # they run no hook and reach no submodule
+GIT_HOOKS = {"commit": "pre-commit prepare-commit-msg commit-msg post-commit post-rewrite", "merge": "pre-merge-commit prepare-commit-msg commit-msg post-merge",
+             "pull": "pre-merge-commit prepare-commit-msg commit-msg post-merge pre-rebase post-rewrite post-checkout",
+             "rebase": "pre-rebase post-rewrite post-checkout pre-commit prepare-commit-msg commit-msg post-commit",
+             "cherry-pick": "pre-commit prepare-commit-msg commit-msg post-commit", "revert": "pre-commit prepare-commit-msg commit-msg post-commit",
+             "am": "applypatch-msg pre-applypatch post-applypatch pre-commit prepare-commit-msg commit-msg post-commit", "checkout": "post-checkout",
+             "switch": "post-checkout", "clone": "post-checkout", "worktree": "post-checkout", "bisect": "post-checkout", "push": "pre-push",
+             "send-email": "sendemail-validate", "merge-ff": "post-merge"}
+GIT_ANY_HOOKS = "post-index-change reference-transaction pre-auto-gc"
+SYSTEM_GITCONFIG = ("/etc/gitconfig", "/opt/homebrew/etc/gitconfig", "/usr/local/etc/gitconfig",
+                    "/Library/Developer/CommandLineTools/usr/share/git-core/gitconfig",
+                    "/Applications/Xcode.app/Contents/Developer/usr/share/git-core/gitconfig")  # each git's own; all are read
+GIT_SCANNERS = {"context_doctor.py": ("status",), "repo_state.py": ("status", "branch", "rev-parse", "rev-list"), "stray_lessons.py": ("diff", "log"),
+                "pr_queue_scan.py": ("remote",), "sharing_scan.py": ("diff", "ls-files", "log"), "portfolio_review.py": ("log",)}
+
+
+def _scanned_folders(words: list, where: str, config: dict | None = None) -> tuple:
+    """(the folders a plugin script that runs git itself reaches, the subcommands it runs there): the context doctor's
+    --project (the repository holding it) and each --root; the rituals' repo_state.py: the paths --workspace-root's
+    .agents/repos.yaml declares (relative to it), and each repository one or two folders under --discover. The doctor
+    run with neither reads roots of its own setting, which the guard does not read."""
+    kind, at, given = _program(words)
+    name = os.path.basename(given) if kind == "file" else ""
+    if name not in GIT_SCANNERS:
+        return [], ()
+    flags, rest, folders = {}, words[at + 1:], []
+    for k, word in enumerate(rest):
+        key, eq, value = word.partition("=")
+        if key in ("--project", "--root", "--workspace-root", "--discover", "--repo", "--repos-yaml", "--workspace", "--index"):
+            flags.setdefault(key, []).append(value if eq else "".join(rest[k + 1:k + 2]))
+        flags.setdefault(word, []) if word in ("--fetch", "--ff") else None
+    folders += [os.path.join(where, _home(f)) for f in flags.get("--project", []) + flags.get("--root", []) + flags.get("--repo", []) if f]
+    folders += [os.path.dirname(os.path.dirname(os.path.join(where, _home(f)))) for f in flags.get("--index", []) if f]  # projects/index.yaml
+    folders += [os.path.join(where, _home(w)) for w in rest[:1] if name == "sharing_scan.py" and not w.startswith("-")]  # its repository
+    home = os.environ.get("SYNTHESIS_WORKSPACES") or os.path.join(os.path.expanduser("~"), "workspaces")
+    yamls = [os.path.join(where, _home(f)) for f in flags.get("--repos-yaml", [])] + [os.path.join(home, w, ".agents", "repos.yaml") for w in flags.get("--workspace", [])]
+    if name in ("context_doctor.py", "portfolio_review.py") and not (flags.get("--project") or flags.get("--root") or flags.get("--index")):
+        import glob  # the knowledge roots its own setting names, as the doctor reads them
+        folders += [os.path.expanduser(str(r)) for r in (config or {}).get("knowledge_roots") or []] or sorted(glob.glob(os.path.join(os.path.expanduser("~"), "workspaces", "*", "ai-knowledge-*")))
+    for space in flags.get("--workspace-root", []) + yamls:
+        from synthesis.yamlish import load
+        root = os.path.join(where, _home(space)) if not space.endswith(".yaml") else os.path.dirname(os.path.dirname(space))
+        try:
+            rows = (load(_code_of(space if space.endswith(".yaml") else os.path.join(root, ".agents", "repos.yaml"))) or {}).get("repos") or []
+        except (ValueError, AttributeError):
+            rows = []
+        rows = [{"name": k, **(v if isinstance(v, dict) else {})} for k, v in rows.items()] if isinstance(rows, dict) else rows
+        folders += [os.path.join(root, os.path.expanduser(str(r.get("path") or r.get("name")))) for r in rows if isinstance(r, dict)]
+    for top in flags.get("--discover", []):
+        import glob
+        base = os.path.join(where, _home(top))
+        folders += sorted({os.path.dirname(g) for depth in ("*", "*/*") for g in glob.glob(os.path.join(base, depth, ".git")) if os.path.isdir(g)})
+    runs = GIT_SCANNERS[name] + (("fetch",) if "--fetch" in flags else ()) + (("merge-ff", "update-ref") if "--ff" in flags else ())  # a fast-forward makes no commit
+    return folders[:64], runs
+
+
+def check_git_programs(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A git command waits as each program its configuration names would, judged where git runs it (see above); a
+    plugin script that runs git itself waits when a repository it reaches names a program of its own (round 1)."""
+    commands = _parse(command, cwd)[0] if re.search(r"(?<![\w.-])git(?![\w.-])|" + "|".join(n[:-3] for n in GIT_SCANNERS), command) else []
+    found = [(what, text, folder, scope) for words, where in commands if words and os.path.basename(words[0]) == "git"
+             for what, text, folder, scope in _git_programs(words, where, command)]
+    reached = []
+    for words, where in commands:
+        folders, runs = _scanned_folders(words, where, config) if words and SCRIPT.match(os.path.basename(words[0])) else ([], ())
+        for folder in folders:
+            for what, text, top, scope in [p for run in runs for p in _git_programs(["git", "-C", folder, run], where, "")]:
+                reached += [(top, what)] if scope == "repo" else []
+                found += [] if scope == "repo" else [(what, text, top, scope)]
+    if reached:
+        subject = {"command": command, "runs_in": os.path.realpath(cwd), "repositories": sorted(set(reached))}
+        if approvals.consume("protected-read", subject, session):
+            return None
+        code = approvals.request("protected-read", subject, f"a scanner reaches a repository whose config names a program: {command[:120]}")
+        top, what = reached[0]
+        return (f"This command runs a plugin script that runs git itself in the repositories it is handed, and {top}'s own "
+                f"configuration names a program git would run there ({what}). Show the principal this exact command and ask them "
+                f"to type {approvals.how(code)}; then run the identical command again.")
+    for what, text, folder, scope in dict.fromkeys(found):
+        if text is None or GIT_DEPTH[0] >= 2:
+            subject = {"command": command, "runs_in": os.path.realpath(cwd), "git": what}
+            if approvals.consume("protected-read", subject, session):
+                return None
+            code = approvals.request("protected-read", subject, f"a git command whose configuration names a program: {command[:120]}")
+            return (f"This git command runs the program its configuration names in {what}, which the guard cannot read"
+                    f"{' (nested past what it follows)' if text else ''}. Show the principal this exact command and ask them to "
+                    f"type {approvals.how(code)}; then run the identical command again.")
+        GIT_DEPTH[0] += 1
+        try:
+            reason = check("Bash", {"command": text}, config, cwd=folder, session=session)
+        finally:
+            GIT_DEPTH[0] -= 1
+        if reason:
+            return (f"This git command runs the program its configuration names in {what} (`{text[:120]}`, in {folder}), so it "
+                    f"is judged as running it there. {reason}")
+    return None
+
+
+# --- a write that plants a hook (5.24.0, review round 1) -----------------------------------------------------------------
+# Writing .git/hooks/pre-commit and committing ran the agent's program with no code (a plain two-step attempt). A write into
+# a repository's .git/hooks or .githooks (the commit check's delegates), or into a folder core.hooksPath names other than
+# synthesis's own installed git-hooks folder, and a `git config` that points core.hooksPath at such a folder, wait for the
+# principal's code, by the file tools and by the shell.
+
+def _hook_folder(path: str) -> str:
+    """The hooks folder a path lies in, or ''."""
+    real = os.path.realpath(path)
+    found = re.match(r"(.*?/(?:\.git/hooks|\.githooks))(?:/|$)", real)
+    if found:
+        return found[1]
+    for mark in re.finditer(r"/hooks(?=/|$)", real):  # a git dir's own hooks: a bare repository's, a common dir's
+        if os.path.isfile(os.path.join(real[:mark.start()], "HEAD")) and os.path.isdir(os.path.join(real[:mark.start()], "objects")):
+            return real[:mark.end()]
+    user, local, _, gitdir, top, common = _git_scopes(os.path.dirname(real), lambda name: os.environ.get(name, ""))
+    value = next((v for k, v in reversed(user + local) if k == "core.hookspath"), None)
+    folder = os.path.realpath(os.path.join(top, _home(value))) if value else ""
+    return folder if folder and paths.inside(real, folder) and folder != os.path.realpath(str(paths.home() / "git-hooks")) else ""
+
+
+def _hooks_pointed(words: list, where: str) -> str:
+    """'key value' for a `git config` that sets a key naming a program git runs (round 2): core.hooksPath not to
+    synthesis's own folder or /dev/null, core.fsmonitor or a pager not to a boolean, an alias only to a shell or options."""
+    sub, place = _git(words, where)
+    rest = words[words.index(sub) + 1:] if sub == "config" else []
+    at = next((k for k, w in enumerate(rest) if not w.startswith("-") and GIT_PROGRAMS.fullmatch(w.lower()) and (k == 0 or rest[k - 1] not in ("--file", "-f"))), None)
+    if at is None or at + 1 >= len(rest) or any(w.startswith(("--get", "--unset", "--list", "-l", "--remove", "--rename")) for w in rest):
+        return ""
+    key, value = rest[at].lower(), rest[at + 1]
+    if key == "core.hookspath" and (value == "/dev/null" or os.path.realpath(os.path.join(place, _home(value))) == os.path.realpath(str(paths.home() / "git-hooks"))):
+        return ""
+    quiet = (key in ("core.fsmonitor", "web.browser") or key.startswith("pager.")) and value.strip().lower() in BOOLEAN_WORDS
+    plain = key.startswith("alias.") and not re.match(r"\s*!|.*(?:^|\s)(?:-c|--config-env|--exec-path)\b", value)
+    return "" if quiet or plain or not value.strip() else f"{rest[at]} {value}"
+
+
+def check_hook_writes(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A file tool's write, or a shell line's, into a hooks folder, or a line that points core.hooksPath at one, waits for
+    the principal's code for that exact call."""
+    if shell_tool(tool):
+        command = shell_command(tool_input)
+        planted = [t for t in _shell_writes(command, cwd) if _hook_folder(os.path.join(cwd, os.path.expanduser(t)))]
+        planted += [f"git config {v}" for words, where in (_parse(command, cwd)[0] if re.search(r"\bconfig\b", command) else [])
+                    if words and os.path.basename(words[0]) == "git" for v in [_hooks_pointed(words, where)] if v]
+        subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+    else:
+        planted = [t for t in _file_targets(tool, tool_input) if _hook_folder(os.path.join(cwd, os.path.expanduser(t)))]
+        subject = {"tool": tool, "input": tool_input}
+    if not planted:
+        return None
+    if approvals.consume("hook-write", subject, session):
+        return None
+    code = approvals.request("hook-write", subject, f"a hook git will run: {', '.join(planted)[:120]}")
+    return (f"This {'command' if shell_tool(tool) else tool + ' call'} writes {', '.join(planted)[:200]}, a hook git runs on a later "
+            "commit, checkout or push (or points git at one). Show the principal what it writes and ask them to type "
+            f"{approvals.how(code)}; then {'run the identical command' if shell_tool(tool) else 'make this identical call'} again.")
+
+
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
-    return (shell_tool(tool) or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
+    return (shell_tool(tool) or tool in STDIN_TOOLS or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
             or _sends(tool, tool_input or {}, {}) or routed(tool, tool_input or {}))
 
 
@@ -6450,23 +10779,41 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, until=time.monotonic() + CALL_SECONDS)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
+    if code_mode_script(tool, tool_input, session):
+        return None  # it acts only through its nested calls, each judged here as a call of its own
+    if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
+        tool_input = {"command": tool_input}
     if not cwd:
         try:
             cwd = str(tool_input.get("workdir") or "") or os.getcwd()
         except OSError:
             cwd = os.path.expanduser("~")
     if tool.endswith("__run_in_terminal") and tool_input.get("cwd"):  # the tab starts its shell there
-        cwd = os.path.normpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+        cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(tool_input["cwd"]))))
+    elif shell_tool(tool) and tool_input.get("workdir") and isinstance(tool_input["workdir"], str):  # Codex runs it there (round 1, A5)
+        cwd = os.path.realpath(os.path.join(cwd, os.path.expanduser(tool_input["workdir"])))  # where the kernel puts it (round 2, N1)
+    if tool in STDIN_TOOLS:
+        return check_typed(tool_input, config, cwd, session)
     if shell_tool(tool):
         command = shell_command(tool_input)
-        return (check_destructive(command, config, cwd) or check_self_grant(command, cwd, config, session)  # a recursive delete is named as one
-                or check_pr_gate(command, config, cwd, session)
-                or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
-                or check_outgoing(command, config, cwd, session)
-                or check_claimed(_shell_writes(command, cwd), cwd, session))
+        verdict = (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
+                   or check_self_grant(command, cwd, config, session)
+                   or check_pr_gate(command, config, cwd, session)
+                   or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
+                   or check_outgoing(command, config, cwd, session)
+                   or check_claimed(_shell_writes(command, cwd), cwd, session)
+                   or check_hook_writes(tool, tool_input, cwd, session))
+        senders = list(_CALL.get("senders") or [])  # before the check below judges each git program as a call of its own
+        verdict = verdict or check_git_programs(command, config, cwd, session)  # last: it judges each program as a call of its own
+        if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
+            from synthesis import sends
+            for run in senders:
+                sends.sender_ticket(paths.session_id(session), run)
+        return verdict
     if tool in FILE_TOOLS:
-        return check_file_write(tool, tool_input, cwd, config) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+        return (check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session)
+                or check_hook_writes(tool, tool_input, cwd, session) or check_settings_write(tool, tool_input, cwd, session))
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
@@ -6474,9 +10821,13 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
     reason = check_driven(kind, tool, tool_input, config, session) if kind else None
-    if reason:
-        return reason
-    # The account is checked before the send approval, so no approval is spent on the wrong account.
+    return reason or _connector(tool, tool_input, config, cwd, session)
+
+
+def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
+    """A connector's call, judged: the account it acts as first, so no approval is spent on the wrong account, then the
+    travel rule, then the send rules for a call that sends or the upload rule for one that does not. A shell command
+    that calls a local MCP server's tool is judged by this too (5.24.0)."""
     reason = routed(tool, tool_input) and check_account(tool, tool_input, config, cwd)
     return reason or check_travel(tool, tool_input, config) or (
         check_send(tool, tool_input, config, session) if _sends(tool, tool_input, config) else check_upload(tool, tool_input))

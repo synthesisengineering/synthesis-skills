@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Synthesis Engineering"
-  version: "2.0.0"
+  version: "2.0.1"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -59,4 +59,4 @@ For full gate criteria, checklists, and examples, see: `references/quality-gates
 
 ## Related
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.

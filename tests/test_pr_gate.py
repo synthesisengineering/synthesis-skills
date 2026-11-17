@@ -93,11 +93,12 @@ def test_a_branch_carrying_the_same_commits_to_the_default_branch_is_refused(rep
     assert push(repo, "git push -u origin feature") is None  # the pull-request route itself
 
 
-@pytest.mark.parametrize("command", ["git push origin v1.0.0", "git push --tags", "git push origin --tags",
+@pytest.mark.parametrize("command", ["git push origin notes-1", "git push origin refs/tags/notes-1",
                                      "git push --dry-run origin main", "git push -n", "git push fork main"])
 def test_tags_dry_runs_and_another_repository_pass(repo, command):
+    """A tag other than a version tag; since 5.24.0 a version tag, or every tag at once, waits (test_review_round_3)."""
     commit(repo, "second")
-    git(repo, "tag", "v1.0.0")
+    git(repo, "tag", "notes-1")
     assert push(repo, command) is None
 
 
@@ -167,12 +168,12 @@ def test_a_commit_and_a_push_in_one_command_is_held_on_the_default_branch(repo):
 @pytest.mark.parametrize("command", [
     "git push -u origin feature", "git push", "git push origin HEAD", "git add -A && git commit -m work && git push",
     "npm test && git push -u origin feature", "sh -c 'git push origin feature'", "git push origin feature:feature",
-    "git push origin feature v1.0.0", "git status && git fetch origin && git push origin HEAD:refs/heads/feature",
+    "git push origin feature notes-1", "git status && git fetch origin && git push origin HEAD:refs/heads/feature",
 ])
 def test_the_pushes_an_agent_makes_all_day_on_a_branch_pass(repo, command):
     git(repo, "switch", "-q", "-c", "feature")
     commit(repo, "second")
-    git(repo, "tag", "v1.0.0")
+    git(repo, "tag", "notes-1")
     assert push(repo, command) is None, command
 
 
@@ -280,7 +281,7 @@ def test_a_tag_pushed_onto_the_default_branch_is_held_and_a_tag_named_like_it_is
     assert "pull request" in push(repo, "git push origin v1:main")
     git(repo, "switch", "-q", "-c", "feature")
     assert push(repo, "git push origin tag main-2026") is None
-    assert push(repo, "git push origin refs/tags/v1") is None
+    assert "version tag" in push(repo, "git push origin refs/tags/v1")  # since 5.24.0 a version tag waits (round 3, M5)
 
 
 def test_a_remote_configured_as_a_mirror_sends_every_branch(repo):
@@ -363,9 +364,9 @@ def test_a_checkout_that_records_no_default_branch_holds_every_branch_push(repo)
     for command in ("git push origin develop", "git push origin main", "git push", "git push origin develop:develop"):
         reason = push(repo, command)
         assert reason and "acme/skills" in reason and "set-head" in reason and '"branch"' in reason, command
-    for command in ("git push origin tag v1.0.0", "git push origin refs/tags/v1.0.0", "git push --tags", "git push -n origin develop"):
-        assert push(repo, command) is None, command  # a push that says it is a tag, and a dry run, move no branch
-    assert "set-head" in push(repo, "git push origin v1.0.0")  # a bare name could be a branch
+    for command in ("git push origin tag v1.0.0", "git push origin refs/tags/v1.0.0", "git push --tags", "git push origin v1.0.0"):
+        assert "version tag" in push(repo, command), command  # a version tag waits whatever the branch (round 3, M5)
+    assert push(repo, "git push -n origin develop") is None  # a dry run moves nothing
     named = {"pr_gated": {"acme/skills": {"since": "2026-11-11", "branch": "main"}}}
     assert push(repo, "git push origin develop", config=named) is None
 

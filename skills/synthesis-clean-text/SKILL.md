@@ -85,4 +85,4 @@ The preceding sentence states the intended output standard, not a universal dete
 
 For per-LLM-family hallucination signatures and fact-checking, see [`synthesis-fact-checking`](../synthesis-fact-checking/SKILL.md) v2.0.
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft — the writer writes, the AI assists.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft — the writer writes, the AI assists.

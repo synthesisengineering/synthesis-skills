@@ -132,4 +132,4 @@ The hosted convenience tools at tools.synthesiswriting.org collect zero analytic
 
 ---
 
-*Part of the [synthesis engineering](https://synthesisengineering.org) open-source ecosystem. The writer writes; the AI assists.*
+*Part of the [synthesis engineering](https://synthesiswork.org/engineering/) open-source ecosystem. The writer writes; the AI assists.*

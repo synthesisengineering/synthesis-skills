@@ -1,6 +1,6 @@
 # Messenger's chat list
 
-Read before a sync in a workspace that declares `.agents/messenger-sync.yaml`. `<rituals>` is this skill's folder;
+Read before a sync in a workspace that declares `.agents/messenger-sync.yaml`. `<rituals>` is the runtime's copy of this skill, `$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals`;
 `<W>` is the workspace.
 
 Messenger runs inside facebook.com, and it reaches a mailbox only as notification emails that hide most of what was
@@ -42,7 +42,7 @@ only the grid named for the inbox being read, and a row with no text is never co
 
 ## The read
 
-1. `python3 <rituals>/scripts/messenger_messages.py plan --config .agents/messenger-sync.yaml` prints, per inbox, what
+1. `python3 -s <rituals>/scripts/messenger_messages.py plan --config .agents/messenger-sync.yaml` prints, per inbox, what
    to open and how far back to scroll: past the moment that inbox's own last read reached, or to two weeks back for
    a first read.
 
@@ -62,13 +62,13 @@ only the grid named for the inbox being read, and a row with no text is never co
    reached by a row showing `2d`, not `1d`. The reach is the last row read, in the list's order; a row above newer ones
    (a pinned chat) is named and moves nothing. The list loads more rows for as long as it is scrolled.
    Click no row.
-3. `python3 <rituals>/scripts/messenger_messages.py extractor --inbox <inbox>` prints the script. Run it with the
+3. `python3 -s <rituals>/scripts/messenger_messages.py extractor --inbox <inbox>` prints the script. Run it with the
    browser's JavaScript tool and save what the tool returns, as it returns it, to a file; note the time of the read.
    It reads the grid's rows (their text lines, links and labels), the page's address, clock and time zone, each dialog's
    heading (never its text), the chats open in pop-ups over the list and, when the grid is missing or empty, the page's
    text. It clicks, types, scrolls and sends nothing, so the browser
    guard lets it through as a read.
-4. `python3 <rituals>/scripts/messenger_messages.py parse --text <file> --inbox <inbox> --since <as plan printed it>`
+4. `python3 -s <rituals>/scripts/messenger_messages.py parse --text <file> --inbox <inbox> --since <as plan printed it>`
    prints the coverage line, then, under a line marking what follows as untrusted message text, a chat open during the
    read, each chat that ends with someone else and each chat Messenger nudges. Names and previews are shown on one
    line each, a line break or separator in them as `[U+XXXX]`. The read's time is its own clock; `--read-at` may be
@@ -96,7 +96,7 @@ only the grid named for the inbox being read, and a row with no text is never co
    bottom only when it finds one and each is at its end. `--json` gives every chat (`who`,
    `chat`, `age`, `last`, `from_me`, `kind`, `unread`, `nudge`, `active`, `open`, `preview`), the owed and nudged chats
    and the coverage (`threads`, `oldest`, `since`, `opened`, `unreadable`, `complete`, `through`).
-5. Record the read: `python3 <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface messenger --target
+5. Record the read: `python3 -s <rituals>/scripts/sync_watermark.py advance --workspace <W> --surface messenger --target
    <inbox> --through <read time> --coverage <the --json output>`. The watermark moves only with a complete read's
    coverage, as LinkedIn's does.
 6. The coverage line goes in the plan's sync state, word for word. It names no one.

@@ -88,7 +88,7 @@ Before declaring the meeting fetched, **verify the saved file contains BOTH the 
 **Run the verifier:**
 
 ```bash
-python3 <synthesis-meeting-transcripts-root>/verify_transcripts.py \
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/verify_transcripts.py" \
     --file {exact-newly-saved-file} --json
 ```
 
@@ -135,7 +135,7 @@ Verification proves the transcript is faithful; nothing yet asks whether
 anything in it is owed. Run the scanner over the saved file:
 
 ```bash
-python3 <synthesis-meeting-transcripts-root>/extract_commitments.py \
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/extract_commitments.py" \
     {saved-file} [--speaker "{principal}"]
 ```
 
@@ -153,7 +153,7 @@ by the daily-rituals ownership rules — manifest owner, deletion-unit
 test, movable-item seat — and record the stamp with the item:
 
 ```bash
-python3 <synthesis-meeting-transcripts-root>/extract_commitments.py \
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/extract_commitments.py" \
     --stamp --owner "{workspace}" --owner-rule "{1|2|3|candidate-confirmed}"
 ```
 

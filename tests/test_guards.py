@@ -105,6 +105,57 @@ def test_a_short_h_still_deploys():
     assert "approve" in guards.check("Bash", {"command": "gh release create v1.0.0 -h"}, {})
 
 
+HELD_LIKE_NPX = "This publishes to production. Show the principal this exact command and ask them to type approve "
+
+
+@pytest.mark.parametrize("command", [
+    "node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=site --branch=main",  # the one that ran
+    "node ./node_modules/wrangler/bin/wrangler.js deploy",
+    "node --no-warnings node_modules/wrangler/bin/wrangler.js pages deploy dist",
+    "bun node_modules/wrangler/wrangler-dist/cli.js pages deploy dist",           # the package it sits in
+    "node node_modules/@cloudflare/wrangler/bin/run.js pages deploy dist",        # scoped: the name after the scope
+    "node node_modules/.bin/wrangler pages deploy dist",                         # a .bin shim
+    "node tools/wrangler.mjs pages deploy dist",                                 # the basename, its extension dropped
+    "deno run -A node_modules/wrangler/bin/wrangler.js pages deploy dist",
+    "node node_modules/netlify-cli/bin/run.js deploy --prod",                    # netlify-cli runs netlify
+    "node node_modules/firebase-tools/lib/bin/firebase.js deploy",               # firebase-tools runs firebase
+    "node /usr/local/lib/node_modules/npm/bin/npm-cli.js publish",               # npm's own npm-cli.js runs npm
+    "node node_modules/vercel/dist/index.js --prod",
+    "python3 venv/bin/twine upload dist/x.tar.gz",
+])
+def test_an_interpreter_running_a_deploy_clis_own_script_is_held_as_npx_is(command, tmp_path):
+    """2026-11-16: a production deploy ran without its approval as `node node_modules/wrangler/bin/wrangler.js pages
+    deploy dist ...`. The guard read an interpreter's script from the start of its path, so no deploy pattern matched;
+    `npx wrangler`, `./node_modules/.bin/wrangler` and bare `wrangler` were held. A deploy CLI's own entry script, run
+    by an interpreter, is now read by the names it answers to, and held with the same words as `npx wrangler`."""
+    assert (guards.check("Bash", {"command": "npx wrangler pages deploy dist"}, {}, cwd=str(tmp_path)) or "").startswith(HELD_LIKE_NPX)
+    assert (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or "").startswith(HELD_LIKE_NPX), command
+
+
+@pytest.mark.parametrize("command", [
+    "node scripts/build.mjs",
+    "node node_modules/wrangler/bin/wrangler.js pages deployment list",
+    "node node_modules/wrangler/bin/wrangler.js pages deploy dist --dry-run",
+    "node node_modules/.bin/astro build",
+    "node node_modules/firebase-tools/lib/bin/firebase.js emulators:start",
+    "node node_modules/npm/bin/npm-cli.js install",
+    "node node_modules/netlify-cli/bin/run.js deploy",                           # a draft deploy: no --prod
+    "python3 venv/bin/twine check dist/x.tar.gz",
+])
+def test_an_interpreter_running_a_clis_script_for_anything_but_a_deploy_stays_free(command, tmp_path):
+    assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, command
+
+
+def test_a_renamed_copy_of_a_deploy_cli_is_on_the_open_list():
+    """The guard knows a CLI's script by its package, a .bin shim and its basename; a copy under another name is not
+    read as the CLI, and the open list says so."""
+    found = (Path(__file__).resolve().parents[1] / "docs" / "runtime-integration.md").read_text(encoding="utf-8")
+    found = found.split("\n### What remains open\n")[1]
+    found = " ".join(found.split("\n### ")[0].split())
+    for words in ("A deploy CLI copied or linked under another name", "node_modules/wrangler/bin/wrangler.js"):
+        assert words in found, words
+
+
 def test_the_desktop_apps_terminal_tab_is_guarded_like_bash(tmp_path):
     """2026-10-30: commands typed into the Claude desktop app's terminal tab passed every shell guard."""
     tab = "mcp__terminal__run_in_terminal"

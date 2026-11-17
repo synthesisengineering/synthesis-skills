@@ -322,20 +322,47 @@ def unrun_core_tests(root: Path, halves: list) -> list:
     return found
 
 
-def test_ci_runs_the_local_command_in_three_jobs_that_together_miss_nothing():
-    """The suite is run in three jobs for each system and Python: the core's tests in two halves by file name, and
-    the skills'. On 2026-11-12 the whole suite took 526 seconds on a macOS runner and one job was cancelled at the
-    ten-minute limit with no test failing; run as two jobs, the core's tests took 6 minutes on one macOS runner and
-    over 10 on a slower one beside it. Together the three run what `python3 -m pytest -q tests/ skills/` runs."""
+def unrun_skill_tests(root: Path, parts: list) -> list:
+    """Skill folders the skills' patterns do not run exactly once, and test files under skills/ outside every skill
+    folder, which a pattern that names folders never runs."""
+    from fnmatch import fnmatch
+    found = [f"{p.relative_to(root).as_posix()}: run by 0 of the jobs" for p in sorted((root / "skills").glob("*.py"))
+             if fnmatch(p.name, "test_*.py") or fnmatch(p.name, "*_test.py")]
+    for path in sorted(p for p in (root / "skills").iterdir() if p.is_dir()):
+        runs = [part for part in parts if fnmatch(path.relative_to(root).as_posix(), part)]
+        if len(runs) != 1:
+            found.append(f"{path.relative_to(root).as_posix()}: run by {len(runs)} of the jobs")
+    return found
+
+
+def test_ci_runs_the_local_command_in_jobs_that_together_run_each_test_once():
+    """The suite is run in six jobs for each system and Python: the core's tests in four parts by file name, and the
+    skills' in two by the skill's name. On 2026-11-12 the whole suite took 526 seconds on a macOS runner and one job was
+    cancelled at the ten-minute limit with no test failing; run as two jobs, the core's tests took 6 minutes on one
+    macOS runner and over 10 on a slower one beside it. On 2026-11-17 the second of two halves of 5.24.0's core tests
+    was cancelled at the limit on every macOS runner, and the skills' job once. Together the jobs run what
+    `python3 -m pytest -q tests/ skills/` runs, each test file once."""
     workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     parts = re.findall(r'"([^"]+)"', re.search(r"^\s+part: \[(.+)\]$", workflow, re.M).group(1))
-    assert "skills/" in parts and len(parts) == 3
+    core, skills = [p for p in parts if p.startswith("tests/")], [p for p in parts if p.startswith("skills/")]
+    assert core and skills and len(core) + len(skills) == len(parts) == len(set(parts))
     assert "run: python -m pytest -q ${{ matrix.part }}\n" in workflow
     assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
-    halves = [part for part in parts if part != "skills/"]
-    assert list((ROOT / "tests").glob("test_*.py")) and unrun_core_tests(ROOT, halves) == []
+    assert list((ROOT / "tests").glob("test_*.py")) and unrun_core_tests(ROOT, core) == []
+    assert unrun_skill_tests(ROOT, skills) == []
     apple = re.findall(r'- os: macos-latest\n\s+python: apple\n\s+part: "([^"]+)"', workflow)
     assert sorted(apple) == sorted(parts)  # an entry added to a matrix by hand names every part
+
+
+def test_the_skills_split_rule_finds_a_folder_no_job_runs_one_two_run_and_a_loose_test_file(tmp_path):
+    for rel in ("skills/synthesis-alpha/tests/test_a.py", "skills/synthesis-zeta/test_z.py", "skills/other/test_o.py",
+                "skills/test_loose.py"):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_text("")
+    parts = ["skills/synthesis-[a-l]*", "skills/synthesis-[m-z]*"]
+    unrun = ["skills/test_loose.py: run by 0 of the jobs", "skills/other: run by 0 of the jobs"]
+    assert unrun_skill_tests(tmp_path, parts) == unrun
+    assert unrun_skill_tests(tmp_path, parts + ["skills/synthesis-a*"]) == unrun + ["skills/synthesis-alpha: run by 2 of the jobs"]
 
 
 def test_the_split_rule_finds_a_file_no_job_runs_and_one_that_two_run(tmp_path):

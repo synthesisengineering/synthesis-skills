@@ -17,7 +17,8 @@ from pathlib import Path
 ALEX, BLAIR, CASEY = "Alex Sample", "Blair Example", "Casey Fixture"
 T0 = 1709647320000  # 2024-03-05T14:02:00Z, a Tuesday
 DAY = 86_400_000
-SECTIONS = ("inbox", "archived_threads", "filtered_threads", "message_requests", "e2ee_cutover")
+SECTIONS = ("inbox", "archived_threads", "filtered_threads", "message_requests", "e2ee_cutover",
+            "e2ee_cutover_filtered")
 
 
 def meta_text(text: str) -> str:

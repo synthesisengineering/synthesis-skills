@@ -15,6 +15,15 @@ from synthesis import install
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture(autouse=True)
+def the_principal_approves_each_change_of_the_runtime(monkeypatch):
+    """An install over an installed runtime spends the principal's code inside install itself (review round 4 of 5.23.1,
+    Q4), which tests/test_runtime_boundary.py holds to; these tests are about what an install lays out, so it is given.
+    A test that runs install in a process of its own meets the real check (the command line test below). Install calls
+    the check it bound when it loaded, so that is the one given (review round 2 of 22.18, K1)."""
+    monkeypatch.setattr(install, "_approve", lambda *args, **kwargs: None)
+
+
 def _plugin_copy(tmp_path, name="plugin-v1"):
     dest = tmp_path / name
     shutil.copytree(ROOT / "synthesis", dest / "synthesis", ignore=shutil.ignore_patterns("__pycache__"))
@@ -47,16 +56,19 @@ def test_upgrade_switches_current_and_keeps_the_hook_text_identical(tmp_path, is
     hook_text = (isolated_home / "bin" / "synthesis-hook").read_text()
     first = os.path.realpath(isolated_home / "current")
     v2 = _plugin_copy(tmp_path, "v2")
-    (v2 / "synthesis" / "__init__.py").write_text('__version__ = "5.0.1"\n')
+    (v2 / "synthesis" / "__init__.py").write_text('__version__ = "99.0.1"\n')  # newer than the tree it copies
     install.install(v2)
     assert os.path.realpath(isolated_home / "current") != first
     assert (isolated_home / "bin" / "synthesis-hook").read_text() == hook_text
     assert install.install(v2).endswith(str(isolated_home / "current"))  # idempotent
 
 
-def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, isolated_home):
+def test_a_session_start_never_switches_the_runtime_either_way(tmp_path, isolated_home):
     """2026-10-06: a session that loaded the 5.0.2 plugin started or compacted after 5.0.3 shipped, and its
-    session-start hook switched the stable runtime back to 5.0.2 for every harness. Only an explicit install may."""
+    session-start hook switched the stable runtime back to 5.0.2 for every harness. Since 5.24.0 a session start does
+    not move it forward either: the folder a harness passes is its own plugin cache, which the guard does not protect
+    (the principal's sandbox rulings of 2026-11-15). Only an explicit install may, and that waits for his code; an older
+    release is a rollback, which brings back the holes later releases closed and needs his code on every route (A1)."""
     old, new = _plugin_copy(tmp_path, "old"), _plugin_copy(tmp_path, "new")
     (old / "synthesis" / "__init__.py").write_text('__version__ = "1.0.0"\n')
     (new / "synthesis" / "__init__.py").write_text('__version__ = "1.0.1"\n')
@@ -65,12 +77,12 @@ def test_a_session_on_an_older_plugin_never_switches_the_runtime_back(tmp_path, 
     out = subprocess.run([str(isolated_home / "bin" / "synthesis-hook"), "session-start", str(old)], input="{}",
                          capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
     assert out.returncode == 0 and os.path.realpath(isolated_home / "current") == installed
-    assert "not newer" in install.install(old, forward_only=True)
+    assert "kept" in install.install(old, first_only=True)
     newer = _plugin_copy(tmp_path, "newer")
     (newer / "synthesis" / "__init__.py").write_text('__version__ = "1.0.2"\n')
-    install.install(newer, forward_only=True)  # a session on a newer plugin still upgrades everyone
-    assert install.version(isolated_home / "current") == (1, 0, 2)
-    install.install(old)  # a deliberate rollback is an explicit install
+    assert "kept" in install.install(newer, first_only=True)  # a session on a newer plugin moves nobody
+    assert install.version(isolated_home / "current") == (1, 0, 1)
+    install.install(old)  # a deliberate rollback is an explicit install, its code given (this file's principal approves)
     assert install.version(isolated_home / "current") == (1, 0, 0)
 
 
@@ -188,19 +200,26 @@ def test_uninstall_dry_run_changes_nothing(tmp_path, isolated_home):
 
 
 def test_install_rerun_changes_nothing(tmp_path, isolated_home):
+    """No file is written again. The releases folder's own time moves: every install stages its copy there and checks
+    it before anything switches (review round 1 of 22.18), and the copy of an unchanged release is then removed."""
     plugin = _plugin_copy(tmp_path)
     install.install(plugin)
-    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")}
+    stamp = {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*") if p.is_file()}
     install.install(plugin)
-    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*")} == stamp
+    assert {str(p): p.stat().st_mtime_ns for p in isolated_home.rglob("*") if p.is_file()} == stamp
+    assert not [p for p in (isolated_home / "releases").iterdir() if p.name.startswith(".") and p.name != ".install.lock"]
 
 
-def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home):
+def test_command_line_install_with_git_hooks_then_uninstall(tmp_path, isolated_home, request):
     plugin = _plugin_copy(tmp_path)
     run = lambda *a: subprocess.run([sys.executable, "-S", str(plugin / "synthesis" / "install.py"), *a],
                                     capture_output=True, text=True, env={**os.environ, "SYNTHESIS_HOME": str(isolated_home)})
-    out = run(str(plugin), "--git-hooks")
+    out = run(str(plugin), "--git-hooks")  # a first install: no code
     assert out.returncode == 0 and "core.hooksPath ->" in out.stdout
+    principal = request.getfixturevalue("principal")  # the principal's session, as the prompt hook records it once a runtime runs
+    out = run("uninstall")  # removing an installed runtime waits for the principal's code (review round 1 of 22.18)
+    assert out.returncode == 2 and "approve followed by the code" in out.stderr and _hooks_path() != []
+    principal(out.stderr)
     out = run("uninstall")
     assert out.returncode == 0 and "restored core.hooksPath to unset" in out.stdout and _hooks_path() == []
 
@@ -340,11 +359,18 @@ def test_the_guard_finds_the_holds_ledgers_reader_in_the_runtime(tmp_path, isola
 # (2026-11-12, measured on 5.8.0).
 
 def _compiled(runtime) -> set:
-    """The runtime's modules this interpreter finds compiled code for, where it looks for it: beside the source, or
-    under the prefix an interpreter keeps its compiled code in (Apple's Python has one, keyed by the path a module
-    is imported from, which for a hook is the path through `current`)."""
-    from importlib.util import cache_from_source
-    return {path.stem for path in (runtime / "synthesis").glob("*.py") if Path(cache_from_source(str(path))).is_file()}
+    """The runtime's modules the interpreter its launchers pin finds compiled code for, run as they run it (isolated,
+    where no prefix for compiled code applies): beside the source, under that interpreter's own tag. The pinned
+    interpreter need not be the one running this suite: on CI's Linux runners it is the system's Python, which is
+    root's own, and setup-python's is not (the integration review of 5.24.0: Ubuntu 26.04's Python is a newer one than
+    the suite's, so this suite's own tag found nothing)."""
+    python = install.pinned(runtime.parent)
+    assert python, "the install pinned no interpreter"
+    probe = ("import importlib.util as u, pathlib, sys\nprint('\\n'.join(s.stem for s in pathlib.Path(sys.argv[1]).glob('*.py') "
+             "if pathlib.Path(u.cache_from_source(str(s))).is_file()))")
+    done = subprocess.run([python, "-I", "-S", "-c", probe, str(runtime / "synthesis")], env={}, capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+    return set(done.stdout.split())
 
 
 def test_the_runtime_carries_compiled_code_whatever_the_callers_environment_says(tmp_path, isolated_home, monkeypatch):
@@ -369,9 +395,8 @@ def test_an_install_over_a_runtime_without_compiled_code_adds_it(tmp_path, isola
     plugin = _plugin_copy(tmp_path)
     install.install(plugin)
     runtime = isolated_home / "current"
-    from importlib.util import cache_from_source
-    for source in (runtime / "synthesis").glob("*.py"):
-        Path(cache_from_source(str(source))).unlink()
+    for compiled in (runtime / "synthesis" / "__pycache__").glob("*.pyc"):
+        compiled.unlink()
     assert _compiled(runtime) == set()
     stamp = (runtime / "SOURCE").read_text(encoding="utf-8")
     install.install(plugin)
@@ -390,11 +415,11 @@ def test_a_session_start_compiles_a_runtime_that_reached_it_uncompiled(tmp_path,
         install.install(plugin)
     runtime = isolated_home / "current"
     assert _compiled(runtime) == set()
-    assert "is not newer" in install.install(plugin, forward_only=True)
+    assert "kept" in install.install(plugin, first_only=True)
     assert {"guards", "hook", "approvals", "paths"} <= _compiled(runtime)
     import compileall
     monkeypatch.setattr(compileall, "compile_dir", lambda *args, **kwargs: pytest.fail("a compiled runtime was compiled again"))
-    assert "is not newer" in install.install(plugin, forward_only=True)  # every later session start only looks
+    assert "kept" in install.install(plugin, first_only=True)  # every later session start only looks
 
 
 def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isolated_home):
@@ -402,7 +427,6 @@ def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isola
     interpreter that keeps compiled code by path, every release is read through the one path `current`, so a file of
     the next release with the same size and date ran the release before it. A compiled file carries its source's
     hash instead, and is checked against it each time it is loaded."""
-    from importlib.util import cache_from_source
     install.install(_plugin_copy(tmp_path))
     source = isolated_home / "current" / "synthesis" / "__init__.py"
     was, text = source.stat(), source.read_text(encoding="utf-8")
@@ -415,7 +439,9 @@ def test_compiled_code_is_held_to_its_source_and_not_to_its_date(tmp_path, isola
                            "print(synthesis.__version__)", str(isolated_home / "current")], capture_output=True, text=True,
                           env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
     assert said.stdout.strip() == other, said.stderr
-    assert Path(cache_from_source(str(source.with_name("guards.py")))).read_bytes()[4] & 3 == 3  # hashed, and checked
+    tag = sys.implementation.cache_tag if install.pinned(isolated_home) == os.path.realpath(sys.executable) else "*"
+    compiled = next((source.parent / "__pycache__").glob(f"guards.{tag}.pyc"))  # beside it: the launchers run isolated
+    assert compiled.read_bytes()[4] & 3 == 3  # hashed, and checked
 
 
 def test_an_interpreter_with_nowhere_to_keep_compiled_code_still_gets_a_whole_install(tmp_path, isolated_home, monkeypatch):

@@ -167,8 +167,9 @@ def test_a_browser_action_that_says_it_sends_waits_for_the_code(tool, call):
     _steps(("computer", {"action": "key", "text": "Return", "action_summary": "Submits the search"})),
     _steps(("form_input", {"ref": "ref_3", "value": "I'm sorry for the delay.", "action_summary": "Fills the search box"})),
 ])
-def test_browsing_and_searching_need_no_code(call):
-    assert check(CHROME, call) is None
+def test_browsing_and_searching_need_no_code(tmp_path, call):
+    """On a page the record shows to be no messaging site's (round 1 of 5.23.1, #3: a page no list shows is unknown)."""
+    assert guards.check(CHROME, call, CONFIG, session=_on(tmp_path, 1, tab1="https://example.com/")) is None
 
 
 def test_words_a_browser_send_carries_pass_the_register_scan_first():
@@ -456,7 +457,9 @@ def test_a_click_that_only_opens_or_closes_a_box_passes(summary):
 def test_other_ways_a_review_is_submitted_on_a_site_that_is_no_messaging_site_wait(steps):
     """The second review: on a page that is no messaging site, a word before the label, an -ing form, a later "shows",
     a label outside the list, Return or Tab then Space after the words, a typed line break and a page script went out."""
-    assert "approve" in (check(CHROME, _opened(REVIEWS, *steps)) or "")
+    reason = check(CHROME, _opened(REVIEWS, *steps)) or ""
+    scripted = any(name == "javascript_tool" for name, _ in steps)  # after the batch's own navigate (round 4 of 5.24.0's review, #2)
+    assert ("may have moved" in reason) if scripted else ("approve" in reason), reason
 
 
 @pytest.mark.parametrize("url, steps", [
@@ -520,7 +523,8 @@ def test_a_page_script_that_can_send_on_a_messaging_site_waits(tmp_path, script)
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
     assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
     fill = ("form_input", {"ref": "ref_2", "value": "Congratulations, Pat", "action_summary": "Fills the comment box"})
-    assert "approve" in (check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or "")
+    reason = check(CHROME, _opened("https://www.linkedin.com/feed/", fill, ("javascript_tool", alone))) or ""
+    assert ("get_page_text" in reason or "may have moved" in reason) and "approve" not in reason  # after its navigate (round 4, #2)
 
 
 @pytest.mark.parametrize("url, script", [
@@ -577,9 +581,13 @@ def test_a_navigate_that_names_no_host_keeps_a_messaging_sites_page(tmp_path):
     it opens may be that site's still, so it is judged as that site's; from any other page it is unknown, as before."""
     for where, held in (("https://www.facebook.com/groups/1/", True), ("https://docs.google.com/document/d/x", False)):
         session = _on(tmp_path, 7, tab7=where)
-        for url in ("back", "forward", "/messages/t/1", "javascript:void(0)"):
+        for url in ("back", "forward", "/messages/t/1"):  # from any other page that page is unknown, and may be one (round 1 of 5.23.1, #3)
             reason = guards.check(CHROME, _steps(("navigate", {"url": url, "tabId": 7}), RETURN), CONFIG, session=session)
-            assert bool(reason and "approve" in reason) is held, (where, url)
+            assert reason and ("approve" in reason or "read the page first" in reason), (where, url)  # unknown: read it first
+        # a javascript: address runs a page script on the page it is on (round 4 of 5.24.0's review, #1): refused on a
+        # messaging site's page, judged as the script it is elsewhere
+        reason = guards.check(CHROME, _steps(("navigate", {"url": "javascript:void(0)", "tabId": 7}), RETURN), CONFIG, session=session)
+        assert bool(reason and "javascript:" in reason and "approve" not in reason) is held, (where, reason)
 
 
 def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
@@ -588,7 +596,8 @@ def test_a_tab_list_printed_by_another_tool_is_not_the_browsers(tmp_path):
     with open(session["transcript_path"], "a", encoding="utf-8") as transcript:
         transcript.write(_result("toolu_2", "Bash", 7, {"tab7": "https://docs.google.com/document/d/x"}))
     assert "approve" in guards.check(CHROME, _steps(RETURN), CONFIG, session=session)
-    assert guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")}) is None
+    gone = guards.check(CHROME, _steps(RETURN), CONFIG, session={**session, "transcript_path": str(tmp_path / "gone")})
+    assert "read the page first" in (gone or "")  # a page no list shows may be a messaging site's: read it first (round 2 of 5.23.1, #1)
 
 
 def test_words_typed_on_a_messaging_site_pass_the_register_scan(tmp_path):
@@ -677,7 +686,9 @@ def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, sc
     """Review round 1 of the Messenger surface, finding 13: on the chat list a script that moves the tab opens a chat,
     which marks it read in the principal's view, so it waits for the code like one that clicks."""
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")  # a Messenger site takes the plugin's own alone (5.24.0)
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
     assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")
 
 
@@ -685,5 +696,7 @@ def test_a_page_script_that_moves_the_tab_on_a_messaging_site_waits(tmp_path, sc
                                     "location.href === 'https://www.facebook.com/messages/t/'"])
 def test_a_page_script_that_only_reads_its_address_passes(tmp_path, script):
     alone = {"action": "javascript_exec", "text": script, "tabId": 7}
-    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")
+    session = _on(tmp_path, 7, tab7="https://www.linkedin.com/messaging/")
     assert guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) is None
+    session = _on(tmp_path, 7, tab7="https://www.facebook.com/messages/t/")  # a Messenger site takes the plugin's own alone (5.24.0)
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", alone, CONFIG, session=session) or "")

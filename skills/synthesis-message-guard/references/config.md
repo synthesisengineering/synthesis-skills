@@ -4,7 +4,10 @@ The guard reads `~/.synthesis/v5/config.json`, the principal's private file. An
 unreadable or malformed file blocks every send (R3.5); a missing file means the defaults
 below. The public starting point is
 [config.example.json](../config.example.json), which the tests load in CI, where there is
-no `~/.synthesis`.
+no `~/.synthesis`. An agent's write to the file waits for the principal's code for that
+exact write, by a file tool or a shell command, since its keys (`own_repos`,
+`send_window_signatures`, `forbidden_phrases` and the rest) set what every approval means;
+reading it needs none (the agent guardrails' config reference says how each route is read).
 
 **When the guard cannot answer** (5.21.0). In Claude Code the plugin's PreToolUse hook sets
 `"onFailure": "block"`, so from Claude Code 2.1.295 a send is held when the guard times out (its
@@ -403,8 +406,9 @@ in chat. The tools are listed in `sends.DOCUMENT_EDITS`; creating a new document
 The paragraph rule does not apply to a document's own line breaks, and a window never covers an edit, since
 an edit carries no signature.
 
-Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized; the
-binding rule covers it. Computer use and browser actions are covered below.
+Limits: a program that sends through its own code (a script calling an HTTP library) is not recognized, except a
+call to a local MCP server's tool, which is judged as that tool's call (below); the binding rule covers the rest.
+Computer use and browser actions are covered below.
 
 **Windows.** Only the principal opens one, for a planned number of sends (`--sends`, 1 to 50) within at most 12
 hours: the last planned send closes it (2026-10-27: a window stayed open for hours after its planned sends, and
@@ -423,6 +427,211 @@ signature, and is written to the day's ledger with the sends approved by code; `
 [--date]` prints it for the daily plan's "On your behalf". Exact-text sends (the principal's own words) are
 outside every window: list only the signatures of lanes the principal allows.
 
+## Batches (2026-11-14)
+
+A seat that drafts replies in the principal's own words sends them in batches of about twenty: the principal reads
+every text and recipient in one sitting and types one code, and fifty replies no longer need fifty codes. Over the 26
+days to 2026-11-14 the guard let through 442 sends, 358 on a code per call, as many as 16 of those within one hour.
+A batch binds each exact text and recipient, so it is stronger than a window and may carry what a window must not.
+
+**The file,** written by the seat that drafted it, in its own project, with 1 to 50 entries of four kinds, each
+with nothing else:
+
+```json
+{"batch": "replies-2026-11-14", "project": "inbox-backlog", "entries": [
+  {"tool": "mcp__slack__slack_send_message", "input": {"channel_id": "D0123", "message": "Thanks, Tuesday works."}},
+  {"channel": "messenger", "to": "facebook.com/messages/e2ee/t/1000000001", "text": "Thanks, Tuesday works."},
+  {"channel": "messages", "to": "+15550100", "text": "On my way."},
+  {"channel": "messages", "members": ["+15550101", "+15550102"], "service": "SMS", "chat": "chat-9", "text": "Landed."}]}
+```
+
+A connector call is the tool's exact name and its exact input. A browser send on Messenger is the conversation's
+address in its one canonical form (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`,
+`messenger.com/t/<id>` or `messenger.com/e2ee/t/<id>`, with nothing before or after it) and the exact text. A send by
+the local messages sender (`messages_send.py`) is the handle `--to` takes and the text, or for `--members` each
+member's handle once, the chat's service and its chat id, as the sender's own approval names them, and the text; a
+connector entry never names the sender's own tools (`imessage_send`, `messages_send`), which would carry its photo. One
+entry goes to each conversation (an address, a handle, a chat, or for a connector call the recipient fields its input
+names: `to`, `channel_id`, a thread and their kin). Anything else is refused with what is wrong, and so
+are a control character other than a newline, or half of a surrogate pair, anywhere in the file (the review of 5.23.0:
+an escape code hid words in a listing, and a carriage return printed one line over another), a connector entry's tool
+name holding more than letters, digits and `_ . : -` (its third round: the listing prints a name as it is, and a line
+separator in one drew a line of the agent's own), a key given twice, a number JSON does not have, a repeated entry and
+a file over 1 MB.
+
+**Asking.** `synthesis sends batch <file>` prints the digest (SHA-256 of the batch's canonical JSON: sorted keys, no
+spaces, UTF-8), the count and each entry's channel and recipient; `--show` also prints every text in full and opens
+nothing, so it needs no code. Every listing quotes each text as JSON and prints as it is a letter, mark, digit,
+punctuation or symbol, a plain space and a line break; every other character (a control, format, separator, private
+or unassigned one, every other space) is written as its code, and so is any character of those kinds that is one of
+the listed fillers, blanks and variation selectors (U+1D159 and U+16FE4 among them, the third round) or whose name says
+it is a blank, filler, joiner, subjoiner, conjoiner or selector (U+13441, U+2D7F, U+1107F, U+11A47 and U+1BC9D among
+them, review round 4, #8). The
+file's path, the batch's name and its project are shown the same way (the review of 5.24.0), and a connector call's
+input prints one field to a line. The command opens a batch only on the principal's code for exactly that
+digest, typed in the session that runs it, from any terminal: an agent could fake a terminal of the principal's own, so
+there is no such shortcut. It spends the code itself, so a file changed after the hold has another digest and gets
+nothing. The guard holds the command with the code and the whole listing, texts included, so the principal reads in the
+hold exactly what the code grants; a packet built from the same file is a convenience, never the record. The guard
+reads every `synthesis sends` in a command line with the CLI's own parser; one it cannot read as the CLI would (a word
+the shell changes first, or one the CLI refuses) waits for a code of its own, and a file goes only with `sends batch`.
+At the grant the entries are copied into the synthesis state with the digest, the project, the grant's time, the
+session that ran the command and the code the principal typed in it, so editing the file afterwards changes nothing.
+
+**What an entry covers.** Exactly that entry, compared after each string's line endings are written as `\n`, and
+nothing else is overlooked: a trailing space, a lookalike letter, another case or one more character is another
+send. A connector entry binds the whole call, every field of its input, compared as JSON (`true` is not `1`); a call
+whose input names anything its connector fetches, reads or carries when it runs (a key naming a url, a uri, a link, a
+path, a file, an attachment, an upload, a download, media, an image, a photo, a picture, video, audio, a voice clip, a
+blob, a sticker, a thumbnail or an avatar) is never covered, since a batch binds words, not what a url, a path or a
+file holds when the call runs. A messages entry binds what the sender's own approval binds; a photo beside it
+is outside every batch. A Messenger entry is sent in one step, a single `browser_batch` (the review's third round: a
+check read in one call and a Return pressed in another left room between them for a page script that rewrote what the
+check reported, a typist the guard could not see, and another session):
+
+1. **A navigate** on a tab it names, which this session made with the browser's own `tabs_create` (the guard reads the
+   new tab's id from that call's result in this session's record) and which this session's newest list of tabs already
+   shows on the entry's conversation, to that conversation's https address with no query or fragment (`https://www.<its
+   address>/`). A page gets a handle to another window only by opening it, so no page holds one to a tab the browser tool
+   made (the review's third round: a script on a page the guard read as the agent's own `data:` page, after that page
+   had moved itself to facebook.com, opened the chat and patched it through every load; the coordinator's ruling of
+   2026-11-15). Since the tab was made, any action on it in another session's record, or one there that names no tab,
+   and any page script but the shipped ones run on it in this session's record or its sub-agents' (a window a script
+   opens keeps a handle to the tab) void it; a tab the guard did not see this session make is refused with that word:
+   open a fresh tab with `tabs_create` and navigate it to the conversation. The navigate loads the page again, so
+   whatever an earlier script did to it goes with it; since the tab already showed that conversation, no session's guard
+   reads another address for it while the step runs.
+2. **The words typed** on that tab, and nothing else: typing with no line break, shift+Return for each line break,
+   select-all with Delete or Backspace to clear, and waits. No click and no other key: Return sends the box as it stands,
+   and the composer's neighbours are send controls themselves (`Send a like` sends a thumbs-up; the coordinator's live
+   read of 2026-11-14).
+3. **Last, the send script**, exactly as `synthesis sends script --entry <digest prefix>:<its number>` prints it for
+   the entry, run with the JavaScript tool on that tab. It holds the conversation and the SHA-256 of the entry's words,
+   and in one synchronous run, so nothing can act between the read and the send, it:
+   - finds **the box**: the one contenteditable textbox whose `aria-label` starts with `Write to` or names a message,
+     whose `aria-placeholder` is `Aa`, or that is a Lexical editor (`data-lexical-editor`); two such boxes, or none,
+     send nothing;
+   - reads **its words**, its `innerText` with the one line break Lexical ends it with left off (an empty box is a
+     single line break; a shift+Enter break is one line break inside), and compares their SHA-256 with the entry's,
+     each line ending written as `\n`: past that one break the comparison is exact;
+   - reads **the composer**, the box's nearest ancestor that also holds a control whose `aria-label` names sending
+     (`Press enter to send`, `Send`) or a file or attachment (`Attach a file`), and outside the box, in it or in any other
+     child of its parent (in plain mode the composer is its parent's only child, live 2026-11-15): **what is staged**
+     (images, video, audio, canvases, objects, frames, pictures, an svg outside a control such as a file's icon, and a
+     control labelled to remove, close, cancel, delete or discard), and **its mode** (text that opens with `Replying
+     to`, `Edit`, `Editing`, `Cancel reply` or `Cancel edit`, a control labelled for a reply or an edit, a quotation, and
+     a heading, `role="heading"` or `h1` to `h6`, outside the composer whatever it reads; inside it a heading counts
+     only by those words, since Messenger's composer always holds a visually hidden `Compose` heading), with the images
+     inside the box, which `innerText` leaves out. Reply mode was read live on 2026-11-15; edit mode and a staged file
+     have not been;
+   - checks that **the page** is the entry's conversation, by its site and path;
+   - and only when all of that holds, clicks the one control in the composer labelled exactly `Press enter to send` or
+     `Send`. It returns one JSON report: the address, whether the conversation and the words matched, the counts, the
+     controls it found, whether it sent, and the box's text right after (empty when Messenger took the words at once).
+
+`synthesis sends composer-check` prints the same reading as a script that sends nothing, for a look at the page. On a
+Messenger site's tab (a page of facebook.com or messenger.com or a host under them, which share the chat's origin, or
+of a host the guard counts as Messenger's, where the browser lands on a chat: m.me, fb.com, fb.me and Business Suite's
+inbox), by this call's own navigates, this session's newest list of tabs, or another active session's list when that
+is the newest of all that name the tab, no page script runs but the shipped read-only ones (the composer check, and the
+extractors `messenger_messages.py` and `chat_page.py` print) and the send script as the last step of its send step; any
+other, whichever browser tool runs it (Claude in Chrome's, the built-in pane's, and a driven browser's
+`browser_evaluate` and `browser_run_code_unsafe`), and a navigate to a `javascript:` address too, read as a URL parser
+reads it, from any of them, alone or in a batch, is refused at its own call, since it can change what the send reads or
+what a click sends, then or later. A page no list of tabs names (a tab not listed yet, one a navigate sent where no host
+is named, or a page a driven browser's record does not show) takes none either, since it may be a Messenger site's (the
+third round's opener ran on such a tab), and the refusal says to read the page first, by a list of tabs or a snapshot
+(main's word for such a page since its review round 2). A step that may move a tab is a navigate, a click, a key, a
+drag, words typed with a line break, a form value or an upload, but not one on a local app's page or a navigate to one
+(review round 6, #4, as ruled: a local page that sends the tab on is on the open list, so a click and then a script
+that clicks Save in the principal's own app runs); and a page script that can navigate, on any page: a location change
+by any assignment operator (by name, by an alias such as `const l = location`, or by `Object.assign(location, ...)`),
+`open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event, or one the
+guard cannot read. A
+script that sets a value or writes by fetch moves nothing (a write by fetch waits for its own code as a send)
+(review round 4, #2: a short link or a followed link landed on a chat; round 5, #1: a script or a form value moved it
+unseen; round 6, #1 and #4). The guard's own first step for a driven browser, marked
+`exact`, moves nothing; an agent's call so marked does. After such a step earlier in the same call, a script there
+takes nothing but the plugin's own when the move was onto or from a Messenger site's page or one no list shows, and on
+a Messenger site's page the refusal names that page's rule and its read tools (round 5, #3); after any other move a
+read runs, and a script that acts or cannot be read waits for a call of its own, once a list of tabs shows where the
+tab landed. That split is protection, by the coordinator's ruling of 2026-11-15: a redirect onto a chat shows no sign
+before it lands, so a script that acts after an ordinary move costs one more call, and no code. Each browser keeps its
+own tab ids and lists. Over the 60 days to 2026-11-15, of 146 batches with a page script the rule refused 114 as first
+written and refuses 8 in its own words now, all scripts that act after an ordinary move, in both workspaces: the
+protection above. 19 more are refused in a Messenger page's rule's words (15 reads after a move onto a Messenger page,
+which round 4's fix refused in the moved rule's words, and 4 scripts on a Messenger tab), 27 in all, as before round 5.
+A pane batch on a local app that clicks and then reads runs. Of the 3,708 browser calls in the Claude Code records of
+those days, the guard with these rules refuses 57 (49 scripts on a Messenger site's tab, none of them the plugin's own,
+and those 8 batches) and tells 1 to read its page first, where main's rule alone refuses none (above).
+The guard spends the entry when it lets the step through, so a step whose script then finds the page wrong sends
+nothing, and that entry needs a new code: the principal's code per call (the Return after the words) or a new batch. A
+conversation is a page's site and path, its trailing slash and query left off: the
+four forms above are four distinct conversations (every chat facebook.com lists links to `/messages/e2ee/t/<id>/`), and
+a send on one never spends an entry for another. Each entry sends once, decided under the send guard's lock; only within
+12 hours of the principal typing the batch's code (what `synthesis sends status` names as its end); and only from the
+session that ran the granted command, as the guard is told it (a hook's payload). The messages sender names no session
+(its third round: a link or runpy kept a `--session` naming another): for each run of the sender a command the guard
+lets through makes, its program resolved as the write rules resolve one (an interpreter's file or module, a script run
+by its path, each through its links), the guard files a one-use ticket for the session its hook names, bound to that
+run (the sender's real file, its arguments and its real folder); the sender hands its guard call its own run, which
+takes only a ticket of the same run filed in the last minute (review round 4, #6, #11 and #12: a `cat` or a `grep` of
+the sender's file filed one, any run took it, and a line of two sends had one). The ticket names the harness whose hook
+filed it (the hook's nearest ancestor process that is no shell, interpreter or the hook's launcher, by its pid and start
+time, when that is a harness of the session's own; when it is a process every program of a terminal shares, a login, a
+remote login or a multiplexer, or there are shells alone, no ticket is filed and each send waits, review round 7, #2)
+and the command line the run's process shows; it is taken only by
+a process under that harness whose own command line, as the system's `/bin/ps` shows it, ends so (review rounds 5 and
+6, #4 and #2: an identical run the guard never saw took a ticket, and a `ps` first on PATH could answer for the system).
+A command that only names the file files none; a run under another name or by runpy takes only a ticket whose run its
+own command line shows; identical runs of two sessions in one folder each take their own session's ticket; where `ps`
+cannot answer, none is taken and each send waits for its code. An entry is spent at once, under the send lock, and
+given back (an "undone" line in the spends ledger, and the batch's spent mark taken back) when the call that spent it is
+then held, as a per-call grant is; a call left with no answer keeps its spend, since a harness given no answer may have
+run it (review round 7, #3). That session's own record must show, each time an
+entry is spent, the principal typing the batch's
+code after the guard first filed that code for that digest. The guard records each request it files for a batch, its
+digest and code, in a ledger only it writes (`sends._requests_file`); no line of the session's record stands in for
+it, since the agent writes those (the review's third round: its own sentence naming a digest and a code tied them, and
+repeating both after the principal typed the code held a granted batch). A code typed for anything else backs
+nothing, so batch state alone is never a grant. Each send is
+written to an append-only spends ledger and to the day's ledger as `batch:<digest prefix>:<index>`, so `synthesis
+sends log` shows it for "On your behalf". A Messenger send step's line is read with its send script's own report from
+the session's record: `synthesis sends log` names one whose script declined as not sent, and one with no report yet as
+unconfirmed (review round 4's notes: the line named a message the script then declined to send). Another session's
+call voids a send step only when it went to the same browser, names the step's tab or none, can change the page (not
+a screenshot, a scroll, a wait or a hover) and no hook refused it, and a tab is this session's only by the extension's
+own `Created new tab. Tab ID: N` (the words every one of 89 such results in 60 days of records used, each naming in
+`Executed on tabId` the tab it made).
+
+**Every other check runs first.** The register scan, the format rules, an address that can change
+(`temporary_addresses`) and a time in the words (`fresh_calendar`) hold an entry as they hold any message, a Messenger
+entry's words included: an entry that names a clock time still needs a fresh calendar read when it goes, or the
+hold's own code, which spends the entry with the send. For a Messenger entry that code binds the exact send step: its
+conversation's address, and its script, which holds the words' digest. A meeting placed on today is never covered
+(`same_day_meetings`). No shell post is a batch's entry: the messages sender asks the guard itself.
+
+**The window and the batch never combine.** The batch is looked at after every check and before the window; a send
+it covers is not counted against a window's planned sends, and a call is covered whole or not at all.
+
+**What tampering with the state does.** The file tools and the shell writes the guard reads cannot write the state,
+and a script that names a batch's opening or spending code is refused as the window's is; 5.22.1 closes the
+interpreter writes the review of 5.23.0 found, and the guard reads `sends._batch_file`, `sends._spends_file`,
+`sends._requests_file` and `sends._window_file` as leading into the state, so a program that names one is judged as
+one that names the state folder. A path a program builds at run time is still unseen (the review of 5.24.0, #6, a sandbox's to close, not this
+batch's). Behind that: state that cannot be read, whose entries no longer hash to
+its digest and its file's name, that marks entries it does not have as spent, or whose life runs past 12 hours from
+its grant is no batch, and its sends fall back to the code per call; the same batch granted again is then refused
+rather than guessing which entries went. A spent mark taken out of the state reopens nothing, since the spends ledger
+keeps every spend. A grant time moved later keeps nothing open past 12 hours from the principal's own prompt, which each
+spend reads in the session's record, and another session's name put in the state spends nothing, since that session's
+record holds no code for it. These fields are not signed: what holds the line is that only the guard and the CLI write
+the state, and that the principal's typed code is read from the harness's record at every spend. A batch granted again
+with readable state keeps the spent marks of its earlier grant.
+
+**Ending.** `synthesis sends close` ends the window and every open batch at once, with no code, and `synthesis sends
+status` shows each open batch with its entries left and when it ends.
+
 ## Computer use and the browser (2026-10-22)
 
 On 2026-10-22 a photo with a caption went out on WhatsApp through `computer_batch`, a click on the app's Send
@@ -432,8 +641,9 @@ made through Claude in Chrome's `browser_batch`, none guarded either. Both now w
 
 **Which tools.** The computer-use server's action tools under any server id (`computer_batch`, `app_batch`,
 `app_click`, `app_key`, `app_type`, `app_menu`, `teach_step`, `teach_batch` and the single-action tools), a linked
-device's `computer_*` tools, and a browser server's `computer` and `browser_batch` (Claude in Chrome, the built-in
-browser). Screenshots, zooms, scrolls, waits, menu listings and every read pass at once. Since 5.23.0 a browser tool
+device's `computer_*` tools, and a browser server's `computer`, `browser_batch`, `form_input`, `javascript_tool` and,
+since 5.24.0, `navigate` (Claude in Chrome, the built-in browser). Screenshots, zooms, scrolls, waits, menu listings
+and every read pass at once. Since 5.23.0 a browser tool
 from any other server whose name says it drives a browser (Playwright, Chrome DevTools, Puppeteer) is read too, as the
 steps it performs (typing, a key, a click, a form, a page script), on the page that server's own results last showed;
 a click is read by the control the page's snapshot names, not only by the words the agent gives it; and a step that
@@ -481,10 +691,25 @@ opened `linkedin.com/...`, `uk.linkedin.com` or `m.me/...` pressed Return with n
   the hosts a person types), under the email rules: Return writes a line, and cmd or ctrl with Return sends.
 
 The page is the tab a step names, else the one the last browser call ran on, read from the tab list Claude in Chrome
-prints after every call, or the page a `navigate` step earlier in the same batch opened. A `navigate` that names no
+prints after every call, or the page a `navigate` step earlier in the same batch opened. Each browser keeps its own tab
+ids, so a call is read by its own browser's newest list: since 5.24.0 the built-in pane's lists (its tab ids are
+`tab-N`), its own `tabs_context` (each tab's origin, the active one in front), its navigate's result (`navigated to`
+or `opened` and the address) and its `preview_start`'s answer (`opened` or `Opened tab "..." at` and the address) are
+read too; `Browser pane opened` names no address and changes no page, so the page an earlier result shows stands, and a
+new pane's is blank (review round 2 of 5.23.1, #1). A `navigate` that names no
 host (`back`, `forward`, a path, a script) leaves the page unknown, unless the tab was on a messaging site: the page it
-opens may be that site's still, so it is judged as that site's. A page whose address the guard cannot read (a browser
-that prints no tab list) is judged by the summary rule alone. On 2026-10-22 a session found that Return in a Google
+opens may be that site's still, so it is judged as that site's. In Claude in Chrome and the built-in pane a page no list
+of tabs shows (a tab not listed yet; a sub-agent's, whose own record the guard reads when the hook names one) is judged
+as a page that may be a messaging site's (review round 1 of 5.23.1, #3). Claude in Chrome is one browser, whose tab ids
+a session shares with its sub-agents, so there each tab is read at the newest list that names it across the session's
+record and its sub-agents' records of the last 12 hours (review round 3 of 5.23.1, T3: a sub-agent was judged by its own
+list after its session moved the tab). A driven browser's page no result shows is judged as one that may be a messaging
+site's too. A call on such a page that sends only if the page is a messaging site's (a Return, a typed line break, a click no summary
+describes, a script that acts) is told to read the page first (`tabs_context` in Claude in Chrome or the pane, a
+snapshot or a list of pages in Playwright or Chrome DevTools), and no code is asked; one that sends on any page waits for
+the code, and so does a call from any other driven browser, whose results may never show the guard its page (review
+round 2 of 5.23.1, #1: after `preview_start`, a local app's click in the pane waited for a code). The pane's first page, which its answer files
+under no tab, is its tab's. On 2026-10-22 a session found that Return in a Google
 Chat compose box went out with no code, because a browser page had counted as no app.
 
 **A click whose summary says it publishes** (5.21.0 on messaging sites; 5.21.1 in every app and on every page). On
@@ -517,14 +742,76 @@ words and then presses Return or Enter (without shift), Space or Return after Ta
 code when its summaries name a message, comment, review, post, reply or tweet: most forms submit on Return, and those
 are the ones that post. A call that names none passes, as before 5.21.1 (the principal's ruling of 2026-11-14, "Skip
 typed text that names no post"), and so does every call on a local app. A page script (`javascript_tool`, alone or as a batch step) reaches the guard: on a messaging
-site one that clicks, submits, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or
-`sendBeacon`) or sets a value waits; elsewhere one that submits a form, sends a key or an event, writes by fetch, or
-clicks with a word that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet,
-done) waits, unless it names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
+site's page one the guard cannot read is refused and one that acts waits (below, since 5.24.0; on a Messenger site's tab none runs but the plugin's own read-only ones and a batch's send script in its
+send step, "Batches"); elsewhere one that submits
+a form, sends a key or an event, writes by fetch (a POST, PUT, PATCH or DELETE, or `sendBeacon`), or clicks with a word
+that publishes in it (submit, post, send, publish, reply, comment, share, review, rating, tweet, done) waits, unless it
+names a search, a sign-in, a password or a query as a whole word; on a local app none waits.
 A form fill alone (`form_input`) is typed text, scanned as a batch's is. Measured the same way: the key rule holds 16
 calls in 3 transcripts and passes 30 (23 that name no post, 6 that sign in or search, 1 on a local app; held as
 unsure, the 23 would have been held too); the script rule holds 5 of 118 scripts on messaging sites, in 2
 transcripts, and 24 of 459 elsewhere, in 5.
+
+**On a messaging site's page a script the guard cannot read is refused** (5.24.0). Review round 4 of the batch
+approval found a script that clicks Send by a name it builds as it runs (`el['cli' + 'ck']()`) passing on Slack,
+WhatsApp, LinkedIn, Gmail and X: the rule above read a script's text for a click, a submit or a key, and no reading of
+its text shows such a call. On a messaging site's page (every site and page the list above names), and on a page no
+record shows (below), a script is now read as code by the guard's own JavaScript reader: its strings, comments and
+patterns out, an optional call (`x?.()`, `x?.[k]`) read as a plain one, and `X.call(`, `.apply(` or `.bind(` read as a
+call of X where X is a dotted name or an empty array's method (`Array.prototype.slice.call(...)` and
+`[].slice.call(...)` are calls of `slice`).
+- **Refused:** one that calls what it names only as it runs (a member by a name it builds, Reflect, `call`, `apply` or
+  `bind` of a plain name, `eval`, `Function`, `with`, `import()`, a timer given a string, a name written in escapes); one
+  that puts code where the page runs it (a `script` element, an `on...` attribute, HTML with a script or an inline
+  handler in `innerHTML`, `outerHTML`, `srcdoc`, `insertAdjacentHTML`, `document.write` or a `Blob`, a `javascript:`
+  address given to the location, an `href` or a `src`); one whose string, comment or pattern never closes.
+- **Waits for the code:** one that acts: the rule above over its text and its code (`el['click']()` is `el.click()`),
+  without the browser server's own calls, which no page script makes (`new Array(5).fill(0)` is a read); any spelling of
+  `open`; a handler called or read (`.onclick`, `onClick`); a call whose name says it sends, posts, submits, publishes,
+  replies, shares or tweets, a page's own: by a bare name the script does not define itself, or by a method unless the
+  script defines it and calls it on `this` or on an object it defines (an object it writes, `new` of its own class, or
+  what an IIFE of its own returns; review round 4, U4) (a helper the script defines and names for what
+  it reads, `tweetText` or `postBody`, as a function or an object's or a class's method, is none; review round 3 of
+  5.23.1, T2); a move by the address or another part
+  of it, set by any assignment (`location.href +=`, `location.pathname`, `search`, `hash`, `navigation.navigate`,
+  `history.go`); a fetch or `Request` whose init (its second argument, or the object a variable given there holds and
+  what is set on that variable) carries a body or a method, in any form (a quoted key, the shorthand, an assignment),
+  that is not one literal GET or HEAD, or keyed by a name built as it runs (a computed key, a member named by a
+  variable); an init the reader cannot follow otherwise (spread into, the variable set again or handed to other code, a
+  parameter, any other expression) when the script sets such a method anywhere, as an object key (a shorthand key by
+  the one literal its const holds) or by a member assignment (`x.method =`, `x['method'] =`), an init its own helper
+  returns included (review rounds 5 and 6, W4: a parameter or a property read named method sets none), or puts a body
+  in an object it passes to a call, or in one a variable it passes to a call or spreads into one holds or is given, so a
+  read through a fetch wrapper passes, a `body` in what its own callback returns included (review rounds 3 and 4 of
+  5.23.1, T1 and U1); and an XHR opened with a method that is not GET or HEAD. A `body` read from a response is no
+  write (review round 2 of 5.23.1, #2).
+- **Passes:** a read, and the extractors the plugin ships.
+
+Wherever these lists read an assignment (a method or a body, a value, the address or a part of it, HTML or a
+`javascript:` address), any assignment operator counts, not `=` alone: `??=`, `||=`, `&&=`, `+=` and the arithmetic
+ones (review round 7 of 5.23.1, Y3: an options helper's `o.method ??= 'POST'` passed as a read).
+
+Measured over the 60 days of Claude Code and Codex records to 2026-11-15: of 181 scripts on those pages that are none of
+the plugin's own, the seats' ordinary work in two workspaces, it refuses none, holds 5 (4 that click, 1 that moves the
+tab: the 5 the rule above held) and passes 176; the 2 scripts on a page no record showed pass too. No script in those
+records called a member named as it ran, so none sent that way. A first version refused every script there but the
+plugin's own; it would have refused all 181, against the principal's bar that a release refuses no ordinary work.
+After review round 2 the counts are the same, and so is the guard's own verdict on each of the 3,708 browser calls in
+the Claude Code records of those days, judged as the hook judges them with the browser's recent calls and results as the
+record: 3,611 pass, 97 wait for a code on a messaging site's page, none is refused, and none was on a page no result
+showed. Of the 32 `preview_start` answers in them, 26 name the address the pane is placed at now, 2 name none and change
+no page, and 4 are errors.
+Spellings made to beat the reader are on the open list in `docs/runtime-integration.md`, each with a test expected to
+fail until it is closed.
+
+**A navigate is read as a URL parser reads it** (5.24.0). The `navigate` tool called alone was never judged, and a
+`navigate` step was read as written, while a browser strips control characters and spaces at an address's ends and
+drops every tab and line break in it, so `java\tscript:` and `\x01javascript:` are `javascript:` addresses. Every
+navigate from any browser tool (Claude in Chrome's and the built-in pane's, alone or in a batch, and a driven browser's)
+is now read that way, and one to a `javascript:` address is the page script it runs, percent-decoded as the browser
+decodes it, on the page the tab is on: refused on a messaging site's page, judged by the rule above elsewhere. What
+its code leaves the page on is not known. No navigate to a `javascript:` address appears in the 60 days of records,
+read raw or as a parser reads it, among 704 navigates.
 
 **A register hit where the guard is unsure the words are a message** (5.21.1). On a page that is no messaging site,
 and in an app that is none, a call that sends with words that break a register rule is not refused outright: a review
@@ -618,6 +905,20 @@ commands recorded in the 60 days before 5.23.0, this reading holds 39 the old gu
 key pressed: osascript whose script comes from another program's output or from words the shell fills in, and programs
 whose strings run such a script. It takes 0.17 ms on a typical command and 307 ms at worst.
 
+A program that hands osascript a script from a file (5.24.0, the review of the runtime's carried scripts): an agent's own
+Python that read a script file and passed it to `-e` ran with no code while `osascript <file>` waited, and pointed at the
+local-messaging skill's `messages_transport.js` that is a Messages send. When a program's osascript argument list shows no
+whole script, the guard reads how it is cut short: a computed script file (`['osascript', '-l', 'JavaScript', path]`), or
+a computed `-e` script or input that comes from a file (a read in the expression, or in what the name it uses is given).
+Each script file the program names (a string ending `.js`, `.jxa`, `.scpt`, `.applescript` or `.osa`, beside the program
+or where it runs), and each such word of its arguments when it reads its arguments, is judged as `osascript <file>` is.
+It waits when it writes one of those script files before running osascript (a log or a record it writes is none), when
+it reads one it does not name, and when a file it names cannot be read (not there, compiled). A script built from the
+program's own strings is read as before, so the plugin's notifications (`display notification` with the text filled in)
+pass, and a lookup (`shutil.which("osascript")`) runs nothing. The plugin's own script as shipped is
+judged by its own gate (the local-messaging sender asks the send guard itself), and a run the principal approved by its
+exact command, with the protected-folder code, is not asked about a second time in that run.
+
 A browser tool from any other server is read by what it does (5.23.0, the same review), on the page that server's own
 results show (Playwright's `- Page URL:` and tab list, Chrome DevTools' selected page, Puppeteer's `Navigated to`) or its
 own newest navigate, in a Claude Code record or a Codex rollout. A click is read by the control the current page's
@@ -627,6 +928,129 @@ dropped text holding one, an accepted dialog, and an evaluate or a script that a
 `browser_run_code_unsafe` waits when it loads its code from a file or its code starts a command that acts. A tool the
 guard does not know, on a server that drives a browser, is a step that may send, and so is any step where nothing shows
 the page. The code binds the call itself, so it is not spent on another control or box.
+
+## A local MCP server's tools from the shell (5.24.0)
+
+The meeting-transcripts skill's `mcp_client.py <tool> <json>` calls any tool of the local workspace-mcp server, whose
+default tier includes `send_gmail_message`, and a write to this machine is no post to another host: neither the client nor
+a `curl` POST of the same JSON-RPC to `localhost:8765/mcp` waited (the review of the runtime's carried scripts,
+2026-11-15). A command that calls a local MCP server's tool is now judged as that tool's own call, by the same judgement a
+connector call takes (the account it acts as, the travel rule, then the send rules, or the upload rule for one that does
+not send), with the server named `workspace-mcp`:
+
+- **An HTTP client to an address on this machine** (`localhost`, `127.0.0.1`, `[::1]` and `*.localhost`, in any case and
+  with a trailing dot, HTTPie's and xh's `:port` shorthand, and a URL in a variable the line sets or exports; `curl`,
+  with its `-K` config file read, `wget`, HTTPie, `xh`): its body read from its data words, a redirect's file, an
+  `@file`, a file option, its heredoc or input, a `$(cat file)`, HTTPie's fields or its `--raw`. A variable the line
+  sets (an assignment or a `for` list) is put into the words that use it, so a body it holds is read whole. Each
+  `tools/call` request it holds, a batch's included, is that tool's call. A body it cannot read (a file it lacks, one
+  the same line writes, input another program writes, another substitution, a variable or parameter the line does not
+  set, outside single quotes) waits when the address is a local MCP server's endpoint (port 8765 or the one
+  `WORKSPACE_MCP_PORT` names, or a path ending `/mcp`, `/sse` or `/messages`) or an address the shell fills in from a
+  variable the line does not set, which may be one; a body, a header or an HTTPie field the shell fills in is no
+  address, and neither is an address that spells its scheme and a host other than this machine, on a port that is no
+  local MCP server's, before what the shell fills in (`https://api.example.com/v1/$ID`), so a post to an address spelled
+  for another host is that host's, judged by the web rule. A liveness read, `initialize`, `tools/list` and any other
+  local app's API pass.
+- **A program that posts the JSON-RPC or calls a client's `call_tool`**, given inline, on its input, in a file or as a
+  module (in Python with the modules of its own it imports, which count only their literal names): its tool name read as
+  a literal, an item of a literal list, tuple or dict a loop walks (a part it unpacks or a key it takes included), a
+  function's, a method's or a lambda's parameter followed to the calls that pass it, a JSON-RPC helper called with the
+  method (as a literal or a name only that literal is given), or a name it takes from its arguments, which are then read
+  (the client's own form: its first argument names the tool and a JSON argument gives its arguments). An argument the
+  shell fills in names the tool only when the rest of it is a name's, and a JSON argument holding one is arguments the
+  guard cannot read. The line's own variables reach the program's path and its arguments. A program whose strings only
+  mention the method makes no call, and a program the line writes is read as the line's heredocs. Another language is
+  read by the names its text gives.
+- **Every body a program hands over** (review rounds 1 and 3). A Python or node program whose text, with its own
+  modules, names this machine's MCP endpoint (an address that reads as one, `WORKSPACE_MCP_URL` or `WORKSPACE_MCP_PORT`,
+  or two of a local host, port 8765 and an `/mcp` path, written together or apart), or whose line hands it one (the line
+  names port 8765 or an `/mcp` path, or one of the program's arguments reads as the endpoint), and makes any HTTP write
+  is judged by each body it hands over. A write, in Python, is a call given a body by keyword (`data`, `json`, `body`,
+  `content`, `files`) or by position (`urlopen`, `Request`, an opener's `open`, a library's `post`, `put` and `patch`,
+  `http.client`'s `request` after its method; `send`, `sendall` and `endheaders` in a program that opens a connection or
+  a socket by hand), a call handed a write method, and a `.data` (or `.body`, `.json`) it sets; in node, a `body`,
+  `data` or `json` property, what `.write()`, `.end()` or `.send()` hands anything but `process.stdout`,
+  `process.stderr` or a file stream, the body of a `.post()`, `.put()` or `.patch()`, and what it pipes into a request.
+  A module's own `open()`, as `os.open`, opens a file and is no write. A client it starts (a list such as `['curl', …]`,
+  a line handed to a shell, node's `exec` and `spawn`) is judged as on the line, what it cannot read standing as a word
+  the shell fills in. The body is read through what the program spells (strings joined from literals and names that hold
+  them), a JSON-RPC request it builds (its method read through the names and the parameters that give it, its
+  `tools/call` read as above), a file it reads (`open`, `Path`, `json.load`, `readFileSync`, `createReadStream`) by a
+  name it spells or takes from its arguments (argparse's included), its input, and its own arguments; in Python through
+  what its own functions return, and in node through each call of the helper that builds it. A body it cannot read
+  waits: a value from the environment, the network or a call the guard does not know, a name the program changes in
+  place (an item or attribute it sets, an `append` or `update`), a method or tool name it builds, a file it lacks or the
+  line writes, a write method handed to a call the guard does not know as a request or set where no write takes it, and,
+  in another language or in a program that does not parse, a write method or a body word in its text. A program that
+  only reads (a GET, a liveness check) hands over no body and passes. A program whose text and line name no endpoint is
+  judged the same way by the bodies of each write whose address comes from a variable an earlier command exported
+  (`os.environ`, `getenv`, `process.env`, read through its names and through the connection the write is made on) or
+  from an argument the shell fills in, as curl to an address the shell fills in is (round 3's ruling): a send waits, a
+  body it cannot read waits, and readable bodies that are no send pass; an address the line itself gives is read as it
+  is. An address goes where its host is: one whose spelled start names a scheme and a host other than this machine, on a
+  port that is no local MCP server's, closed by `/`, `?` or `#` before anything filled in (a constant, an f-string, a
+  `+` join, `.format()`, `%`, a template), is that host's whatever the environment fills in after it, while a local host
+  with its port or path filled in, or a host left open to what follows, is not; a connection made to a host
+  (`http.client`, urllib3's pools) is that host's whatever path a request names.
+- **The verdict:** a call whose tool and arguments are read is that tool's own call, so the principal's code is the one
+  the connector's identical call takes, and either route spends it. A sending tool whose arguments are built while the
+  program runs, and a call whose tool name the guard cannot read (one the shell fills in, one built or read while it
+  runs), wait for a code for the exact command and the programs it runs; a changed program needs a new one. A reading
+  tool passes. The meeting fetcher's reads (`inspect_doc_structure`, `get_doc_as_markdown`, `search_drive_files`) pass.
+
+Sixty days of Claude Code and Codex records (2026-11-15) held 251 client runs, 48 liveness reads of the server and 113
+programs posting its JSON-RPC, none naming a sending tool and none whose result read as a message, draft or event made.
+A command line a program builds from values the guard cannot read is judged as on the line, each such value standing as
+a word the shell fills in; a raw socket client on the line (`nc`, `socat`) and a Python program's asyncio stream are not
+read (on the open list).
+
+## A git command and the programs its configuration names (5.24.0)
+
+`git status`, which the guard reads as a reader, runs the program a repository's own `core.fsmonitor` names, and an agent
+may make the repository: the reviewer's wrote into the synthesis state folder (the same review). A git command is now
+judged as running each program the configuration it reads names, as if the line ran it where git does (the top of the
+working tree): every shell guard reads it, so a program that writes where approvals live is held or refused, and one that
+sends waits as a send.
+
+- **The configuration read:** the repository's own config file with the files it includes (`include.path` and every
+  `includeIf`), its worktree's, a file the line points git at (`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_SYSTEM`), and the line's
+  own (`-c`, `--config-env`, `GIT_CONFIG_COUNT` with its keys and values, `GIT_CONFIG_PARAMETERS`), the last value read
+  winning as in git; a linked worktree reads its repository's.
+- **The programs:** `core.fsmonitor` (not a boolean), each executable in the folder `core.hooksPath` names,
+  `core.sshCommand`, `core.editor`, `sequence.editor`, `core.pager` and `pager.<command>`, `core.askPass`,
+  `core.gitProxy`, `core.alternateRefsCommand`, `credential.helper` (a `!` command, a path, or `git credential-<name>`),
+  `diff.external` and a diff driver's `command` or `textconv`, a filter's `clean`, `smudge` or `process`, a merge driver,
+  `gpg.program` and its kin, `interactive.diffFilter`, a remote's `uploadpack` or `receivepack`, a submodule's `!`
+  update, a trailer's command, a diff or merge tool's, a browser's or a man viewer's command, a `sendemail.smtpServer`
+  path, an alias when it is the command run, and the programs the line's environment gives git (`GIT_SSH_COMMAND`,
+  `GIT_SSH`, `GIT_EDITOR`, `GIT_SEQUENCE_EDITOR`, `GIT_PAGER`, `GIT_EXTERNAL_DIFF`, `GIT_ASKPASS`, `SSH_ASKPASS`,
+  `GIT_PROXY_COMMAND`) or its `--exec-path`.
+- **What waits:** a value the guard cannot read (`--config-env` naming a variable that neither the line nor the guard's
+  own environment gives, or one holding a substitution), an include `--config-env` names through such a variable, and
+  programs nested past two levels wait for the protected-folder code. A repository whose configuration names no program reads as before;
+  none of the 350 repositories the records' git commands ran in, nor the 320 under the workspaces, names one.
+- **Other scopes (review round 1):** the user's and the system's config are read too (the global and XDG files or the
+  one `GIT_CONFIG_GLOBAL` names, the system file unless `GIT_CONFIG_NOSYSTEM`, with what each includes), and each
+  submodule's for a command that reaches submodules. Hooks count only for a command that runs them (a commit's, a
+  checkout's, a push's; status and diff only an index refresh's), never in synthesis's own installed git-hooks folder,
+  whose commit check then counts the repository's own `.githooks` and `.git/hooks` hooks for a commit; a credential
+  helper, an SSH command or an askpass program counts only for a command that reaches a remote.
+- **The plugin's scanners** (every carried script that runs git in a folder it is handed): the context doctor
+  (`--project`, the repository holding it, each `--root`, and with neither the knowledge roots its setting names),
+  `repo_state.py` (the paths `--workspace-root`'s `.agents/repos.yaml` declares, and each repository one or two folders
+  under `--discover`), `stray_lessons.py` (each `--repo`), `pr_queue_scan.py` (the repos.yaml `--repos-yaml` or
+  `--workspace` names), `portfolio_review.py` (the repository of each `--index`, else those roots) and `sharing_scan.py`
+  (its repository). A run whose repositories' own configuration names a program waits for the protected-folder code,
+  and the user's programs are judged as for git on the line.
+- **A planted hook:** a write into a repository's `.git/hooks` or `.githooks`, into any git dir's own `hooks` folder (a
+  bare repository's), or into a folder `core.hooksPath` names other than synthesis's own, by the file tools or the shell,
+  and a `git config` that sets any key naming a program git runs (`core.hooksPath` other than synthesis's folder or
+  `/dev/null`, `core.fsmonitor` other than a boolean, an alias only to a shell or options), wait for the principal's code
+  for that exact call. A push to a repository on this disk counts that repository's receiving hooks (pre-receive,
+  update, post-receive, post-update, proc-receive, push-to-checkout, reference-transaction) unless its hooks folder is
+  synthesis's own; includes named on the command line (`-c`, `--config-env` with the variable the line sets or the
+  guard's own environment gives, `GIT_CONFIG_COUNT`, `GIT_CONFIG_PARAMETERS`) are followed as in a file.
 
 ## Calibration
 

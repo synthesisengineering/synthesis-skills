@@ -36,17 +36,36 @@ approves them again (found 2026-11-05 on Codex 0.166 by running a real turn;
 the doctor had read Codex's own record and reported the hooks trusted). The
 doctor's `codex hook trust` check now computes that fingerprint itself, and the
 release script names the approval as waiting on the person. The script runs
-`python3 -S ~/.synthesis/v5/current/synthesis/hook.py <event>`; `current` is a
-symlink switched atomically, so a running hook sees the old release or the new
-one, never neither.
+`~/.synthesis/v5/current/synthesis/hook.py <event>` with the interpreter pinned
+at install, by its real path, owned by root with every folder above it and
+writable by neither this user nor its groups, with `-I -S` under `env -i` and
+only the variables the runtime reads, its own synthesis home, and the real git's
+folder and then the system's first on PATH (5.24.0; the CLI, the git hooks and
+the release launcher run the same way). Every session start rewrites a launcher
+that differs from what the running runtime writes. `current` is a symlink
+switched atomically, so a running hook sees the old release or the new one,
+never neither.
 
 The SessionStart registration also passes the plugin folder the harness loaded
 (Claude Code's `${CLAUDE_PLUGIN_ROOT}`; Muse's `MUSE_PLUGIN_ROOT`, or the
-script's own location). If the stable hook is missing it installs the runtime
-from that folder first, and on every start it installs the folder's runtime if
-it is a newer release than the current one. A session still on an older plugin
-never switches the runtime back; a rollback is an explicit `synthesis install`.
-A failed self-update never blocks the session; `synthesis doctor` reports it.
+script's own location). That folder is the harness's own plugin cache, which the
+guard does not protect, so since 5.24.0 a session start installs from it only into
+a synthesis home that no runtime has been in: the first install. The bootstrap that
+runs while the stable hook is missing (`install.py`, which passes `synthesis install
+--first`) and the session start itself install nothing where the home holds any of
+`releases`, `current`, `bin`, `git-hooks`, `state`, `board` or `sessions`: a runtime
+that is there is never replaced from that folder, at any version, and one that was
+removed, by uninstall or by any other route, is never installed again from it
+(review round 2 of 5.23.1, N6). The bootstrap says why on stderr, and every guarded
+call is then held until a runtime is installed again. A newer release reaches the
+runtime through the release launcher (`~/.synthesis/v5/bin/synthesis-release
+--install-only --tag v<version>`), from a clone of GitHub it verified, a tag on
+`main` no older than the runtime or GitHub's highest version tag, with no code; or
+through setup or `synthesis install <folder>`, each of which waits for the
+principal's code in a session (see [The runtime
+itself](#the-layers-and-what-each-stops)). When the folder carries a newer release,
+the session start says so once, naming both versions and the launcher's line, and
+`synthesis doctor` warns while the two differ.
 
 ## The four events
 
@@ -74,7 +93,8 @@ Each event reads one JSON object on stdin. Missing fields are tolerated.
 | `transcript_path` | SessionStart, PreToolUse, Stop | Which harness is running (from where the file lives); the record an approval is checked against; the record a reply's quotes must appear in. |
 | `cwd` | SessionStart, PreToolUse | The session's working directory: the workspace for account routing, the directory a shell command starts in, and the ritual line's workspace. |
 | `prompt` (or `user_prompt`) | UserPromptSubmit | The text the person typed, scanned for `approve <code>`, with one or more codes after the word on its line. |
-| `tool_name`, `tool_input` | PreToolUse | The call to check. A shell command is read from `tool_input.command` or `tool_input.cmd`, as a string or an argv list; `tool_input.workdir` is the fallback directory. |
+| `tool_name`, `tool_input` | PreToolUse | The call to check. A shell command is read from `tool_input.command` or `tool_input.cmd`, as a string or an argv list; `tool_input.workdir` is the fallback directory. A Codex code-mode script (`exec`) is passed on purpose: see [Codex code mode](#codex-code-mode). |
+| `tool_use_id` | PreToolUse | The call's own id: for a script sent under `command`, whether Codex's record shows this very call as its code-mode tool ([Codex code mode](#codex-code-mode)). |
 | `last_assistant_message` | Stop | The reply to check. |
 | `stop_hook_active` | Stop | Whether this turn end follows a hook's earlier request to continue. |
 | `background_tasks`, `session_crons` | Stop | Whether something already scheduled will wake an autopilot session. |
@@ -169,7 +189,10 @@ spent.
 Inside a counted prompt, text the harness wraps in a tag block (`<system-reminder>`,
 `<task-notification>`, `<bash-stdout>`, pasted content) does not count. A script run
 from a harness's shell (the iMessage sender) has no hook payload, so it finds the
-session's transcript by the session id its shell carries. When there is no
+session's transcript by the session id its shell carries, at the path the prompt hook
+recorded. That path counts only inside the folders each harness keeps its records in as
+the prompt hook's environment named them, recorded beside it: the environment of the
+command running the script, which the agent sets, never names them. When there is no
 transcript, when it cannot be read, or when it does not show the prompt, the grant is
 spent unused, the call is blocked with that reason, and the request is filed again. A
 harness that gives no transcript cannot carry approved sends or deploys until it does.
@@ -186,7 +209,8 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    sandbox may be granted it without reaching the state folder), a harness's transcript
    folder or the approved commit lines.
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
-     not the command spells a protected folder out: relative to the session's folder, to a
+     not the command spells a protected folder out: relative to the session's folder (or the
+     folder a Codex or Muse shell call names as its own, its `workdir`), to a
      `cd` (`cd -`, `pushd` and `popd` are followed), to where `env -C` or `sudo -D` sends
      the command, through a variable, through a link the same command makes (a relative link
      is read from the folder it is made in). A command is read once for each value it gives
@@ -199,7 +223,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      script that gives them its own values (`set --`, `shift`, a function) is left as
      written. `$PWD` and `$OLDPWD` are the folder each command is in and the one it was in
      before, in its own words and targets; a script it hands a shell puts its own. `~` and
-     `$HOME` are the home a command gives itself when it sets `HOME`. A word
+     `$HOME` are the home a command gives itself when it sets `HOME`; a line that gives
+     `HOME` a value the guard does not read (`read`, `printf -v`, a loop over it, a
+     parameter that assigns) and then uses it waits, but text it only prints or hands a
+     program as input (`echo "HOME: $HOME"`, a heredoc fed to anything but a shell) gives
+     `HOME` no value (5.24.0). A process substitution (`diff <(…) file`) is a file's name
+     to its command and its own command is read; a `case` statement's patterns run
+     nothing; and an alias is one a command on the line defines, never a word in a
+     message, a note or a heredoc's body. A word
      that starts with a substitution the guard can read is read with what that names put
      in: the folder of a path that is spelled out (`$(dirname <path>)`,
      `$(realpath <path>)`), a fresh temporary file or folder (`$(mktemp)`, `$(mktemp -d)`,
@@ -396,8 +427,15 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      never writes, handed on.
      Python on the line (`-c`, or a program on its input) is proved only where none of the
      agent's modules can stand in: run with `-I` (or `-P` with `-E`), or with no file or
-     package where it runs named like a module it imports, and no `PYTHONPATH`,
-     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line. A
+     package where it runs named like a module it imports, none the line writes there, and no
+     `PYTHONSTARTUP`, `PYTHONHOME`, `PYTHONUSERBASE` or `PYTHONSAFEPATH` set on the line, nor a
+     `PYTHONPATH` unless each folder it names is there when judged, holds no module the
+     program imports, no `sitecustomize` or `usercustomize`, and nothing that hides a module
+     of Python's own installation (its standard library and site-packages, not the folders
+     the guard's process was started from; a folder with no `__init__.py` hides nothing) but
+     a `synthesis` package byte for byte the guard's own, and is neither written into by the
+     line nor beside another program on it that may fill it unseen (review round 3 of
+     22.21). A
      script file, or a module run with `-m` from the folder that holds it, is judged by what
      its text shows (after the 30-day replay: proving every expression held about 3,700
      commands a month): read whole up to 4 MB, with each module of its own it imports (a file
@@ -419,7 +457,15 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      the guard can read, for no code. Words are judged wherever the program sits, so a launcher
      (`script`, `arch`, `time -p`, `xcrun`) hides nothing, and after the shell's own expansions:
      brace lists (`{a,b}`, `{1..3}`, nested) and every redirect bash and zsh accept (`>|`,
-     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A folder is named by its path in any case; on the
+     `>!`, `>>!`, `&>!`, `>&!`, `&>>`, `<>`). A name hides nothing either (22.32): a command
+     word the guard judges by name (a shell, an interpreter, a reader, a file utility, a wrapper
+     and their like) that leads to a script rather than a compiled program, by its own path or
+     found on PATH as the shell looks it up (also when a wrapper or `find -exec` starts it, or
+     the line gives PATH itself), is judged as that script too: the command its `#!` line
+     starts, or a shell for a file with none, beside its judgment by name. A builtin the shell
+     runs itself is not looked up, and the commands that really are scripts pass where their
+     installer puts them (the guardrails' config reference, "Commands judged by name"). A
+     folder is named by its path in any case; on the
      command line, each word only by its own path (after `~`, variables, `..` and links), so
      parts in two words never join (2026-11-15: a skill script's path in the harness's plugin
      cache and a project page's path were read together as naming the transcripts); in a
@@ -479,14 +525,207 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    - The hook is run when it is the script an interpreter or a shell runs: its first
      operand past its options, or the module after `-m`. A program handed the hook's file
      (a line counter, a compiler, another script) is not running it.
+   - **The runtime itself** (5.24.0; review round 2 of 5.23.1, N5 and N6; review round 1 of
+     22.18, H1 and H2; review round 4 of 5.23.1, Q4). Replacing or removing an installed runtime waits
+     for the principal's code for exactly that change, and `install.install` and
+     `install.uninstall` themselves spend it, so every route that starts the CLI, setup.py or
+     the release script as a process of its own ends at that check. The release launcher's
+     install needs no code because the hook grants it: when the guard lets the launcher's
+     line through, it writes one grant, an install of `v<version>` (the tag the line names,
+     or the version its checkout's manifests carry) into this home. The line counts as the
+     launcher's only as written, or handed to the system's own shell (`<shell> -c '<line>'`,
+     the shell a file owned by root with every folder above it and writable by no user, as
+     named and as resolved, so no link of a user's is on the way; named bare, the first of
+     its name on the harness's PATH: combined review round 1 of 22.8 with 22.18, C2; one put
+     ahead of it after the line has passed is open, below). `install.install` spends the grant
+     once, and only for the release tool's fresh clone in the protected releases folder
+     whose HEAD is the commit GitHub's tag names (`git ls-remote`, asked from a folder
+     outside the clone so no config of the clone's sends it elsewhere: round 2, R2-1), its
+     tracked tree clean, and whose staged copy holds exactly that commit's files (C8: the
+     harness commands a release runs are found where this user writes; the release also
+     holds its clone to the verified commit after each of them). It trusts no main
+     program, interpreter flag or
+     module's `__file__`, so a program that poses as the release tool (a forged `__main__`
+     under `-I -S`) is asked for the code like any other (review round 2 of 22.18, K1). A
+     release older than the running one is a subject of its own (`rollback`), named to the
+     principal as a downgrade with both versions, and needs his code on every route, the
+     launcher's too. Install calls the check it bound when it loaded, so a program in the
+     installer's own process that puts its own function in `install.approval`, by name or by
+     a name built at run time, changes nothing. Not every name built at run time fails
+     closed: a program that replaces those bound names (`install._approve`,
+     `install._released`), or the runtime's files themselves, is held only by the guard's
+     reading of it, which holds it where it spells synthesis's installer and passes it where
+     it builds the names at run time (C1, open: below). Run from a checkout, the release
+     script's install stage waits for the code.
+     `synthesis install` (with or without
+     a folder, and `--git-hooks`, which also points git's global hooks at the commit check)
+     and `synthesis uninstall` refuse wherever the home shows a runtime (`install.traces`)
+     unless a live grant the principal's prompt backs names that change; otherwise they file
+     the request and say what the hook says. So the spelling does not matter: a script run
+     by `sh`, by its path or sourced, Python's `subprocess`, perl, awk, a git alias, a make
+     recipe, a wrapper of another name and a scheduled job all end at that refusal. The code
+     binds the change, the home, whether git's hooks follow, and the sha256 of every file the
+     install copies (the whole `synthesis/` package with the folders in it, the stable skill
+     scripts and the CHANGELOG): the install copies those files into a staging folder inside
+     the protected releases folder, hashes that copy, checks it against the grant and
+     installs from it, so a file changed or added after the code is never installed on it.
+     The hook asks for the same subject wherever it reads the CLI as the command (`synthesis`
+     on PATH, its stable path, `~/.local/bin/synthesis` or any link to it, `python -m
+     synthesis.cli`, `-m synthesis` and `-m synthesis.install`, the CLI's module or any
+     `synthesis/install.py` run by path, the CLI's script read by a shell, behind `env`,
+     `nohup`, `timeout`, `xargs`, `find -exec` or a runner such as `uv run`, in any shell a
+     harness has) and only checks it, so the principal approves before the run; a bare
+     `synthesis` that PATH resolves to anything but the stable launcher is judged as the
+     program it is, never as the CLI. The CLI's own parser reads the words, so its help, a
+     dry run (`uninstall --dry-run`) and words it refuses need no code, and neither does a
+     first install into a home no runtime has been in; a word the guard cannot read (a
+     substitution, a variable it cannot be sure of, a glob) makes the command wait. Where no
+     runtime runs the prompt hook to record a grant (after an uninstall), the CLI reads the
+     session's own record for the code instead (`--session` names a session the hook
+     recorded before). A Python program that
+     calls the installer (`install.install`, `install.uninstall`, the CLI's install or
+     uninstall) waits as any program that names one of synthesis's writers does, and its
+     import is read wherever a statement may start (after `;` or `:`, in a list of
+     imports); one that loads synthesis's code by a name or a file it hands a loader is
+     refused. `synthesis doctor`, `synthesis who`, `synthesis version` and every other
+     command pass as before.
+   - **What Codex types into a session.** Codex starts a long-running process with
+     `exec_command` (on a terminal with `tty: true`) and types into it with `write_stdin`,
+     which reaches the hook through its matcher. A typed line is judged in the folder that
+     session's `exec_command` named, found by the session's number in the harness's record
+     (an `exec_command` whose output gave it, or a code-mode script that started one command
+     and whose output gave it): as a command line, by every shell guard, and for a program
+     that is no shell also as what it is fed; typed into an interpreter started with no script
+     (`python3`, `node`), with everything typed into it as its program; typed into ssh to
+     another machine, by every shell guard where it stands, since its own folder is elsewhere.
+     The line is the text typed before it and not yet submitted, then its own
+     characters, so a line split across calls is judged whole. A poll (nothing typed) and
+     keys that start nothing new (Ctrl-C, Ctrl-D, Ctrl-Z, Enter) pass; text carrying keys
+     or history that edit, complete or recall a line (backspace, Tab, an arrow, `!!`,
+     `^a^b`, `fc -s`) waits, since what the terminal runs is not the text. Where the record shows
+     no start, where a typed line changed a shell's folder or variables (`cd`, `pushd`,
+     `export`, an assignment, `alias`, `source`, a bare folder name, which zsh takes as `cd`),
+     and in a shell in a container or one ssh opens on this machine (it starts in the home
+     folder), only a line whose every command just reads goes without a code: what it writes
+     cannot be placed, and a read writes nothing.
    Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
    shipped, 30 days of shell commands recorded on one machine were run through the old
    guard and this one, and every command the new one refused was read.
-3. **No hook text holds the phrase** (see What the hook returns).
-4. **Random codes** mean a code cannot be planted before its request exists, and a
+3. **The guard's own settings take the person's code; the global commit check's entry
+   points take none.** `config.json` in the synthesis home holds what every approval
+   means: the commit lines the person approved, their own repositories, the hosts their
+   action sheets upload to, the signatures a send window lets through, the forbidden
+   phrases, the account each workspace acts as and the turn-end judge's program and host.
+   `git-hooks` beside it holds what git runs before every commit, merge and commit message
+   in every repository: it is one of the runtime's own protected folders (above), which
+   only its installer writes, so a write there is refused outright. The person changes the
+   settings, so a write to them is not refused: it waits for their code for exactly that
+   call. A file tool (Write, Edit, MultiEdit, NotebookEdit,
+   Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
+   file and everything it writes; a shell command to the command, the folder it runs in,
+   each script it runs and each file it names, as each stands then, so a file changed after
+   the approval makes it a new command. A shell command is read as for the protected
+   folders above, with the settings among them: a redirect, what a file utility changes, a
+   pattern that may name them, a folder changed throughout that holds them, a program that
+   writes there or starts a command that does, and synthesis's own `paths.config_file()`
+   read as the config's path; a program the guard cannot prove only reads that names them
+   waits. A command that also reaches one of the protected folders above is refused, as
+   before. The copy that installs the person's settings from a private repository waits like
+   any other write. A path is judged where it really leads and in any case, so a link made
+   beforehand, `..`, `~`, `$HOME` or capitals change nothing. Reading needs no code (`cat`,
+   `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, and a
+   redirect of `cat` for a copy); `cp` and `ln` of them wait, as for every protected file,
+   since they can link as well as copy. The installer's own route (`synthesis install`,
+   `synthesis update`, the release script's install stage) writes the hooks from the runtime
+   it installs, which the guard trusts as it trusts itself.
+4. **A shell's startup files, Claude Code's shell snapshots and the harness programs take
+   the person's code the same way.** Claude Code runs every command through zsh, which
+   reads `~/.zshenv` and sources a snapshot of the shell from `shell-snapshots` in Claude
+   Code's configuration folder; Codex runs `bash -lc`, which reads `~/.bash_profile`,
+   `~/.bash_login` or `~/.profile`; bash reads the file `BASH_ENV` names. Code there runs
+   before every command, where no guard sees it. The harnesses, `synthesis doctor` and the
+   release tool run `claude`, `codex`, `muse` and `gh` wherever each resolves. So a write
+   to any of these waits for the person's code, bound and read as for the settings above:
+   `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and `~/.zlogout`, and the same names
+   in `ZDOTDIR` (from the environment, or where `~/.zshenv` sets it); `~/.bash_profile`,
+   `~/.bash_login`, `~/.profile`, `~/.bashrc`; the files `BASH_ENV` and `ENV` name; the
+   snapshots folder; and each harness program at every folder on PATH and in the vendors'
+   known places (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, the Codex and
+   ChatGPT apps), whether or not a file is there yet, since one put there runs instead;
+   each link on the way, to the file it ends at; the folder its installer keeps it in
+   (Claude Code's versions under `~/.local/share/claude`, the desktop app's `claude-code`
+   folder, Codex's app-server CLI under `~/.codex/plugins/.plugin-appserver`, a Homebrew keg
+   or cask, an npm package, the Codex CLI folder inside the ChatGPT or Codex app); and the
+   files muse's launcher keeps beside it (`muse-bin-<version>`, `.muse-version`). A folder
+   this user cannot write, the system's own, is left out. An installer told to change one of these programs waits too, since it
+   writes where the guard does not see: Homebrew or a Node package manager installing,
+   upgrading, removing or linking `gh`, `codex`, `claude-code` or its npm package, a bare
+   `brew upgrade` or `npm update -g` while one of them is installed that way, and
+   `claude update` or `claude install`. Reading them needs no code, nor does sourcing a
+   startup file or a snapshot (`source ~/.zshrc` runs what a shell's start runs anyway),
+   running a harness program, by name or by its path (a launcher's text may name where its
+   program is kept), or installing other tools (`brew install`, `pip install --user`,
+   `npm install -g`). A harness's own variables that name its program or a startup file
+   (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`) do not count as a protected path the
+   environment hands a program, so a program that reads its environment is not held for
+   them.
+5. **No hook text holds the phrase** (see What the hook returns).
+6. **Random codes** mean a code cannot be planted before its request exists, and a
    later identical call never reuses the code an earlier approval answered.
 
 ### What remains open
+
+- **A page script's call whose name says nothing of what it does** (5.24.0). On a messaging site's page the guard
+  reads a script's code: a call by a name built as it runs is refused and one that acts waits, but a library's own
+  event call (jQuery's `.trigger('click')`) or an app's own function under a name that does not say it sends passes as
+  a read, since nothing in the script shows its effect. Tests: `test_open_a_call_whose_name_says_nothing_of_what_it_does`,
+  marked to fail until it is closed.
+- **Spellings made to beat that reader** (review round 1 of 5.23.1, #13), each a case of
+  `test_open_a_spelling_made_to_beat_the_reader` or `test_open_a_blob_document_made_on_the_sites_own_origin`, expected to
+  fail until closed: a member named by an escaped string (`el['\u0063lick']()`, `el['\x63lick']()`); a method called in
+  parentheses (`(el.click)()`); a plain name as a template tag (`` el.click`` ``); an alias of a built name; a call by
+  `forEach(Function.prototype.call, ...)`; a getter; an indirect `eval` (`(0, eval)(...)`); a timer given a string in a
+  variable; `open` through a window alias (`const w = window; w.open(...)`); HTML decoded at run time
+  (`insertAdjacentHTML(..., atob(...))`); a `blob:` document made on the site's own origin and then navigated to; an
+  HTML-like comment (`<!-- '`), whose quote the reader takes for a string; and an object divided (`{} / x / 1`), whose
+  `/` the reader takes for a pattern. A batch whose `javascript:` navigate moves the tab was closed by reading the page
+  after it as unknown.
+- **Two more spellings** (review round 2 of 5.23.1, #5 and #6), cases of
+  `test_open_a_fetch_or_a_method_reached_under_another_name`, expected to fail until closed: `fetch` reached under
+  another name with its method quoted (`const {fetch: f} = window` or `const f = window.fetch`, then
+  `f(url, {"method": "POST", ...})`), and a method that names what it does read as a value and called under another
+  name (`const o = {c: HTMLElement.prototype.click}; o.c.call(el)`; `el.go = HTMLElement.prototype.click; el.go()`).
+  A third came with closing #3: the reader keeps no scopes, so a page's own send called by a bare name the script also
+  defines elsewhere, as a function or a parameter (`[0].map(sendMessage => sendMessage); sendMessage(...)`), passes (a
+  case of the same test). A fourth came with review round 3's T1: an init the reader cannot follow is read by the
+  script's own words, so one that a page's own function returns (`fetch(url, options())`) passes when the script names
+  no method and no body, a case of the first item above (a call whose name says nothing of what it does) and of the
+  same test.
+- **Moves made to beat the batch's moved rule** (review round 5 of 5.24.0, #1), cases of
+  `test_open_a_move_the_page_script_reader_does_not_see`, expected to fail until closed: a page script moves the tab by
+  a member of `location` it names as it runs (`location[['hr', 'ef'].join('')] = ...`), or by writing a refresh into the
+  page (`document.body.innerHTML = '<meta http-equiv="refresh" ...>'`). Each is no move to the reader, so a script after
+  it in the same call is judged on the page the list showed before. Review round 6 adds two, cases of
+  `test_open_a_page_that_moves_the_tab_by_itself`: a page that redirects itself after the last list of tabs showed it,
+  and, as ruled, a local app's page that sends the tab on (a navigate or a click on a local app moves nothing, so a
+  script after it runs there). A move by an address off a local app, a link, a click, a key, a form value or an upload
+  on another page, or a script that can navigate (a location change by name, alias or `Object.assign`, `open`, a
+  history or navigation step, and off a local app a click, a submit or a dispatched event) is one.
+- **Two more from review round 4 of 5.23.1** (C1 and C2), cases of
+  `test_open_an_init_from_a_string_or_a_pages_send_under_the_scripts_own_name`, expected to fail until closed: an init
+  parsed from a string (`fetch(url, JSON.parse('{"method":"POST",...}'))`), whose method and body the reader sees only
+  as a string; and a page's send under a method name the script defines, by `this` at the script's top level (where it
+  is the page's window) or by a receiver the script sets to the page's object (`let o = {sendMessage() {}}; o =
+  window.app; o.sendMessage(...)`), the member-call form of the item above on scopes. Review round 5 adds W5, a case of
+  `test_open_an_iife_that_writes_a_decoy_object_and_returns_the_pages`: an IIFE that writes any object literal (a
+  `=> ({i})` callback inside it) and returns the page's object counts as the script's own, so a page's send through it,
+  under a method name the script defines elsewhere, passes.
+- **Three more from review round 7 of 5.23.1** (Y4), cases of `test_open_a_method_set_another_way`, expected to fail
+  until closed: a method set by `Object.defineProperty`, by `Object.fromEntries`, or as a class field after another
+  field (`class O { credentials = 'include'; method = 'POST' }`, with `new O()` as the init). The cost on the other side
+  (Y5): a read whose own result mapping has a `method` key (`d.items.map(p => ({id: p.id, method: p.paymentMethod}))`)
+  waits for a code, since the reader counts that key wherever it is written. It is rare, and it fails closed
+  (`test_a_read_whose_own_result_maps_a_method_key_waits`).
 
 No local file is secret from an agent running as the person's own OS user, so these
 stay open, and no hook running as that same user can close them:
@@ -542,6 +781,40 @@ stay open, and no hook running as that same user can close them:
   was closed with a test. There is always another. What the guard is
   measured on is the other direction as well: 30 days of recorded commands, where it must
   not refuse ordinary work.
+- A program the guard does not know that runs git itself in a folder it is handed runs whatever that repository's
+  configuration names; every carried script that does so is read as a scanner (the context doctor, with the knowledge
+  roots its setting names when it is given no folder; `repo_state.py`, `stray_lessons.py`, `pr_queue_scan.py`,
+  `portfolio_review.py` and `sharing_scan.py`); this is crafted, as it needs a program of the agent's own.
+- A raw socket client (`nc`, `socat`) that writes a local MCP server's JSON-RPC itself, a Python program's asyncio
+  stream, and a request library the guard does not know whose post names no write method and no body keyword (pycurl's
+  `POSTFIELDS` alone) reach the server's tools unread; this is crafted, and 60 days of records hold none.
+- A program that takes its target from the environment and builds its body while it runs, with the JSON-RPC method
+  split across literals (`'tools/' + 'call'`), reaches the server's tools unread: the guard reads such a body as a request
+  the program builds, and finds a tool call only where the program's text spells the method whole, so it reads a body
+  that is no tool call. The strict expected failure `test_a_tool_call_whose_method_is_split_across_literals_waits`
+  names it (review round 4 of 22.17; crafted).
+- Crafted: outside the release, a program named like a Python interpreter and given by its
+  path is taken to be Python, so a shell script named `python3` runs under the proof the
+  guard made for the reader script it is handed.
+- Crafted: for a script outside the release, nothing on the line that makes the word
+  `python3` run something else (a function, an alias, `hash`, `autoload`, a value given by
+  any builtin, `PATH` or zsh's `path`) is looked for, so the proof made from its text holds
+  while something else runs; in front of a script of the release, each of them, and a HOME
+  given a value the guard does not read, makes it wait or be judged like any other.
+- Crafted: a script outside the release, or any Python run without `-s`, `-S` or `-I`, is
+  proven by its own text and modules alone, so a module named like a standard one planted
+  beside it (one the standard library imports, as `argparse` imports `gettext`), compiled
+  code made for one of its own modules, or a `usercustomize.py` or `.pth` file in the user's
+  own site folder runs unseen; a run of the release passes `-s`, which leaves out the user's
+  own site folder.
+- Crafted: a file planted in the interpreter's own site-packages (a `.pth` file, a site
+  customization) or in a standard library the user can write (a Homebrew Python's) runs
+  inside a trusted run of the release; it closes when trusted runs use the sealed
+  interpreter the guard's sandbox plans (plan item 22.14).
+- Crafted: an inline Python program that writes through a hard link the agent made earlier
+  to a release file (`open(<link>, 'w')`) is not seen as a write to that file: the shell
+  and the file tools ask whether a file they write shares its inode with a protected one,
+  and the Python reader does not.
 - A prompt another process injects into the session through the harness's own CLI
   (`claude -p --resume`, `codex queue`, `muse session-message`) is recorded as a typed
   prompt. The shell guard refuses such a command when it carries a pending code; one
@@ -552,21 +825,182 @@ stay open, and no hook running as that same user can close them:
   through git when the store lives in a synced repository (a pull, a checkout, a restore).
   A fingerprint added that way passes its line without the person. It holds hashes, so
   the agent would have to compute the hash of the exact line, path and repository.
-- The agent can rewrite the runtime under `~/.synthesis/v5` or its config.
-- A program of the agent's that loads synthesis without the plain words `import synthesis`
-  or `from synthesis` (through `importlib`, `__import__` or a built `exec` string, from a
-  copy that is no protected folder) is read as reaching none of synthesis's writers, so it
-  can forge the send ledger's lines, open a send window, delete pending grants and requests,
-  plant a deploy record, or point the transcript that any check a script or the CLI enters
-  itself reads at a file it wrote, and so grant itself what such a check releases: a send a
-  script makes, a line approval, the CLI's send window (review rounds 4 and 5 of 5.23.1's
-  approval fix; crafted, the same before that release).
+- The routes above that the guard cannot read reach the runtime under `~/.synthesis/v5`,
+  its config and its git hooks as they reach the protected folders, and so does a write
+  through a hard link to one of them made by such a route. Git can also be told to skip
+  the commit check without touching its entry points (`git commit --no-verify`, `git -c
+  core.hooksPath=…`, or the global `core.hooksPath` changed with `git config --global`);
+  the guard holds none of these.
+- A compiled look-alike: a compiled program under the name of a command the guard judges by
+  name (`bash`, `python3`, `ls`, `cat` and their like), one the agent built, copied or linked
+  to, is judged by that name, since the guard reads only that it is compiled (crafted; 22.32
+  reads a script under such a name as what it is). So is a look-alike the line makes by a
+  route the guard does not read as a write before it runs it (a download, an archive, a
+  recursive copy, a program's own write), an installed script of one of the commands that
+  really are scripts rewritten where its installer put it in a folder the user writes (npm's
+  global folder, a version manager's shims, Homebrew's Cellar), and a look-alike set there,
+  or in a copy of npm's or a version manager's layout, under a name that installer provides.
+  The guard looks a command up on PATH as its own process has it and as the line sets it
+  (with `$(pwd)` put in): a folder another substitution builds into PATH, a name bound to a
+  file with `hash -p` or looked up with BSD `env -P`, and a harness's shell that reads a
+  startup file, a snapshot, a function or an alias first may run something else under the
+  name.
+- The first install comes from the harness's plugin folder, and that folder is the agent's to write. Where the
+  synthesis home holds no trace of a runtime, the bootstrap in `hooks.json` (and Muse's `session-start.sh`) runs
+  `python3 -B -S <plugin>/synthesis/install.py` from PATH while the stable hook is missing, and installs the runtime
+  from the folder the harness passes. Once a runtime has been installed, the CLI's install and uninstall refuse
+  without the principal's code however they are started, and the guard refuses the plain routes to its folders (`rm`,
+  `mv`, `ln`, `chmod` and their like). A program of the agent's own that writes those folders itself (its own copy of
+  the installer, with that check taken out) and runs where the guard cannot read it is the first case above: the
+  CLI's check binds the runtime's own CLI, not code the agent wrote,
+  and even a runtime removed by some other route leaves the state and board its sessions wrote, which keep any session
+  start from installing again. But the bootstrap
+  runs the plugin folder's own code, and the registration itself (`hooks.json`) is in that folder: an agent that
+  rewrites the harness's plugin cache changes what the next session start runs, with or without a runtime, which no
+  check in the runtime can stop. A harness still on a plugin from before 5.24.0 runs that release's bootstrap, which
+  installs whatever its folder holds whenever the stable hook is missing. Sealing the plugin caches is part of the
+  sandbox the principal ruled for on 2026-11-15.
+- The guard refuses the shell's and the file tools' ways of removing or changing
+  the runtime's own files (`releases`, `current`, `bin`, `git-hooks`) that it can place: it places a command in a
+  Codex workdir or a terminal tab's folder by its real path, and judges each command a shell line runs in every
+  folder the line may leave it in: each `cd`, `pushd` and `popd` by its text and by its real path (`cd -P`, `set -P`,
+  zsh's chase options, review round 3 of 5.23.1, M1), under each CDPATH or cdpath entry the line or the environment
+  sets, at OLDPWD, a cdable_vars value or an auto_cd folder, where zsh's `cd old new` leads, and where the shell stays
+  when a `cd` may fail: no folder there when the guard looks, or a command before it that may make, remove or move one
+  (round 4, Q1). A line whose folder it cannot tell waits for the principal's code (a CDPATH it cannot read, a
+  redefined `cd`, a `cd` inside eval, a sourced file or a trap, a function whose body changes folder called anywhere
+  but in a command substitution, an alias a command on a line that changes folder defines or one whose value does,
+  BASH_ENV or ZDOTDIR). A `cd` outside every function's body is the line's own, which it follows (5.24.0). What it
+  cannot see stays open: a function called by a name a variable holds (`f=q; $f`, crafted); a folder another process
+  removes or makes between the guard's look and the `cd`; a CDPATH,
+  cdable_vars or auto_cd set in the user's shell profile without being exported; and a shell startup file (the
+  harness's shell snapshot, `~/.zshenv`) that changes folder before a command runs. The agent can start such a process
+  with no code, and a startup file or snapshot written before the guard held them (22.26), or by a route above, still
+  runs, so a later command's relative path can land in a protected folder the guard did not place it in.
+- The guard holds writes to the startup files and the harness programs, not runs of them. A
+  harness program written where the guard never saw it (before the guard held these, by one
+  of the routes above, or by the person) runs when a harness, `synthesis doctor` or the release tool
+  starts it. Nor are these held: a file a startup file sources (`. ~/.cargo/env`, a plugin
+  manager's scripts), a `ZDOTDIR` set other than in the environment or `~/.zshenv`, a
+  package of another name that installs a `claude`, `codex` or `gh` command (`npm install
+  -g`, `pip install --user`), which writes it unseen, and a folder on the PATH an agent's
+  shell builds from its startup files that is neither on the PATH the hook runs with nor
+  one of the known places.
+- A code for a shell command binds the scripts it runs, not the files named inside them: a
+  script that copies a settings file it names only in its own text (`bash install.sh`
+  running `cp v5-config.json …`) still runs on its code after that file changes. It closes
+  once the reading of the scripts a command runs takes in the files they name.
+- What Codex types into a session is judged from the record's last 32 MB: a session started
+  further back is judged as one the record does not show, and an interpreter keeps a name
+  typed further back that the guard no longer sees. A code-mode script that types into a
+  session it names by a variable is not tied to that session. A shell's own state that no
+  typed line shows (its startup files, `PROMPT_COMMAND`, a trap set before) is not read.
+- An interpreter or a shell that Codex starts on a terminal with no command is not held at its
+  start: what is typed into it later is judged line by line, an interpreter's lines with all it
+  was typed as its program, so holding every bare start would add a code for little gain (60
+  days of records held 17 such starts, all interpreters, all on one day).
+- A program of the agent's that loads synthesis by a name no piece of which says synthesis
+  as code does (`'synth' + 'esis'`, character codes, a decoded or capitalized string, a
+  name read from a file, its environment or its input), through a way of loading the guard
+  does not list (a pickle, a mock's patch), as one of the package's modules under its bare
+  name from the package's own folder, from a copy of the package under another name, by
+  running a file of its own through a path the reader cannot put together, or, on the line
+  or its input, through a module of its own that reaches synthesis in a way the reader cannot
+  follow without naming one of its writers (a script file's such module waits), is read as
+  reaching none of synthesis's writers: it can forge the send ledger's lines, open a send
+  window, delete pending grants and requests or plant a deploy record. To grant itself what
+  a check a script or the CLI enters itself releases (a send a script makes, a line
+  approval, the CLI's send window), it must also record the session's transcript path under
+  an environment of its own making, since the recorder takes the harness folders it writes
+  beside the path from its own environment, or write a record into a harness's own folders
+  (review rounds 4 and 5 of 5.23.1's approval fix; crafted). A shell script built at run
+  time (`bash -c "$(…)"`, a script assembled from pieces in a variable) or fetched over the
+  network and piped or substituted into a shell (`curl … | sh`, `bash <(curl …)`) is not
+  read (nor is a script or module the line writes, below), nor a test placed under a conftest that
+  isolates the synthesis home and then undoes it (deleting or re-pointing `SYNTHESIS_HOME`,
+  overriding the `tmp_path` fixture), or
+  that reaches a writer outside its tests by a name it builds at run time (`getattr` with a name
+  joined from pieces, a call through a name it assigns), or through a plugin installed rather
+  than its own (plan item 22.21 and its review rounds 1 to 3; crafted). Test runners other than pytest (`unittest` discovery, `tox`,
+  `nox`) are ordinary and their tests are not yet read. One that loads synthesis
+  through `importlib`, `__import__`, `exec`, `eval`, `compile` or `runpy` by a name or a
+  text that says synthesis waits for the principal's code, or is refused on the line.
+- The same kind of program, loading the installer by a name the item above leaves unread
+  (one built from a piece held in a name), can replace what the installer bound when it
+  loaded (`install._approve`, `install._released`) by names it builds at run time, then call
+  `install.install` on a folder of its own: the guard passes it, and the runtime becomes
+  the agent's (combined review round 1 of 22.8 with 22.18, C1; crafted). One that hands the
+  loader a name its literals spell is refused since 22.21. A test holds the open case as an
+  expected failure (`tests/test_combined_review_1.py`), so it is seen when it closes.
+- A script or module a line writes and then runs is not read. A Python script the line
+  writes from a heredoc with any writer but `cat` (`tee s.py <<'EOF'`) and then runs, and a
+  module the line writes that a program on it imports (read as it stood before the line, if
+  at all), run with no code even when they name synthesis's writers. A shell script the line
+  writes from a heredoc is read as that heredoc's text (22.21), a script `cat` writes from one
+  as its body (22.22), and a script the line writes with no heredoc (`printf` or `echo` into
+  a file) waits as one the guard cannot read. Review round 4 of 22.21 and round 2 of 22.22
+  ruled that what a line writes would be read whatever the writer; the merges that brought
+  them into 5.24.0 read only `cat`'s heredocs, which narrows those rulings to the planted
+  file `tee`, `printf`, `dd` or a written module leaves unread. Reading what each writer puts
+  in a file is parked for the sandbox (the run's decision of 2026-11-16 13:57 under rule 8:
+  both items shipped as net improvements; the same on main).
+- The holds of the rituals' `decay_sweep.py` and `ritual_state.py` run from a plugin cache
+  rather than the runtime say the script is more than the guard could read in its time, and
+  never point at the runtime's own copy, which 5.24.0's skill text runs and which passes
+  (22.15). Only a session on an older skill's text meets them (the integration review of
+  5.24.0).
+- Three holds of `eslint` and `tsc` in one scratch project on 2026-11-06 did not repeat in a
+  bare folder; why they waited there is not known (the integration review of 5.24.0's
+  replay; one day, one project).
+- A launcher line handed to a bare shell (`bash -lc '<line>'`, as Codex's shell tool hands
+  it) passes when the first shell of that name on the harness's PATH is the system's. A
+  shell of the agent's put in a folder this user writes, ahead of the system's, after the
+  guard passed the line and before the harness looks the shell up, runs in its place,
+  unjudged: the guard judges the line, not the harness's later search of PATH (combined
+  review round 1 of 22.8 with 22.18, C2's remainder; crafted, a race). Refusing every PATH
+  with such a folder ahead of the system's shell would refuse the release from Codex on
+  the principal's Mac and on CI's runners. A test holds this as an expected failure.
+- A program planted ahead of the real one runs in its place. Every hook that starts a program
+  by its name starts whatever the hook's PATH finds first. The launchers put the real git's
+  folder and then the system's first on that PATH, so git and the system's own tools cannot be
+  planted ahead, but any other program is found further along it, where a folder the agent can
+  write may come first. The plan's judge (21.3) is part of this class: it
+  runs `claude` or `codex` as the hook's PATH resolves it, and accepts a `command` setting only
+  where it resolves to that file or to one in the harness's known install locations
+  (`~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin`, and the apps' own folders). A program
+  planted in an install location the person can write, or in a folder earlier on PATH, counts as
+  the harness's own and runs (review round 2 of 21.3; crafted: it needs a program planted in a
+  writable folder, and a written setting or a PATH ordered ahead of the real program; a strict
+  expected-failure test holds it). Trusting only folders the person cannot write would refuse
+  the ordinary install, which lives in `~/.local/bin` or `/opt/homebrew/bin`, and a vendor's
+  signature does not fit a program installed as a script.
 - A persona footer written as an object nested under a key the signature check skips as
   addressing (a `reply_to` given as an object with a note in it, a calendar guest's
   `comment`) is skipped with that key, so its domain shown in words is not seen. No
   connector puts a message's text there; the strict expected failure
   `test_a_footer_nested_under_an_addressing_key_is_refused` names it (review round 1 of
   22.31; crafted).
+- The autopilot count reads only the plan file, which the run writes itself. A run that
+  means to slip the count can mark an item of its own `origin: principal`, stamp a
+  principal item's close again at a later time, or split one of the principal's items
+  into several so that each close counts. A time stamped in an extreme year, such as the
+  year 9999, cannot be converted: the count rejects it and names the item, and the check
+  stays on (before this, such a stamp ended `cycle` with a traceback and switched the
+  turn-end check off). Review round 1 of 22.37; crafted.
+- During a stop, the turn-end check names work only when its item is stamped: an item
+  added or checked after the count blocker's alert without its time goes unseen. A
+  principal request recorded during a stop counts as work after the alert, like any
+  other item. The count names an item by its leading number, so dotted numbers collapse:
+  it names items 1.1 and 1.2 both as 1. On a plan adopting origins, old checked items
+  with no close time are named among those the count could not read, though they closed
+  long before. An answer dated up to five minutes ahead of a later alert releases the
+  run, inside the tolerance the clock is given (crafted). Review round 2 of 22.37.
+- A deploy CLI copied or linked under another name is not read as that CLI. The guard knows
+  a CLI's own entry script, run by an interpreter, by the package it sits in under
+  `node_modules` (`node_modules/wrangler/bin/wrangler.js`), a `.bin` shim's name and the
+  script's own basename, so wrangler's script copied to `w.js` and run as
+  `node w.js pages deploy` goes unheld (crafted; the ordinary path to the same script ran a
+  production deploy unheld on 2026-11-16, and is held since).
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.
@@ -602,6 +1036,39 @@ prompt, however much later, and the summary carries no time. SessionStart still 
 the project state from disk when the summary takes effect; the note covers what only
 the conversation held.
 
+## Codex code mode
+
+In code mode Codex runs nearly every call as one `exec` script: JavaScript evaluated in a
+V8 isolate with no file system, network or process of its own. Each tool the script calls
+on its global `tools` object (`tools.exec_command`, `tools.apply_patch`, an MCP tool)
+reaches the PreToolUse hook as a call of its own, under that tool's own name, and is judged
+as one; Codex's records show hooks refusing such nested calls inside the scripts' results.
+
+- **The script passes on purpose** and is never read as a shell line. A bare string, or a
+  script under `input` or `code`, is known by its signs: the grammar's first-line
+  `// @exec:` pragma, a call on the global `tools`, or one of the script's global helpers
+  such as `text(` (never a member of another object, such as `process.exit(`). Each helper
+  counted works inside Codex, by the tool's own description: on the script's result
+  (`text`, `image`, `audio`, `generatedImage`, `notify`, `yield_control`; Codex refuses a
+  remote media URL), its session's store (`store`, `load`) or its run (`exit`). No
+  shell tool sends those shapes. Under `command`, where a shell's command line also
+  arrives, the text is a script only when Codex's own record of this very call (the
+  payload's `tool_use_id`, in the rollout `transcript_path` names, inside Codex's sessions
+  folder) shows its `exec` tool with this text: a command line can be written to look like
+  a script, so how the text looks never decides there. Everything else under the name
+  `exec` is judged as a command line: `cmd`, an argv list, or text with no script signs.
+- **The browser page tracker reads the calls a script makes.** Codex records them only as
+  `item_completed` events (`McpToolCall`: server, tool, arguments, result). The guard
+  reads them under the name Codex's hook gives the tool (`workspace-mcp` and
+  `github.fetch` make `mcp__workspace_mcp__github__fetch`), and a direct call's event,
+  which carries the call's own id, is counted once.
+- **The doctor proves that Codex still runs hooks on nested calls.** Its `codex nested hooks`
+  line reads Codex's newest rollouts for a hook's refusal in a script's result, which only
+  a hook run on a nested call makes, and names the Codex version and the date it proves:
+  that this version hooks such calls, not that every one is hooked or whose hook refused.
+  It warns, never fails, when it finds none, or only one from an older Codex than the
+  newest to run a script.
+
 ## Muse
 
 What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
@@ -628,7 +1095,10 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
 
 - **PreToolUse fails closed** for the calls it guards: an unreadable
   `~/.synthesis/v5/config.json` or an exception inside a guard blocks the call
-  with the reason. When the hook itself cannot answer (it times out, crashes,
+  with the reason. A file tool is judged without the config it cannot read, since
+  the folders and settings it guards need none: an ordinary write goes, a write into
+  the state folder is refused and the config's own repair waits for the person's
+  code. When the hook itself cannot answer (it times out, crashes,
   prints output the harness cannot read, or cannot start because the stable hook
   is missing), Claude Code 2.1.295 or later blocks the call too, since the
   plugin's handler sets `"onFailure": "block"` (5.21.0); Claude Code names the
@@ -657,9 +1127,10 @@ What the M5 sandbox showed for Muse 1.4.3, and what it could not test:
   forever. The reply check sends a reply back at most once in a row, and an
   autopilot run is asked to continue at most `autopilot.max_continuations`
   times in a row (3 by default) before the session is allowed to stop.
-- **SessionStart never blocks a session.** A failed self-update is skipped and
-  `synthesis doctor` reports the stale runtime; a ritual line that cannot be
-  computed is left out.
+- **SessionStart never blocks a session.** It installs only a first runtime, and a
+  refused bootstrap says why on stderr; a runtime older than the plugin the harness
+  loaded is named once and reported by the doctor, never replaced there; a ritual
+  line that cannot be computed is left out.
 
 ## Hook trust
 

@@ -1127,6 +1127,54 @@ ROOT = Path(__file__).resolve().parents[1]
 # commit takes the release commit's identity and time, unsigned, names it, and is made once for each head).
 # context_doctor.py 6: repo_state 3 and cited_entries 3 (without the runtime's claims log or session archive, each says
 # what it cannot tell). local_messaging.py 4: _close 4 (without the runtime's approvals nothing is closed, in one line).
+# M37 part 4, one approval for a reviewed batch of sends (2026-11-14): core 410 more, plugin 410, each function counted
+# with the two blank lines before it. sends.py 251. The file's checks: read_batch 13 (a key given twice, a number JSON
+# does not have and a file over 1 MB refused), _unique 8, _no_number 4, checked 16 (one shape, 1 to 50 entries, none
+# repeated) and _entry_problem 19 (the three kinds, each with nothing else). conversation 12 with CONVERSATIONS 2 (a
+# Messenger chat's page: its encrypted and plain forms and the two sites four conversations). batch_digest 5. The
+# state: _batch_file 4, _whole 13 (its digest its name and its hash, its spent marks its own, at most 12 hours), batches
+# 10, open_batch 20 (a batch granted again keeps what it sent, an earlier state that cannot be read is refused, records
+# a month past their grant pruned), close_batches 10 and batch_spend 14 (under the guard's lock, each entry once). The
+# matching: _plain 9, _same 5, call_entry 13 (a connector call whole; the messages sender's handle or members and text)
+# and browser_entry 5. Asking: batch_asked 11 with VALUED 3, _cli_words 11 with window_asked 4 fewer (one reader of the
+# CLI's words for both), batch_refusal 11, batch_listing 15 with ADDRESS_KEYS 2, and describe_batch 6. HANDLE 1, KINDS 2,
+# the section's notes 10 and the hashlib import 1. cli.py 38: _batch 30 (prints; --show opens nothing; the command spends
+# the grant itself), cmd_sends 5 (close ends every batch, status lists them) and parser 3 (the file, its late name and
+# --show). guards.py 121: check_desktop 26 (the batch looked at after every check and before the window, a time in its
+# words held as in any message, the code that releases a matched call spending its entry, the box's record kept),
+# _talks 28 (a browser call's steps read in order: one focus click, the clearing, the words with their line breaks, one
+# send last, and any scroll, script or navigation between), _unsent 13 and _box 10 (a file, a drop or a paste a call left
+# on a conversation's page, forgotten when a send goes from that one page), _chord 5, the constants LOOKS, CLEARS,
+# LINE_BREAK, PASTES and FOCUSES 5 with UNSENT 6 and their note 4, _judged_send 10 (the batch after every check and
+# before the window, never for a file's bytes or a meeting on today, its entry spent with the code for a time),
+# check_outgoing 10 (`synthesis sends batch` held for exactly its digest; a held window or batch code no longer lets the
+# rest of the line through unjudged), check 3 (an upload into a conversation's box recorded) and SELF_GRANT_CALLS 1
+# (open_batch, batch_spend and _batch_file).
+# The batch's review round 1 (2026-11-14), 18 findings: core 110 more, plugin 110. sends.py 94: cli_calls 27 (every
+# `synthesis sends` of a command's words read with the CLI's own parser) in place of window_asked 13, batch_asked 11,
+# _cli_words 11 and VALUED 3; composer 21 (the composer check's own report in a result, quoted or not, exactly one),
+# COMPOSER_CHECK 7 and COMPOSER_MARK 1 with their note 2, KINDS 1 more (the members kind); checked 8 more (a control
+# character other than a newline refused, one entry for each conversation), _controls 9, _escaped 4 and _shown 6 (every
+# listing quotes each text, each hidden character as its code), _entry_problem 5 more (canonical addresses only; the
+# members kind with its service and chat), batch_listing 2 more; the grant and the spend: _whole 1 and open_batch 2
+# more (the granting session, the code and when it was asked), batch_spend 8 more (the granting session alone, the
+# spends ledger, the principal's code in the session's record each time), _spends 12, _spends_file 4 and _backed 12;
+# call_entry 2 fewer (the sender's own approval, whole); describe_batch 1 (the ledger's spends in its count); the
+# unicodedata import 1. guards.py 4 fewer: _checked_box 44
+# with CHECK_SECONDS 3 and its note 1 longer (the box read by the composer check, then one plain Return or Send click
+# on that tab of that browser within 60 seconds), _fetches 8 and FETCHES 3 (nothing a connector fetches or reads is
+# covered), check_outgoing 10 more (each sends command of a line, the unreadable one's code, a file only with `sends
+# batch`), _judged_send 1; less the one-call matcher, _talks 28, _unsent 13, _box 10, _chord 5, UNSENT 6 and LOOKS,
+# CLEARS, LINE_BREAK, PASTES and FOCUSES 5, with check_desktop 4 fewer and check 3 fewer (the record of earlier pastes
+# and uploads). cli.py 14: parsed 17 (the parser the guard reads with), _main 6 fewer, _batch 3 fewer (no own-terminal
+# shortcut: the code from any terminal), cmd_sends 6 more (a file only with `sends batch`; composer-check). approvals.py
+# 6: grant (a live grant's code and when it was asked, which the batch keeps).
+# The composer check on Messenger's live box (2026-11-14): core 7 more, plugin 7. sends.py 6: COMPOSER_CHECK 3 longer (the
+# one box by its label, placeholder or Lexical editor, `ambiguous` for two; the composer placed by its send or attach
+# control, `unknown` without one) and its note 3. guards.py 1: _checked_box reads the box's text as Lexical writes it.
+# The click form of a batch's browser send gone (2026-11-14; the composer's neighbours send too): core 2 more, plugin 2.
+# sends.py 3: batch_refusal says how a Messenger entry goes (one plain Return after the check; a click waits for its own
+# code). guards.py 1 fewer: _checked_box 2 fewer (the click form gone) and the note above it 1 longer.
 # 5.22.1 (2026-11-14): core 209 more and plugin 209, after a review wrote the principal's prompt into a transcript and
 # the grant into the state with one line of Perl's File::Copy, which the guard's list of writing calls did not know, and
 # opened a send window from a faked terminal. guards.py 210: the section's comment 7 and its constants 8 (UNREAD 2, the
@@ -1220,6 +1268,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # whose place cannot be read with certainty or whose spelled-out text does not parse, is not spelled out), _ancestors 7
 # with its 2 blank lines (the nodes that hold a node), less _synthesis_own's 2 (only a name a module imports leads
 # elsewhere, so a value it makes by a tuple, a dunder or a name it no longer has does not).
+# 5.22.1 merged into the batch (2026-11-15): the ceilings are 5.22.1's (core 15,840, plugin 41,083) with the batch's four
+# paragraphs above summed onto them (529 each). In check_outgoing, 5.22.1's 3 lines that ask a code for every window
+# request of a line become the batch's loop over every sends command, which gathers each waiting code (a window, a
+# batch or a command it cannot read) and returns them together: `waiting` 1 and its return 2, in place of those 3. And 1
+# more to both: SYNTHESIS_WRITES names the batch's writers (open_batch, batch_spend, close_batches and batch_refusal in
+# sends, _batch in the CLI), as 5.22.1's test of that list reads them from the source, on a line of their own.
 # 5.23.0, the Messenger surface and a chat saved from its page (2026-11-14): plugin 602 more, the core as it was.
 # messenger_messages.py 274 (synthesis-daily-rituals): parse 56 (rows to chats, the owed and nudged ones, unread marks
 # and the coverage line; a wall, another inbox's grid, an empty list without --empty and --end off the list's bottom
@@ -1267,6 +1321,54 @@ ROOT = Path(__file__).resolve().parents[1]
 # statement spells: from its code and pieces of a path, with at most one path written whole, and such a path alone
 # only where they stand one after another), LITERAL 1, 6 blank lines; _spells judging each text and each word apart
 # and expanding a word's variables, and the naming line handing it each word apart, change lines in place.
+# 5.23.0 merged into the batch (2026-11-15): the ceilings are 5.23.0's (core 15,886, plugin 41,958) with the batch's
+# 530 summed onto them (its four paragraphs and the writers' line); the two merged with no line changed.
+# The batch's review round 2 (2026-11-15, 11 findings, #6 a sandbox's to close): core 119 more, plugin 122. guards.py 77:
+# _checked_box 15 more (the newest call that could type is the check; back to the tab's last load, no page script but
+# the shipped read-only ones; marks and inline read; when it was checked), _typed_elsewhere 21 (another session's record,
+# where its prompt hook put it, showing a call that could type since the check), _read_only_scripts 20 (the composer
+# check and 5.23.0's extractors, read from their scripts as their commands print them), _types 7 and TYPERS 3 (any
+# browser or computer-use call, a shell's osascript keystrokes and their kin), PAGE_READERS 1, CHECK_SECONDS 2 fewer and
+# its note 1 longer (15 seconds), check_desktop 3 more (a time's code binds the checked conversation and words, a check
+# made after it releases it, the hold says so), check_outgoing 5 more (the session messages_send.py names is the one
+# running it), FETCHES 1 more (photos and the fields that carry files), SYNTHESIS_PLACES 1 and _synthesis_reach 1 more
+# (the batch's and the window's state files lead into the state, never spelled out). sends.py 42: _when 10 (a record
+# line's time), _conversation_of 9 (a connector entry's conversation by the recipient fields it names), INVISIBLE 2 with
+# its note 3 and 2 blank lines, _escaped 2 more (every invisible or variation character as its code), COMPOSER_CHECK 4
+# more with its note 2 (the composer's mode, images in the box), _backed 6 more (the hold that named this digest with the
+# code, and the code typed after it), _entry_problem 2 more (the sender's own tools are no connector entry); read_batch,
+# batch_refusal, describe_batch and batch_spend change lines in place (the path, name and project escaped; the session
+# the guard is told). messages_send.py 3 (plugin): main 2 (--session) and _send 1 (the session given to the guard).
+# Reply mode read live (2026-11-15): core 3 more, plugin 3. sends.py 3: COMPOSER_CHECK 1 longer (its marks read every
+# other child of the composer's parent, where the reply banner sits, and count a heading and a `Cancel reply` named by
+# its text) and its note 2 longer.
+# A plain composer read live (2026-11-15): core 1 more, plugin 1. sends.py 1: COMPOSER_CHECK's note 1 longer (a heading
+# inside the composer counts only by its words, since the composer always holds a hidden `Compose` heading); the check
+# changes in place.
+# The batch's review round 3 (2026-11-15, 9 findings, #8 fixed on main): core 69 more, plugin 67. sends.py 48: the
+# Messenger send step (#1, #2, #3, #6) 3 net: _READ 15 (the composer read the check and the send share, staged and
+# marks across the composer's parent), _SHA 11 with its note 1 (SHA-256 in one synchronous run), SEND_MARK and
+# SEND_SCRIPT 10 with their note 4 (read, compare and click in one run), send_script 7, batch_refusal 2 more (the step
+# in the hold); COMPOSER_CHECK 11 fewer (built on _READ), composer 21, browser_entry 5 and _when 10 gone (the
+# check-then-Return path). The sender's ticket (#5) 30: its note 3, TICKET_SECONDS 1, _ticket_file 4, sender_ticket 5 and
+# ticket 15, with their blank lines. The code tied to the guard's own request (#4) 10: _requests_file 4, batch_refusal 3
+# more (it records the request), _backed 3 more (it reads that record, never the session's). What a listing prints
+# (#7, #9) 5: _controls and checked 1 more each (a lone surrogate refused), _escaped 1 more (only what draws a glyph
+# prints as it is), _entry_problem 2 more (a tool name holds only letters, digits and _ . : -). guards.py 10: the send
+# step 7 net (_send_step 35 with its own urllib import, _batch_send 32, _refused_scripts 25, _listed_on_messenger 16,
+# _messenger_site 5, STEP_KEYS 3, MOVES 1 more for open( by any name; _checked_box 58, _typed_elsewhere 21, _types 7, TYPERS 3
+# and CHECK_SECONDS 1 gone, check_desktop 20 fewer); the sender's ticket 2 (check 4 more: it files the ticket for a
+# command it lets run; _judged_send 2 more: the sender's tools take it; check_outgoing 4 fewer: the --session check
+# gone); the requests ledger 1 (the coarse places). cli.py 11: the `script` action 10 and --entry 1. messages_send.py 2
+# fewer (plugin): --session gone.
+# Round 3's probes on that head (#2: an opener script on a tab no list of tabs had named yet passed): core 8 more,
+# plugin 8. guards.py 8: _refused_scripts 8 more (a page no list of tabs names takes no page script 4, the page a
+# javascript: address runs on 3, its note 1).
+# The send step runs only on a tab this session made (the coordinator's ruling on the opener, 2026-11-15): core 63
+# more, plugin 63. guards.py 63: _made_here 43 (the tab's id from this session's own tabs_create result; since then any
+# page script but the shipped ones in its record or its sub-agents', and any action on it, or naming no tab, in another
+# session's record, void it), _send_template 12 (the shipped send script, for some conversation and digest, opens no
+# window) and _when 8 (a record line's time), each with its blank lines; _send_step changes in place.
 # 5.23.0, round 3 of the batch review, finding 8, and that fix's own review round 1 (2026-11-15: words typed into a
 # Messenger box with the browser tool, then Return pressed through osascript, and the Playwright plugin's browser tools,
 # sent with no code; the review found 15 more ways through and 16 false holds): core 611 more and plugin 611. guards.py
@@ -1296,10 +1398,105 @@ ROOT = Path(__file__).resolve().parents[1]
 # to _caller). sends.py 2: command_send reads an osascript by the guard's reading of its script, across its lines, in
 # place of the one-line pattern. A reuse of the reader of a Python program's writes to spell the commands it starts was
 # tried and dropped: over two days of records it took 168 ms a program on average and 4 s at worst.
+# Main's key and browser-tool fix (e783606f) merged into the batch (2026-11-15): the ceilings are main's (core 16,497,
+# plugin 42,569) with the batch's 793 and 794 since 5.23.0 summed onto them (the paragraphs above from "5.23.0 merged
+# into the batch"); the two merged with no line changed (MOVES keeps the batch's open( by any name beside main's DRIVES
+# and PRESSES_ENTER; check_outgoing keeps the batch's reading of every sends command and main's skip of a key or app).
+# The message guard's skill move (binding rule 18, the principal's ruling of 2026-11-15) moves prose only: no code line.
 # 5.23.1: core and plugin each 10 more, all in guards.py: _real 7 (where a path leads, asked once a call: the recorded
 # heredoc shape asked 11,746 times over 102 paths and took 1.11 s on CI's macOS runner under Apple's Python 3.9, 0.31 s
 # on this Mac; with it, 123 times and 0.105 s) and its 3 blank lines. The per-call reset and the 29 places that ask
 # change in place.
+# 5.24.0, releases from the protected runtime with no code (the principal's decision packet of 2026-11-15, row
+# "releases"), as review round 1 left it: core 280 more and plugin 400. guards.py 147: _release_tool 47 (the release
+# launcher install wrote, for an interpreter it would still pin, by its absolute path, plain words alone, each
+# documented option once with --repo-root or --install-only --tag, a named session only the asking one, the line
+# unwrapped exactly from Codex's shell tool, on that checkout), release_checkout 30 (the canonical checkout: a
+# checkout's root, an origin, every remote's fetch and push address as git uses it the repository on GitHub, on main,
+# its own and a worktree's config keys from those that run nothing; unreadable is a reason), _kit_loaded 20 (the release
+# tool's modules a program loads, found by file where Python finds them, or found nowhere while it names a protected
+# folder), the block's comment 9 with its blank lines, the constants 15 (RELEASE_REPOSITORY, RELEASE_KIT, GITHUB_REMOTE
+# and PLAIN_LINE 1 each, RELEASE_OPTIONS 2, RELEASE_CONFIG 4, KIT_FILES 2, KIT_LOADS 3 with its blank lines),
+# _canonical_remote 5 and _kit_file 5 with their blank lines, _shipped 5 (the release kit is never the plugin's own, in
+# any spelling), _self_grant 5 (a program loading the kit waits), check_self_grant 4 (the exact launcher line passes,
+# never one a program starts, never with a pending code) and check 2 (a Codex command judged in its workdir).
+# install.py 123: interpreter_problems 18, pinned_python 15, launcher_text 11, pinned 10 and launcher 6, each with its
+# blank lines (the interpreter pinned at install: its own real path, owned by root with every folder above it, writable
+# by neither this user nor its groups, Python 3.9 or later; each launcher runs it with -I -S under env -i with only the
+# named variables, the system's folders first on PATH, and refuses when there is none); the launchers' comment 8 and
+# constants 25 (KEPT 7, ENTRY 6, GIT_KEPT 4, PYTHONS 3, NO_PYTHON 3, SAFE_PATH 1, ENTRY_POINTS 1) and the runtime's
+# kit line 1; _pinned_run 11 with COMPILED 4 and COMPILE 4 in place of the in-process _compiled 8 and _compile 7 (the
+# runtime compiled for the pinned interpreter, beside its source, where an isolated run looks); install 13 (nothing
+# older than the running release installs; the staged copy must hold the listing before current moves; its
+# docstring); takes 8, _differences 8, _blob 5 and Refused 4 with their blank lines; _owned_files 1 and the shlex
+# import 1; less the three fixed launcher texts 13 and the 2 lines of the git hook's old text. doctor.py 10:
+# check_hook_script 10 (every launcher is the text install writes for the interpreter it pins, which must still be one
+# install would pin). release.py 120: fresh_clone 19, github_state 12, floor_problems 12, install_preflight 11,
+# runtime_listing 10, remove_clone 6, clean_env 6 and on_main 4, each with its blank lines (a fresh clone of what
+# GitHub serves, made with git's own config left out in the protected releases folder, and everything built, pushed,
+# exported and installed from it; GitHub's main tip and tag read the same way; nothing older than the running runtime
+# or GitHub's latest release; an install's tag on main in the clone; the runtime's listing; only a clone it made is
+# removed); main 16 (--tag and the rules for it and --repo-root, the clone, the version it holds, the runtime from it
+# with its listing, the clone removed, the doctor after every install); the docstring 15 (the launcher commands, the
+# fresh clone, the stages renumbered); preflight 4 (GitHub's state and the floor); CANONICAL_URL, TAG and GIT's
+# comment 3 and the CANONICAL comment 2. PLUGIN for REPO, ci_state, git, collections_head and publish's read-back
+# change lines in place.
+# 5.24.0, a session start never replaces an installed runtime from its harness's folder (the principal's sandbox
+# rulings of 2026-11-15; review round 1's open item 1): core 29 more and plugin 29. hook.py 20: _newer_plugin_note 18
+# with its blank lines (once per version: both versions and the release launcher's install line), _emit 1 (a system
+# message beside the context) and session_start 1. doctor.py 6: check_package's warning for a newer plugin 5 and its
+# fail message's second line 1. install.py 2: install's docstring (first_only, the first install only, in place of
+# forward_only). cli.py 1: `install --first`, which the bootstrap passes.
+# 5.24.0, review round 2 of releases from the protected runtime: core 42 more and plugin 63. install.py 39:
+# refresh_launchers 18 with its blank lines (every launcher that differs from what the runtime writes rewritten, for the
+# interpreter it pins, re-pinned when that one may no longer run the guard: N4), pinned_git 10 with its blank lines and
+# GITS 2 with its comment 3 (git by its real path, checked as the interpreter is, never Apple's /usr/bin shim, which finds
+# its git through a cache in this user's own temporary folder), launcher_text 4 (its own home whatever the caller
+# exports, N2, the real git's folder first on PATH, its docstring) and install 2 (a release's install of a folder with
+# no runtime raises, N8). hook.py 3: every session start puts the launchers right, with or without a plugin folder.
+# guards.py: a workdir, a terminal tab's cwd, env -C and git -C placed by their real paths (N1) and refresh_launchers
+# among the writers change lines in place. release.py 15: _running 10 with its blank lines and fresh_clone 1 (a run
+# removes only its own clone and those of runs that ended, N8), floor_problems 2 (GitHub's highest version tag read by
+# git with its own config left out, never by a gh on PATH, N7, and its docstring) and preflight 2 (its docstring: the
+# commit it read is the one returned and released, N10). build_collections.py 6: tree 5 (each collection file's id held
+# to its bytes in memory, N3) and the hashlib import 1. Then plugin 6 more, all in release.py: main 5 (a run from an
+# installed runtime refuses a synthesis home other than the one that runtime is installed in, N2, whatever launched it)
+# and STALE_CLONE 1 (another run's clone is removed only when that run is gone and the clone is hours old, N8);
+# build_collections.py's tree, now written from memory with fast-import, its index in the repository's own git folder
+# and the tree held to the files' ids (N3), changes lines in place.
+# 5.24.0, review round 3 of releases from the protected runtime: core 81 more and plugin 81. guards.py 30:
+# check_self_grant 8 (a line whose cd lands elsewhere physically is judged again with every cd placed by its real path,
+# M1), _commands 3 (each cd's textual and real places, and the mark that they differ), _CD_REAL 1 with its comment 4,
+# _gated_push 9 (in a gated repository a push that creates, moves or deletes a version tag, or carries tags with
+# --tags, --follow-tags or push.followTags, M5) and check_pr_gate 5 (its hold names the version tag); SYNTHESIS_WRITES
+# names install's _install_lock and _install_locked in place. install.py 51: _install_lock 27 with its decorator and
+# blank lines (one install at a time in a home, from its floor check to the switch of current, M2; its file one this
+# user may only write, made so if an earlier build left it readable, since flock takes a file opened only to read and
+# the guard lets a program that only reads run with no code; the file closed whatever happens), _older 7 with its blank
+# lines (why a plugin may not replace the running runtime), install and
+# _install_locked 9 (the floor read again under the lock just before current moves, the rollback parameter only the
+# code-approved route passes, an install that stops when nothing can be pinned, M3, and the docstring), uninstall 4
+# (install's own lock removed, and passed over in the sweep of releases), pinned_python 2 (Apple's /usr/bin shim refused,
+# and its docstring) and the contextlib and fcntl imports 2. release.py: a clone folder named by the run's pid and a
+# random part (M4) changes lines in place.
+# 5.24.0, review round 4 of releases from the protected runtime: core 204 more and plugin 204, all in guards.py.
+# _commands and _walk 64 (101 lines become 42 and 123: a line is read from every starting point its changes of folder
+# give it, each kept on a list with the folder, the one before it, pushd's stack, the subshells open, what was piped,
+# whether a command before may have changed a folder and the folders the reading found there or missing; a cd that may
+# fail has its own folder read on at the end of its && chain, a cd piped into a command or a list sent to the
+# background moves nothing past its subshell, the last of a pipeline both ways; the physical reading runs inside the
+# parse, so a nested check no longer resets it; `env cd` moves nothing; auto_cd and a command named by a substitution;
+# a cd in eval, source or a trap leaves the line unplaced; and the docstring; Q1), _landings 28 (each landing of a cd or
+# pushd: OLDPWD, CDPATH and cdpath entries, cdable_vars values, zsh's `cd old new`), _cd_sources 33 (what the line sets
+# up for those, read with its quoting taken away, and what leaves it unplaced: a CDPATH it cannot read, a redefined cd,
+# a function or alias on a line that changes folder, BASH_ENV, ZDOTDIR), _moved 9 (the folder stack after a landing,
+# out of the old cd branch), _unquoted_line 7 ($'…', backslashes and quotes taken away), _keeps 5, FOLDER_KEEPERS 3 and
+# _enterable 3 (whether a cd may fail: no folder there now, or a command before that may make, remove or move one),
+# PLACINGS, FOLDER_MOVE, UNQUOTED, FUNCTION and ESCAPES 5; _gated_push 22, _remote_tags 12 and check_pr_gate 1 (a push
+# waits only when it makes, moves or deletes a version tag the remote is asked about, a branch named v... is a branch;
+# Q3); check_self_grant 5 fewer and _CD_REAL with its comment 5 fewer (the physical pass and its flags gone, the
+# unplaced wait added); the blank lines between the new functions 22. _simple hands on the operator after each command
+# in place. install.py: the rollback keyword gone (Q4), and CDPATH and OLDPWD kept by the launchers, in place.
 # Then core and plugin each 64 more, all in approvals.py, so a grant is read before it is spent and finding the
 # principal's prompt reads only the approval window (a Codex record of 1.9 GB took 4.6 s to read from its start, past the
 # hook's 4 s, after the grants had been deleted): _lines_back 16 (a record's lines from its end), _spend 13 (a grant taken
@@ -1367,15 +1564,868 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 5 more, all in guards.py: answered 5 more, from review round 7 (an interrupt after the check handed its
 # records over and before it freed the guard left the lock taken): the guard freed whichever records the check left, and
 # no check entered while the answer settles them.
+# 5.24.0, the runtime changes only on the principal's code (review round 2 of 5.23.1, N5 and N6; his sandbox rulings
+# of 2026-11-15): core 156 more and plugin 156, measured. guards.py 120: check_runtime 26 (the hold, bound to the command,
+# the folder it runs in and each folder's runtime hash; the line read as written too where it uses a variable it does
+# not set; with its blank lines), _cli_words 24 (the CLI's words by every spelling: its name, a link, -m, its module or
+# install.py by path, a shell, a runner), _runtime_change 25 (what it does to the runtime, said for the principal; a
+# folder it cannot read bound as such), _cli_reads 20 (the CLI's own parser reads the words; a word the guard cannot
+# read waits), _named_cli 7, the section's comment 4, RUNNERS and CLI_MODULES 4, SYNTHESIS_IMPORT 1 (an import wherever
+# a statement may start) and SYNTHESIS_LOADED 2 (a name or a file of synthesis's handed to a loader), _synthesis_reach 6
+# (such a file, loaded 2; one only opened runs only by exec or eval 2, so a syntax check passes; the runtime named for
+# what an installer writes 2) and the dispatch 1. install.py 22: traces and TRACES 10
+# (what a runtime leaves in a home), install 8 (first_only: kept where the runtime is whole, refused loudly where it is
+# not), the module's docstring 2 and uninstall's last report line 2. cli.py 14: parsed 13 and command_at 6 (one reading
+# of the CLI's words for it and for the guard), less _main's 6, and `install --first` 1. hook.py and doctor.py change
+# lines in place.
+# 22.18's review round 1 (H1, H2) and 5.23.1's round 4 (Q4): install and uninstall themselves spend the principal's
+# code for the install that happens: core 160 more and plugin 165, measured. install.py 116: approval 17 (spends the code,
+# or files the request and says what the hook says; the session's own record where no hook ran), _stage 16 (the copy
+# made in the protected releases folder, from which the install is made), _read 14 (a regular file's bytes, opened
+# without waiting), _files 12 (every file an install copies), release_route 12 (the release tool from the protected
+# runtime, started isolated), change 10 (an install's subject and words, a rollback named as a downgrade), package_digest
+# 10 (sha256 of each file by its path and length), subject 9, uninstall 8 (it spends the code itself), install 5 (the
+# check on the staged copy, the release route, the day-end copies from the installed release), Unapproved 4,
+# RELEASE_TOOL 3 and the stat import 1, less package_hash's 5. approvals.py 19: answered (the code as the session's record
+# shows it, where no prompt hook made a grant). cli.py 16: _shell 8 (the session a shell belongs to), cmd_install 5 and
+# cmd_uninstall 3 (through install and uninstall, a refusal said). guards.py 9: _cli_words 7 (the CLI's own folder; a
+# bare `synthesis` PATH finds elsewhere is no CLI) and _runtime_change 4 (the install's own subject), less check_runtime's
+# 2 (it checks the grant and spends nothing). setup.py 1 and release.py 4: a refused install is said, not raised.
+# Merged with main at b8efb5ee (5.23.1's approval fix, 2026-11-15): main's ceilings (core 16881, plugin 42953) and this
+# branch's two itemized raises above (core 156 and 160, plugin 156 and 165): core 17197 and plugin 43274, measured.
+# 22.18's review round 2 (K1, K2): core 1 more and plugin 10, measured. install.py 1: release_route's docstring says it
+# trusts the process's main program until 22.8's launcher brings a grant the hook issues. setup.py 9: `--session` 2,
+# main 5 (a shell acts only as its own session; the session handed to the install and the uninstall), install_runtime's
+# docstring 2; install_runtime's and _uninstall's own lines change in place.
+# Releases from the runtime (22.8) merged with 22.18 at 71198117, which carries main at b8efb5ee: 22.18's ceilings (core
+# 17198, plugin 43284) and 22.8's itemized raises above from main at 82412084 (16507 and 42579 there: core 636, plugin
+# 783), less 4 each that the merge's own lines save, measured: install.py 4 fewer (the floor's `_older` gone, as 22.18's
+# rollback kind is the floor; `traces` reads a releases folder holding only the release tool's clone, a staged copy or
+# install's lock as no release; install's docstring and its locked half joined), guards.py 1 more (the writers list),
+# cli.py 1 fewer (the install call joined).
+# 22.18's review round 2, K1, as 22.8 closes it (the coordinator's direction of 2026-11-15): core 57 more and plugin 57.
+# install.py 41: _spend_release 28 (the hook's grant spent once, for the release tool's fresh clone in the protected
+# releases folder at the tag `v<version>`, its staged copy holding exactly that tag's tree), grant_release 9 (what the
+# hook writes for the launcher's line), _grant_file 3 and RELEASE_GRANT_SECONDS 1, the check and the grant bound when
+# the module loads 1 with its comment 4 (a function put in `install.approval` changes nothing), install's docstring 1,
+# and the blank lines 6, less release_route 11 and RELEASE_TOOL 1 (no main program or interpreter flag trusted).
+# guards.py 16: _grant_release 12 (the version of the tag the line names or its checkout's manifests carry; a dry run
+# granted nothing), check_self_grant 2 (the grant written where the launcher's line passes) and blank lines 2;
+# _release_tool hands on the options it read in place of a yes.
+# The judge (M38, plan item 21.3; the principal's rulings of 2026-11-14) adds 428 to the core and 709 to the plugin: a
+# model that reads each reply the shortcut list flags before it goes back, after 44 of 54 replies revised after a
+# shortcut sendback were found at least 85% the same with only the phrase gone, and blind labels of 70 recorded list
+# hits found 7 real shortcuts. judge.py 367: the docstring 14; the imports and their blank lines 19; the constants 31
+# (the policies' folder, the rule for content that addresses the judge, the two addresses, the deadline with its limit
+# and the cloud's least time, the cap and the cache, log and token limits, the loopback names, the config's keys, the
+# verdict's fields and the quote marks 10; the pattern for content that addresses the judge, with its comment, 8; the
+# instruction to the model 13); _second 34 (the cloud's second opinion: its key and the time left, the month's cap
+# reserved at its most before the request and settled from the answer's usage, the notice once a month); settings 33
+# (every key checked, so a section that cannot be used is said); _post 23 (a request given up at its deadline whatever
+# the server does, never through a proxy on loopback); _judged 23 (the cache, the local verdict, the second opinion
+# only where it is unsure, content that addresses the judge held, and nothing asked once no time is left); ask 19
+# (never raises; logs each verdict asked for; the caller's limit beside the config's deadline); _verdict 18 (one object
+# of exactly five fields, a rule the policy names on the side it decides, a span that is in the content); _ask_local 16
+# (the first installed model answers, at temperature 0 and in the verdict's schema, its token counts logged); _log 12
+# (fixed words, counts and digests, kept to about 4 MB); Policy 11 with its digest; Verdict 10; parse_policy 10;
+# _spend 9; _url 8 (loopback for the local judge, https for the cloud); _locked 6; _recall 6; _remember 6 (the newest
+# 2,000 verdicts); _prompt 5 (the block whose markers carry the content's digest); ConfigError, load_policy, _sha,
+# _plain and _folder 2 each; and 44 blank lines between them. reply_check.py 61: shortcut_problem 26 (only a reply the
+# list flags is asked about; a sure pass clears the hit, a pass the judge is not sure of clears nothing, a hold is sent
+# back with what it read, the list decides when no judge answers, a section that cannot be used is said),
+# shortcut_verdict 16 (a hit the first reading clears is asked a second, narrow question, and cleared only when both
+# pass surely; a second question with no answer clears nothing), _judged 9 (fenced code set aside, a long reply cut to
+# the paragraphs that hold a hit and its last three), FENCED, JUDGED and ROOM 3 (the judge's room inside the Stop hook),
+# WHERE and SECOND 1, blank lines 8, and 2 fewer in check(), which now runs the shortcut check last so the
+# judge's time never pushes the hook past its limit. install.py 0: the runtime's hash covers the judge's policies, in
+# the line that hashed its modules. The plugin's 281 more are judge_replay.py, the replay each model and policy runs on
+# recorded list hits before it ships: the shebang and docstring 26; imports, the runtime's path and its one line when
+# the runtime is missing 21; the hook's two marks 2; _text 4; the three harnesses' readers 62 (Claude Code's 29,
+# each entry once across records; Codex's 15; Muse's 17; their table 1); turn_ends 14; split 8 (each label's larger half
+# to dev, with the seed); labeled 15 (each labeled list hit found by its record's path and line, judged only while its
+# digest matches); _ollama 5; percentile 3; main 71 (the records and their turn ends, the list hits, each model's
+# verdicts asked as the hook asks them, the first reading alone, latency, the cleared items' file, the unload); report
+# 22 (the matrix by label for each half, the first question alone, and the gate); the entry point 2; and 26 blank
+# lines between them.
+# Giving that judge the principal's last message adds 37 to the core and 53 to the plugin (2026-11-15: the three test-half
+# shortcuts both candidates cleared were asks the principal's earlier words had settled). reply_check.py 27: last_message
+# 25 with its two blank lines (the newest user entry in a Claude Code record that no harness marked as not the
+# principal's, what a harness wrapped into it left out). guards.py 1: the judge's writers, with the reply check's two new ones in its own
+# entry, in the set of the runtime's writers a script that names one is held for (a test from 5.23.0 reads it from the source). judge.py 9: ASKED 1 (its last 3,000 characters), the instruction's
+# sentence on it 1, _prompt 1 (a block of its own, with a code of its own), _judged 1, ask 5 (passed through to both
+# questions, cut from its end, its length and digest logged). judge_replay.py 8: the principal's words with each Claude Code
+# prompt and their import 2, turn_ends 2 (each turn end's last message), main 1 (the first question timed alone) and
+# report 3 (both configurations' gates and latencies), and judged 8 (the models' loop in a function of its own, so the
+# deadline a run raises to count slow verdicts is put back for the next run in the same process).
+# The cloud judge (the principal's ruling of 2026-11-15: measure a cloud model as the judge on the labels, and ship it only
+# if it passes the gate) adds 79 to the core and 119 to the plugin. judge.py 71: _cloud 39 in place of _second's 34 (the
+# cloud model as the judge, or a second opinion: the key of the reply's workspace, the month's cap reserved and settled,
+# adaptive thinking and the verdict's strict schema, a refusal or an unfinished answer no verdict, its tokens logged),
+# notice 17 (the cap's word to the principal once a month, with or without a verdict), _key 15 (the key read from the
+# keys file at call time for the workspace, the default for the rest, none for a workspace mapped to null, the file
+# never quoted), _judged 8 (the cloud model alone as the judge), _tls 7 (the system's certificate bundle where the
+# interpreter has none), _schema 5 (the verdict's shape held to both judges), settings 5 (a judge of either kind or
+# both; the keys file and each workspace's path), SYSTEM_CA_FILES 1, _post 1, ask 1, the ssl import 1, blank lines 8,
+# less 2 in _ask_local and 1 in Verdict (its notice field gone). reply_check.py 8: workspace_of 5 and its two blank lines
+# (a folder's workspace under ~/workspaces, read past links), shortcut_problem 1 (the workspace and the cap's notice
+# passed through). judge_replay.py 40: judged 15 (cloud models with each item's workspace key, an item whose workspace
+# has none left out and counted, tokens and dollars from the judge's own log), record_workspace 13 and its two blank
+# lines (the workspace a record ran in), main 9 (the cloud model's arguments and each record's workspace), report 1 (the
+# gate's limit, and no pass where nothing answered).
+# The judge on the harness's own plan (the principal, 2026-11-15: synthesis must not depend on people buying API credits;
+# the cloud stays an option) adds 107 to the core and 127 to the plugin. judge.py 93: _subscription 42, primary 8 and
+# _first 3 with their six blank lines (Claude Code's print mode or Codex's exec on the person's plan, with no tools,
+# every hook off, no user settings, plugins or memory and no session kept, in a room of the judge's own with its marker
+# set, stopped at the deadline, a refusal, an error or an answer that is not a verdict no verdict; which judge reads a
+# reply first: local, else the plan of the reply's harness where its workspace is not left out, else the cloud),
+# settings 9 (an entry per harness with its model, command and effort, and the workspaces left out), _judged 10 (the
+# plan's judge first, none for a harness without one, the cloud's second opinion after either), ANSWER and BY_TOOL with
+# their comment 4 (the verdict through Claude Code's structured-output tool as the model's first act: an answer written
+# as text first cost two to three seconds more), NOT_THE_PLAN with its comment 4 (the credentials that outrank the plan's sign-in kept out of the judge's run: in
+# print mode an API key in the environment is used before the plan, which would bill past the cloud's cap), HARNESSES,
+# ENTRY_KEYS and MARKER 2, the docstring 2, the subprocess
+# import 1, notice 1 (which judge decides alone past the cap), ask 1. reply_check.py 12: shortcut_verdict 11 (where the
+# judge is a service both questions are asked at once, so a flagged reply waits about one answer's time),
+# shortcut_problem 1 (the reply's harness passed through). hook.py 2: inside the judge's own run the session-start,
+# prompt and Stop hooks return at once, so a verdict is never judged, and the guard still guards. guards.py 0:
+# _subscription among the judge's writers, in its line. judge_replay.py 20: the usage 1 (the plan's, the cloud's and the left-out options, the cloud's missing until now), main 4 (the plan's model, its harness and
+# command, the workspaces left out), judged 15 (runs on the plan, items of a left-out workspace counted and left out,
+# both questions timed at once as the hook asks them, the first question's own time from the judge's log).
+# The doctor's look at the plan's judge (2026-11-15: the fall back to the word list is never silent) adds 108 to the
+# core and 109 to the plugin. doctor.py 76: check_plan_judge 27 (a line for each harness whose plan judges replies: ok
+# where its model answers inside the judge's deadline, saying it timed an invented sentence and a flagged reply takes
+# longer, else a warn with the fix; a judge section that cannot be used one warn), plan_status 18 (the sign-in read from the command line's own status command, asked as the judge's run asks: a
+# plan, an API account, none, no command, or unknown), _plan_fix 16 (each failure's fix in plain words), PLAN_NAMES 1,
+# the section's heading 1, run_checks 4 (the probe in the background beside the other checks, only where a judge is
+# configured, and its lines or why it could not tell), and nine blank lines. judge.py 32: probe 12 (one invented
+# sentence the way a flagged reply goes, nothing logged or kept), _why 7 (a failed run's cause in fixed words: a flag the
+# command line does not know, no sign-in it could use, a model the plan does not offer, else a refusal; the judge's log
+# names it too), plan_env 4 (the run's environment less the credentials that outrank the plan, shared by the judge and
+# the doctor), _subscription 2 (a command that is not there named so), PROBE and PROBE_SECONDS 1, and six blank lines.
+# judge_replay.py 1: every item judged on the plan --harness names, whichever harness recorded it (all 33 personal
+# items were recorded in Claude Code, and Codex's plan was measured on them).
+# Merging main at 5.23.1 into the judge branch sums both sides' growth from their common base (core 15,886, plugin
+# 41,958): the judge branch's 759 core and 1,117 plugin, itemized above, and main's 995 and 995, itemized above.
+# The Stop hook's time for the plan's judge (the principal's approval, 2026-11-15: a flagged reply's two questions took
+# up to 7.2 s at the 95th on his plan) adds 5 to the core and the plugin, all in doctor.py: check_plan_judge 4 (below
+# the judge's ceiling the fix for a slow plan judge is the config's deadline, at the ceiling a faster model, and a probe
+# whose flagged reply would take longer than the deadline warns too), FLAGGED 1 (a flagged reply's time against the
+# probe's sentence, measured). judge.py, reply_check.py, hooks/hooks.json and Muse's manifest 0: the judge's ceiling and
+# the reply check's room at 8 s and the Stop hook at 10 s in every harness, each in its own line.
+# Review round 1 of the judge (2026-11-15, H1 and H2: a written setting made the Stop hook run any program and post to
+# any host) adds 40 to the core and 39 to the plugin. judge.py 28: _program 13 with its two blank lines (a `command` is
+# used only where it resolves to the file the harness's own name does on PATH or in its install locations, else nothing
+# runs), _url 6 (the cloud's address only its provider's own host over https, on port 443, with no user in it),
+# _subscription 3 (the harness's own program or no run), PROVIDER_HOSTS, NAME and LEVEL 2 (a model is a plain name and
+# an effort letters: values on the command line, never options), settings 1 (each key path ends in the provider's
+# name), the shutil import 1. paths.py 21: INSTALLS with its comment 7 and expand_install 10, with their blank lines,
+# moved from doctor.py so the judge and the doctor share the harnesses' own install locations. doctor.py less 9: the 15
+# lines moved out for 1 that names them, its glob import gone, and check_plan_judge 6 more (a `command` that is not the
+# harness's own program is named in a warn, and its status command and probe never run). judge_replay.py less 1:
+# --cloud-url, which the binding leaves nothing to choose.
+# 5.24.0, the judge (21.3, from main at b8efb5ee) merged into releases from the runtime (22.8, which carries 22.18 and
+# main at b8efb5ee): main's ceilings (core 16881, plugin 42953), 22.8's itemized raises above from main (core 1006,
+# plugin 1167) and 21.3's (core 804, plugin 1161), and 1 more each that the merge's own line adds, measured: core 18692
+# and plugin 45282. install.py 1: SYNTHESIS_JUDGE_RUN in the launchers' kept variables (they run the hook under env -i
+# with only the variables the runtime reads, so without it a turn hook inside the judge's own run would judge again).
+# 21.3's line in package_hash gives way to 22.8's package_digest, which hashes every file of the runtime package, the
+# judge's policies among them; 21.3's install.py 0 stays 0.
+# 5.24.0 on Apple's Python 3.9, the floor CI holds: core 2 more and plugin 2, measured. install.py 2: `from __future__
+# import annotations` with its blank line, so the `dict | None` annotations 22.18 gave approval, install and uninstall
+# are not evaluated as the module loads (under 3.9 importing install.py raised TypeError, and so did doctor.py's import
+# of it; 22.8's branch had no pull request, so CI's 3.9 job never ran on it).
+# The combined review of 22.8 with 22.18, round 1 (C2, C8, C10, C7a): core 52 more and plugin 79. guards.py 45:
+# _system_shell 20 (the shell a wrapped launcher line names: by its path, or the first of its name on the harness's own
+# PATH with no folder before it a user could write, C2), _sealed 13 (owned by root with every folder above it, writable by
+# no user: the interpreter pin's test for a file or a folder), _grant_release 6 (the manifest read with _regular, C7a),
+# _release_tool 2 (the wrapper's shell checked) and blank lines 4. install.py 7: _spend_release 4 (the remote's tag
+# named as the clone's HEAD, its tracked tree clean, C8), RELEASE_URL 1, and `from __future__ import annotations` 1 with
+# its blank line 1 (C10). release.py 27: clone_problems 10 and held_to 5 (the clone held to the verified commit after each
+# harness command), install_and_verify 3 (the check after each harness), main 5 (the listing read before any harness
+# command runs, the checks after gh and before the install) and blank lines 4.
+# C2 completed in the same round: core 4 more and plugin 4. guards.py 4: _sealed 5 (the path held as named as well as
+# resolved, so a link of a user's on the way does not count while the system's own do, and a path with `.` or `..` in
+# it is none), _system_shell 1 fewer (its docstring 1 more, naming the open race; the 2 lines that refused any PATH with
+# a folder a user writes ahead of the system's shell gone, since that refused Codex's shell tool wherever such folders
+# come first, A7).
+# 5.24.0, 22.8's new head (cd4d906c: round 1 of the combined review, then C2 completed) merged into release/next at
+# 95b875c3: release/next's ceilings (core 18694, plugin 45284) and 22.8's two raises itemized just above (core 52 and 4,
+# plugin 79 and 4), less 2 each: 22.8's install.py 7 counts `from __future__ import annotations` and its blank line
+# (C10), the same two lines the Python 3.9 paragraph above counts, and the merge holds them once. Measured: core 18748
+# and plugin 45365.
+# 5.24.0, round 4 of the batch approval's review, findings 1 (its plain form) and 3, both on 5.23.0 (2026-11-15: the
+# navigate tool alone was never judged and a `javascript:` address was read as written; on a messaging site's page a
+# script clicked Send by a name built as it ran): core 101 more and plugin 101, all in guards.py: _refused_scripts 20 (on a
+# messaging site's page, or a page a driven browser's record does not show, only the shipped readers' scripts run; a
+# javascript: address is such a script), _tabs 20 (each browser's own newest list: the pane's `tab-N` ids, its own
+# tabs_context and its navigate's result), _read_only_scripts 17 (the extractors as their commands print them, read from
+# the release), _script_address 6 and _url_read 5 (an address as a URL parser reads it, and the code a javascript: one
+# runs), _browser_item 4 (a javascript: navigate is a script step), check_desktop 3, _steps 2 (a navigate read as a
+# parser reads it; a javascript: one runs on the page it is on), _driven_steps 2 (a driven browser's javascript:
+# navigate), _puts 1, BROWSER_STEPS 1 (the navigate tool), desktop_tool 1, PAGE_READERS 1, the comments 8 (the rule and
+# the 60 days it was decided by; the pane's ids) and 10 blank lines.
+# Main's 5.23.1 page-script fix merged into the batch (2026-11-15): core 59 more and plugin 59 on the batch's own ceilings.
+# Of main's 101, its _refused_scripts, _read_only_scripts, PAGE_READERS and their comment fold into the batch's own (the
+# batch's _refused_scripts 7 more: every other messaging site's page, and a page a driven browser's record does not show,
+# takes only the shipped readers, and a javascript: address is named as one; its comment 5 more, with the 60 days the rule was decided by). What stays of main's:
+# _tabs 20, _script_address 6, _url_read 5, _browser_item 4, _steps 2, _driven_steps 2, _puts 1, BROWSER_STEPS 1,
+# desktop_tool 1, TAB_LINE's comment 1 and 4 blank lines.
+# Review round 4 of the batch approval (2026-11-15): core 109 more and plugin 113. guards.py 66: _sender_runs 15 (the
+# messages sender's run a command makes, its program resolved as the write rules resolve one: its real file, arguments
+# and folder), _moves 10 (a step that may leave its tab on a page no list shows yet), _refused_scripts 12 (a script after
+# such a step, another session's newer list unless an earlier step went to an address), _made_here 7 (only this browser's calls that name the tab or none and can
+# change the page, none a hook refused, and the extension's own `Created new tab` words), _messenger_site 4 (every host
+# the guard counts as Messenger's), _listed_on_messenger 4 (the newest list across sessions decides), _tab_list and _tabs
+# 2 (a list's time), check_send 1, QUIET_ACTIONS 1, _batch_send 1 (where its script's report will be), check 1 and 8
+# blank lines. sends.py 41: _reported 13 (whether a Messenger send's script sent, from its report), _run_key 7, ledger 4,
+# ticket 2, sender_ticket 1 (a ticket bound to a run, one for each run, taken by that run alone), _escaped 2 and
+# BLANK_NAMES 1 (a blank by its name), open_batch 1 (closed 12 hours after its code was typed), log 1, the comments 3 and
+# 6 blank lines. cli.py 2: `sends log` names a send its script declined, or one not yet confirmed. In the plugin,
+# messages_send.py 4 more: it hands the guard its own run (its file, the arguments it was run with, its folder).
+# Main's guard path cache (82412084, its 5.23.1 note above) merged into the batch (2026-11-15): core and plugin 10 more,
+# _real 7 and its 3 blank lines, as on main; the batch's per-call reset names it beside the sender runs.
+# The coordinator's ruling on round 4's measurement (2026-11-15): on a messaging site's page a script the guard cannot
+# read is refused, one that acts waits, a read passes, in place of refusing every script but the plugin's own: core 30
+# more and plugin 30, all in guards.py. _unread_script 7 (a call by a name built as it runs, code in a string the page
+# runs, text never closed), _script_acts 5 (the acts rule over the code too, and its new spellings), _refused_scripts 2
+# (a javascript: address refused there whatever it runs), UNREAD_SCRIPT 2, SCRIPT_ACTS_MORE 2, PAGE_CODE 1, the comment
+# 5 and 6 blank lines.
+# Main's rule merged into the batch (2026-11-15): core and plugin 32 more. Main's 30 less its _refused_scripts 2, which the
+# batch's own takes in 1 line: every other messaging site's page takes main's rule, and a javascript: address there is
+# refused whatever it runs; the batch's Messenger rule (only the plugin's own scripts) stays as built.
+# And 3 for round 4's #9 in the batch's own words: a page a driven browser's record does not show takes no script but the
+# plugin's own, since main's rule there no longer refuses every script.
+# Review round 1 of that rule (2026-11-15): core 60 more and plugin 60, all in guards.py. _writes_by_fetch 15 (a fetch,
+# Request or XHR writes unless its method is a literal GET or HEAD, in any spelling), _unread_script 8 (the form named in
+# fixed words; code only where it reaches a sink), _script_code 7 (an optional call read as a call, X.call( as a call of
+# a dotted X), _record 6 (a sub-agent's own record), UNREAD_FORMS 4, _script_acts 4 (PAGE_ACTS for a page's script; a
+# GET by XHR reads), CODE_SINKS 3, SCRIPT_ACTS_MORE 3 (optional, bare and destructured calls; other parts of the
+# address), _steps 3 (a page no list shows is unknown; the pane's first page), PAGE_ACTS 2, _driver_events 2 (a call a
+# hook refused left out), _refused_scripts 1, HANDLERS 1, SERVER_CODE 1, _osa_code 1 (`/` after `++` or `--` divides),
+# _driver_page 1 (a javascript: navigate is no page), _driven_steps 1 and 6 blank lines; less PAGE_CODE 1,
+# UNREAD_SCRIPT 2 and 6 lines of comment.
+# Review round 1 of main's rule merged into the batch (2026-11-15): core and plugin 66 more. Main's 60, less its
+# _refused_scripts 1 (the batch keeps its own), plus 6 lines of comment main took from a block the batch never carried
+# (the new block's comment lands whole), and 1 for the batch's refusal on a page no list shows, now named for every
+# browser (a tab not listed yet, a sub-agent's, a driven browser's after a tab change).
+# The batch's moved rule, before its round 5 (2026-11-15: a pane batch on localhost that clicked and then read was
+# refused, ordinary work): core and plugin 11 more, all in guards.py. _refused_scripts 6 (a move is strict onto or from a
+# Messenger site's page or one no list shows, else ordinary, where a read runs and only what acts or
+# cannot be read waits for its own call; a navigate to an address places the page anew), _local 3 (a local app's host,
+# where a click, a key or a typed line break moves nothing) and its 2 blank lines; _moves keeps its line count.
+# Review round 2 of main's rule merged into the batch (2026-11-15): core 69 more and plugin 69, all in guards.py, as on
+# main. _writes_by_fetch 37 (method and body read in the init of fetch or Request alone, or in the object a variable
+# given there holds and what is set on it; an init the reader cannot follow is a write), _tab_list 9 (preview_start's
+# answer places the pane; one that names no address changes no page), check_desktop 9 (a call that sends only if a page
+# no result shows is a messaging site's is told to read the page first, with no code asked, in a browser whose reads show
+# its page), _defined_names 8 (a name the script defines is no page's send), SHOWS_PAGE 1, BARE_SENDS 1, _script_code 1
+# (`[].x.call(` is a call of x), _script_acts 1 and 2 blank lines; the batch's MOVES and its message on a page no list
+# shows keep their line counts.
+# Review round 3 of main's rule merged into the batch (2026-11-15): core and plugin 71 more, all in guards.py, as on
+# main less what the batch had: _shared_tabs 26, _writes_by_fetch 14, _listed 12, _script_acts 6, _defined_names 4,
+# MEMBER_SENDS 2, _LISTS 1 and 6 blank lines; the batch's _when and its _tab_list with the list's time stand.
+# Review round 5 of the batch (2026-11-15): core and plugin 56 more. sends.py 50: _table 10 (the system's process table,
+# one `ps`), _harness 8 (the hook's harness: its nearest ancestor that is no shell, interpreter or the hook's launcher),
+# _own_line 7 (a process's command line as the system shows it), _ancestors 6, ticket 3 (taken only by a process of
+# that harness whose command line is the run's), sender_ticket 1, NOT_HARNESS 1, the comment 4 and 10 blank lines (#4).
+# guards.py 6: _refused_scripts 6 (a Messenger page's own rule named after a move; every kind of move in the refusal),
+# _moves 3 (a page script that acts, a form value, an upload; `exact` the guard's own word), _steps 1, _sender_runs 1
+# (the line its process shows), less _local 3 and its 2 blank lines (a local app's page moves too) (#1, #3).
+# Review round 2 of that rule (2026-11-15): core 69 more and plugin 69, all in guards.py. _writes_by_fetch 37 (method
+# and body read in the init of fetch or Request alone, or in the object a variable given there holds and what is set
+# on it; an init the reader cannot follow is a write), _tabs 9 (preview_start's answer places the pane; one that names
+# no address changes no page), check_desktop 9 (a call that sends only if a page no result shows is a messaging site's
+# is told to read the page first, with no code asked, in a browser whose reads show its page), _defined_names 8 (a name
+# the script defines is no page's send), SHOWS_PAGE 1, BARE_SENDS 1, _script_code 1 (`[].x.call(` is a call of x),
+# _script_acts 1 and 2 blank lines.
+# Review round 3 of that rule (2026-11-15): core 83 more and plugin 83, all in guards.py. _shared_tabs 26 (Claude in
+# Chrome's tab at the newest list that names it across the session's record and its sub-agents'), _writes_by_fetch 14
+# (an init the reader cannot follow is read by a method or a body anywhere in the script, so a read through a fetch
+# wrapper passes; keyed by a name built as it runs, it waits), _listed 12 (each record's newest list, read once per
+# version of the file), _when 6 (a list's line's time), _script_acts 6 (a call by a method the script defines, on `this`
+# or an object it defines, is no page's send), _defined_names 4 (an object's or a class's method, a property or a field
+# given a function), MEMBER_SENDS 2, _tab_list 8 less _tabs 6 (the list's time, split as on the batch), _LISTS 1 and 10
+# blank lines.
+# Review round 4 of that rule (2026-11-15): core 22 more and plugin 22, all in guards.py. _bracketed 8 (a balanced group,
+# for the init reader and the IIFE rule), _writes_by_fetch 5 (U1: an init not followed is read by a method or a body in
+# what the script passes to a call, not in what a callback returns or names), _shared_tabs 4 (a sub-agent record whose
+# last 8 MB name no tab list is not parsed: a busy session's 70 records), _script_acts 3 (U4: the object an IIFE of the
+# script's own returns) and 2 blank lines.
+# Merged with main's 5.23.1 (2026-11-15): main's ceilings above, plus this branch's notes since: core 101, 30, 60,
+# 69, 83 and 22 more, plugin the same (the path note's 10 was main's already).
+# Review round 5 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (W4: an init
+# the reader cannot follow is read by a method named anywhere in the script again, as before round 4).
+# Review round 6 of the page rule (2026-11-15): core and plugin 5 more, all in guards.py: _writes_by_fetch 5 (a method
+# read only as an object key, a shorthand by its const's one literal, or a member assignment: a parameter or a property
+# read named method held a read through a wrapper).
+# Review round 7 of the page rule (2026-11-15): core and plugin 1 more, in guards.py: ASSIGN 1 (every assignment
+# operator, for each assignment the rule reads: Y3's `o.method ??= 'POST'` passed as a read).
+# 5.24.0, 22.12 (fd332225: the messaging-site page rule, from main at b8efb5ee) merged into release/next at 56302819:
+# release/next's ceilings (core 18748, plugin 45365) and 22.12's raises itemized just above (101, 30, 60, 69, 83, 22, 5,
+# 5 and 1, core and plugin alike: 376 each), measured: core 19124 and plugin 45741. 22.12 named its release 5.23.2; its
+# first paragraph's label is 5.24.0, the release that carries it.
+# Then each 122 more, for Codex code mode (board request 22.33, 2026-11-15). guards.py 57: code_mode_script 13 and
+# _recorded_script 15, each with 2 blank lines (a code-mode script passed on purpose and never read as a shell line;
+# under `command` only by Codex's record of that very call), CODE_MODE_SIGN 2 with its 4-line note and 2 blank lines,
+# _mcp_name 4 with 2 blank lines and _line_events 6 more (the calls a script makes, read from Codex's item_completed
+# events under the name its hook gives them), _check 4 more (the script passed; a bare string read as the command) and
+# shell_command 1 more (an `exec` call that is no script read from `input` or `code`). doctor.py 65:
+# check_codex_nested_hooks 34 and _nested_proof 21, each with 2 blank lines, and its bounds 1 and refusal pattern 1 with
+# a 2-line note and 2 blank lines (the proof, from Codex's own rollouts, that hooks still run on nested calls; records
+# that cannot be listed warn).
+# Then each 37 more, all in sessions.py, for the session index of code-mode work (22.33's follow-up): _Session.nested 19
+# and _tag 12, each with 1 blank line (the files a script's nested patches and commands wrote, read from Codex's
+# item_completed events; the tagging moved out of wrote), _codex 5 more (a script's call marked; the events read),
+# __init__ 1 more (this reading's call and script ids), wrote 2 fewer (its loop moved into _tag; a script never read).
+# Then each 16 more, from review round 1 of 22.33. doctor.py 14: _lstat 5 with 2 blank lines and _nested_proof 5 more (only
+# a regular file is read, opened without blocking or following a link, its first line within a bound), NESTED_FIRST 1 and
+# check_codex_nested_hooks 1 more (each listed file's lstat). guards.py 2: CODE_MODE_SIGN's note 2 more (what each helper
+# does, by Codex's own description of the tool).
+# 5.24.0, 22.33 (3ec6c350: Codex code mode, from main at b8efb5ee) merged into release/next at 877fbabf: release/next's
+# ceilings (core 19124, plugin 45741) and 22.33's raises itemized just above (122, 37 and 16, core and plugin alike: 175
+# each), measured: core 19299 and plugin 45916.
+# Round 2 of the combined review, R2-1: core 3 more and plugin 3. install.py 3: _spend_release's docstring 2 (the tag
+# asked of the release URL from the root folder, so no config of the clone's sends the question elsewhere) and its git
+# environment 1 (no GIT_DIR or GIT_COMMON_DIR naming a repository other than the one each call names).
+# 5.24.0, 22.8's final head (42d21552: round 2 of the combined review, R2-1) merged into release/next at ad371ceb:
+# release/next's ceilings (core 19299, plugin 45916) and R2-1's raise itemized just above (core 3, plugin 3), measured:
+# core 19302 and plugin 45919.
+# 5.24.0, problem A of the review of the runtime's carried scripts (2026-11-15: the meeting skill's client and a curl of
+# the same JSON-RPC called the local workspace server's send_gmail_message with no code, since a write to this machine
+# is no post to another host): core 248 more and plugin 248, all in guards.py. _tools_called 67 (the tools a program's
+# text calls: a call_tool call, a JSON-RPC dict or JSON text, its name a literal, a loop over literals, a function's or
+# a lambda's parameter followed to the calls that pass it, a name taken from its arguments, or unknown; its literal
+# arguments; a module it imports counts only its literals; another language by the names its text gives), _mcp_calls 49
+# (an HTTP client to an address here, a program inline, on its input, in a file or a module with the modules of its own,
+# its arguments read for a name it takes from them, a shell file it runs), _http_body 41 (data words, @file, a file
+# option, its input, cat substitutions, HTTPie's fields; what it cannot read), _check_mcp 35 (judged as the tool's own
+# call, else one code for the exact command and the programs it runs, a call read twice judged once), _rpc_calls 16 (a
+# request or a batch), _mcp_endpoint 10, _json_object 8, the section's note and patterns 15, and _connector 7 (the
+# connector's judgement, which check and the shell route now share).
+# 5.24.0, problems B and D of the same review: core 253 more and plugin 253, all in guards.py. B 94 (an agent's own Python
+# read a script file and handed it to osascript's -e with no code while `osascript <file>` waited; pointed at the
+# local-messaging transport, a Messages send): _osa_files 27 (each script file the program names, or takes from its
+# arguments, judged as `osascript <file>` is; one it writes first, does not name or cannot be read waits; the plugin's own
+# as shipped, and a run the principal approved in this call, judged by their own gates), _osa_cut 20 (how a list that
+# shows no whole script is cut short: a computed script file, a computed -e script or input, a shown file with computed
+# arguments, shown -e lines), _osa_from 13 (a computed script read from a file, in its expression or in what its name is
+# given), _writes_script 13 (a write whose target spells a script file it hands osascript, or a name given one; a log or
+# a record it writes is none), the note and patterns 9 (OSA_EXT, FILE_READS, WRITE_TARGET), _program_acts 9 (the cuts it
+# keeps, osascript's words in an array of their own, a lookup of osascript is no run, a script file it writes, the
+# program's file and words), _acts_outside 2 (the program's file and words) and check_self_grant 1 (the run the
+# principal approved). A's reading 22 more, from replaying 60 days of recorded commands through it: _tools_called 21 (a
+# literal list, a dict's keys, a loop that unpacks, an item's key, a method's own parameter, a JSON-RPC helper called
+# with the method, and a program whose strings only name the method is no call) and MCP_LINE 1 (a program the guard
+# cannot read is an unknown call only where its line names a local server). D 137 (`git status` ran the program a
+# repository's own core.fsmonitor names, which wrote into the state folder): _git_programs 67 (the line's environment,
+# git's options, GIT_CONFIG_COUNT and GIT_CONFIG_PARAMETERS, a file the line points git at, the repository found upward and
+# its worktree's common folder, the last value read winning and a helper list emptied, each key's command line: a hooks
+# folder's executables, a ! command, an alias run as git, a named credential helper; the environment's programs and the
+# exec path; the boolean words), _git_config 26 (sections and subsections, continued lines, quotes, escapes, comments, and
+# the files include and every includeIf name), check_git_programs 26 (each program judged by the whole shell guard where git
+# runs it; a value it cannot read, and nesting past two levels, held for the protected-folder code), the note and patterns
+# 17 (GIT_PROGRAMS, GIT_PROGRAM_ENV, GIT_DEPTH) and the dispatch 1.
+# Then 13 more in each, all in guards.py, for the guard's own time on what those readings read (a program with 3,000 tool
+# calls took 0.95 s, and a 200,000-character line 0.77 s in the write-target pattern; now 0.08 s and 5 ms): _tools_called
+# 11 (each name's assignments, loops and parameters, each function's calls and each lambda's name, indexed once a program
+# in place of a scan of every node for each name; past 64 calls, one more is unknown) and _writes_script 2 (a write
+# method's receiver read back from its call, and the names given a script file found in one pass).
+# Review round 1 of the send routes (2026-11-15: one line in ~/.gitconfig made every git read run the agent's program; a
+# program posting a body it read from a file, curl to LOCALHOST, a scanner's git and a planted .git/hooks/pre-commit ran
+# with no code): core 188 more and plugin 188, all in guards.py. Git's other scopes 54: _git_scopes 27 (the system file,
+# the global and XDG files or the one GIT_CONFIG_GLOBAL names, with what they include, the repository's and its
+# worktree's, and each submodule's for a command that reaches them), _hook_names 8, _git_programs 5 (each scope's programs
+# apart, a helper or an SSH command only for a command that reaches a remote, hooks only for one that runs them,
+# synthesis's own git-hooks folder never, the commit check's repository hooks for a commit) and the tables 14 (GIT_HOOKS,
+# GIT_QUIET, GIT_NET, GIT_REMOTE_KEYS, GIT_ANY_HOOKS, SYSTEM_GITCONFIG; BOOLEAN_WORDS on one line). The scanners 52:
+# _scanned_folders 33 (the context doctor's --project and --root; repo_state.py's repos.yaml paths and --discover),
+# check_git_programs 16 (a repository a scanner reaches that names a program waits) and GIT_SCANNERS 3. A program's
+# request body 29: _posted_bodies 20, _mcp_calls 4, MCP_POSTS, BODY_GIVEN and STDIN_READ 5. A planted hook 53:
+# check_hook_writes 22, _hook_folder 12, _hooks_pointed 12, the section's note 6 and the dispatch 1. sends.py's LOCAL
+# changes in place (any case, a trailing dot).
+# Then 1 more in each, from the round's replay (a scanner reaching repositories under a hooks folder the user's config
+# names waited 115 times): _git_programs 1 (a hooks folder's hooks take the scope of the setting that names it).
+# Review round 2 (HTTPie's :8765 shorthand, curl's URL in a variable, http.client with host and port apart, stray_lessons.py,
+# git config core.fsmonitor, a bare repository's pre-receive and -c include.path ran with no code): core 66 more and
+# plugin 66, all in guards.py. HTTP forms 27: _curl_config 15 (a config file's url, data and request read as words, or
+# unread), _mcp_calls 6 (the :port shorthand, a URL the shell fills in, input on a redirect), check_outgoing 4 (the
+# line's readings with its variables filled in), BODY_GIVEN 1 and _posted_bodies 1 (host and port apart, a method or a
+# body by position). Scanners and git config 12: _scanned_folders 7 (stray_lessons.py's --repo, pr_queue_scan.py's
+# repos.yaml, sharing_scan.py's repository, portfolio_review.py's --index, the doctor's own knowledge roots),
+# _hooks_pointed 4 (any key that names a program) and GIT_SCANNERS 1. Receiving and bare hooks 25: _receiving_hooks 18,
+# RECEIVE_HOOKS 3, _hook_folder 3 (a git dir's own hooks folder) and _git_programs 1. Line includes 2 (_git_programs).
+# Then 1 more in each, from the round's replay (the line's readings had made 26 programs unknown calls): check_outgoing 1
+# (a reading counts only an HTTP client's call); a request's host and port count only side by side, and `.end()` no body.
+# Review round 3 (node's fetch with a file body, node's http.request with the port in a constant, urlopen's data by
+# position, a helper's reading call beside a file posted, HTTPie's --raw, `curl -d "$BODY"` and an include named by
+# --config-env ran with no code; program posts were read spelling by spelling): core 435 more and plugin 435, all in
+# guards.py. A Python program's bodies 183: _py_bodies 148 (each write it makes: a body keyword, a body by position for
+# urlopen, Request, an opener's open, a library's post, put and patch and http.client's request after its method, send
+# and sendall when it opens a connection by hand, a call handed a write method, a write method set where no write takes
+# it, a .data it sets, a client it starts from a list or a shell line; each body read through literals it joins, a
+# request it builds and that request's method, a file by a name it spells or takes from its arguments or argparse, its
+# input, its own functions' returns, a parameter's every call and default, a name it changes in place; each expression
+# read once, a cycle unknown), the reader's bindings 34 (_bindings 35 and _constant 9, which _tools_called now shares,
+# dropping its own 10: `with` targets, unpacking, names changed in place, a method given by a name only that literal is
+# given, byte literals), the patterns 5 (BODY_KEYS, WRITE_METHODS, SHELLED, LOGGED, CLIENT_LINE) less round 1's 4
+# (MCP_POSTS, BODY_GIVEN, STDIN_READ). A node program's bodies 164: _js_read 44 and _js_kind 10 (a string, a join,
+# JSON.stringify, a file read, a name and what changes it in place, an object literal's method and its tools/call's
+# name), _js_bodies 33 (a body, data or json property, what .write(), .end() or .send() hands a request, a .post()'s
+# body, a pipe into a request, a client it runs, a write method no write takes), _js_scan 16, _js_files 14, _js_called
+# 10, _js_props 10, _js_parts 9, _js_pairs 7, _js_values 5, _js_expr 2, and JS_SITES, JS_RUNS and JS_FUNCS 4. The
+# endpoint named together or apart 11 (_names_mcp 10, LOCAL_IN 1). _posted_bodies 16 (each body by its kind: a file,
+# input, arguments, the lines a program starts; a program nested past what the readers follow waits). The line's
+# variables 17 (_line_values 8, _filled 8 and _unfilled 5, less check_outgoing's 4: a body in a variable the line does
+# not set waits, and one it sets is put into the words that use it whole). Includes by --config-env 3 (_git_programs).
+# The section's note and the blank lines between its 18 new functions 41.
+# Then 3 more in each, from the round's replay (the line's variables now reach a program's own path, so 15 client runs
+# as "$C" with a JSON argument a substitution fills were read, and that argument counted as a possible tool name; and
+# a program whose text names no endpoint is handed it by its line): _mcp_calls 2 (a word the shell fills in names a
+# tool only when it can make a name; the line's port, path or arguments naming the endpoint) and _posted_bodies 1.
+# Round 3's ruling (a program posting to an address an earlier command exported waits, as curl does): core 75 more and
+# plugin 75, all in guards.py. A Python write's address 27 (_py_bodies: where a value comes from, each environment variable
+# it reads or its arguments, through its names 11; a write's URL, host or base URL, or the connection it is made on 7; a
+# line it hands a shell, with what it cannot read standing as a word the shell fills in 8; each such write's bodies 1).
+# A node write's address 31 (_js_sources 11, _js_enclosing 10, _js_bodies 10: the call its options go to, their url,
+# host or baseURL, the request a write or a pipe goes to). _posted_bodies 8 (those bodies judged when the address comes
+# from a variable the line does not set, or an argument the shell fills in). curl's address only 4 (ADDRESSLESS 2 and
+# _mcp_calls 2: a body, a header or an HTTPie field the shell fills in is no address). _line_values 1 (the environment a
+# line gives a program, read with no $ in the line). The blank lines between the two new functions 4.
+# Then 27 more in each, from the ruling's replay (a recorded line running a large program took over a minute, its body's
+# values multiplying through its assignments; and a program's own helper called with a method and a body read as a
+# library's request): _joinings 9 (a body joined from parts is each joining, while there are at most KINDS of them
+# within TEXT_LIMIT), _py_bodies 6 (each name's sources read once, each body expression's kinds counted once, a function
+# of the program's own read where it writes, not where it is called), KINDS 1, HTTP_HINT 3 (with no endpoint named, only
+# a file that may make a request is read), _js_enclosing 3 (every site's brackets in one pass), _js_values 3 and
+# _js_called less 1 (each name and each function read once), _js_bodies 2, _js_kind 1, _js_read less 2, and the blank
+# lines around _joinings 2.
+# Then 69 more in each, all in guards.py, from the ruling's suite on a fresh clone (five of the plugin's own scripts
+# waited when run for their help or a dry run: os.open(path, flags) read as an opener's open(url, data), and a request
+# to a host the Drive publisher spells, its query from the environment, read as an address the environment gives): _away
+# 11 (whether an address's spelled start names a scheme and a host other than this machine, on a port that is not a
+# local MCP server's, closed before anything filled in); _py_bodies 33 (the text an address spells before what it fills
+# in, through a constant, an f-string, a + join, a .format() or a % 14; where an address comes from with none from one
+# spelled for another host, through its names, lists and conditionals, each name read once 13; a connection's path names
+# no host 1; the modules a program imports, whose own open() opens a file 1, and that rule's line 1; the blank lines
+# between them 3); _js_start 16 and _js_targets 8 (the same for a node address, with the blank lines before each);
+# curl's address rule 1 (an address spelled for another host, its path filled in, is that host's).
 # Then each 5 more, all in guards.py, so the signature check reads the message and never its addressing (plan item
 # 22.31: an email the principal had approved was refused because its recipient's address was at a persona domain):
 # UNSIGNED 2 (the fields it never reads, at any depth: those that never render a link, the recipients and account, the
 # sender, reply address, thread headers and subject, and an invitation's guests and calendar) and its comment 3.
 # `_strings` taking the fields to leave out, and the check reading through it, change in place.
+# 5.24.0, 22.17 (20255eb0: the local send routes, which carries main's 5.23.2 at 218da465) merged into release/next at
+# c6c8e36a: release/next's ceilings (core 19302, plugin 45919), 22.17's raises itemized above (core 1379, plugin 1379
+# over main at 218da465) and main's 5.23.2 raise just above (core 5, plugin 5), and 1 more each that the merge's own line
+# adds, measured: core 20687 and plugin 47304. install.py 1: SYNTHESIS_WORKSPACES and WORKSPACE_MCP_PORT, which 22.17's
+# send routes read, in the launchers' kept variables. 22.17's first two labels are 5.24.0, the release that carries them.
+# Then core and plugin each 10 more, all in install.py: _stable_skill_files 4 (its docstring 2, and a carried skill's
+# Python outside scripts/ beside its scripts/ folder, never its tests: the meeting fetcher lives in a folder of its own),
+# STABLE_SKILL_SCRIPTS 4 (the meeting-transcripts, message-exports, local-messaging and context-lifecycle skills, whose
+# scripts a seat's day-end runs from a plugin copy: of the plugin's 89 skill scripts, the installed guard held the four a
+# day-end runs, since the runtime it compares a copy with did not carry them) and the comment that the installer and
+# release kit is never carried 2.
+# Then, that change's second version, core and plugin each 7 more. guards.py 6: _shipped 11 fewer (only the release the
+# guard runs from: a plugin copy's bytes said nothing about the code it loads from other folders, its review's finding
+# 1), _release 3 and _runtime_copy 8 with their 4 blank lines (the runtime's own copy of a script a plugin copy stands
+# for), _self_grant 2 (a hold on such a copy names it). install.py 1: synthesis-bitbucket carried, whose pr_queue.py the
+# rituals' pr_queue_scan.py loads from beside its own skill.
+# Then core and plugin each 5 more, all in guards.py's _self_grant: what a script's line names, read apart from what its
+# own text names (finding 2: a protected folder named as an argument let an unmodified copy write there with no code).
+# The words after the script 1, the protected folder they, its input, the values the line gives variables, the folder
+# it runs in or the files xargs hands it name 2, the hold names that folder 1, and the release's own script is told
+# apart from the plugin's own (inside the release, its line naming none) 1.
+# Then core and plugin each 38 more, all in guards.py: a script inside the release is the plugin's own only when it runs
+# as the release holds it (finding 4: a module path set on the line was read and then ignored for a shipped script).
+# _plainly 16 and its 2 blank lines (its interpreter's plain word with no path, wrapper, or option but Python's that
+# take away what it loads, on a line that defines no function or alias, reads no file into the shell, exports nothing
+# and gives no value to a variable in the environment or one that moves where a program loads from), PLAIN_OPTIONS,
+# SETTERS, STARTUP and DEFINES 4 and their 2 blank lines, Run 6 and its 2 blank lines (the parser marks a command that
+# an assignment or a wrapper stood in front of, which it otherwise reads past), _commands 1, and _self_grant 5 (the
+# plain run, the values on the line that only say where the script lies, and a hold that says why the release's own
+# copy waits).
+# Then core and plugin each 1 more, in install.py: _stable_skill_files' docstring 1 (a carried skill's shell scripts
+# outside scripts/, the meeting skill's server kit, which its doctor checks the service against, and its Python below
+# scripts/: finding 6). Its test changes in place, and so does the fetcher's line naming the runtime's start.sh.
+# Then core and plugin each 1 more, in guards.py's _self_grant: a module of a script's own that the same line writes
+# is code the guard cannot read (finding 3: it was judged as it stood before the line rewrote it).
+# Then that change's review round 2, core and plugin each 83 more, all in guards.py. The tables and helpers 58: _shared
+# (a file that is also one in a protected folder, by a hard link: R2-4), _follows (the configuration file a release
+# script follows, read as its line is: open-list item 1), _globbed (a pattern as the shell expands it: R2-3),
+# MOVES_HOME and USES_HOME (a HOME the guard does not read, then used: R2-2), SERVICE_WRITERS (the kit's unit writers:
+# R2-8), and SETTERS, STARTUP and DEFINES one line longer each where they grew (every builtin that gives a value, zsh's
+# tied arrays, a parameter expansion that assigns), with their blank lines. check_file_write 10 (such a write waits for
+# the principal's code), _plainly 4 (Python only with -s, -S or -I: R2-6; printf -v and print -v), check_self_grant 4,
+# and _self_grant 7 (the config 1, the unit writers 3, a shell write to a hard link 2, a pattern expanded for the
+# script it judges 1).
+# Then its review round 3, core and plugin each 5 more, all in guards.py: SUBSCRIPTED 3 with its blank lines (a
+# subscript assignment to an environment or startup variable, zsh's PATH[1,-1]=: N1) and _plainly 2 (asked in any case
+# of the name). The interpreter check that round first added (N2, 30 lines) came out again when the ruling changed: it
+# held ordinary work on Macs with Homebrew's Python first, so the interpreter's own folders are on the open list.
+# 5.24.0, 22.15 (6e766635: the runtime's carried scripts, from main at 82412084) merged into release/next at 6e5057d5:
+# release/next's ceilings (core 20687, plugin 47304), 22.15's raises in the eight paragraphs just above, from "Then core
+# and plugin each 10 more, all in install.py" (10, 7, 5, 38, 1, 1, 83 and 5, core and plugin alike: 150 each), and 1
+# more each that the merge's own lines add, measured: core 20838 and plugin 47455. install.py 2: takes 1 (a carried
+# skill's files by the rule _stable_skill_files walks them with, so a release's staged copy and its tag's listing
+# agree) and the carried list's comment 1 (the release tool rides along for the launcher, never the plugin's own).
+# guards.py 1 fewer: one _shipped holds both rules, the release it runs from (22.15) and never its kit (22.8).
+# Main's 5.23.1 and the page rule's round 4, merged into the batch (2026-11-15): the batch's ceilings above
+# plus core and plugin 396: main's approval spend order (5.23.1, 374 beyond the path note the batch had; its notes
+# above) and the page rule's round 4 (22: _bracketed 8, _writes_by_fetch 5, _shared_tabs 4, _script_acts 3, 2 blank
+# lines). The batch's send paths keep their own records; main's decorator wraps the checks it wraps on main.
+# Review round 6 of the batch (2026-11-15): core and plugin 22 more. guards.py 21: _navigates 8 (a page script moves a
+# tab only when it can navigate; a location alias and Object.assign(location, ...) do), _local 3 again (a navigate or a
+# click on a local app moves nothing, as ruled), NAVIGATES 2 and its comment 2, 6 blank lines; _moves keeps its count.
+# sends.py 1: _own_line 1 (the system's /bin/ps with a clean environment); _table and _harness keep theirs.
+# Review round 5 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
+# _writes_by_fetch 5 (W4: an init the reader cannot follow is read by a method named anywhere in the script again).
+# Review round 7 of the batch (2026-11-15): core and plugin 29 more, all in sends.py. batch_unspend 9 (an entry given back
+# when its call is held: an "undone" line and the spent mark taken back), _spends 8 (a spend an "undone" line names is
+# none), batch_spend 5 (its mark, and its undo given to the guard's _after), _harness 3 (no harness under a process a
+# terminal shares, or shells alone), SHARED 2 and 2 blank lines; guards.py's call sites keep their counts.
+# Review round 6 of the page rule, merged into the batch (2026-11-15): core and plugin 5 more, as on main:
+# _writes_by_fetch 5 (a method read only as an object key, a shorthand by its const's one literal, or a member
+# assignment: a parameter or a property read named method held a read through a wrapper).
+# Review round 7 of the page rule, merged into the batch (2026-11-15): core and plugin 1 more, as on main: ASSIGN 1
+# (every assignment operator, for each assignment the rule reads: Y3's `o.method ??= 'POST'` passed as a read).
+# 5.24.0, the batch approval (5f486d2f: one approval for a reviewed batch of sends, M37 part 4, with 22.12's fd332225,
+# which release/next carries, and main's 5.23.1) merged into release/next at 9d80ab27: release/next's ceilings (core
+# 20838, plugin 47455), the batch's raises over fd332225 (core 974, plugin 979) and 5 fewer each that the merge's own
+# lines take away, measured: core 21807 and plugin 48429. The batch's 974 and 979 are its own paragraphs, from "M37 part
+# 4" above to "Review round 7 of the batch" just above (410, 110, 7, 2, the writers' line 1, 119 and 122, 3, 1, 69 and
+# 67, 8, 63, 109 and 113, 11, 56, 22 and 29: core 1020, plugin 1025), less 46 each of main's 5.23.1 and 22.12's lines
+# that its own code folds in (main's 101 as 59, its rule's 30 as 32, round 1's 60 as 66, round 3's 83 as 71); its
+# paragraphs on main's and 22.12's work merged into it count those lines once. cli.py 6 fewer: each side moved _main's
+# parsing into a parsed of its own, so one stands, with release/next's command_at and the batch's None for wait,
+# worktree and doctor, its docstring naming both readings (the batch's call and return in _main, its def line and two
+# blank lines, and a line of its docstring counted once). guards.py 1: the shell dispatch keeps the sender runs
+# check_outgoing found before check_git_programs judges each git program as a call of its own, which starts the call's
+# state anew, so a sender run beside such a git command still takes its ticket.
+# The Messenger importer's filtered chats from before the switch to encryption (2026-11-16): plugin 1 more, the core as
+# it was. import_messages.py 1: SECTIONS names e2ee_cutover_filtered, on a line of its own, as filtered_threads is to inbox.
+# 5.24.0, that change (17f42796, from main at 218da465) merged into release/next at d035d42e: release/next's ceilings
+# (core 21807, plugin 48429) and its raise just above (plugin 1), measured: core 21807 and plugin 48430.
+# Then each 120 more, from review round 4's finding 1, plan item 22.19 (an agent's program that loaded synthesis through
+# importlib, __import__, exec, eval, compile or runpy was read as reaching none of its writers; a check a script or the CLI
+# entered read the recorded transcript wherever it led): guards.py 97: _synthesis_loads 56 with 2 blank lines (what each
+# loader a program calls is handed, through its arguments, the names it assigns, its own functions' parameters and the
+# words it is handed, read for a name or a text that says synthesis, code that loads it, or a file whose code reaches it;
+# a first version that took any string beside any loader held 24 ordinary commands of the 60-day replay), _joined_text 7
+# with 2 blank lines (a path joined from strings), LOADERS 3, IMPORTS_IT 2, FILE_RUNNERS 1, LOADER_MODULES 1, MAY_LOAD 1
+# and SAYS_SYNTHESIS 1 with their comment 7, _imports 5 more (a module loaded by the name it is written with, read as an
+# import), _self_grant 9 more (the words a program is handed and the values the line gives; a program on the line read
+# with the modules of its own it imports, held for one that writes through synthesis). approvals.py 23:
+# _kept_by_a_harness 11 with 2 blank lines (a recorded path counts only inside the folders recorded beside it), remember 7
+# more (the folders each harness keeps its records in, as the prompt hook's environment names them, recorded beside the
+# path; Codex's archived rollouts among them, as review round 1 of 22.19 found), transcript 3 more.
+# Then each 125 more, all in guards.py, plan item 22.21 and review round 1 of 22.19's finding 1 (a shell script a command
+# ran, pytest's test files, `ipython -c` and `uv run` let a program import synthesis and name a writer unread):
+# _pytest_reach 42 with 2 blank lines (the test files pytest collects and the conftests it loads, read for a writer
+# approvals rest on, or synthesis loaded another way, unless a conftest above, or the test file itself, puts the
+# synthesis home at a temporary path; pytest's walk pruned as pytest prunes it, and bounded by the call's time),
+# _isolates_home 23 with 2 blank lines (that setting, read in the code: an autouse fixture, a test file's own fixture or
+# test, or the environment set from a temporary folder as the file loads), _release_script 6 with 2 blank lines (the
+# release's own scripts and the CLI's launcher, trusted as before: a first version held all 143 recorded runs of the
+# launcher by its path), GRANTING 2 (the writers approvals rest on), _self_grant 28 more (a shell script run by a shell,
+# by its path or sourced, judged as its command lines three scripts deep, the one the line writes as its bodies or as
+# it stands, with $0 its path; one that cannot be opened waits; a Python script run by its path read as Python;
+# pytest's runs), _bare 9 more (`uv run`, `poetry run`, `pipx run` and their like unwrapped, a .py file as Python runs
+# it; ipython as Python), RUNNERS 4, PYTEST_VALUES 2 and TEMPORARY 1 with their 2 blank lines, check_self_grant 1 more
+# (how deep a script it judges), less _script_file 1 (a text file with no first line is the shell's own script).
+# Then each 20 more, all in guards.py, from 22.21's review round 1 (a writer, or a path of synthesis's taken, at a test
+# module's top level ran before any fixture; a test file that isolated one test was trusted for all; the CLI's launcher
+# was trusted beside any runtime): _at_import 14 with 2 blank lines (what a test module or a conftest runs as it loads,
+# its function bodies left out, read for a writer, a path of synthesis's or synthesis loaded another way), _release_script
+# 2 more (the launcher trusted only where the `current` it runs is the synthesis home's own), _isolates_home 1 more (a
+# test file's own fixture counts only when autouse or every test requests it; nothing that runs at import, which a
+# conftest's environment set from mkdtemp was), _pytest_reach 1 more (what runs at import leaves a file read).
+# Then each 44 more, all in guards.py, from 22.21's review round 2 (writers that ran outside the tests were trusted as
+# isolated: at load through an alias, getattr with the name written out or a helper the file calls; in xunit setup, a
+# module-scoped fixture or pytest's hooks): _outside_tests 26 in place of _at_import's 14 (what runs outside a test:
+# the top level and class bodies with the file's own functions they call, xunit setup and teardown, pytest's hooks and
+# fixtures scoped wider than a function), _writers_named 22 (each writer named, under any name it is imported by and
+# through getattr with its name written out, in place of a pattern of the names), _pytest_reach 4 more (a plugin of its
+# own named with -p), XUNIT 2, and their blank lines.
+# Then each 36 more, all in guards.py, from 22.21's review round 3 (a shell script's line of Python that reached synthesis
+# was refused where a script file waits; two programs that only read were held): _module_path_is_synthesis 24 with 2
+# blank lines (a PYTHONPATH whose folders shadow nothing Python imports from elsewhere, and supply none of the program's
+# modules, but a synthesis byte for byte the guard's own, no longer counts against the program's proof),
+# _synthesis_reach 8 more (getattr with the name written out read as that name: a writer is named, a read passes),
+# _self_grant 2 more (on a line of a shell script, the two refusals of a program reaching synthesis wait instead).
+# Then each 8 more, all in guards.py, from the same round (that module-path rule trusted a folder not there when judged,
+# or one the line writes into or another of its programs may fill first, and a stand-in module the line writes beside a
+# program on the line went unseen): _module_path_is_synthesis 3 more (each folder must be there, and the line write
+# nothing inside it), _stand_in 2 more (a module the line writes where the program starts), _self_grant 3 more (the
+# programs on the line that may fill a folder where the guard does not look, which leave a module path untrusted).
+# Then each 11 more, all in guards.py, from the same round (the suite, run whole on a fresh clone, showed that rule judged
+# what a folder hides against the guard process's own path, where a test runner had put a checkout's top-level folders):
+# _found_elsewhere 10 more (with `installed`, only Python's own installation, its standard library and site-packages; with
+# `portion`, a folder with no __init__.py counted only against a namespace package, since it hides no module),
+# _module_path_is_synthesis 1 more (it asks that way, and no longer needs to pass over a conftest).
+# 5.24.0, 22.19 with 22.21 (bb7e4b0f: programs that load synthesis another way, and shell scripts, pytest's test files and
+# runners read as the programs they hold, from main at b8efb5ee) merged into release/next at fa5b19d6: release/next's
+# ceilings (core 21807, plugin 48430), their raises in the seven paragraphs just above, from "Then each 120 more, from
+# review round 4's finding 1, plan item 22.19" (120, 125, 20, 44, 36, 8 and 11, core and plugin alike: 364 each), and 3
+# fewer each that the merge's own lines take away, measured: core 22168 and plugin 48791. guards.py 3 fewer: the line's
+# assignments listed once, release/next's `given`, which 22.21's reading of what a program loads uses too (1), and
+# _release_script 2 fewer (the CLI's launcher, which since 22.8 names the runtime it runs and the pinned interpreter, is
+# trusted where install wrote it, in the home's bin, by the clause that trusts bin; the text comparison with the old
+# launcher, which 22.8 removed, goes). The CLI's runner list, RUNNERS in "the runtime changes only on the principal's
+# code" above, is RUNNER_PROGRAMS now, so 22.21's table of runners keeps its name; the two had shadowed each other.
+# 22.22, prose that names the self-grant functions (2026-11-15, a peer Codex seat's program refused for strings it wrote
+# to a file): core 21 more and plugin 21, measured, all in guards.py: _granting_text 18 (the program's code, a string
+# kept where it is the bare name or a dotted path to it, an f-string for its expressions, comments out, every string
+# kept for a program that runs one as code) with its 2 blank lines, GRANT_NAME 1 and RUNS_STRINGS 1, less nothing; the
+# rule's own line changes in place.
+# 22.22's review round 1: core 9 more and plugin 9, measured, all in guards.py. RUNS_STRINGS 2 (a program that starts a
+# program keeps every string: node's child_process family, Python's subprocess, os.system, os.exec, os.spawn, pty.spawn),
+# WINDOW_CLI 1 (`synthesis sends open` started by a program), _granting_text's docstring 2, _commands 2 (a `cat`
+# heredoc's body kept for the file it writes, and its parameter), _unread 1 (that body read as the script it is) and
+# _self_grant 1 (the bodies it reads, the window started by a program).
+# 5.24.0, 22.22 (5018d0a1: prose that names the self-grant functions, from main at b8efb5ee) merged into release/next at
+# 26a20de9: release/next's ceilings (core 22168, plugin 48791) and 22.22's raises in the two paragraphs just above (21 and
+# 9, core and plugin alike: 30 each), measured: core 22198 and plugin 48821. The merge's own lines change in place: the
+# parser takes release/next's reading mode and 22.22's heredoc bodies, and hands both to each reading and to _walk,
+# which since 22.8 holds the loop 22.22's line sits in.
+# 5.24.0, a call Codex's hook refused left out as Claude Code's is (the coordinator's ruling, 2026-11-16): core and plugin
+# 3 more, all in guards.py: REFUSED_BY_HOOK 1 and its 2 blank lines (a hook's refusal in Claude Code's words and in
+# Codex's, `Command blocked by PreToolUse hook: ` and `Tool call blocked by PreToolUse hook: `); _driver_events reads a
+# line that holds one and leaves its call out, and _made_here leaves it out too, in place. Measured: core 22201 and
+# plugin 48824.
+# Then core and plugin each 3 more, all in guards.py: _globbed 3 (a bracket range Apple's Python 3.9 cannot compile, such
+# as `[t-f]` in a program's list handed on its line, is the word as written, as the shell leaves it; the guard stopped
+# on it there, found by the 3.9 suite on the integrated head). Measured: core 22204 and plugin 48827.
+# 22.37, an autopilot run's own work counted against the principal's (feature/no-self-generated-loops, from main at
+# 218da465), in its four paragraphs:
+# Then the core 67 more and the plugin 93, so an autopilot run counts its own work against the principal's (plan item
+# 22.37(d), the principal's rulings of 2026-11-16: when, over a day, the run adds more self-generated items than it
+# closes principal ones, or the principal's open items rise two days running, it starts nothing new and asks the
+# principal one line). autopilot.py 67: tally 31 (each item's origin and times read, the days' counts, the principal's
+# answer, and whether the count stops the run), _recent 7 (a time inside the day; one that cannot be read counts
+# nothing), stop_line 7 (the one line), turn_end_reason 6 more (the check asks for that line before the next item),
+# WINDOW, ORIGIN, ADDED_AT, CLOSED_AT, DAY_COUNT and ANSWER 6, the module docstring 2 more, and the new section's
+# heading 1 and its 7 blank lines. The plugin's 26 more are autopilot_cli.py's: cmd_cycle 25 more (the day's count
+# written at its first wake, the refused advance with the one line, the note of items the count leaves out, said once,
+# and the count on the ledger line and in the output) and NOTED 1.
+# Then each 7 more, all in autopilot.py's brief, so a run its count stopped comes back at session start and after
+# compaction as waiting for the principal's answer, with the one line, and names no next item: its count read 1, the
+# test 1, that paragraph 4, and its docstring 1 more.
+# Then the core 65 more and the plugin 74, from review round 1 of 22.37 (a stopped run that set itself blocked was held
+# by nothing; a plan adopting origins mid-run was stopped with a false line; any dated "continue" released the run, read
+# anywhere on the line; a stamp near the year 9999 ended cycle with a traceback and switched the turn-end check off).
+# autopilot.py 65: _held 24 (the hold in any open status but paused: ask, name what moved after the count blocker's
+# alert, or set blocked), _answered 12 (the principal's reply quoted, where and when, its first word, after the alert),
+# _moment 11 (a time read once, None when it cannot be read or converted) less _age_seconds 5 (it reads through
+# _moment), _asked 5 (the count blocker's latest alert), _label 4 and _names 2 (items named by number or place, at most
+# ten), Plan 4 (each section's items read once per loaded plan: 3 in items, 1 in __init__; on a 630 KB plan the check
+# took 17.3 ms without it and 9.7 with it), stop_line 2 more (the items it could not read), tally 1 more (rejected
+# stamps, consecutive days), AHEAD, ALERTED, ASKS, MOVED_AT and QUOTED 5 less ANSWER 1, the module docstring 1, and
+# the new functions' 12 blank lines less _recent's 2 and _recent 7; turn_end_reason 3 fewer (its stop request moved
+# into _held). autopilot_cli.py 9: cmd_cycle 8 more (the stop said first on a wait, the refusal's terms, each item told
+# once and a plan with no origins once), wake_prompt 1 more (start nothing new until the principal answers), TOLD and
+# NO_ORIGINS 2 less NOTED 1, and 1 blank line fewer.
+# Then each 5 more, all in autopilot.py, from review round 2 of 22.37 (with no answer, the stop lapsed once its 24 hours
+# slid past the items that caused it): stop_line 3 (the reason for a question still waiting), tally 1 more (an open,
+# alerted count blocker keeps the stop), and its docstring 1 more.
+# 5.24.0, 22.37 (fe50e57c) merged into release/next at 1468fe34: release/next's ceilings (core 22204, plugin 48827) and
+# 22.37's raises in the four paragraphs just above (core 67, 7, 65 and 5: 144; plugin 93, 7, 74 and 5: 179), measured:
+# core 22348 and plugin 49006. The merge's own lines change nothing.
+# 22.38, a deploy CLI's own script run by an interpreter (fix/deploy-interpreter-forms, from main at 218da465):
+# Then each 20 more, all in guards.py, after a production deploy ran on 2026-11-16 with no approval asked, as `node
+# node_modules/wrangler/bin/wrangler.js pages deploy dist ...`: the guard read an interpreter's script from the start of
+# its path, so no deploy pattern matched it. _cli_names 13 (the names a CLI's own entry script answers to: its basename
+# without its extension, a .bin shim's too, and the package it sits in under node_modules, by the name after its
+# scope), CLI_BINS 1 (netlify-cli runs netlify, firebase-tools runs firebase, npm's npm-cli.js runs npm), _deploys 2
+# more (the script read by those names, and its docstring), and the 4 blank lines between them.
+# 5.24.0, 22.38 (0053af96) merged into release/next at fb665578: release/next's ceilings (core 22348, plugin 49006) and
+# 22.38's raise just above (20 each), measured: core 22368 and plugin 49026. The merge's own lines change nothing.
+# Then core and plugin each 63 more, all in guards.py, so Homebrew run by its full path passes as on main (the
+# coordinator's ruling, 2026-11-16: 22.21 now reads brew's own script, and three rules read it as moving HOME or its
+# folder). _moves_home 21 with 2 blank lines (HOME given a value in what the shell runs: never in a comment, an array's
+# values or the words a loop walks), _moves_by_function 29 with 2 blank lines (a function moves the folder only when it is
+# named for a folder builtin, or its body changes folder and it is called anywhere but in a command substitution),
+# FOLDER_BUILTINS 1, check_self_grant 6 (that reading made once on the text as written, for every reading of it, whose
+# values can break its quoting), and _cd_sources 2 (a printf -v of a literal name no cd reads sets nothing a cd reads).
+# Then core and plugin each 47 more, all in guards.py, so a venv made and activated in one line passes (the coordinator,
+# 2026-11-16: `python3 -m venv .venv && source .venv/bin/activate`, the setup lines and `bash setup.sh` waited on 22.8's
+# rule for a sourced file it could not read). A sourced file not there stays not there unless a command before it on
+# the line writes it. _venvs 24 with its 2 blank lines (a venv tool writes only scripts of its own: python3 -m venv
+# with no file beside it standing in, virtualenv, uv venv, given no option this does not know), QUIET, EXPANDS and
+# VENV_OPTIONS 4 with 2 blank lines, _walk 9 (a sourced file named plainly that is not there passes when no command
+# before it may have written a file, or it is the activate script of a venv made earlier in its && chain with nothing
+# written since; the count of commands that may have written a file, and each command's mark of whether one did before
+# it), Run 1 (that mark, which a script it runs is read with), check_self_grant 2 (none ran before the line; before a
+# command a program starts, any may have), _cd_sources 1 (zsh's path_dirs looks for such a file along PATH), and
+# _own_text 2 (its reading from no folder, for the programs it hands on, no longer leaves the line unplaced).
+# Then core and plugin each 14 more, all in guards.py, so the hook's normal call stays under 50 ms (the coordinator,
+# 2026-11-16: 51.7 ms on the merged head against main's 47.9): _Pattern 12 with its 2 blank lines, a regular expression
+# compiled the first time a call uses it rather than as the module loads, which took 9.4 ms of the guard's 12 ms load.
+# 22.20 with 22.26, the guard's settings, the startup files and the harness programs (fix/startup-and-harness-writes, from
+# main at b8efb5ee):
+# 22.20: core and plugin each 124 more, all in guards.py, so an agent's write of the guard's own settings (config.json)
+# or of a git hook waits for the principal's code (a review of 2026-11-15: a file tool rewrote either with no code).
+# The settings' block 47: the comment 7, SETTINGS_KIND 1, SETTINGS_SAID 6 (what each holds, as a hold names it),
+# _settings 3, _settings_said 3, check_settings_write 19 (a file tool's write bound to the tool, the file and all it
+# writes), with 8 blank lines. The shell's 61, with 10 blank lines among them: Overdue 2 (a reading out of time names no
+# folder), _judged 10 (a reading judged with the settings protected, without them, or alone), _reached 9 (which of the
+# two a hold names), _named_files 14 (the code binds each file the command names as it stood), _settings_hold 16 (the
+# hold, its code and its words). check_self_grant 8 more (with the settings protected, then without, then alone: 5; the
+# settings hold 2; its docstring 1). _protected_roots 4 more (the settings among the folders while a command is judged
+# for them 2, its docstring 2). _check 3 more (the file tools' settings check 1; a shell tool's own `workdir`, where a
+# relative write lands, 2). _shell_writes 1 more, its docstring (`~` put in before a target is joined to its folder: a
+# claimed file written as `~/...` was never looked at). In place: `paths.config_file` among SYNTHESIS_PLACES, a proof
+# cached for its own folders in _shows, the approved-lines store named only where it is protected in _self_grant; hook.py's
+# file tools judged without a config that cannot be read changes 2 lines in place.
+# Then each 140 more, all in guards.py, from 22.20's review round 1 (a shell Codex started on a terminal, then a write typed
+# into it with write_stdin, passed every shell guard): check_typed 32 (a poll and keys that start nothing pass; the text
+# typed before and not yet submitted joins the line; an interpreter started with no script is judged on all it was typed;
+# a shell's or another program's line goes through every shell guard where its session stands, a program's also as its
+# input; a session the record does not show, one a typed line moved, or a shell in a container or on this machine by ssh
+# lets only a reading line through; the hold, its code and its words), _typed_session 35 (how the session started and
+# what was typed into it since, read back from the record's end within 32 MB and the call's time, from function calls and
+# code-mode scripts), _typed_into 17 (what the session reads typed text as, after its start's cd), _logs_in_here 10 (an
+# ssh that may log in to this machine), _only_reads 8, _js 4; the section's comment 5 and its constants 11 (STDIN_TOOLS 1,
+# STDIN_QUIET 1, EDITING 3 with its comment, STATE 2, JS_TEXT 1, JS_CALL 1, TYPED_BACK 1, REMOTE 1); 16 blank lines;
+# _check 2 (write_stdin dispatched to check_typed). In place: `guarded` holds write_stdin when the config cannot be read.
+# 22.26: core and plugin each 164 more, so an agent's write of a shell's startup files, Claude Code's shell snapshots or a
+# harness program waits for the principal's code (a review of 2026-11-15: a written ~/.zshenv ran the agent's code before
+# an ordinary `ls`, and the doctor ran an agent-written codex that wrote the runtime). paths.py 8: PROGRAM_DIRS 3 with its
+# comment 2, PROGRAM_PLACES 3, 2 blank lines (the vendors' known places, read by the doctor and the guard alike);
+# doctor.py 4 fewer (KNOWN_LOCATIONS built from them). guards.py 160: the settings block's comment 7 more (why each new
+# kind runs with no code), SETTINGS_SAID 7 more (each kind's words and what a change there does), STARTUP 1, HARNESS 1,
+# KEPT 1, ZDOTDIR_SET 1, SETTINGS_MAPS 1; _settings 1 more (its docstring); _settings_map 50 (the startup files, also in
+# the folder ~/.zshenv names as ZDOTDIR and the files BASH_ENV and ENV name, the snapshots folder, and each harness
+# program at every folder on PATH and in the known places this user can write, through each link, with its installer's
+# folder and a launcher's own files beside it, read once for the environment); _kinds_at 3; _runs_at_start 4 (sourcing a
+# startup file or a snapshot reads it); PACKAGES 1 and CHANGES 2 with _installs 18 (an installer told to change a harness
+# program); _writable 9 (a folder only the system writes takes no agent write); _expanded 4 (a path as a shell expands
+# it); _settings_said 6 more (by kind, at most three paths a kind, and what a change there does); check_settings_write 2
+# more (its docstring, the kind in its words); _settings_hold 1 more (its docstring); _reached 14 more (a folder a write
+# changes whole, a path the command names, the program an installer changes); _unread 1 more (a startup file a shell
+# runs is read); _joined 6 more (a part whose text a statement does not hold is not looked for, so judging stays in its
+# time with some 60 more paths); _self_grant 5 more (an installer 2, a launcher naming where its program is kept 1, a
+# name the command does not hold is not looked for 2); 14 blank lines. In place: a protected path outside the home folder
+# has no `~` spelling in _self_grant (one matched any `~` in a program); _spellings keeps each part's text beside its
+# pattern and reads no variable a statement gives a value; check_self_grant makes no settings hold of a wait that the
+# settings alone do not change.
+# Then each 26 more, so that judging a recorded command with some 60 more protected paths takes about as long as before
+# (the same 1,500 recorded commands, two rounds each: without these a median of 3.8 ms and 12.3 s in all, against 2.0 ms
+# and 7.5 s on the head before 22.26; with them 2.3 ms and 8.1 s): paths.py 9 (spelled keeps each path as compared, 6,
+# and SPELLED 1, with 2 blank lines); guards.py 17:
+# _protected_roots 3 more and ROOTS_MEMO 1 (the protected paths read once for the environment), _env_key 7 with 2 blank
+# lines (the variables they are read from, which _settings_map now asks, 2 fewer there), _spellings 5 more and ANCHORS
+# 1 (a root's real path asked once a call, and the variables that hold a protected path found once, each value spelled
+# once rather than once for every root). In place: _self_grant asks once a target whether it is the agent's own, not
+# once for every protected path.
+# Then each 3 more, all in guards.py, from the 60-day replay of 22.26: _self_grant 1 and _python_writes 1 (a harness's
+# own variables that name its program or a startup file, CLAUDE_CODE_EXECPATH and BASH_ENV, hold no program that reads
+# the environment or hands it to a child: every such program that writes and that the reader could not follow waited
+# in Claude Code), _settings_map 1 (the
+# ChatGPT and Codex apps held at the folder that keeps their Codex CLI, which KEPT no longer takes as the whole app). In
+# place: _self_grant's names are whole paths, so muse-bin-<version> or ghostscript no longer names muse or gh.
+# Then each 11 more, all in guards.py, so Codex's commands are judged as fast as before (800 recorded Codex commands:
+# 8.0 s in all without these, 5.2 s with them, against 5.3 s on the head before 22.26): _harness_own 7 with 2 blank lines
+# (the real paths of the startup files, snapshots and harness programs read once for the environment, where the reader
+# had asked every path's kinds for every protected path), OWN_MEMO 1, and _env_key 1 more (its clearing). In place: the
+# reader asks a path's real path once a call (`_real`), not once for every protected path.
+# 5.24.0, 22.20 with 22.26 (afc85024) merged into release/next: release/next's ceilings (core 22492, plugin 49150) and
+# its raises in the paragraphs just above (each 124, 140, 164, 26, 3 and 11: 468), measured: core 22960 and plugin
+# 49618. The merge's own lines leave each at that sum: guards.py the same (the workdir read once, release/next's way, by
+# its real path, 2 fewer; the state 22.26 adds to check_self_grant on a line of its own beside release/next's HOME wait,
+# 1 more; a startup file or a snapshot a shell runs or sources is not read as a script of its own in _self_grant, as
+# 22.26 reads it in _unread, 1 more); paths.py 4 fewer (INSTALLS read from PROGRAM_DIRS and PROGRAM_PLACES, so the known
+# places are written once); doctor.py 4 more than the sum (both sides moved KNOWN_LOCATIONS into paths, and its 4 fewer
+# were counted on each side). 22.26's STARTUP, the startup files, is STARTUP_FILES here: release/next's STARTUP names the
+# variables that change how a program starts, and the two bound one name.
+# 22.32, a program under the name of a command the guard judges by name (fix/known-command-look-alikes, from main at
+# 218da465):
+# Then each 227 more, all in guards.py, for 22.32 (a review's C9: a script of the agent's named like a command the guard
+# judges by name, run by its path or found first on PATH, was judged by that name and never read, and replaced the
+# runtime's guard in nine forms of nine): _look_alike 36 (a command word found as the shell finds it: by its path, on
+# each search path the line has, a builtin in the shell's own place excepted, a word written as a pattern expanded; a
+# file the line copies or links there judged as what it copies, one it writes itself counted as a script), _installed 23
+# (the commands that really are scripts, where their installer puts them: root's own and the runtime's launcher by their
+# own names; in a folder the user writes only the names that installer provides: an npm package's bin, an interpreter's
+# version manager shim, a Homebrew formula's script in Homebrew's Cellar), _as_run 17 (the command a look-alike really
+# is, from its `#!` line), _root_owned 15, _search_paths 13 (PATH as the line sets it, `$(pwd)` put in), _made 12 (what
+# a command writes, and what a copy or a link copies: the replay of 2026-11-16 found a real interpreter linked into a
+# folder and run there held), _runnable 10 and _compiled 8 (a file the shell may run, and whether it is compiled, by its
+# first four bytes, each asked once a call), _trusted 6, LookAlike 4 (the hold names the script and the name it took),
+# the comment and the constants 17 (COMPILED, BUILTINS, SHIMS, SHIM_ROOTS, NPM_BINS, BREWED, BREWS), and the new
+# definitions' 21 blank lines; _commands 33 more (the line's search paths and what it writes, each program word looked
+# at, the command a look-alike really is put beside it, the line's words looked at again at its end, `find -exec`
+# started as from PATH), _parse 6 more (the same for a line read only in pieces), _bare 4 more (each program word it
+# takes off, kept), _self_grant 2 more (the hold's words for a look-alike).
+# 5.24.0, 22.32 (4d322d09) merged into release/next: release/next's ceilings (core 22960, plugin 49618) and its raise
+# just above (227 each), measured: core 23194 and plugin 49852. The merge's own lines leave each 7 above that sum.
+# guards.py 5: release/next reads a line in _walk, a starting point at a time, where 22.32 read it in _commands, so its
+# closure that puts a look-alike's command beside it is _looked, beside the walker (1 more: its blank lines), the walker
+# names the reading's line state (1), and _commands takes that state on a line of its own (1); and a shell script read
+# line by line (22.21) names, when refused or held, the name a look-alike took (2). install.py 2: the launchers keep
+# HOMEBREW_PREFIX, HOMEBREW_CELLAR and the version managers' roots, which 22.32 reads to find a command its installer
+# keeps as a script (the runtime reads only what its launchers keep). The line's search paths and what it writes are
+# kept in the reading's own state, so its scripts and its second, physical reading share them.
+# Then each 1 more, in guards.py's check_self_grant: when the pass without the settings runs out of the guard's time, the
+# wait the pass with them found stands, and the pass with the settings alone is not begun (the rituals' scripts, read
+# whole with every module of theirs, took 2.3 to 2.8 s in the first pass: the second ended unfinished, and its words,
+# out of time, replaced the first pass's, which name what the program reaches).
+# The catalog dates, the deploy guard's date check on the article catalogs the sites publish from (fix/catalog-dates, from
+# main at 218da465):
+# Then each 74 more, all in guards.py, so the date rules reach a site published from a JSON catalog by upload (2026-11-16:
+# an article's published instant kept only in its catalog, a personal site's build reading that catalog from whichever
+# worktree its command names, and a change on origin's main before its upload were each outside the date check):
+# _catalog_dates 27 with 2 blank lines (each catalog article's published time or documented instant, at a commit or in
+# the working tree; unreadable blocks), _rendered_checkouts 18 with 2 blank (the checkout a deploy command hands its
+# build in a variable, else the default; a value it cannot follow blocks), _published_head 7 with 2 blank (the HEAD the
+# last approved deploy kept), check_dates 8 more (catalogs read beside front matter and checked as config, the published
+# base from that HEAD), check_deploy 7 more (the renders map checked as config, each rendered checkout compared with its
+# own last approved deploy), _record_deploys 1 more (the record keeps the HEAD it was approved at).
+# 5.24.0, the catalog dates (940f3c7f) merged into release/next, after the site topology (997fc2d7), which changes no
+# code: release/next's ceilings (core 23195, plugin 49853) and the raise just above (74 each), measured: core 23269 and
+# plugin 49927. The merge's own lines change nothing.
+# Then each 5 more, all in guards.py, so a script that only hands its words to the real interpreter is that interpreter
+# (CI's Apple job puts Apple's Python first as `python` by a two-line script, since a link breaks Xcode's shim; judged
+# as a look-alike, its `"$@"` lost the program it hands on, and an ordinary read through it waited): HANDS_ON 1, and
+# _installed 4 (the hand-off read from the script, to a compiled program of that name root installed, 3; its docstring 1).
+# Then the plugin 11 more, all in the root conftest.py: no_synthesis_launcher_of_this_mac 9 and its 2 blank lines (no
+# test finds the Mac's own synthesis launcher on PATH, since 22.32 looks a command up there and that launcher is no
+# test home's own).
+# The integration review of 5.24.0 (release/next at 9527c158), its four blocking findings fixed on release/next:
+# Then each 199 more, all in guards.py. Finding 1, CI's Linux runners: a command found in a system folder through links
+# root installed is that command whatever the file it reaches is named (Ubuntu's /usr/bin/open, through
+# /etc/alternatives to the script xdg-open): _system_chain 14 (the link, each link it leads through and the file it
+# reaches, all root's), _installed 5 more (the chain asked before the name rule 2, its docstring 3). Finding 2, the
+# folder and HOME rules read only what the shell runs: _aliased 12 (an alias is one a command on the line defines, by
+# `alias`, through builtin or command, or in zsh's aliases table, with its value), _cd_sources 5 more (the aliases read
+# from the line's commands; for a text the parser cannot read, only an `alias name=` where a command would start, and a
+# CDPATH it cannot read unplacing any cd in it; its docstring), _commands 4 more (what a line sets up is still read when
+# its text cannot be lexed), _moves_by_function 1 more (its docstring: a cd outside every function's body is the line's
+# own, as 6cb0a2c1 said; the rule itself stays one line), _shell_fed 12 (the heredoc bodies a shell runs: fed to a
+# shell, source or eval, itself or down its pipeline), _moves_home 14 more (a heredoc's body counts where a shell runs
+# it or inside a command substitution, an unquoted body's substitutions always; what echo or printf only print gives
+# HOME no value but by ${HOME:=...}), _clause 15 and _uncased 26 (a case statement's word, patterns and esac taken out,
+# a pattern list read only where a `)` closes it on its line, so a list of notes is no pipeline of scripts), and _lex
+# none (a process substitution read as a file's name with its command run, in the branch that reads `$(...)`, so
+# `diff <(...) file` runs no `file`). Finding 4, the narrower holds: HOMES, PYTEST_ASKS and PYTEST_INIS 4,
+# _homes_apart 29 (the words in front of a program, assignments and env with -i or -u, put HOME and each folder
+# synthesis finds a protected place under at absolute paths apart from every protected folder; a home spelled with ~,
+# a variable or a substitution but mktemp's proves nothing), Run 1 more and _walk 1 more (those words kept as written),
+# _self_grant 1 more (the rule handed to the pytest reading), _first_conftests 12 (the conftests pytest loads at its
+# start), _test_reach 5 (what a test file or a conftest reaches, asked from two places), _pytest_reach 33 fewer and
+# _pytest_read 50 (the reading made once a call and pass, as a line of nested scripts asked it 384 times; asked only for
+# its version or its help, the conftests at its start read for what they run outside a test; a computation of each
+# file's reach that nothing read taken out), _claude_parts 1 more (its two folders read once a call: the same line built
+# them 13,188 times, and it now judges in 2.1 s where it took 2.8 against the guard's 3). The new definitions' 20 blank
+# lines.
+# Then each 4 more, all in guards.py, so the narrowed rules let through nothing the old ones held: _moves_by_function 2
+# (a function whose body is no brace group, `f() if ...; fi`, may hold every word after it, and FUNCTION finds such a
+# body), _aliased 1 (`${X}alias` is `alias` where X is empty), _claude_parts 1 (its folders kept for the variables that
+# place them rather than for a call, since a check run outside a call's own start would keep another call's); an echo's
+# arithmetic still gives HOME a value (no line).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 16886
-PLUGIN_BUDGET = 42958
+CORE_BUDGET = 23477
+PLUGIN_BUDGET = 50146
 
 
 def _lines(files):
@@ -1399,6 +2449,35 @@ HOOK_NEEDS = ("json", "os", "re", "signal", "sys", "time",                      
               "urllib.parse")                                                     # sends.py
 
 
+def test_the_guard_compiles_no_pattern_as_it_loads():
+    """A normal call uses few of the guard's regular expressions, and compiling every one of them as the module loaded
+    was most of its load (the coordinator, 2026-11-16: the hook's normal call over 50 ms; 125 compiles took 9.4 ms of a
+    12 ms load, and `ls -la && git status` uses 18 of them). Each is compiled the first time a call uses it, and answers
+    as the compiled pattern does."""
+    import re
+    import subprocess
+    import sys
+    probe = ("import re, sys\n"
+             "sys.path.insert(0, sys.argv[1])\n"
+             "made, real = [], re._compile\n"
+             "def counted(*a, **k):\n"
+             "    made.append(sys._getframe(2).f_code.co_filename)\n"  # what called re.compile, re.search and the rest
+             "    return real(*a, **k)\n"
+             "re._compile = counted\n"
+             "import synthesis.guards\n"
+             "print(sum(f.endswith('guards.py') for f in made))\n")
+    done = subprocess.run([sys.executable, "-I", "-S", "-c", probe, str(ROOT)], capture_output=True, text=True, timeout=120)
+    assert (done.returncode, done.stdout.strip()) == (0, "0"), done.stdout + done.stderr
+    from synthesis import guards
+    lazy, real = guards._Pattern(r"(?P<a>a)(b)?", re.I), re.compile(r"(?P<a>a)(b)?", re.I)
+    assert lazy.pattern == real.pattern and "search" not in vars(lazy)  # nothing compiled before its first use
+    assert lazy.search("xAb").groups() == real.search("xAb").groups() and lazy.match("ab")[0] == "ab" and lazy.fullmatch("A")
+    assert [m.span() for m in lazy.finditer("aAb")] == [m.span() for m in real.finditer("aAb")] and lazy.findall("ab a") == real.findall("ab a")
+    assert lazy.sub("-", "xaby") == "x-y" and lazy.subn("-", "aa") == ("--", 2) and lazy.split("xay") == real.split("xay")
+    assert (lazy.flags, lazy.groups, lazy.groupindex) == (real.flags, real.groups, real.groupindex)
+    assert vars(lazy)["search"].__self__.pattern == real.pattern  # from then on the compiled pattern's own methods answer
+
+
 def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
     """What a session pays on every shell command: a new process that runs the installed runtime, compiled as the
     installer leaves it. On the principal's Mac the modules named above load in 27 ms, so twice that is 54 ms,
@@ -1407,6 +2486,17 @@ def test_bash_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
     pass)."""
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})
     hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], HOOK_NEEDS,
+                input=payload, cwd=str(tmp_path))
+
+
+FILE_HOOK_NEEDS = tuple(name for name in HOOK_NEEDS if name != "urllib.parse")  # no send to read
+
+
+def test_file_write_guard_hook_is_fast(compiled_runtime, tmp_path, hook_budget):
+    """What a session pays on every file write (22.20): the guard reads where the file really leads and whether it is the
+    guard's own settings or a git hook, beside the protected folders and the board's claims, within the same budget."""
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"file_path": str(tmp_path / "notes.md"), "content": "x\n"}})
+    hook_budget([str(compiled_runtime / "synthesis" / "hook.py"), "pre-tool-use"], FILE_HOOK_NEEDS,
                 input=payload, cwd=str(tmp_path))
 
 
@@ -1448,9 +2538,18 @@ def test_the_hook_budget_fails_a_runtime_that_is_not_compiled(compiled_runtime, 
     bytecode compiles the runtime at its first call, which is how CI runs the suite; a session's hooks are told to
     write none, so the budget's own runs are told the same and leave the runtime as they found it (both found by a
     review before 5.8.1 was released)."""
-    from importlib.util import cache_from_source
+    import subprocess
+    import sys
+    from synthesis import install
     monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)  # as CI runs the suite
-    compiled = [Path(cache_from_source(str(source))) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    # Where the interpreter the launchers pin, run isolated as they run it, looks for compiled code: beside the source
+    # and for its own version, whatever folder this process keeps compiled code in (Apple's Python keeps it under a
+    # prefix, and the pinned interpreter need not be the one running the tests).
+    python = install.pinned(compiled_runtime.parent) or sys.executable
+    sources = [str(source) for source in (compiled_runtime / "synthesis").glob("*.py")]
+    asked = subprocess.run([python, "-I", "-S", "-c", "import importlib.util as u, sys; print('\\n'.join(map(u.cache_from_source, "
+                            "sys.argv[1:])))", *sources], env={}, capture_output=True, text=True, check=True)
+    compiled = [Path(line) for line in asked.stdout.splitlines()]
     for file in compiled:
         file.unlink()
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "ls -la && git status"}})

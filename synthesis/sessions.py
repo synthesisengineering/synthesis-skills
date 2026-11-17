@@ -175,6 +175,7 @@ class _Session:
         self.skipped = collections.Counter(self.meta.get("skipped", {}))
         self.cwd, self.roots = str(s.get("cwd") or ""), None  # where the session's calls run; the projects folders, found once
         self.again = None  # reading the session again: what the archive already holds, each record counted (`read_again`)
+        self.calls, self.scripts = set(), set()  # this reading's call ids, and those of Codex code-mode scripts (never kept)
         self.absent = s.get("absent", 0)  # numbers below `seq` that another Mac gave to records this archive does not hold (`seed`)
 
     def seed(self) -> None:
@@ -244,9 +245,15 @@ class _Session:
         sources). The files a call writes are read with the guard's readers: a file tool's targets, and what a shell
         line writes, which Claude Code keeps as an object and Codex as text or as JSON text with its working
         directory. A project is a folder that holds its CONTEXT.md. Reading a project's files tags nothing. A shell
-        line the reader cannot read adds nothing and is counted, as is a call that raises."""
-        from synthesis import guards, project
-        tool, given = str(rec.get("tool") or ""), rec.get("input")
+        line the reader cannot read adds nothing and is counted, as is a call that raises. A Codex code-mode script (its
+        `exec` tool's custom call) is JavaScript, never read as a shell line: what its patches and commands wrote is read
+        from their own events (`nested`)."""
+        from synthesis import guards
+        tool, given, ident = str(rec.get("tool") or ""), rec.get("input"), str(rec.get("id") or "")
+        if ident:
+            self.calls.add(ident)
+            if ident in self.scripts:
+                return
         try:
             if isinstance(given, str) and given.lstrip().startswith("{"):  # Codex's own tools keep a call's arguments as JSON text
                 try:
@@ -262,17 +269,42 @@ class _Session:
             else:
                 return
             self.skipped["a tool call whose written files could not be read"] += bool(unread)
-            if self.roots is None:
-                self.roots = [os.path.realpath(root / "projects") for root in project.roots()]
-            for target in targets:
-                real = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(target))))
-                for root in self.roots:
-                    name, _, rest = real[len(root) + 1:].partition(os.sep) if real.startswith(root + os.sep) else ("", "", "")
-                    if (rest and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and os.path.isfile(os.path.join(root, name, "CONTEXT.md"))
-                            and name not in self.meta.setdefault("projects", [])):  # a project is a folder that holds its CONTEXT.md
-                        self.meta["projects"].append(name)
+            self._tag(targets, cwd)
         except Exception:  # noqa: BLE001  the export goes on: a line no reader was written for is no reason to lose a session
             self.skipped["a tool call whose written files could not be read"] += 1
+
+    def nested(self, item) -> None:
+        """What a call a code-mode script made wrote, from Codex's `item_completed` event of it: a patch's paths and where it
+        moves a file, or what its command line writes in its own folder. A direct call's event, which carries the call's
+        id, was read with its call."""
+        from synthesis import guards
+        if not isinstance(item, dict) or item.get("type") not in ("FileChange", "CommandExecution") or str(item.get("id") or "") in self.calls:
+            return
+        try:
+            cwd, unread, changes = str(item.get("cwd") or "") or self.cwd or os.sep, [], item.get("changes")
+            if item["type"] == "FileChange":
+                targets = list(changes) + [c["move_path"] for c in changes.values() if isinstance(c, dict) and isinstance(
+                    c.get("move_path"), str)] if isinstance(changes, dict) else []
+            else:
+                line = guards.shell_command({"command": item["command"]}) if item.get("command") else ""
+                targets = guards._shell_writes(line, cwd, unread) if line else []
+            self.skipped["a tool call whose written files could not be read"] += bool(unread)
+            self._tag(targets, cwd)
+        except Exception:  # noqa: BLE001  as for a call: an event no reader was written for is no reason to lose a session
+            self.skipped["a tool call whose written files could not be read"] += 1
+
+    def _tag(self, targets: list, cwd: str) -> None:
+        """The session belongs to each project a target lies in: a folder under a knowledge root's projects that holds its CONTEXT.md."""
+        from synthesis import project
+        if self.roots is None:
+            self.roots = [os.path.realpath(root / "projects") for root in project.roots()]
+        for target in targets:
+            real = os.path.realpath(os.path.join(cwd, os.path.expanduser(str(target))))
+            for root in self.roots:
+                name, _, rest = real[len(root) + 1:].partition(os.sep) if real.startswith(root + os.sep) else ("", "", "")
+                if (rest and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", name) and os.path.isfile(os.path.join(root, name, "CONTEXT.md"))
+                        and name not in self.meta.setdefault("projects", [])):  # a project is a folder that holds its CONTEXT.md
+                    self.meta["projects"].append(name)
 
     def once(self, rec: dict):
         """A record whose content was already kept for this session is counted, not kept again."""
@@ -645,6 +677,8 @@ def _codex(row: dict, s: _Session):
         yield {"at": at, "kind": "tool_result", "id": p.get("call_id"),
                **(s.content(out) if isinstance(out, (str, list)) else {"text": json.dumps(out, default=str)})}
     elif t == "response_item" and kind and kind.endswith("_call"):
+        if kind == "custom_tool_call" and p.get("name") == "exec":  # a code-mode script: JavaScript, never a shell line
+            s.scripts.add(str(p.get("call_id") or p.get("id") or ""))
         yield {"at": at, "kind": "tool_call", "id": p.get("call_id") or p.get("id"), "tool": p.get("name") or kind,
                "input": p.get("arguments") or p.get("input") or p.get("action")}
     elif t == "event_msg" and kind == "user_message":
@@ -654,6 +688,9 @@ def _codex(row: dict, s: _Session):
         said = p.get("turn_attribution")  # a turn that says nothing is read by the session line, never by the turn before
         s.trigger, s.turn = str(said.get("turn_trigger") or "") if isinstance(said, dict) else "", []  # and no prompt before it is its copy
         s.skipped["event_msg:task_started"] += 1
+    elif t == "event_msg" and kind == "item_completed":  # what a call a code-mode script made wrote; the archive keeps no copy
+        s.nested(p.get("item"))
+        s.skipped["event_msg:item_completed"] += 1
     elif t == "compacted":
         s.skipped["compaction history items"] += len(p.get("replacement_history") or [])
         yield {"at": at, "kind": "compaction", "text": p.get("message")}

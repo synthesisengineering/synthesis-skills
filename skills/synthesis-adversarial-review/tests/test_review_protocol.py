@@ -96,6 +96,30 @@ def test_domain_contract_keeps_the_ten_replay_shapes_as_checks():
     assert "review_contract" not in DOMAIN.read_text(encoding="utf-8")
 
 
+def test_the_review_caps_are_binding_rules_and_the_coordinator_holds_them():
+    """The principal's rulings of 2026-11-16: two review rounds per item; after the second, a finding blocks only if an
+    honest agent would hit it in ordinary work or it appears in the principal's records, and anything else goes on the
+    open list; the coordinator bounds the review, not the reviewer; at most three agents at once; a release ships what
+    has passed review and never waits for another round."""
+    skill = (SKILL / "SKILL.md").read_text(encoding="utf-8")
+    rules = " ".join(skill.split("## Binding rules")[1].split("## Contents")[0].split())
+    for words in ("Two review rounds per item", "the coordinator applies the test",
+                  "an honest agent would hit it in ordinary work", "it appears in the principal's records",
+                  "anything else goes on the open list, as the adjudicator records",
+                  "The coordinator bounds the review, not the reviewer", "At most three agents at once",
+                  "ships what has passed review and never waits for another round"):
+        assert words in rules, words
+    assert "references/review-caps.md" in skill.split("## Contents")[1].split("\n## ")[0]
+    caps = text(SKILL / "references" / "review-caps.md")
+    for words in ("third round", "materiality test", "ordinary work", "the principal's records", "the open list",
+                  "three agents at once", "ships what has passed review", "the coordinator", "not the reviewer",
+                  # review round 1: rounds are counted per item, so a fix does not restart them
+                  "A fix belongs to the item it repairs", "never starts the item's rounds again",
+                  "the adjudicator records"):
+        assert words in caps, words
+    assert "- Rounds: <item>: <n> of 2" in section(PROTOCOL, "Finding Ledger")
+
+
 def test_hidden_specialist_is_reachable_through_the_router():
     router = (SKILLS / "synthesis-skill-router" / "SKILL.md").read_text(encoding="utf-8")
     assert "../synthesis-adversarial-review/SKILL.md" in router

@@ -26,6 +26,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 # Ensure uv tooling is on PATH. macOS launchd and Linux systemd start
 # processes with a sparse PATH that does not include ~/.local/bin, where
 # `uv` installs `uvx` by default. Without this export, the `nohup uvx ...`
@@ -81,7 +83,7 @@ export ALLOWED_FILE_DIRS
 if [ -f "$PID_FILE" ]; then
   OLD_PID="$(cat "$PID_FILE")"
   if kill -0 "$OLD_PID" 2>/dev/null && ps -p "$OLD_PID" -o command= 2>/dev/null | grep -q "workspace-mcp"; then
-    echo "workspace-mcp already running (PID $OLD_PID). To restart: ./stop.sh && ./start.sh"
+    echo "workspace-mcp already running (PID $OLD_PID). To restart: $SCRIPT_DIR/stop.sh && $SCRIPT_DIR/start.sh"
     exit 0
   fi
   # Stale PID file: the process exited, or (after a reboot) the OS recycled the

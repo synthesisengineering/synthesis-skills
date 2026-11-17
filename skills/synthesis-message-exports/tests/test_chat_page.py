@@ -378,8 +378,8 @@ def test_the_command_line_runs_as_documented():
 
 
 def test_the_browser_guard_lets_the_chat_extractor_through_as_a_read(tmp_path, monkeypatch):
-    """A page script on a chat that clicks, sends an event or sets a value waits for the principal's code; the
-    extractor reads, so it passes, and the same call with a click added is held."""
+    """On a Messenger site no page script runs but the plugin's own read-only ones: the extractor is one, so it passes,
+    and the same call with a click added is refused."""
     for key in ("CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME", "RITUAL_STATE_DIR"):
         monkeypatch.setenv(key, str(tmp_path / key.lower()))
     from synthesis import guards
@@ -396,7 +396,7 @@ def test_the_browser_guard_lets_the_chat_extractor_through_as_a_read(tmp_path, m
     read = {"action": "javascript_exec", "text": script, "tabId": 7}
     assert guards.check("mcp__claude-in-chrome__javascript_tool", read, {}, session=session) is None
     held = {"action": "javascript_exec", "text": script + "\ndocument.querySelector('[role=\"article\"]').click()", "tabId": 7}
-    assert "approve" in (guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=session) or "")
+    assert "shipped" in (guards.check("mcp__claude-in-chrome__javascript_tool", held, {}, session=session) or "")
 
 
 def find_chromium():

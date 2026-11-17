@@ -85,4 +85,4 @@ If you want to pin to a specific revision, use a commit-specific raw URL in the 
 
 ---
 
-*Part of the [synthesis engineering](https://synthesisengineering.org) open-source ecosystem. The writer writes; the AI assists.*
+*Part of the [synthesis engineering](https://synthesiswork.org/engineering/) open-source ecosystem. The writer writes; the AI assists.*

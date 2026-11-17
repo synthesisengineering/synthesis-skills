@@ -144,21 +144,44 @@ def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
 
 def transcript(session: dict | None) -> str:
     """The harness's record of this session: the hook payload's transcript_path, else the path the prompt hook recorded
-    for this session's id in the state folder. Never one found through folders the caller's environment names, which an
-    agent's own command sets (review of 5.22.1, finding 13); a session no prompt of the principal's reached has none."""
+    for this session's id in the state folder, where it lies inside the folders recorded beside it. Never one found
+    through folders the caller's environment names, which an agent's own command sets (review of 5.22.1, finding 13;
+    round 4 of 5.23.1's approval fix, finding 1: a program pointed the path at a record it wrote, and a script's own
+    check read the principal's prompt there). A session no prompt of the principal's reached has none."""
     given = str((session or {}).get("transcript_path") or "")
     sid = paths.session_id(session)
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
-    recorded = str(paths.read_json(_dir("transcripts") / f"{sid}.json").get("path") or "")
-    return recorded if os.path.isfile(recorded) else ""
+    record = paths.read_json(_dir("transcripts") / f"{sid}.json")
+    recorded = str(record.get("path") or "")
+    return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, record.get("folders")) else ""
 
 
 def remember(session_id: str, transcript_path: str) -> None:
-    """Record where the harness keeps a session's transcript, as its prompt hook names it, for a command that session runs."""
+    """Record where the harness keeps a session's transcript, as its prompt hook names it, for a command that session
+    runs, with the folders each harness keeps its records in as this process's environment names them. The prompt hook
+    records them: the harness starts it, with the harness's own environment, which no agent's command sets, while a
+    check a script enters runs inside the agent's command, which can name any folder as a harness's for itself. The
+    state folder holds them, which an agent's command, or a program that calls this, writes only on the principal's code."""
     if re.fullmatch(r"[\w.-]+", str(session_id or "")) and transcript_path and os.path.isabs(str(transcript_path)):
-        if paths.read_json(_dir("transcripts") / f"{session_id}.json").get("path") != str(transcript_path):
-            paths.write_json(_dir("transcripts") / f"{session_id}.json", {"path": str(transcript_path)})
+        record = {"path": str(transcript_path), "folders": {**{name: str(root) for name, root in paths.transcript_roots().items()},
+                                                            "codex-archived": str(paths.codex_home() / "archived_sessions"),  # as sessions.natives reads them
+                                                            "desktop": str(paths.desktop_dir() / "local-agent-mode-sessions")}}
+        if paths.read_json(_dir("transcripts") / f"{session_id}.json") != record:
+            paths.write_json(_dir("transcripts") / f"{session_id}.json", record)
+
+
+def _kept_by_a_harness(path: str, folders) -> bool:
+    """Whether a path, where it really leads, lies inside one of the folders the prompt hook recorded: a harness's own,
+    or, under the desktop app's, an agent-mode session's records (`<account>/<org>/local_<session>/.claude/projects`),
+    never another file of that session. A record that names none (written before 5.24.0, or by hand) is no harness's."""
+    real = os.path.realpath(path)
+    for name, root in folders.items() if isinstance(folders, dict) else ():
+        base = os.path.realpath(str(root))
+        below = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) and real != base else []
+        if below and (name != "desktop" or (len(below) > 5 and below[2].startswith("local_") and below[3:5] == [".claude", "projects"])):
+            return True
+    return False
 
 
 def _prompt(record: dict, session_id: str) -> tuple[float, list]:
@@ -285,6 +308,12 @@ def held(kind: str, subject) -> bool:
     return data.get("kind") == kind and time.time() - float(data.get("at", 0)) <= TTL_SECONDS
 
 
+def grant(kind: str, subject) -> dict:
+    """The live grant of exactly this subject as recorded (its code, and when it was asked for); {} for none. Spends
+    nothing: a batch keeps its code, so each of its sends can find the principal typing it again."""
+    return paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
+
+
 def backed(kind: str, subject, session: dict | None = None) -> bool:
     """A live grant of exactly this subject that the principal's own prompt backs. Spends nothing: it holds until it
     expires, for an approval of a thing (an address) that each call it lets through still waits on its own."""
@@ -297,6 +326,25 @@ def backed(kind: str, subject, session: dict | None = None) -> bool:
                                                    data.get("record_at"))
     except OSError:
         return False
+
+
+def answered(kind: str, subject, session: dict | None = None) -> bool:
+    """True once where the session's own record shows the principal typing the code of the request for exactly this
+    subject after it was filed, though no prompt hook made a grant of it: a command that checks its own approval (the
+    CLI's install and uninstall) reads that record itself, so a runtime can be approved while none runs the hook. The
+    request is spent."""
+    key, record = digest(kind, subject), transcript(session)
+    for code in pending() if record else []:
+        data = paths.read_json(_dir("approval-requests") / f"{code}.json")
+        if data.get("digest") != key or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+            continue
+        try:
+            if typed(record, code, float(data.get("at", 0)), paths.session_id(session)):
+                (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+                return True
+        except OSError:
+            return False
+    return False
 
 
 def void(kind: str, subject) -> list:

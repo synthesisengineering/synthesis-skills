@@ -65,6 +65,17 @@ def test_a_claimed_path_is_protected_when_written_not_first_at_commit(repo):
     assert guards.check("Write", {"file_path": notes, "content": "x"}, {}, str(repo), {"session_id": "S1"}) is None
 
 
+def test_a_claimed_path_written_through_the_home_folders_tilde_is_caught_too(repo, monkeypatch):
+    """22.20: the shell's writes were joined to the folder a command runs in before `~` was put in, so a claimed file
+    spelled from the home folder (`echo x > ~/…`) was no claimed path at all."""
+    monkeypatch.setenv("HOME", str(repo.parent))
+    board.claim("S1", [str(repo / "notes.md")], project="alpha")
+    other = {"session_id": "S2"}
+    for line in ("echo x > ~/shared/notes.md", "cp /dev/null ~/shared/notes.md", "printf x | tee -a ~/shared/notes.md"):
+        assert "claimed by session S1" in guards.check("Bash", {"command": line}, {}, str(repo), other), line
+    assert guards.check("Bash", {"command": "echo x > ~/shared/other.md"}, {}, str(repo), other) is None
+
+
 INDEX = """projects:
 - id: alpha
   name: Alpha

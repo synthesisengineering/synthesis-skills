@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.12.0"
+  version: "2.13.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -13,10 +13,7 @@ metadata:
 
 # Message Guard
 
-Prose rules do not survive contact with a model under load. This skill is the
-enforcement layer for correspondence the way commit hooks are the enforcement
-layer for repositories: the rules live in code, run outside the model, and fail
-closed. The v5 PreToolUse hook runs `guards.check_send` on every Slack, Gmail, email,
+The v5 PreToolUse hook runs `guards.check_send` on every Slack, Gmail, email,
 chat and draft tool call: the text must pass the principal's register scan and the
 format rules, and then the principal must approve that exact call.
 
@@ -39,6 +36,7 @@ format rules, and then the principal must approve that exact call.
 15. **A calendar write that puts the principal at a place carries its travel line** (2026-11-11). With `in_person_travel` in the config, such a write is refused until the event's description says how they get there. It asks for no approval (references/config.md).
 16. **An address that can change never goes to a person** (2026-11-12). With `temporary_addresses` in the config, a send, draft, shell post or typed words holding a quick tunnel's host, or an address only this machine or its network answers, are held before the message's approval is asked: only the principal's code for those addresses releases them, and the message then still needs its own; starting a quick tunnel waits for a code of its own.
 17. **A time in a message rests on a fresh calendar read** (2026-11-12). With `fresh_calendar` in the config, a message to a person whose words name a clock time is held unless this session read a calendar, successfully, within its `minutes` (10 unless set, 1 to 60), or the principal types the hold's own code, which stands for the ordinary one. In Codex, Muse and a sub-agent the guard sees no calendar read, so only that code releases it (references/config.md).
+18. **A reviewed batch takes one code** (2026-11-14). `synthesis sends batch <file>` opens only on the principal's code for its digest, typed after they read the hold's listing; each entry then goes once, as written, within 12 hours, from that session alone, after every other check (a Messenger entry as its one send step). Anything else waits for its own code (references/config.md).
 
 ## Contents
 
@@ -47,7 +45,3 @@ format rules, and then the principal must approve that exact call.
 - [references/config.md](references/config.md): the config keys, the example config, calibration and the positive controls. Read when setting up or changing the guard's config.
 - [references/coverage-map.md](references/coverage-map.md): where every part of 1.8.0 lives now (ruling D8).
 - [references/preserved.md](references/preserved.md): what was not kept and why, with the 1.8.0 text verbatim. Read only to review the cut.
-
-## Procedure
-
-Compose, check, approve, send, verify and record, step by step: [references/procedure.md](references/procedure.md). Read it every time.

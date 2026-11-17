@@ -600,7 +600,7 @@ Before publishing, verify:
 - [ ] The OUTPUT of the work is software/code, not articles/content
 - [ ] This is not about content pipelines, publishing workflows, or document editing
 
-**If topic gate fails, STOP. This article does not belong on synthesis coding or synthesis engineering sites.**
+**If topic gate fails, STOP. This article does not belong in the synthesis coding or synthesis engineering collections.**
 
 ---
 

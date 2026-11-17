@@ -44,3 +44,59 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## Changes in 2.0.1 (the synthesis sites became one site)
+
+The synthesis practices now share one site, synthesiswork.org, with a collection for each, and
+the former synthesiscoding.org, synthesisengineering.org and synthesiswriting.org addresses redirect
+to those collections. The scope table, the audience lines, the series-home links and the topic
+gate's closing line now name the collections; the rules themselves are unchanged. The 2.0.0 text
+each change replaced, verbatim, by its line numbers in that version:
+
+### references/operational-rules.md
+
+Line 9 of the 2.0.0 references/operational-rules.md text:
+
+```markdown
+- Scope Appropriateness: which site a topic belongs on
+```
+
+Line 64 of the 2.0.0 references/operational-rules.md text:
+
+```markdown
+| Topic | Belongs On |
+```
+
+Lines 66 to 67 of the 2.0.0 references/operational-rules.md text:
+
+```markdown
+| Hands-on coding practices with AI | synthesiscoding.org |
+| Organizational/leadership frameworks | synthesisengineering.org |
+```
+
+Line 69 of the 2.0.0 references/operational-rules.md text:
+
+```markdown
+| Project management for AI workflows | synthesisengineering.org |
+```
+
+Lines 133 to 134 of the 2.0.0 references/operational-rules.md text:
+
+```markdown
+**synthesiscoding.org** — Primarily engineers and engineering leads
+**synthesisengineering.org** — Primarily CTOs, CPOs, and business leaders
+```
+
+Line 225 of the 2.0.0 references/operational-rules.md text:
+
+```markdown
+- Link to synthesiscoding.org or synthesisengineering.org as the series home
+```
+
+### references/quality-gates.md
+
+Line 603 of the 2.0.0 references/quality-gates.md text:
+
+```markdown
+**If topic gate fails, STOP. This article does not belong on synthesis coding or synthesis engineering sites.**
+```

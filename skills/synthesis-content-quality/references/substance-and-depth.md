@@ -537,4 +537,4 @@ The Claude-pool figures (62 percent specificity-test failure, 73 percent zero-lo
 
 ---
 
-Part of the [synthesis writing](https://synthesiswriting.org) craft.
+Part of the [synthesis writing](https://synthesiswork.org/writing/) craft.

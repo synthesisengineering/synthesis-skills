@@ -11,7 +11,6 @@ plain inputs, so tests feed fake ones.
 from __future__ import annotations
 
 import argparse
-import glob
 import hashlib
 import json
 import os
@@ -89,14 +88,24 @@ def check_runtime(home: Path) -> Check:
 
 
 def check_hook_script(home: Path) -> Check:
-    hook = home / "bin" / "synthesis-hook"
-    try:
-        text = hook.read_text(encoding="utf-8")
-    except OSError:
-        return Check("fail", "hook script", f"{_short(hook)} is missing")
-    if text != install.HOOK_SCRIPT:
-        return Check("fail", "hook script", f"{_short(hook)} differs from the shipped text; run install")
-    return Check("ok", "hook script", "stable entry text matches this release")
+    """Every launcher is the text install writes for the interpreter the hook launcher pins, and that interpreter is
+    still one install would pin: owned by root with every folder above it, writable by neither this user nor its groups."""
+    python = install.pinned(home)
+    if not python:
+        return Check("fail", "hook script", f"{_short(home / 'bin' / 'synthesis-hook')} pins no interpreter; run install")
+    problems = install.interpreter_problems(python)
+    if problems:
+        return Check("fail", "hook script", f"the pinned interpreter {python} may not run the guard: {problems[0]}; run install")
+    for folder, names in (("bin", install.ENTRY_POINTS), ("git-hooks", install.GIT_HOOKS)):
+        for name in names:
+            try:
+                same = (home / folder / name).read_text(encoding="utf-8") == install.launcher(home, python, name)
+            except OSError:
+                same = False
+            if not same:
+                return Check("fail", "hook script", f"{_short(home / folder / name)} is missing or differs from what install "
+                                                    "writes; run install")
+    return Check("ok", "hook script", f"every launcher runs {python}, pinned and isolated")
 
 
 def check_config(home: Path) -> Check:
@@ -230,9 +239,15 @@ def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check
     if not runtime:
         return Check("fail", name, "no runtime to compare against (see runtime)")
     found = install.package_hash(plugin_root)
+    have, offered = install.version(paths.home() / "current"), install.version(plugin_root)
+    if found != runtime and have and offered > have:  # a session start never installs it (2026-11-15)
+        return Check("warn", name, f"the plugin is synthesis {'.'.join(map(str, offered))}, newer than the runtime "
+                                   f"{'.'.join(map(str, have))}; install it with `~/.synthesis/v5/bin/synthesis-release "
+                                   f"--install-only --tag v{'.'.join(map(str, offered))}`")
     if found != runtime:
-        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; "
-                                   "start a session in this harness to update, or reinstall the plugin")
+        return Check("fail", name, f"plugin code {found} differs from the runtime {runtime}; reinstall the plugin in this "
+                                   "harness, or install the release it carries with `~/.synthesis/v5/bin/synthesis-release "
+                                   "--install-only --tag v<version>`")
     if (plugin_root / "synthesis" / "__pycache__").exists():
         return Check("warn", name, f"matches the runtime ({found}), but something wrote __pycache__ into the plugin folder")
     return Check("ok", name, f"plugin code matches the runtime ({found})")
@@ -438,6 +453,85 @@ def check_codex_hooks_file(codex_home: Path) -> Check | None:
     _, unread = codex_user_entries(codex_home)
     switched = codex_switch_lines(_text(Path(codex_home) / "config.toml").split("\n"))
     return Check("warn", "codex hooks file", unread) if unread and not switched else None
+
+
+# A Codex rollout passed 1.8 GB on 2026-11-15, so each is read as its first line and its last 16 MB; the newest 120 tails
+# came to 219 MB, and the newest one already held a refusal.
+NESTED_FILES, NESTED_TAIL, NESTED_READ, NESTED_DAYS = 120, 16 << 20, 128 << 20, 30
+NESTED_FIRST = 1 << 20  # a first line, its session record, was 19.6 to 23.2 KB in the newest 60 (2026-11-15)
+HOOK_REFUSAL = re.compile(r"(?:Command|Tool call) blocked by PreToolUse hook: ")  # codex-rs hook_runtime.rs's words
+
+
+def _lstat(path: Path):
+    try:
+        return path.lstat()
+    except OSError:
+        return None  # gone since it was listed
+
+
+def _nested_proof(path: Path, tail: int) -> tuple:
+    """(Codex's version, whether a code-mode script was called, the time of the newest hook refusal in such a script's
+    result or '', bytes read) for one rollout, from its first line (within NESTED_FIRST) and its last `tail` bytes. It is
+    opened without blocking and without following a link, and read only if it is a regular file, so a FIFO or a link
+    put in its place since it was listed never holds the doctor (review round 1 of 22.33)."""
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0)), "rb") as handle:
+        state = os.fstat(handle.fileno())
+        if not stat.S_ISREG(state.st_mode):
+            return "", False, "", 0
+        first, size = handle.readline(NESTED_FIRST), state.st_size
+        start = max(len(first), size - tail)
+        handle.seek(start)
+        lines = handle.read().split(b"\n")[1 if start > len(first) else 0:]  # a line cut by the seek is not read
+    entries = [json_in(raw.decode("utf-8", "replace")) for raw in lines if b"custom_tool_call" in raw and (
+        b"blocked by PreToolUse hook: " in raw or b"custom_tool_call_output" not in raw)]
+    meta = (json_in(first.decode("utf-8", "replace")) or {}).get("payload") or {}
+    calls, when = set(), ""
+    for entry in [e for e in entries if isinstance(e, dict) and isinstance(e.get("payload"), dict)]:
+        given = entry["payload"]
+        if given.get("type") == "custom_tool_call" and given.get("name") == "exec":
+            calls.add(given.get("call_id"))
+        elif given.get("type") == "custom_tool_call_output" and given.get("call_id") in calls:
+            out = given.get("output")
+            text = "\n".join(str(p.get("text", "")) for p in out if isinstance(p, dict)) if isinstance(out, list) else str(out)
+            when = str(entry.get("timestamp") or "") if HOOK_REFUSAL.search(text) else when
+    return str(meta.get("cli_version") or "") if isinstance(meta, dict) else "", bool(calls), when, len(first) + size - start
+
+
+def check_codex_nested_hooks(codex_home: Path, files: int = NESTED_FILES, now: float = 0) -> Check | None:
+    """Whether Codex still runs PreToolUse hooks on the calls a code-mode script makes, which is how the guard sees them:
+    proven by a hook's refusal in an `exec` script's result, which only a hook run on a call nested in it makes. Codex
+    offers no dry probe, so its newest rollouts are read, read only and within bounds, until one holds such a refusal.
+    A proof names the Codex that made it; one from an older Codex than the newest to run a script does not cover it."""
+    name = "codex nested hooks"
+    root, now = Path(codex_home) / "sessions", now or time.time()
+    try:
+        listed = list(root.rglob("rollout-*.jsonl")) if root.is_dir() else []
+    except OSError as exc:
+        return Check("warn", name, f"Codex's records could not be listed ({exc}): that Codex runs hooks on nested calls is unproven")
+    found = sorted(((s.st_mtime, p) for p, s in ((p, _lstat(p)) for p in listed) if s and stat.S_ISREG(s.st_mode)), reverse=True)
+    read, scanned, newest, proof = 0, 0, "", None
+    for mtime, path in found[:files]:
+        if mtime < now - NESTED_DAYS * 86400 or read >= NESTED_READ:
+            break
+        try:
+            version, scripts, when, size = _nested_proof(path, min(NESTED_TAIL, NESTED_READ - read))
+        except OSError:
+            continue
+        read, scanned, newest = read + size, scanned + 1, newest or (version or "of unrecorded version" if scripts else "")
+        if when:
+            proof = (when[:10], version or "of unrecorded version")
+            break
+    if proof is None and not newest:
+        return None  # no code-mode script in what was read: nothing nested to prove
+    where = "its newest rollout" if scanned == 1 else f"its newest {scanned} rollouts"
+    if proof and proof[1] == newest:
+        return Check("ok", name, f"Codex {newest} runs PreToolUse hooks on calls made inside a code-mode script: a hook refused "
+                                 f"one in a script's result on {proof[0]}, in {where}")
+    if proof:
+        return Check("warn", name, f"Codex {newest} has run code-mode scripts with no hook refusal inside one in {where}, so that "
+                                   f"it hooks the calls they make is unproven for it; Codex {proof[1]} did on {proof[0]}")
+    return Check("warn", name, f"Codex has run code-mode scripts with no PreToolUse refusal inside one in {where}: that it runs "
+                               "hooks on the calls such scripts make is unproven, and the guard sees code-mode work only through them")
 
 
 def codex_user_entries(codex_home: Path) -> tuple:
@@ -923,21 +1017,7 @@ def muse_hook_commands(inspect: dict) -> list:
 # through to a different install.
 
 CLIENT_ENV = {"claude": "SYNTHESIS_CLAUDE_BIN", "codex": "SYNTHESIS_CODEX_BIN", "muse": "SYNTHESIS_MUSE_BIN"}
-KNOWN_LOCATIONS = {h: tuple(f"{d}/{h}" for d in ("~/.local/bin", "/opt/homebrew/bin", "/usr/local/bin")) + (
-    tuple(f"/Applications/{app}.app/Contents/Resources/{p}" for p in ("codex-cli/bin/codex", "codex")
-          for app in ("ChatGPT", "Codex")) if h == "codex" else ()) + (
-    ("~/Library/Application Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude",) if h == "claude" else ())
-    for h in HARNESSES}
-
-
-def _expand(candidate: str) -> list:
-    """A location as it is, or a pattern's matches with the newest version folder first."""
-    if "*" not in candidate:
-        return [candidate]
-    def newest(path: str) -> tuple:
-        return max((tuple(map(int, p.split("."))) for p in Path(path).parts if re.fullmatch(r"\d+(\.\d+)+", p)),
-                   default=())
-    return sorted(glob.glob(os.path.expanduser(candidate)), key=newest, reverse=True)
+KNOWN_LOCATIONS, _expand = paths.INSTALLS, paths.expand_install  # each harness's own install locations, shared with the judge
 
 
 PROBE_TIMEOUT = 2.0
@@ -1453,6 +1533,89 @@ def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Chec
                  + (", ".join(f"{h} {v}" for h, v in sorted(installed.items())) or "nothing"))
 
 
+# ---- the plan's judge (M38) ----------------------------------------------------
+
+PLAN_NAMES = {"claude-code": ("Claude Code", "print mode", "run `claude`, then /login"), "codex": ("Codex", "exec", "run `codex login`")}
+FLAGGED = 2.0  # a flagged reply's time against the probe's sentence: 4.1 s against 2.0 for Haiku 5.5 in the replay of 2026-11-15
+
+
+def plan_status(harness: str, command: str) -> str:
+    """What the command line's own status command says of its sign-in, asked as the judge's run asks (the credentials
+    that outrank the plan taken out): plan, api (an account that bills), none, missing (no such command) or unknown."""
+    from synthesis import judge
+    argv = [command, "auth", "status", "--json"] if harness == "claude-code" else [command, "login", "status"]
+    try:
+        done = subprocess.run(argv, capture_output=True, text=True, timeout=15, env=judge.plan_env(), stdin=subprocess.DEVNULL)
+    except FileNotFoundError:
+        return "missing"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    if harness == "codex":
+        said = (done.stdout + done.stderr).lower()
+        return "none" if "not logged in" in said else "plan" if "using chatgpt" in said else "api" if "api key" in said else "unknown"
+    found = json_in(done.stdout)
+    method = str(found.get("authMethod") or "").lower() if isinstance(found, dict) else ""
+    return "unknown" if not isinstance(found, dict) else "none" if found.get("loggedIn") is False else "plan" \
+        if found.get("subscriptionType") or method == "claude.ai" else "api" if "api" in method or "console" in method else "unknown"
+
+
+def _plan_fix(harness: str, entry: dict, signed: str, why: str) -> str:
+    """The warn for a plan judge that would not answer, with its fix in plain words; "" where it answers."""
+    from synthesis import judge
+    name, mode, sign_in = PLAN_NAMES[harness]
+    model, where = entry["model"], f"judge.subscription.{harness}"
+    if signed == "api":
+        return f"{name} is signed in to an API account, not a plan, so the judge was not asked (it would bill that account): sign in with your plan, or remove {where}"
+    fixes = {"missing": f"`{entry['command']}` is not on PATH: install {name}, or give its path in {where}.command",
+             "none": f"{name} is not signed in: sign in with your plan ({sign_in})",
+             "not_signed_in": f"{name} is signed in, but its {mode} did not use the sign-in" + (" (it may run -p bare by default now)" if
+                              harness == "claude-code" else "") + ": the judge cannot run on the plan until synthesis gives it a way back",
+             "unknown_flag": f"{name} does not know a flag the judge passes, so it is too old: update {name}",
+             "model_unavailable": f"the plan does not offer {model}: name another model in {where}.model",
+             "timeout": f"{model} gave no answer within {judge.PROBE_SECONDS:.0f} s: check the network and the plan's limits"}
+    key = signed if signed in ("missing", "none") else why
+    return (fixes.get(key) or f"{model} gave no verdict ({why}): name another model in {where}.model") + "; until then the word list decides" if key else ""
+
+
+def check_plan_judge(config: dict, probe=None, status=None) -> list:
+    """A line for each harness whose plan judges replies (judge.subscription): ok where its model answers inside the
+    judge's deadline, else a warn with the fix, since a plan judge that does not answer leaves every flagged reply to
+    the word list. Doctor time only: the sign-in's state, then one invented sentence (judge.probe) through the judge's
+    own command line, with hooks off and the credentials that outrank the plan taken out. A sign-in that is missing or
+    bills an API account is not probed, and a `command` that is not the harness's own program is named and never run."""
+    from synthesis import judge
+    try:
+        s = judge.settings(config)
+    except judge.ConfigError as exc:
+        return [Check("warn", "judge", f"the judge section {exc}: no judge reads replies and the word list decides")]
+    plans = {h: e for h, e in ((s or {}).get("subscription") or {}).items() if h in judge.HARNESSES}
+    probe, status, lines = probe or judge.probe, status or plan_status, []  # each probe within PROBE_SECONDS: both inside CLI_TIMEOUT
+    for harness, entry in plans.items():
+        program, foreign = judge._program(entry, harness)
+        if foreign == "not_the_harness":
+            lines.append(Check("warn", f"{harness} plan judge", f"judge.subscription.{harness}.command names `{entry['command']}`, which is "
+                               f"not {PLAN_NAMES[harness][0]}'s own program, so the judge does not run it and the word list decides: "
+                               f"remove the setting, or point it at {PLAN_NAMES[harness][0]}'s own program"))
+            continue
+        signed = status(harness, program) if program else "missing"
+        why, took = probe(config, harness) if signed in ("plan", "unknown") else ("", 0.0)
+        fix, deadline, model = _plan_fix(harness, entry, signed, why), s["deadline_seconds"], entry["model"]
+        faster = (f"give judge.deadline_seconds up to {judge.LONGEST:.0f}" if deadline < judge.LONGEST else
+                  f"{judge.LONGEST:.0f} s is the most the Stop hook gives: name a faster model in judge.subscription.{harness}.model")
+        said = f"{model} answered an invented sentence in {took:.1f} s on the plan"
+        if fix:
+            level, detail = "warn", fix
+        elif took > deadline:
+            level, detail = "warn", f"{said}, past the judge's deadline of {deadline:.1f} s: most verdicts are cut off and the word list decides; {faster}"
+        elif took * FLAGGED > deadline:
+            level, detail = "warn", (f"{said}, but a flagged reply takes about twice as long, past the judge's deadline of {deadline:.1f} s, "
+                                     f"so most verdicts would be cut off and the word list decide; {faster}")
+        else:
+            level, detail = "ok", f"{said}, inside the judge's deadline of {deadline:.1f} s with room for a flagged reply (about twice as long)"
+        lines.append(Check(level, f"{harness} plan judge", detail))
+    return lines
+
+
 # ---- git ----------------------------------------------------------------------
 
 def check_git_hooks_path(value: str, expected: Path) -> Check:
@@ -1807,7 +1970,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
             hooks = _hooks_file(entry["path"])
             checks += [check_package("codex", entry["path"], runtime), check_hooks_wired("codex", _commands(hooks)),
                        check_codex_trust(hooks, config, entry.get("id") or PLUGIN, entry["path"], codex_home)]
-            checks += [c for c in [check_codex_hooks_file(codex_home)] if c]
+            checks += [c for c in [check_codex_hooks_file(codex_home), check_codex_nested_hooks(codex_home)] if c]
             if catalog is not None:
                 result, catalog_error = catalog()
                 checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))
@@ -1871,6 +2034,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         config = paths.config()
     except (OSError, ValueError):
         config = {}
+    planned = _background(lambda: check_plan_judge(config)) if config.get("judge") not in (None, False) else None  # beside the rest
     repos = workspace_repos(config)
     from synthesis import board, project
     sessions = board.sessions()
@@ -1898,6 +2062,9 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     except (OSError, subprocess.SubprocessError):
         value = ""
     checks.append(check_git_hooks_path(value, home / "git-hooks"))
+    if planned:
+        lines, error = planned()
+        checks += lines if lines is not None else [Check("warn", "judge", f"cannot tell whether the plan judge answers ({error})")]
     _note_waits(home, checks, began)
     return checks
 

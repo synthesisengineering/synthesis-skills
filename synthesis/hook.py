@@ -29,14 +29,33 @@ def _defuse(text):
     return re.sub(r"(?i)\bapprove\s+(\d[0-9a-f]{5})\b", r"approve code \1", text)
 
 
-def _emit(event, context="", deny=""):
+def _emit(event, context="", deny="", message=""):
     context, deny = _defuse(context), _defuse(deny)
     if deny:
         print(json.dumps({"hookSpecificOutput": {
             "hookEventName": event, "permissionDecision": "deny", "permissionDecisionReason": deny}}))
     elif context:
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}}))
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": event, "additionalContext": context},
+                          **({"systemMessage": _defuse(message)} if message else {})}))
     return 0
+
+
+def _newer_plugin_note(plugin: str) -> str:
+    """Once per version: the harness loaded a plugin newer than the installed runtime, which a session start never
+    installs (the principal's sandbox rulings of 2026-11-15). Names both versions and the line that installs it."""
+    from pathlib import Path
+    from synthesis import install, paths
+    have, offered = install.version(paths.home() / "current"), install.version(Path(plugin)) if plugin else ()
+    if not have or not offered or offered <= have:
+        return ""
+    tag, seen = "v" + ".".join(map(str, offered)), paths.state() / "newer-plugin.json"
+    if paths.read_json(seen).get("version") == tag:
+        return ""
+    paths.write_json(seen, {"version": tag, "at": time.time()})
+    return (f"The harness loaded synthesis {tag[1:]}, newer than the installed runtime {'.'.join(map(str, have))}, and a "
+            f"session start never installs it. To install it, run `~/.synthesis/v5/bin/synthesis-release --install-only "
+            f"--tag {tag}`, which verifies the tag is on GitHub's main and newer than the runtime, then installs it from a "
+            "fresh clone.")
 
 
 def _upgrade_note(session_id, me) -> str:
@@ -71,7 +90,7 @@ def _upgrade_note(session_id, me) -> str:
         "full pass; restarting the app reloads everything.\n\n" + ("\n\n".join(sections) or "(no changelog found)")[:3000])
 
 
-def session_start(payload):
+def session_start(payload, plugin=""):
     from synthesis import autopilot, board, paths, project
 
     session_id = paths.session_id(payload)
@@ -109,7 +128,8 @@ def session_start(payload):
               f"{kept[0]}` binds it and delivers the mail."] if kept else []
     _ran(payload, "session_start")  # this hook is running: struck before the note is read, so a harness's own start does not name it
     notes += [n for n in (_window_note(), _unguarded_note()) if n]
-    return _emit("SessionStart", context="\n\n".join(notes))
+    newer = _newer_plugin_note(plugin)
+    return _emit("SessionStart", context="\n\n".join(notes + [newer] * bool(newer)), message=newer)
 
 
 HARNESSES = {"codex hook trust": "Codex", "muse hook approval": "Muse"}
@@ -289,10 +309,10 @@ def pre_tool_use(payload, began=None):
                 config, unreadable = paths.config(), None
             except (OSError, ValueError) as exc:
                 config, unreadable = {}, exc
-            if unreadable is not None:
+            if unreadable is not None and tool not in guards.FILE_TOOLS:
                 reason = (f"synthesis guard config is unreadable ({unreadable}); fix {paths.config_file()}"
                           if guards.guarded(tool, tool_input) else "")
-            else:
+            else:  # a file tool is judged without the config it cannot read: the folders and settings it guards need none (22.20)
                 try:
                     reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
                 except approvals.Unverified as exc:
@@ -362,16 +382,21 @@ def stop(payload):
 
 def main(argv):
     event = argv[1] if len(argv) > 1 else ""
+    if os.environ.get("SYNTHESIS_JUDGE_RUN") and event in ("session-start", "user-prompt-submit", "stop"):
+        return 0  # inside the judge's own run (judge.MARKER): nothing to brief, record or judge, so a verdict is never judged; the guard still guards
     try:
         payload = json.loads(sys.stdin.read() or "{}")
     except json.JSONDecodeError:
         payload = {}
-    if event == "session-start" and len(argv) > 2 and argv[2]:
-        try:  # keep the stable runtime in step with the plugin the harness loaded
+    if event == "session-start":
+        try:  # the first install only: an installed runtime is replaced only by the release tool, from a verified clone
             from synthesis import install
-            install.install(argv[2], forward_only=True)
+            if len(argv) > 2 and argv[2]:
+                install.install(argv[2], first_only=True)
+            if install.current_hash():  # launchers an older release's session start wrote are put right (round 2, N4)
+                install.refresh_launchers(install._home())
         except Exception:
-            pass  # a failed self-update must never block a session; doctor reports it
+            pass  # a failed first install must never block a session; doctor reports it
     from synthesis import paths
     if paths.old_board():  # seven lstat calls; true only after an older release wrote the board where it used to be
         try:
@@ -383,7 +408,7 @@ def main(argv):
                "pre-tool-use": pre_tool_use, "stop": stop}.get(event)
     if not handler:
         return 0
-    code = handler(payload)
+    code = handler(payload, argv[2] if len(argv) > 2 else "") if event == "session-start" else handler(payload)
     _ran(payload, event.replace("-", "_"))  # once it has answered: a handler that fails has not shown that it runs
     return code
 

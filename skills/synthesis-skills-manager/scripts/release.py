@@ -1,8 +1,15 @@
 """Release synthesis-skills: preflight, one releaser at a time, publish, install in every harness,
 then prove the installed bytes equal the tag.
 
-    python3 skills/synthesis-skills-manager/scripts/release.py [--repo-root .] [--dry-run]
-    python3 skills/synthesis-skills-manager/scripts/release.py --install-only   # new Mac or drift
+    ~/.synthesis/v5/bin/synthesis-release --repo-root <checkout> [--dry-run]       # a release
+    ~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>          # an install, after drift
+
+The launcher install writes runs this file from the installed runtime with the interpreter pinned at install,
+isolated; run so, alone on the line, it needs no code (the principal, 2026-11-15). A copy in a checkout waits for the
+principal's code. The checkout --repo-root names says what is released: it must be the canonical one, clean, at the
+tip of GitHub's main. Everything built, pushed, exported and installed then comes from a fresh clone of what GitHub
+serves, made by this run in the protected releases folder (review round 1 of 5.23.1, A1 to A3); this copy's own folder
+gives only its imports, from the runtime it runs from.
 
 Pushing is publishing (the marketplaces point at the repository), but each harness keeps its
 own installed copy that does not follow the remote, so a pushed-but-uninstalled release
@@ -11,19 +18,26 @@ each harness's installed files equal the tagged files, read at the folder the ha
 reports loading, whatever its version label says.
 
 Stages, each gating the next:
-  1. Preflight: clean tree on the default branch, not a plugin cache; the three plugin
-     manifests agree; the CHANGELOG's newest entry is this version; CI passed for HEAD.
-  2. Release train: a board claim on the main checkout's CHANGELOG.md. Another live session
+  1. Preflight: not a plugin cache; the canonical checkout (the synthesis-skills repository on GitHub as every remote,
+     on main, its own git config running nothing); a clean tree; the three plugin manifests agree; the CHANGELOG's
+     newest entry is this version; HEAD the tip of GitHub's main, read with git's own config left out, and the
+     version's tag there (if any) HEAD; nothing older than the running runtime or GitHub's latest release; CI passed
+     for HEAD on that repository. An install names a tag GitHub serves, CI passed for it, no older than either.
+  2. A fresh clone of the repository from GitHub at that commit, in the protected releases folder. An install's tag
+     must be on its main there.
+  3. Release train: a board claim on the main checkout's CHANGELOG.md. Another live session
      holding it means another release is under way: refuse and name it.
-  3. Publish: build the five collections from HEAD's commit and check them (build_collections.py), then create the
-     tag, push main, stable, the tag and the collections, as the `collections` branch, to every push remote in one
-     atomic push each; success is read back with `git ls-remote`, never from an exit status.
+  4. Publish from the clone: build the five collections from its commit and check them (build_collections.py), then
+     create the tag, push main, stable, the tag and the collections, as the `collections` branch, in one atomic push;
+     success is read back with `git ls-remote`, never from an exit status.
      Then the GitHub release for the tag, its notes the CHANGELOG entry, read back as latest,
      and a pull request on the Homebrew tap pointing the synthesis formula at the tag's
      archive, set to merge itself when the tap's install tests pass.
-  4. Install with each harness's own commands (onboarding's setup.py), then verify bytes.
-  5. Update the stable runtime from a verified copy and run `synthesis doctor`.
-  6. Wait for the tap's pull request to merge and read the formula back from the tap's main.
+  5. Install with each harness's own commands (onboarding's setup.py; Muse from the clone), then verify each
+     harness's bytes against the clone's tag.
+  6. Install the stable runtime from the clone, its staged copy checked against the tag's listing before `current`
+     moves, and run `synthesis doctor`.
+  7. Wait for the tap's pull request to merge and read the formula back from the tap's main.
 Exit 0 only when every found harness verified, doctor is healthy and Homebrew serves the tag; a hook approval only
 the person can give in a harness (Codex asks again after every release) is named as waiting, not counted.
 A GitHub server error runs its stage again, up to three times: each stage reads what is published before acting.
@@ -37,20 +51,21 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[3]
+PLUGIN = Path(__file__).resolve().parents[3]  # the runtime or plugin this copy runs from: its imports, never the repository
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
-for path in (REPO, REPO / "skills" / "synthesis-onboarding" / "scripts", Path(__file__).resolve().parent):
+for path in (PLUGIN, PLUGIN / "skills" / "synthesis-onboarding" / "scripts", Path(__file__).resolve().parent):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 import setup  # noqa: E402  (each harness's install commands)
 import build_collections  # noqa: E402  (the collections, published beside the whole set as a branch of built folders)
 try:
-    from synthesis import board, doctor, install, paths  # noqa: E402
+    from synthesis import board, doctor, guards, install, paths  # noqa: E402
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
     print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
@@ -59,9 +74,15 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
 MANIFESTS = (".claude-plugin/plugin.json", ".codex-plugin/plugin.json", ".muse-plugin/plugin.json")
 LOADABLE = ("skills/", "synthesis/", "hooks/", ".claude-plugin/", ".codex-plugin/", ".muse-plugin/")
 IGNORED = ("__pycache__", ".DS_Store")
-GITHUB = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
-# The Homebrew formula follows the canonical repository's tags only; a fork's release leaves it alone.
-CANONICAL, TAP = "synthesisengineering/synthesis-skills", "synthesisengineering/homebrew-tap"
+GITHUB = guards.GITHUB_REMOTE
+# The repository a release publishes, which preflight requires (5.24.0), and the tap whose formula follows its tags.
+CANONICAL, TAP = guards.RELEASE_REPOSITORY, "synthesisengineering/homebrew-tap"
+# What git reads and runs for a release is the repository's own objects and nothing its config adds: replace refs
+# ignored, hooks and a file monitor off (5.24.0). Run as a script, every git it starts ignores replace refs too.
+GIT = ("git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
+CANONICAL_URL = f"https://github.com/{CANONICAL}.git"
+TAG = re.compile(r"v\d+\.\d+\.\d+")
+STALE_CLONE = 6 * 3600  # seconds: no release runs this long, so an older clone whose run is gone is left over
 FORMULA = "Formula/synthesis.rb"
 FAILED = {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE"}
 # GitHub's own server errors, which the same request usually gets past a moment later. An error body GitHub sends
@@ -70,8 +91,14 @@ TRANSIENT = re.compile(r"HTTP 5\d\d|Bad Gateway|Service Unavailable|Gateway Time
                        r"connection reset|i/o timeout|TLS handshake timeout", re.I)
 
 
-def git(repo: Path, *args: str, timeout: float = 600) -> subprocess.CompletedProcess:
-    return setup.run(["git", "-C", str(repo), *args], timeout)
+def clean_env() -> dict:
+    """git's environment for what it reads from GitHub: no global or system config, so nothing rewrites where it
+    connects; a push keeps the person's config, for their credentials, and is read back this way."""
+    return {**os.environ, "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull, "GIT_TERMINAL_PROMPT": "0"}
+
+
+def git(repo: Path, *args: str, timeout: float = 600, clean: bool = False) -> subprocess.CompletedProcess:
+    return setup.run([*GIT, "-C", str(repo), *args], timeout, env=clean_env() if clean else None)
 
 
 def manifest_version(repo: Path) -> tuple:
@@ -115,8 +142,8 @@ def retrying(stage, *args, attempts: int = 3, wait: float = 20, sleep=time.sleep
 def ci_state(repo: Path, sha: str, run=setup.run, sleep=time.sleep) -> tuple:
     """(passed, detail) for HEAD's CI on GitHub. Unknown is not passed."""
     for attempt in range(1, 4):
-        proc = run(["gh", "run", "list", "--commit", sha, "--json", "status,conclusion,workflowName", "--limit", "50"],
-                   60, cwd=str(repo))
+        proc = run(["gh", "run", "list", "-R", f"github.com/{CANONICAL}", "--commit", sha, "--json",
+                    "status,conclusion,workflowName", "--limit", "50"], 60, cwd=str(repo))
         if proc.returncode == 0 or attempt == 3 or not TRANSIENT.search(setup._tail(proc)):
             break
         sleep(10 * attempt)
@@ -133,36 +160,129 @@ def ci_state(repo: Path, sha: str, run=setup.run, sleep=time.sleep) -> tuple:
     return True, f"CI passed for {sha[:12]} ({len(runs)} run(s))"
 
 
-def preflight(repo: Path, install_only: bool, ci=ci_state) -> tuple:
-    """(version, problems). Nothing is pushed or installed unless problems is empty."""
+def github_state(version: str, run=setup.run) -> dict:
+    """What GitHub serves for the canonical repository, read with git's own config left out: the tip of main and the
+    commit the version's tag names ('' for none); {} when it cannot be read."""
+    tag = f"refs/tags/v{version}"
+    listed = run([*GIT, "ls-remote", "--symref", CANONICAL_URL, "HEAD", "refs/heads/main", tag, f"{tag}^{{}}"], 120,
+                 env=clean_env())
+    if listed.returncode:
+        return {}
+    found = dict(reversed(line.split("\t", 1)) for line in listed.stdout.splitlines() if "\t" in line and not line.startswith("ref:"))
+    return {"main": found.get("refs/heads/main", ""), "tag": found.get(f"{tag}^{{}}", found.get(tag, ""))}
+
+
+def floor_problems(version: str, run=setup.run, running=None) -> list:
+    """Nothing older than the running runtime or GitHub's latest release, its highest version tag, is released or
+    installed (review round 1 of 5.23.1, A1: `--install-only` installed any earlier release as the runtime). The tags
+    are read with git and its own config left out, never with a `gh` found on PATH (round 2, N7). Unread is refused."""
+    want = install.version_tuple(version)
+    running = install.version(paths.home() / "current") if running is None else running
+    read = run([*GIT, "ls-remote", "--tags", CANONICAL_URL, "refs/tags/v*"], 120, env=clean_env())  # git, never a gh on
+    tags = re.findall(r"\trefs/tags/v(\d+\.\d+\.\d+)$", read.stdout, re.M) if read.returncode == 0 else []  # PATH (N7)
+    latest = max(map(install.version_tuple, tags), default=())
+    return [f"v{version} is older than the running runtime ({'.'.join(map(str, running))}); nothing older installs"] * bool(
+        running and want < running) + ([f"cannot read GitHub's latest release of {CANONICAL}: {setup._tail(read)}"] if not latest
+                                       else [f"v{version} is older than GitHub's latest release (v{'.'.join(map(str, latest))})"] * (want < latest))
+
+
+def preflight(repo: Path, ci=None, github=None, floor=None) -> tuple:
+    """(version, commit, problems) for a release of the checkout `repo`: the commit is the one it read, and the one the
+    release then clones (review round 2, N10: read again later, a moved main was released). Nothing is pushed or
+    installed unless problems is empty. A checkout that is not the canonical one is refused before git runs anything
+    its config could start."""
+    ci, github, floor = ci or ci_state, github or github_state, floor or floor_problems
     problems = []
     if "cache" in repo.parts and "plugins" in repo.parts or "muse-bundle" in repo.parts:
-        return None, [f"{repo} is an installed plugin copy, not a source checkout"]
+        return None, "", [f"{repo} is an installed plugin copy, not a source checkout"]
     if Path(git(repo, "rev-parse", "--show-toplevel").stdout.strip() or "/").resolve() != repo.resolve():
-        return None, [f"{repo} is not the root of a git checkout"]
+        return None, "", [f"{repo} is not the root of a git checkout"]
+    named = guards.release_checkout(str(repo))
+    if named:
+        return None, "", [f"{repo} is not the canonical checkout: {'; '.join(named)}"]
     if git(repo, "status", "--porcelain").stdout.strip():
         problems.append("the tree has uncommitted changes")
-    default = (git(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD").stdout.strip() or "origin/main")
-    branch = git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
-    if branch != default.split("/", 1)[-1]:
-        problems.append(f"on {branch or 'a detached HEAD'}, not the default branch {default.split('/', 1)[-1]}")
     version, detail = manifest_version(repo)
     if version is None:
-        return None, problems + [detail]
+        return None, "", problems + [detail]
     head = git(repo, "rev-parse", "HEAD").stdout.strip()
     tag = git(repo, "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}").stdout.strip()
-    if install_only:
-        if tag != head:
-            problems.append(f"v{version} is {'missing' if not tag else 'not HEAD'}; install from the tagged commit")
-        return version, problems
     if changelog_version(repo) != version:
         problems.append(f"CHANGELOG's newest entry is {changelog_version(repo) or 'missing'}, manifests say {version}")
     if tag and tag != head:
         problems.append(f"v{version} already tags another commit; bump the version")
+    served = github(version)
+    if not served:
+        problems.append(f"cannot read {CANONICAL} on GitHub")
+    elif served["main"] != head:
+        problems.append(f"HEAD {head[:12]} is not the tip of {CANONICAL} main ({served['main'][:12] or 'unread'}): release "
+                        "only what is merged there; pull, or merge its pull request first")
+    if served and served["tag"] and served["tag"] != head:
+        problems.append(f"{CANONICAL} already has v{version} at {served['tag'][:12]}; bump the version")
+    problems += floor(version)
     passed, detail = ci(repo, head)
-    if not passed:
-        problems.append(detail)
-    return version, problems
+    return version, head, problems + ([] if passed else [detail])
+
+
+def install_preflight(tag: str, ci=None, github=None, floor=None) -> tuple:
+    """(version, commit, problems) for installing `tag`: GitHub serves it, CI passed for its commit there, and it is no
+    older than the running runtime or GitHub's latest release. That it is on main is read in the fresh clone."""
+    ci, github, floor = ci or ci_state, github or github_state, floor or floor_problems
+    version = tag[1:]
+    sha = github(version).get("tag", "")
+    problems = ([] if sha else [f"{CANONICAL} serves no {tag}"]) + floor(version)
+    passed, detail = ci(Path.home(), sha) if sha else (True, "")
+    return version, sha, problems + ([] if passed else [detail])
+
+
+def fresh_clone(sha: str) -> Path:
+    """A clone of the canonical repository that this run makes from GitHub, with git's own config left out, in the
+    protected releases folder, checked out at `sha`. git computes each object's id as it fetches it, and no agent writes
+    there, so what the release builds, pushes, exports and installs is what GitHub serves (review round 1 of 5.23.1, A2
+    and A3: the checkout's own objects, rewritten after preflight's check, were built and installed). Clones an
+    earlier run left are removed first."""
+    folder = paths.home() / "releases"
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.glob(".clone-*"):  # only those of runs that ended long ago: another run's is its own (round 2, N8),
+        if not _running(old.name[len(".clone-"):].split("-")[0]) and time.time() - old.stat().st_mtime > STALE_CLONE:
+            shutil.rmtree(old, ignore_errors=True)  # one this run cannot see (another sandbox's) included
+    where = folder / f".clone-{os.getpid()}-{os.urandom(6).hex()}"  # a name no earlier run left (round 3, M4)
+    made = setup.run([*GIT, "clone", "--quiet", "--no-local", "--no-checkout", CANONICAL_URL, str(where)], 900, env=clean_env())
+    moved = git(where, "checkout", "--quiet", "--detach", sha, clean=True) if made.returncode == 0 else made
+    if made.returncode or moved.returncode or git(where, "rev-parse", "HEAD", clean=True).stdout.strip() != sha:
+        remove_clone(where)
+        raise setup.SetupError(f"cannot make a fresh clone of {CANONICAL} at {sha[:12]}: {setup._tail(moved)}")
+    return where
+
+
+def _running(pid: str) -> bool:
+    try:
+        os.kill(int(pid), 0)
+    except ProcessLookupError:
+        return False
+    except (ValueError, OSError):
+        return True  # one this run cannot signal, or a name it cannot read, may be another run's: it stays
+    return True
+
+
+def remove_clone(where: Path) -> None:
+    """Removes a clone this run made, and nothing else: a folder named `.clone-*` in the releases folder."""
+    if where and Path(where).parent == paths.home() / "releases" and Path(where).name.startswith(".clone-"):
+        shutil.rmtree(where, ignore_errors=True)
+
+
+def on_main(clone: Path, sha: str) -> bool:
+    return git(clone, "merge-base", "--is-ancestor", sha, "refs/remotes/origin/main", clean=True).returncode == 0
+
+
+def runtime_listing(clone: Path, ref: str) -> dict:
+    """{path: blob id} at `ref` for every file the runtime takes from a plugin (`install.takes`)."""
+    listing = {}
+    for line in filter(None, git(clone, "ls-tree", "-r", "-z", ref, clean=True).stdout.split("\0")):
+        meta, path = line.split("\t", 1)
+        if install.takes(path):
+            listing[path] = meta.split()[2]
+    return listing
 
 
 def train_path(repo: Path) -> str:
@@ -202,11 +322,11 @@ def collections_head(repo: Path, remote: str, branch: str, tree: str, version: s
     never rewrites the branch a harness installs from. The commit takes the release commit's identity and time and names
     it, unsigned, so every remote that shares a head gets the one commit, made once (`made`, by head), on this run or
     any other (R1-22 of 5.22.0's review: each remote got its own)."""
-    listed = git(repo, "ls-remote", remote, f"refs/heads/{branch}", timeout=120)
+    listed = git(repo, "ls-remote", remote, f"refs/heads/{branch}", timeout=120, clean=True)
     if listed.returncode:
         raise setup.SetupError(f"{remote}: cannot read its {branch} branch: {setup._tail(listed)}")
     head = listed.stdout.split()[0] if listed.stdout.strip() else ""
-    fetched = git(repo, "fetch", "--no-tags", "--quiet", remote, f"refs/heads/{branch}") if head else None
+    fetched = git(repo, "fetch", "--no-tags", "--quiet", remote, f"refs/heads/{branch}", clean=True) if head else None
     if fetched and fetched.returncode:
         raise setup.SetupError(f"{remote}: cannot fetch its {branch} branch: {setup._tail(fetched)}")
     if head and git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip() == tree or head in made:
@@ -214,7 +334,7 @@ def collections_head(repo: Path, remote: str, branch: str, tree: str, version: s
     stamp = git(repo, "log", "-1", "--format=%H%x00%cn%x00%ce%x00%cI", "HEAD").stdout.strip().split("\0")
     who = {f"GIT_{role}_{part}": value for role in ("AUTHOR", "COMMITTER")
            for part, value in zip(("NAME", "EMAIL", "DATE"), stamp[1:])}
-    done = setup.run(["git", "-C", str(repo), "commit-tree", "--no-gpg-sign", tree, *(["-p", head] if head else []),
+    done = setup.run([*GIT, "-C", str(repo), "commit-tree", "--no-gpg-sign", tree, *(["-p", head] if head else []),
                       "-m", f"Collections of v{version}", "-m", f"Built from {stamp[0]}, the commit v{version} tags."],
                      600, env={**os.environ, **who})
     if done.returncode:
@@ -244,7 +364,7 @@ def publish(repo: Path, version: str, dry_run: bool = False) -> list:
         pushed = git(repo, "push", "--atomic", remote, *refspecs, f"{moved}:refs/heads/{branch}")
         seen = dict(reversed(line.split("\t")) for line in git(
             repo, "ls-remote", remote, "refs/heads/main", "refs/heads/stable", f"refs/heads/{branch}",
-            f"refs/tags/{tag}*", timeout=120).stdout.splitlines() if "\t" in line)
+            f"refs/tags/{tag}*", timeout=120, clean=True).stdout.splitlines() if "\t" in line)
         seen[f"refs/tags/{tag}"] = seen.get(f"refs/tags/{tag}^{{}}", seen.get(f"refs/tags/{tag}"))  # peeled
         wrong = [r for r in ("refs/heads/main", "refs/heads/stable", f"refs/tags/{tag}") if seen.get(r) != head]
         said = [f"{', '.join(wrong)} do not point at {head[:12]}"] * bool(wrong) + [
@@ -435,8 +555,28 @@ def installed_root(client: str, binary: str):
     return (Path(path) if path else None), str(entry.get("version", ""))
 
 
-def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = False) -> tuple:
-    """(lines, verified roots, harnesses found). A harness not on this Mac is skipped, not failed."""
+def clone_problems(clone: Path, sha: str, version: str) -> list:
+    """Why the release's clone may no longer be the commit the release verified (combined review round 1 of 22.8 with
+    22.18, C8: each harness command a release runs is found where this user writes, and may be the agent's): its HEAD
+    elsewhere, its tag moved, or a tracked file changed."""
+    head = git(clone, "rev-parse", "--verify", "HEAD^{commit}", clean=True)
+    tag = git(clone, "rev-parse", "--verify", "--quiet", f"refs/tags/v{version}^{{commit}}", clean=True)
+    status = git(clone, "status", "--porcelain", "--untracked-files=no", clean=True)
+    return ([f"its HEAD is not {sha[:12]}"] * (head.returncode != 0 or head.stdout.strip() != sha)
+            + [f"its v{version} names another commit"] * (tag.returncode == 0 and tag.stdout.strip() != sha)
+            + ["a tracked file in it changed"] * (status.returncode != 0 or bool(status.stdout.strip())))
+
+
+def held_to(clone: Path, sha: str, version: str, after: str) -> None:
+    """Stop the release where a command it ran changed its clone: nothing from that clone is installed."""
+    problems = clone_problems(clone, sha, version)
+    if problems:
+        raise setup.SetupError(f"{after} changed the release's clone ({'; '.join(problems)}), so nothing from it is installed")
+
+
+def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = False, check=None) -> tuple:
+    """(lines, verified roots, harnesses found). A harness not on this Mac is skipped, not failed. `check(client)` runs
+    after each harness's own commands (`held_to`)."""
     lines, verified, found = [], {}, []
     for client in clients:
         binary = doctor.find_client(client)
@@ -456,6 +596,8 @@ def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = 
                 lines += setup.codex_user_hooks(None, root)                         # the folder just verified (5.21.0)
         except setup.SetupError as exc:
             problems = [str(exc)]
+        if check:
+            check(client)
         if problems:
             lines.append(f"{client}: NOT verified: " + "; ".join(problems[:6]))
         else:
@@ -465,20 +607,40 @@ def install_and_verify(repo: Path, version: str, clients: list, dry_run: bool = 
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(prog="release.py", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--repo-root", type=Path, default=REPO)
+    parser = argparse.ArgumentParser(prog="release.py", description=__doc__.split("\n\n")[0], allow_abbrev=False)
+    parser.add_argument("--repo-root", type=Path, help="a release: the canonical checkout, never this copy's folder")
+    parser.add_argument("--tag", default="", help="an install: the tag to install, as GitHub serves it")
     parser.add_argument("--clients", default="claude,codex,muse")
-    parser.add_argument("--install-only", action="store_true", help="install and verify the tag HEAD carries")
+    parser.add_argument("--install-only", action="store_true", help="install and verify --tag from a fresh clone")
     parser.add_argument("--dry-run", action="store_true", help="check and print the plan; change nothing")
     parser.add_argument("--session", default="", help="this session's id (default: the harness's own)")
     args = parser.parse_args(argv)
-    repo, clients = args.repo_root.resolve(), [c for c in args.clients.split(",") if c in doctor.HARNESSES]
-    version, problems = preflight(repo, args.install_only)
+    if args.install_only != bool(args.tag) or args.install_only == bool(args.repo_root):
+        parser.error("a release names --repo-root; --install-only names --tag and no --repo-root")
+    if args.tag and not TAG.fullmatch(args.tag):
+        parser.error("--tag takes a tag such as v5.23.1")
+    clients = [c for c in args.clients.split(",") if c in doctor.HARNESSES]
+    repo = args.repo_root.resolve() if args.repo_root else None
+    own = PLUGIN.parent.parent  # the synthesis home whose runtime this copy is, when it runs from one
+    if PLUGIN.parent.name == "releases" and os.path.realpath(paths.home()) != os.path.realpath(own):
+        print(f"refused before publishing anything:\n  this run's synthesis home {paths.home()} is not {own}, where the "
+              "runtime it runs from is installed; run it through that home's launcher (round 2, N2)")
+        return 1
+    if args.install_only:
+        version, sha, problems = install_preflight(args.tag)
+    else:
+        version, sha, problems = preflight(repo)  # the commit it read, never read again (round 2, N10)
     if problems:
         print("refused before publishing anything:\n  " + "\n  ".join(problems))
         return 1
-    lines, train, formula = [f"preflight: v{version} ready"], "", None
+    lines, train, formula, clone = [f"preflight: v{version} ready"], "", None, None
     try:
+        clone = fresh_clone(sha)
+        if args.install_only and not on_main(clone, sha):
+            raise setup.SetupError(f"{args.tag} is not on {CANONICAL} main; install only a release of what is merged there")
+        if manifest_version(clone)[0] != version:
+            raise setup.SetupError(f"GitHub's {sha[:12]} does not hold v{version}")
+        listing = runtime_listing(clone, sha)  # read before any harness command runs, from the commit verified (C8)
         if not args.install_only:
             session = args.session or paths.session_id()
             if not session:
@@ -487,23 +649,33 @@ def main(argv=None) -> int:
             if args.dry_run and holders:
                 raise setup.SetupError(f"another release is under way: {holders[0].session} ({holders[0].goal})")
             train = "" if args.dry_run else hold_train(repo, session, version)
-            lines += retrying(publish, repo, version, args.dry_run)
-            lines += retrying(github_release, repo, version, args.dry_run)
-            opened, formula = retrying(homebrew_formula, repo, version, args.dry_run)
+            lines += retrying(publish, clone, version, args.dry_run)
+            lines += retrying(github_release, clone, version, args.dry_run)
+            held_to(clone, sha, version, "gh")
+            opened, formula = retrying(homebrew_formula, clone, version, args.dry_run)
+            held_to(clone, sha, version, "gh")
             lines += opened
-        installed, verified, found = install_and_verify(repo, version, clients, args.dry_run)
+        installed, verified, found = install_and_verify(clone, version, clients, args.dry_run,
+                                                        lambda client: held_to(clone, sha, version, f"{client}'s own command"))
         lines += installed
-    except setup.SetupError as exc:
+        if not args.dry_run:  # the stable runtime from the clone, its staged copy checked against the verified commit's listing
+            held_to(clone, sha, version, "a command the release ran")
+            lines.append(install.install(clone, expected=listing))
+    except install.Unapproved as exc:  # the runtime waits for the principal's code: a rollback, or no grant from the hook
+        print("\n".join(lines + [f"runtime: {exc}"] + ([f"the release train ({train}) stays claimed by this session"] if train else [])),
+              flush=True)
+        return 2
+    except (setup.SetupError, install.Refused) as exc:
         print("\n".join(lines + [f"stopped: {exc}"] + ([f"the release train ({train}) stays claimed by this "
                                                          "session; fix the cause and rerun"] if train else [])))
         return 1
+    finally:
+        remove_clone(clone)
     if train:
         board.release(args.session or paths.session_id(), [train])
     healthy = True
-    if verified and not args.dry_run:
-        lines.append(install.install(next(iter(verified.values()))))  # the stable runtime from verified bytes
     print("\n".join(lines), flush=True)
-    if verified and not args.dry_run:
+    if not args.dry_run:
         start = time.perf_counter()
         checks = doctor.run_checks()
         print(doctor.report(checks, (time.perf_counter() - start) * 1000), flush=True)

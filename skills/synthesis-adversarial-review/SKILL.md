@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "2.0.0"
+  version: "2.1.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -41,11 +41,14 @@ The rules follow the protocol's sections in order, Purpose through Completion Re
 12. **After publication, a second agent derives the live universe from destination state** and records a per-artifact matrix. A correction beyond the current grant needs fresh approval.
 13. **Surface a known-false claim once,** in the principal's terms. A proposed loosening nominates the loosener for review. Approval fatigue is a failure mode.
 14. **Report the principal outcome first** and name the unverified remainder. "The reviewer is satisfied" is never a completion signal.
+15. **Two review rounds per item.** After the second, the coordinator applies the test: a finding blocks only if an honest agent would hit it in ordinary work or it appears in the principal's records, and anything else goes on the open list, as the adjudicator records. The coordinator bounds the review, not the reviewer ([references/review-caps.md](references/review-caps.md)).
+16. **At most three agents at once.** A release ships what has passed review and never waits for another round.
 
 ## Contents
 
 - [references/protocol.md](references/protocol.md): every protocol section in full, with the reasons, the findings-file template and field list, and the post-publication steps. Read the matching section before running that stage of a review.
 - [references/domain-review-contract.md](references/domain-review-contract.md): the review package, its four profiles and seven records, the checks the reviewer applies by hand, and the twelve lessons and scorecard. Read it before freezing or accepting any package.
+- [references/review-caps.md](references/review-caps.md): rules 15 and 16 in full: two rounds per item, the materiality test after the second, the open list, the coordinator's duty to hold the bounds, three agents at once, and releases that never wait. Read before dispatching a reviewer and whenever another round is proposed.
 - [references/coverage-map.md](references/coverage-map.md): where each part of the 1.2.1 text and each script change now lives.
 - [references/preserved.md](references/preserved.md): the retired ledger command, validator and diagnostic text, verbatim. Read only to review the change.
 - Findings file: below.

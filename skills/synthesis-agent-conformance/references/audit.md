@@ -129,6 +129,16 @@ there with no item here fails:
   a top-level key it does not know, a hook of a type it does not know) and setup's option
   is off: a warning, since the person's own hooks there do not run and no synthesis hook
   depends on the file;
+- `codex nested hooks`: that Codex still runs PreToolUse hooks on the calls a code-mode
+  script (its `exec` tool) makes, the only way the guard sees them, proven from Codex's own
+  rollouts by a hook's refusal in such a script's result, which only a hook run on a nested
+  call makes. Codex offers no dry probe, so the newest rollouts of the last 30 days are read,
+  read only, newest first, each a regular file opened without blocking or following a link:
+  its first line (the Codex version, within 1 MB) and its last 16 MB, at most 120 files and
+  128 MB, stopping at the first proof. The line names the Codex version
+  and the date it proves; it warns, never fails, when no refusal inside a script was found
+  or the proof is from an older Codex than the newest one that ran a script, and says
+  nothing where no rollout read holds a code-mode script;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
   tool name treated as a shell by the guard. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness
@@ -203,6 +213,18 @@ there with no item here fails:
   guard writes down what each session's page reads showed; the check holds the newest against the
   config as it now is, warns with the site, the profile, the account seen and when, and clears when
   a session next reads the site and it shows the workspace's account;
+- `<harness> plan judge`, `judge`: when the config's `judge.subscription` names a harness's
+  plan, whether that plan's judge answers, so its fall back to the word list is never silent. The
+  harness's own status command says whether it is signed in with a plan; a missing sign-in, an API
+  account (which the judge would bill) or a missing command is a warn and is not probed; a `command`
+  that is not the harness's own program is named in the warn and never run. Otherwise one
+  invented sentence goes the way a flagged reply goes (`judge.probe`: the shortcut policy, the
+  judge's own command line with hooks off and the credentials that outrank the plan taken out), in
+  the background, at most 20 seconds a harness; no reply's text goes anywhere and nothing is logged.
+  A command line too old for a flag, print mode not using the sign-in (as when `-p` runs bare), a
+  model the plan does not offer, no verdict, or an answer past the judge's deadline each warns with
+  its fix; a judge section that cannot be used, a cloud address off its provider's host among them, is
+  one `judge` warn;
 - `latest release`: only with `--latest`, whether an installed harness is behind the
   published release;
 - `git hooks`: the global `core.hooksPath` (report only).

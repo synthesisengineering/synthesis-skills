@@ -4,6 +4,825 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.24.0] - 2026-11-15
+
+- **The runtime the guard runs changes only on the principal's code** (review round 2 of 5.23.1, N5 and N6, both live
+  in 5.23.0; his sandbox rulings of 2026-11-15). `synthesis install <folder>` made any folder the runtime with no code,
+  by PATH and by `~/.synthesis/v5/bin/synthesis`, since the guard read it as a program that names no protected folder,
+  and the version floor read only what the folder said about itself. `synthesis uninstall` removed `current`, the
+  launchers and the releases with no code, and the next session start's bootstrap then installed the harness folder's
+  own code as a first install. Now a command that installs a runtime from a folder, removes it or writes its launchers
+  again waits for the principal's code for that exact command, run in the folder it was asked from, with each folder it
+  installs from bound by the hash of its runtime (a folder changed after the code asks again): `synthesis install`
+  with or without a folder and `synthesis uninstall`, by PATH, the stable path, a link, `python -m synthesis.cli`, `-m
+  synthesis` or `-m synthesis.install`, the CLI's module or any `synthesis/install.py` run by path (the runtime's own
+  had passed as the plugin's), the CLI's script read by a shell, behind `env`, `nohup`, `xargs`, `find -exec` or `uv
+  run`, in every harness's shell. The CLI's own parser reads the words (`cli.parsed`, which the CLI dispatches with
+  too), so help, `uninstall --dry-run` and words the CLI refuses need no code; a word the guard cannot read makes the
+  command wait. A Python program's import of synthesis is read wherever a statement may start:
+  `python3 -c "import sys; from synthesis import install; install.install(...)"` had passed, since the guard looked for
+  the import only at the start of a line. A name or a file of synthesis's handed to a loader is refused.
+- **A session start installs only into a home no runtime has been in.** It installed the plugin folder's runtime
+  whenever that folder carried a newer release, and the bootstrap installed whatever the folder held whenever the
+  stable hook was missing. That folder is the harness's own plugin cache, which the guard does not protect. Now both
+  install only where the synthesis home holds none of `releases`, `current`, `bin`, `git-hooks`, `state`, `board` or
+  `sessions` (`install.traces`; `install.py` passes `synthesis install --first`): an installed runtime is never replaced
+  from that folder, at any version, and a home a runtime has left, by uninstall or any other route, keeps its state,
+  board and archive, so no session start installs there again. The bootstrap says so on stderr, and every guarded call
+  is held until setup or the release script installs a runtime. The doctor's package check no longer says a session
+  start updates the runtime. `docs/runtime-integration.md` states what stays open: the bootstrap runs the plugin
+  folder's own code and `hooks.json` lives in that folder, so an agent that rewrites the harness's plugin cache changes
+  what the next session start runs; sealing the plugin caches belongs to the sandbox.
+- **Measured first**, over 60 days of this Mac's records, read only (263,900 shell commands: 115,777 in Claude Code and
+  148,123 in Codex; the controls found 4,961 `git commit`, 1,001 `synthesis claim` and 965 `synthesis who` runs):
+  `synthesis uninstall` never ran; `synthesis install` ran twice (once from a folder, once for its help); the
+  runtime's `install.py` by path 6 times (4 into a test's own home); setup.py's plugin install twice; the release script
+  154 times and its dry run 57 (both already waited, run from a checkout); `update`, which v5 does not have, 13 times;
+  42 Python programs called the installer (4 into a test's own home). Replayed after review round 1 of 22.18 through
+  5.23.0's guard and this one, each from its installed runtime as the hook runs it (6,997 commands: each that names the
+  CLI near install or uninstall, setup.py, release.py or install.py, or holds a Python import of synthesis the old
+  reading missed), 12 now wait or are refused, on 6 days: two runs of a copy's `install.py` in a temporary folder; three
+  programs that import synthesis after a `;` and name its doctor's or its wait's writer; and seven that import it after
+  a `;`, or load its file, in a way the reader cannot follow, refused as the same program is when its import starts a
+  line. Eight of the twelve are test or probe work by their own marks (a temporary folder, a home of their own, pytest).
+- **How it was checked.** Tests first, committed alone: 50 of them failed on the code before. The runtime's own entry
+  points are also judged by the installed runtime's guard, where its install.py had passed as the plugin's.
+- **Install and uninstall themselves spend the principal's code** (review round 1 of 22.18, H1; review round 4 of 5.23.1,
+  Q4). The guard held the CLI only where it was the command on the line, so a script run by `sh`, by its path or
+  sourced, Python's `subprocess` or `os.system`, a Python file, perl, awk, a git alias, a make recipe, a wrapper of
+  another name, `crontab` or `at` reached it with no code, and a program could call `install.install` itself. Now
+  `install.install` and `install.uninstall`, which the CLI, install.py's main, setup.py and the release script all run
+  through, refuse to replace or remove a runtime in a home that shows one (`install.traces`) unless a live grant the
+  principal's prompt backs names that exact change; otherwise they file the request and raise `install.Unapproved` with
+  what the hook says. The hook asks for the same subject where it reads the CLI as the command and only checks it, so
+  the principal approves before the run and the install spends it. Where no runtime runs the prompt hook (after an
+  uninstall), the session's own record showing the code is enough (`approvals.answered`). The first install, help, a dry
+  run and words the CLI refuses need no code. That holds for every route that starts the CLI, setup.py or the release
+  script as a process of its own. Install calls the check it bound when it loaded, so a program in its own process that
+  puts its own function in `install.approval`, by name or by a name built at run time, changes nothing (review round 2
+  of 22.18, K1). Not every name built at run time fails closed: a program that replaces those bound names
+  (`install._approve`, `install._released`) or the runtime's files itself is held only by the guard's reading of it,
+  which holds it where it spells the installer and passes it where it builds the names at run time, and then installs
+  its own runtime; that is on the open list (combined review round 1 of 22.8 with 22.18, C1). setup.py takes
+  `--session` for the session the principal types the code in, from his own terminal, where no harness gives one, and
+  passes it to the install and the uninstall (K2).
+- **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
+  the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
+  hook's check was what got installed. Now `package_digest` is the sha256 of every file an install copies (the whole
+  package with its folders, the stable scripts and the CHANGELOG, each by its path and length); the install stages that
+  copy in the protected releases folder, hashes the copy, checks it and installs from it. `synthesis install` with no
+  folder binds the CLI's own folder the same way, and a bare `synthesis` that PATH resolves to anything but the stable
+  launcher is not read as the CLI. A release older than the running one is a subject of its own, `rollback`, named to
+  the principal as a downgrade with both versions, and needs his code on every route.
+- **The hook grants the release launcher one install of its tag** (review round 2 of 22.18, K1). 22.18's release route
+  trusted the process's main program and the interpreter's flags (`__main__.__file__` inside a release, `-I -S`), which
+  a program in the same process can set: a forged `__main__` replaced the runtime with no code, as did a function put in
+  `install.approval`. Now, when the guard lets the release launcher's line through, it writes one grant: an install of
+  `v<version>` (the tag the line names, or the version its checkout's manifests carry; a dry run is granted nothing)
+  into this home. `install.install` spends it once, and only for the release tool's fresh clone in the protected
+  releases folder whose HEAD is the commit GitHub's tag names (asked of GitHub with `git ls-remote`, from a folder
+  outside the clone, so no config of the clone's can send the question elsewhere: combined review round 2, R2-1), its
+  tracked tree clean, and whose staged copy holds exactly the files of that commit's tree; any other folder, version,
+  home or a second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it,
+  the release script's install stage waits for the code. From the combined review of 22.8 with 22.18 (round 1):
+  - **The launcher's shell wrapper is the system's shell or nothing** (C2). `<shell> -c '<line>'` was taken for the
+    launcher's line by the shell's name alone, so a program of the agent's named `bash`, `sh` or `zsh` carried the line,
+    minted the grant and ran with nothing else judged. Now the shell must be a file owned by root with every folder
+    above it and writable by no user, as the interpreter pin requires, both as named and as resolved: named by its
+    path, that file; named bare, the first of that name on the harness's own PATH, so a `bash` of the agent's found
+    first in a folder this user writes is refused, while folders this user writes that hold none may come first, as
+    they do on the principal's Mac and on CI's runners (Codex's shell tool, A7). A link of a user's to the system's
+    shell or to its folder does not count, since it can be pointed elsewhere once the line has passed; the system's
+    own links (`/bin` on Linux) do. Open, crafted: a shell put ahead of the system's on PATH after the line has passed,
+    before the harness looks it up, runs in its place; a strict expected-failure test holds it.
+  - **A harness command the release runs cannot choose the runtime** (C8). The release runs each harness's own command
+    (`claude`, `codex`, `muse`, `gh`), found where this user writes, after its clone exists, and read the install's
+    listing from the clone afterwards: a planted `claude` committed its own runtime in the clone, moved the tag there,
+    and the grant was spent on it. Now the listing is read from the verified commit before any harness command runs, the
+    clone is held to that commit (its HEAD, its tag, a clean tracked tree) after each harness command and before the
+    install, and the spend asks GitHub which commit the tag names. A release pushes its tag before it installs the
+    runtime, so its own install step still needs no code; a clone whose tag GitHub does not serve waits for it.
+  - **The runtime loads on Python 3.9 again** (C10): `install.py` has `from __future__ import annotations`, which its
+    `dict | None` annotations need on Apple's 3.9, the oldest interpreter the runtime pins, and a test imports every
+    runtime module under 3.9 where one is present.
+  - **The checkout's manifest is read as the guard reads a file it may not wait on** (C7a): a FIFO there stopped it.
+- **A release runs from the installed runtime's own release launcher, with no code** (`synthesis-skills-manager`
+  3.7.0), by the principal's ruling of 2026-11-15, with review round 1's findings closed. Since 5.22.1 every release
+  waited for a code. The runtime now carries the release tool and what it imports (this skill's scripts and
+  `synthesis-onboarding`'s), and install writes `~/.synthesis/v5/bin/synthesis-release` beside the hook's launcher. The
+  guard lets exactly that launcher run with no code: alone on the line in plain words, by its absolute path, with only
+  the options the tool documents and no abbreviation, `--session` only as the asking session's own id, on the
+  canonical checkout by an absolute path (origin and every remote's address, as git uses it, the synthesis-skills
+  repository on GitHub; on `main`; its own git config setting no key that runs a program or sends git elsewhere), or
+  `--install-only --tag v<version>`. The line passes from Codex's shell tool (`bash -lc <line>`) as from the other
+  shells. The tool by its own path, the checkout's copy, a copy of the launcher, the scripts the runtime carries for it
+  (never trusted as the plugin's own), another option, a program that loads the tool's own modules (found by file, so a
+  project's own `release` or `setup` runs as before) and any wrapper wait for the code.
+- **Every entry point runs an interpreter pinned at install** (review round 1, P1, P3 and A4). The hook launcher ran
+  `python3 -S` from PATH, where both harnesses on the principal's Mac put folders this user writes before the real
+  interpreter, so one file named python3 there, or with Apple's Python one compiled file under
+  `~/Library/Caches/com.apple.python`, replaced the guard. Install now pins the first interpreter that is its own real
+  path, owned by root with every folder above it, writable by neither this user nor its groups, and Python 3.9 or later
+  (the one installing, else python.org's, the Command Line Tools', Xcode's, `/usr/bin/python3` or
+  `/usr/local/bin/python3`). The hook, the git hooks, the CLI and the release tool each run it through a launcher in
+  the protected `bin/` or `git-hooks/` with `-I -S` under `env -i`, keeping only the variables the runtime was measured
+  to read (git's too, for the commit check), with the launcher's own synthesis home whatever the caller exports, and
+  with the real git's folder and then the system's own first on PATH: Apple's `/usr/bin/git` is a shim that finds the
+  git it runs through `xcrun_db`, a file in this user's own temporary folder that holds each tool's path, so the real
+  git is found and checked as the interpreter is (review round 2). With no such interpreter the launchers refuse.
+  Install, and every session start after it, write the launchers this runtime writes, so a Mac moved to this release by
+  an older release's session start gets them too. The runtime is compiled for that interpreter beside its source, and
+  the doctor checks the pin and every launcher.
+- **What a release publishes and installs comes from a fresh clone of what GitHub serves** (review rounds 1 and 2).
+  The checkout `--repo-root` names only says what is released: it must be clean, its manifests and CHANGELOG must
+  agree, HEAD must be the tip of GitHub's `main` (read with git's own config left out), a tag of the version that
+  GitHub already has must name HEAD, CI must have passed for HEAD there, and the version must be no older than the
+  running runtime or GitHub's highest version tag (read the same way, never with a `gh` found on PATH). The commit
+  preflight read is the one released. The tool then clones the repository from GitHub, with git's own config left out,
+  into a folder of its own in the protected releases folder at that commit, its name the run's pid and a random part,
+  and builds and checks the collections (their files written into the clone's objects from memory with `git
+  fast-import`, the tree held to the ids their bytes give), tags, pushes (read back the same way), takes the release
+  notes, exports Muse's bundle, verifies every harness and installs the runtime from that clone alone; the runtime's
+  staged copy must hold the tag's listing before `current` moves, and a clone gone before then stops the run. A run
+  removes only its own clone, and another run's only when that run is gone and the clone is over six hours old.
+  `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. An install of a
+  release older than the running one is a rollback, which needs the principal's code on every route (above); no
+  keyword passes it, since any program in the process could pass one (round 4, Q4). One install runs at a time in a
+  synthesis home, from that check to the switch of `current`, under a lock (review round 3; the lock's file is one this
+  user may only write, so no program that only reads can hold it). With no interpreter to pin, install stops and names
+  what to install, and Apple's `/usr/bin/python3` shim is never pinned.
+- **Commands are judged in every folder they may run in**: a Codex `workdir`, a terminal tab's `cwd`, `env -C` and
+  `git -C` by their real paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1); a
+  shell's `cd`, `pushd` and `popd` by their text and by their real paths (`cd -P`, `set -P`, zsh's `chase_dots` and
+  `chase_links` resolve `..` physically, round 3, M1), under each CDPATH or cdpath entry the line or the environment
+  sets (the launchers now keep CDPATH and OLDPWD), at OLDPWD for `cd -`, at a variable's value under cdable_vars, at a
+  folder named as a command under auto_cd, where zsh's `cd old new` leads, and, for the commands after its `&&` chain,
+  where the shell stays when a `cd` may fail: no folder there when the guard looks, or a command before it that may
+  make, remove or move one (round 4, Q1). A `cd` piped into another command, or in a list sent to the background,
+  moves nothing past its subshell, and `env cd` and the like move nothing. These readings are the parse's own, so a
+  check the guard runs for a program's commands no longer cuts the physical one short. A line whose folder
+  this cannot tell waits for the principal's code: a CDPATH set in a way it cannot read, a redefined `cd`, a `cd` inside
+  eval, a sourced file or a trap, a function whose body changes folder called outside a command substitution, an alias
+  a command on the line defines, BASH_ENV or ZDOTDIR. **`~/.synthesis/v5/git-hooks` is a
+  protected folder** (A8). In a repository under `pr_gated`, a push waits for the principal's code when it makes, moves
+  or deletes a version tag there (round 3, M5): one named in full, a bare name git takes for a local tag, `--tags`, or
+  an annotated version tag that `--follow-tags` or `push.followTags` carries along; the remote is asked which version
+  tags it holds (`git ls-remote`), and when it cannot be asked the push waits. A branch whose name starts with "v" is
+  a branch (round 4, Q3).
+- **A session start never replaces an installed runtime from its harness's folder**, by the principal's sandbox
+  rulings of 2026-11-15 ("seal everything the guard trusts", "install from the protected release tool"). The session
+  start installed the runtime from the plugin folder the harness loaded whenever it carried a newer release; that
+  folder is the harness's own plugin cache, which the guard does not protect, so a higher version written into it
+  became the runtime at the next session start (live in 5.23.0). Now the session start, and the bootstrap in
+  `hooks.json` (`install.py`, which passes `synthesis install --first`), install from that folder only where no runtime
+  exists at all. Where one does and the folder is newer, the session start says so once (a system message naming both
+  versions and `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, which verifies the tag on
+  GitHub's main and that it is newer), and the doctor warns while the two differ. `docs/runtime-integration.md` lists
+  the first install from a harness folder among what stays open, and why it is acceptable.
+- **A model judges the turn-end shortcut check's list hits** (M38, plan item 21.3; the principal's rulings of
+  2026-11-14 and 2026-11-15). With a `judge` section in the config, a reply the shortcut list flags is read by a model
+  before it goes back, by `synthesis/policies/shortcut-phrasing.md` (does what the reply holds back need the
+  principal's code or consent, or does it sit inside the agent's delegated authority?) and a second, narrow question
+  (`shortcut-asks.md`). A hit clears only when both pass surely; a hold is sent back with the words the judge read; with
+  no judge, or none that answers in time, the list decides exactly as before. The principal's last message is read as
+  data beside the reply, and content that addresses the judge is held. The judge runs on a local model through
+  Ollama's loopback address, on the plan of the harness the reply came from (`subscription`: Claude Code's `claude -p`
+  or Codex's `codex exec`, with no tools, every hook off, no session kept, the credentials that outrank the plan taken
+  out, and a marker that quiets synthesis's own hooks inside the run, so no one buys API credits for it), or on a cloud
+  model with the key of the reply's workspace and a monthly cap. On 33 labeled list hits, Haiku 5.5 on the plan cleared
+  no real shortcut or unsure item and 7 of 25 legitimate hits, a flagged reply's 95th percentile 7.2 seconds; Codex's
+  models did not pass. Verdicts are cached, and logged with counts and digests only; `scripts/judge_replay.py` replays a
+  model or a policy on recorded list hits, by label, before it ships.
+- **The judge binds every setting it takes from the config** (review round 1 of the judge, 2026-11-15: a session can
+  write the config with no code, and a written setting made the Stop hook run any program or post to any host). A
+  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program: `claude` or
+  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/usr/local/bin` and the apps' own folders). Anything else runs nothing, the word list decides, and the doctor names
+  the setting instead of running it. A program planted in one of those folders that the person can write, or in a
+  folder earlier on PATH, counts as the harness's own: that crafted route is on the open list in
+  `docs/runtime-integration.md`, with the older class of a program planted ahead of the real one on PATH. `judge.cloud.url` is only the provider's own host over https
+  (`api.anthropic.com`), so the reply, the principal's last message and the workspace's key go nowhere else. A
+  subscription `model` is a plain name and its `effort` letters, values on the harness's command line and never options
+  of their own; each `cloud.keys` path ends in the provider's name; `local.url` stays on this Mac's loopback address and
+  `deadline_seconds` at most 8. A section outside these bounds is said in the reply sent back and by the doctor, and
+  the list decides until it is fixed.
+- **The Stop hook gives the judge 8 seconds inside 10**, by the principal's approval of 2026-11-15: the hook is
+  registered with 10 seconds in Claude Code, Codex and Muse (every other hook keeps its time), the reply check gives the
+  judge 8 from its own start, and `deadline_seconds` may be up to 8. A reply the list does not flag never waits on a
+  judge: the Stop hook on such a reply took 76 ms at the median before the change and after it.
+- **`synthesis doctor` says when the plan's judge would not answer**: for each harness `judge.subscription` names, it
+  reads the sign-in from the command line's own status command and asks the judge one invented sentence the way a
+  reply is asked, in the background and at most 20 seconds a harness. No sign-in, an API account (which the judge would
+  bill), a command line missing or too old, print mode not using the sign-in (as when `-p` runs bare), a model the plan
+  does not offer, no verdict, or a time that would pass the judge's deadline is a warn with its fix, so the fall back to
+  the word list is never silent.
+- **On a messaging site's page a script the guard cannot read is refused** (core; `synthesis-message-guard` 2.12.1,
+  references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
+  as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
+  code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
+  waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
+  not define, a move by the address or another part of it, set by any assignment, and a fetch or Request whose init
+  has a method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by such a
+  method set anywhere in the script, as an object key or by a member assignment, or a body in an object it passes to a
+  call or one a variable it passes holds; an XHR's method too; every assignment operator counts, `??=` and `||=`
+  included); a read passes,
+  `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
+  or a method of an object or class the script defines, included. Its
+  first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused
+  navigate taken as a driven browser's page; its second, the pane's page after `preview_start` read as unknown, so a
+  local app's click waited for a code; its third, a sub-agent judged by its own list after its session moved the tab
+  they share. Each is read rightly now: Claude in Chrome's tab is read at the newest list across the session's record
+  and its sub-agents', and a call that sends only if a page no result shows is a messaging site's is told to read the
+  page first, with no code asked, in a browser whose reads show its page. Over 60 days of records it refuses none of the
+  seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before, and passes 176, and
+  neither later round changes the guard's verdict on any of Claude Code's 3,708 browser calls there. Spellings made to
+  beat the reader are on the runtime doc's open list.
+- **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
+  navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
+  characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from
+  Claude in Chrome, the built-in pane or a driven browser, alone or in a batch, is now read that way, and one to a
+  `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
+  the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
+  each browser's tab ids are its own.
+- **A Codex code-mode script passes the guard on purpose, and its nested calls stay judged one by one.** In code mode
+  Codex runs nearly every call as one `exec` script (121,270 of 166,646 recorded calls from 2026-09-16 to 2026-11-15):
+  JavaScript in a V8 isolate with no file system, network or process of its own, each tool it calls on `tools` reaching
+  the hook as a call of its own (in those records, 792 script results held a hook's refusal, each of a nested call). The
+  guard counted `exec` among the shell tools, so a script reaching it was read as a shell line: a path in it could be
+  refused by its text alone, a path built at run time passed, and a bare-string payload crashed the guard into a hold.
+  A script is now passed on purpose and never read as a shell line: a bare string, or the text under `input` or `code`,
+  by its signs (the first-line pragma, a call on `tools`, a script helper); under `command`, where a shell's command line
+  also arrives, only when Codex's record of that very call (its `tool_use_id`, in Codex's own sessions folder) shows its
+  `exec` tool with that text, since a command line can be written to look like a script. A command line under the name
+  `exec` is still judged as one, and so now are a bare string and text under `input` or `code` that are no script. A sign
+  is a call of the script's own global (`tools`, or a helper such as `text(`), never a member of another object such as
+  `process.exit(`, and each helper counted works inside Codex by the tool's own description: on the script's result
+  (`text`, `image`, `audio`, `generatedImage`, `notify`, `yield_control`; a remote media URL is refused), its session's
+  store (`store`, `load`) or its run (`exit`).
+- **The browser page tracker reads the browser calls a code-mode script makes.** Codex records them only as
+  `item_completed` events, and the guard's reader of its records read only call records, so a step after a navigate
+  made inside a script judged its page as unknown. It now reads those events, under the name Codex's hook gives the tool
+  (`workspace-mcp` and `github.fetch` make `mcp__workspace_mcp__github__fetch`), and counts a direct call recorded both
+  ways once.
+- **The session archive's index of the files a call wrote reads a code-mode script's nested work, never its JavaScript.**
+  The index, which names the projects a session wrote into, read each `exec` script as a shell line: a comparison such
+  as `items.length > limit` became a file written into the session's folder and could tag its project, while the files
+  the script's nested patches and commands wrote were never seen, since Codex records those calls only as
+  `item_completed` events. A script now yields no files of itself, and the index reads its `FileChange` events (each
+  patched path, and where a file moves) and its `CommandExecution` events (what the command line writes, in the folder it
+  ran in). A direct call's event carries the call's own id and is read once, with its call.
+- **`synthesis doctor` proves that Codex still runs hooks on nested calls** (`codex nested hooks`), the only way the
+  guard sees code-mode work: from the newest rollouts, read only (each one's first line and its last 16 MB, at most 120
+  files and 128 MB from 30 days, newest first; one record had passed 1.8 GB), a hook's refusal in an `exec` script's
+  result, which only a hook run on a nested call makes. Codex offers no dry probe. The line names the Codex version and
+  the date it proves, and warns, never fails, when it finds no refusal inside a script, or only one from an older Codex
+  than the newest to run a script. It reads only a regular file, opened without blocking or following a link, and a first
+  line within 1 MB, so a FIFO named as a rollout, which held it until a writer came, or a line with no end never holds it.
+- **A local MCP server's tool, called from the shell, is judged as that tool's own call.** The meeting-transcripts
+  skill's `mcp_client.py` calls any tool of the local workspace-mcp server, whose default tier includes
+  `send_gmail_message`, and a write to this machine was no post to another host: neither the client nor a `curl` POST of
+  the same JSON-RPC waited (the review of the runtime's carried scripts, 2026-11-15, its problem A). A command that calls a
+  local server's tool, by an HTTP client to an address here or by a program that posts its JSON-RPC or calls a client's
+  `call_tool` (the client is one: its first argument names the tool), now takes the connector's own judgement, now one
+  function the dispatch and the shell share: a sending tool waits for the code the connector's identical call takes, a
+  reading tool passes, and a call whose tool or arguments the guard cannot read waits when it may send, for a code bound
+  to the exact command and the programs it runs.
+- **A program that hands osascript a script file is judged by that file.** An agent's own Python that read a script file
+  and passed it to `-e` ran with no code while `osascript <file>` waited; pointed at the local-messaging skill's
+  `messages_transport.js`, a Messages send (problem B). Each script file a program names or takes from its arguments is
+  judged as `osascript <file>` is; one it writes first, does not name or that cannot be read waits. A script built from
+  the program's own strings reads as before, so the plugin's notifications pass. The plugin's own sender as shipped is
+  judged by the send gate inside it, and a run the principal approved by its exact command is not asked about twice.
+- **A git command is judged as running the programs its configuration names.** `git status`, a read, ran the program a
+  repository's own `core.fsmonitor` names, and the reviewer's repository wrote into the state folder (problem D). The
+  repository's config (with what it includes, and its worktree's), a file the line points git at and the line's own
+  `-c`, `--config-env` and `GIT_CONFIG_*` are read, and each program they name (the monitor, the hooks folder's files,
+  the SSH command, credential helpers, pagers, editors, diff and filter drivers, an alias when it is the command run, and
+  more), and each the line's environment gives git, is judged by every shell guard where git runs it; a value the guard
+  cannot read waits.
+- **Review round 1 of the three.** D now reads git's user and system config (the global and XDG files or the one
+  `GIT_CONFIG_GLOBAL` names, the system file, with what each includes) and a submodule's config when the command reaches
+  it: one line in `~/.gitconfig` had made every git read run the agent's program. Hooks count only for a command that
+  runs them, never in synthesis's own installed git-hooks folder (the commit check's repository hooks count for a
+  commit), and a credential helper or an SSH command only for a command that reaches a remote, so the principal's own
+  setup holds no read. The plugin's scripts that run git themselves (the context doctor's `--project` and `--root`, the
+  rituals' `repo_state.py`) wait when a repository they reach names a program of its own. A program posting a request
+  body it reads to a local MCP server is judged by that body, as curl's `-d @file` is, and one built from parts the guard
+  cannot read waits. The local host is read in any case and with its trailing dot. A write into `.git/hooks`,
+  `.githooks` or a folder `core.hooksPath` names, by the file tools or the shell, or a `git config` that points
+  `core.hooksPath` at one, waits for the principal's code: the next commit would run it. Tests first (19 failed). The
+  same 268,723 recorded commands, replayed: the round's first run held 115 scanner runs, under a hooks folder the user's
+  own config names, which now takes that setting's scope; at its end 14 wait that main's guard passed, the 7 above, one
+  program posting a body it builds, and six writes that plant hooks in temporary test repositories.
+- **Review round 2 of the three.** A reads HTTPie's and xh's `:port` shorthand for this machine and a body on a
+  redirect, curl's URL in a variable the line sets or exports and its `-K` config file (read as cheaply as `-d @file`),
+  and a program's request with host and port given apart or its method and body by position (`http.client`, node's
+  `http.request`). Every carried script that runs git in a folder it is handed is a scanner: `stray_lessons.py`,
+  `pr_queue_scan.py`, `sharing_scan.py` and `portfolio_review.py` beside the context doctor and `repo_state.py`, and the
+  doctor given no folder reads the knowledge roots its setting names, as it does. `git config` of any key that names a
+  program git runs waits as `core.hooksPath` does. A write into any git dir's own `hooks` folder (a bare repository's)
+  waits, and a push to a repository on this disk counts its receiving hooks unless the hooks folder is synthesis's own.
+  Includes named on the command line (`-c include.path`, `GIT_CONFIG_COUNT`) are followed as in a file. Tests first (20
+  failed). Replayed: the round's first run held 26 more programs, through the line's readings, which now count only an
+  HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts to a local address
+  that is no MCP endpoint, with a header and a body the shell fills in, read then as an address the shell fills in (they
+  pass since the ruling's address-only reading, as any local app's API does).
+- **Review round 3 of the three.** A program's posts are read by what they hand over, not by how they are spelled. A
+  Python or node program whose text names this machine's MCP endpoint (two of a local host, port 8765 and an `/mcp`
+  path, written together or apart), or whose line hands it one, and makes any HTTP write (a call given a body by keyword
+  or by position, a request's `.write()`, `.end()` or `.send()`, a write method, a client it starts from a list or a
+  shell line) is judged by every body it hands over that the guard can read: what it spells, a request it builds (by its
+  method, its tools by name), a file it reads, its input and its arguments, followed through its names, its own
+  functions and each call of a helper. It waits when any body cannot be read: a value from the environment, the network
+  or a call the guard does not know, a name changed in place, a method or tool name it builds, a file it lacks. A
+  program that only reads (a GET, a liveness check) hands over no body, and a reading tool's call passes as that tool's.
+  HTTPie's and xh's `--raw` carry a body. An HTTP client's body in a variable the line does not set waits, and a
+  variable the line sets is put into the words that use it, so its value is read whole (put into the line's text, a JSON
+  value's quotes had split a reading call, which then waited). `--config-env` includes are followed as `-c`'s, with the
+  variable the line sets or the guard's own environment gives, and one whose variable neither gives waits. Tests first
+  (12 failed). Replayed against main at the merged head: the first run held 15 reading runs of the client given as
+  `"$C"`, now read, whose JSON argument a substitution fills had counted as a possible tool name; a word the shell fills
+  in now names a tool only when it can make a name. At its end 15 wait that main's guard passed: round 2's 16 less two
+  that now read right (a program whose tool call gives its method through a constant, and a liveness read whose `body =`
+  had read as a post), and one program of the day that holds a `send_gmail_message` request in its own text.
+- **A request to an address the environment gives waits as curl's does** (round 3's ruling). A Python or node program
+  whose request target comes from a variable an earlier command exported (`os.environ`, `getenv`, `process.env`, read
+  through its names and through the connection the write is made on) or from an argument the shell fills in is judged by
+  the bodies it hands that write: a send waits, a body the guard cannot read waits, and readable bodies that are no send
+  pass. A GET or a liveness check hands over none, and an address the line itself gives is read as it is, so one for
+  another host passes. An address goes where its host is: one that spells its scheme and a host other than this machine,
+  on a port that is no local MCP server's, before what the environment or the shell fills in (a path, a query) is that
+  host's, and a connection made to a host is that host's whatever path a request names. A module's own `open()`
+  (`os.open`) opens a file and is no request. A line a program hands a shell, or a client it starts from a list of
+  words, is judged as on the line, what it cannot read standing as a word the shell fills in. curl's rule reads only the
+  address: a body, a header or an HTTPie field the shell fills in, sent to an address spelled for another host, is that
+  host's post, judged by the web rule. Tests first (8 failed), and twice more for what the suite on a fresh clone found
+  (21 failed, then 1): five of the plugin's own scripts waited when run for their help or a dry run, through `os.open`
+  and the Drive publisher's query from the environment; a program that started curl from a list for such an address,
+  with a body from the environment or its input, passed; and a host spelled with the server's port, joined from parts,
+  read as another host's. Replayed against round 3's head: the first run stalled on a recorded line that took over a
+  minute, now 0.6 s. At its end 20 more recorded commands wait, on 5 days, 6 distinct programs, each posting a body the
+  guard cannot read to an address from a variable an earlier command exported or an argument the shell fills in: two
+  Codex node scripts run 15 times on one day, a Claude Code Python program run twice and a Codex one run once, and two
+  Claude Code Python programs that start curl, one with a config file the guard cannot read. The suite's corrections let
+  36 commands the ruling's first code held pass (26 whose programs open a file with a module's own `open()`, 10 whose
+  programs post to a host they spell), and the two curl posts above pass.
+- **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
+  osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
+  Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
+  these routes: 251 runs of the client and 113 programs posting the server's JSON-RPC named only reading tools, no HTTP
+  client posted a tool call, no program but the local-messaging sender ran the Messages transport, and no repository a
+  recorded git command ran in (350), nor any under the workspaces (320), names a program in its config. Every distinct
+  recorded command (268,723) then went through main's guard and this one: the first replay held 150 more, mostly
+  programs the line writes or programs that read through the server by names they compute, and each shape it showed was
+  fixed, tests first; 7 still wait, 6 of them programs naming a script file that is no longer on disk and one that runs a
+  program its line writes while naming the server. The review's probes for the three now hold, the meeting fetcher's
+  reads, ordinary osascript and 1,284 git reads in 321 repositories need nothing new, and a program with 3,000 tool
+  calls is read in 0.2 s (its calls in 0.07 s, its bodies in 0.12 s).
+- **Every skill runs the runtime's copy of its scripts, and the guard trusts only the release it runs from.** Two seats'
+  day-ends ran skill scripts from the plugin cache, and the guard held them for the principal's code. The first version
+  of this fix carried those skills' scripts in the runtime and vouched for a plugin copy with the runtime's bytes. Its
+  review found that a copy's bytes say nothing about the code it loads from other folders, all of them writable: a
+  byte-identical `messages_send.py` beside a `synthesis/` the agent wrote reached its send call with no code, and an
+  unmodified importer wrote into the session archive when an argument named it. Now:
+  - The guard trusts only what lies inside the release it runs from (`releases/<hash>/`, a protected folder). A
+    plugin-cache copy is judged like any other script; when one of the runtime's scripts waits from a copy, the hold
+    names the runtime's own copy. A module of a script's own that the same line writes makes the script wait. A write by
+    a file tool or the shell to a file that is also one in a protected folder (a hard link) waits for the principal's
+    code, and a protected folder written as a pattern (`sta*`, `s?ate`, `[s]tate`) counts as that folder for any script.
+  - A script of the release keeps its exemption only while its line names no protected folder (its arguments, its input,
+    a value the line gives, the folder it runs in, or a configuration file it follows from there, such as the meeting
+    fetcher's `.agents/meeting-transcripts.yaml`) and the plain word of its interpreter runs it: no path to the
+    interpreter, wrapper, function, alias, `autoload` or file read into the shell; no builtin that gives a variable a
+    value (`export`, `read`, `printf -v`, `print -v`, `mapfile`, a parameter expansion that assigns and their like); no
+    assignment to a variable in the environment, to one that moves where a program loads from, or to zsh's tied arrays,
+    in any case of the name and by a subscript too (zsh's `PATH[1,-1]=`);
+    no HOME given a value the guard does not read (such a line, when it then uses HOME, waits); and Python run with
+    `-s`, `-S` or `-I`, so nothing in the user's own site folder loads into it, with no other option but those that only
+    take away what it loads. A file planted in the interpreter's own site-packages (a `.pth` file, a site customization)
+    or in a standard library the user can write still runs inside such a run: that is on the open list until trusted runs
+    use the sealed interpreter the guard's sandbox plans. What its own text names stays exempt. Otherwise it is judged like any other script. The
+    workspace-mcp kit's scripts that write or load a LaunchAgent or a systemd unit wait from the runtime too, and the
+    messages reader opens its lock without following a link.
+  - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
+    `synthesis-message-exports`, `synthesis-local-messaging`, `synthesis-context-lifecycle` and the Bitbucket helper
+    that `pr_queue_scan.py` loads: 59 files instead of 40. Never the installer and release kit (`setup.py`,
+    `workspace.py`, `release.py`), which write the trust base itself.
+  - Every skill text and script that runs one of those scripts names `$HOME/.synthesis/v5/current/skills/...`, a Python
+    one with `-s`
+    (checkpoint 2.0.3, chief-of-staff 2.3.1, context-lifecycle 2.8.2, daily-rituals 3.19.0, inbox-cleanup 2.0.2,
+    kb-edit 2.1.1, local-messaging 1.5.3, mac-sync 3.1.1, machine-sync 2.0.1, meeting-transcripts 1.2.1,
+    message-exports 1.0.1, promotion-gate 2.0.1, slack-sync 4.0.4). Two passages moved word for word to make room:
+    slack-sync's "When This Skill Runs" to `references/sync-protocol.md`, which also lets its SKILL.md take its
+    `category` line, and local-messaging's account of what the reader skips to `references/adapter-contract.md`.
+  - The runtime holds these files once this release's own installer installs it, as `release.py` and
+    `release.py --install-only` do.
+  - On a Mac that runs the workspace-mcp server under launchd or systemd, its doctor now runs from the runtime and
+    reports a unit installed from anywhere else; running the runtime's `install-autostart.sh` once points the unit at
+    the runtime's stable path, which plugin upgrades no longer move.
+- **One approval for a reviewed batch of sends** (core, synthesis-message-guard 2.13.0). `synthesis sends batch <file>` opens a
+  batch of 1 to 50 exact sends on the principal's code for its digest: the hold carries the whole listing, each text
+  quoted with every hidden character as its code, and the command spends the code itself, from any terminal. Each
+  entry then goes once, as written, within 12 hours, from the session that ran the granted command, whose own record
+  must show at every spend the principal typing the code the guard filed for that digest, which it records itself;
+  spent marks yield to an append-only spends ledger. An entry is a connector call (its tool and whole input, never one
+  whose connector fetches, reads or carries a file, one entry to a conversation), a send by the local messages sender
+  (its handle, or its members, service and chat, and its text, spent on the one-use ticket the guard files for the
+  session whose command runs the sender; it names no session of its own) or a Messenger send. Every listing prints as it
+  is only what draws a glyph, with every other character, the file's path, the batch's name and its project escaped. Every other check
+  runs first (the register scan, the format rules, an address that can change, a fresh calendar read for a time, and a
+  meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
+  code per call.
+- **A batch's Messenger send is one step that reads and sends in the same run** (core). One browser_batch on a tab
+  this session made with tabs_create (no page holds a handle to it) and navigated to the conversation, untouched since by
+  any other session or any page script, loads its address there again, types the words, and last runs the entry's send
+  script (`synthesis sends script`), which finds the one message box (labelled `Write to ...` or for a message, with the
+  placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
+  the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks
+  the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
+  no typist, other session or later script acts between the read and the send. On a Messenger site's tab (a page of
+  facebook.com or messenger.com, or of m.me, fb.com, fb.me or Business Suite's inbox), on one whose page no list of tabs
+  names, and on one a step earlier in the same call may have moved onto or from such a page, no page script runs but
+  the shipped read-only ones and that send script, whichever browser tool runs it, a navigate to a `javascript:`
+  address included. A step that may move a tab is a navigate, a click, a key, a drag, words typed with a line break, a
+  form value, an upload or a page script that acts or cannot be read, on any page, a local app's included; after any
+  other move a read runs, and a script that acts or cannot be read runs in a call of its own, as protection against a
+  redirect onto a chat (one more call, and no code). On every other messaging site's page main's rule judges a script:
+  a read runs, one that acts waits for the code (`window?.open(` among them), and one the guard cannot read is refused.
+  A time's code binds the exact step. The four Messenger
+  address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
+  `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
+- **What review round 4 found** (core). The messages sender's ticket is filed for each run of the sender a command
+  makes (its program resolved as the write rules resolve one, through links), bound to that run's file, arguments and
+  folder, and taken only by that run: by a process of the harness whose hook filed it whose own command line, as the
+  system shows it, is that run's (round 5: a ticket filed for a run that never ran was taken by an identical run the
+  guard never saw), so a `cat` or a `grep` of the sender files none and two sends in one line take one each. Another session's call voids a send step only in the same browser, on its tab or naming none, when it can
+  change the page and no hook refused it, and only the extension's `Created new tab. Tab ID: N` makes a tab this
+  session's. The newest list of tabs across sessions decides a tab's page. A batch closes 12 hours after its code was
+  typed, as `sends status` says. The day's ledger reads a Messenger send's own report, so `synthesis sends log` names
+  one its script declined as not sent. A listing prints as its code any character whose name says it is a blank,
+  filler, joiner, subjoiner, conjoiner or selector.
+- **What review round 5 found** (core). The moved rule counts every step that may move a tab (above), honours `exact`
+  only on the guard's own steps for a driven browser, never on an agent's call, and on a Messenger site's page names
+  that page's rule (the read tools) rather than a second call that rule refuses too. A sub-agent's send step reads its
+  own record for the tab list and the tabs_create that make its tab its own. Two moves made to beat the reader are on
+  the runtime doc's open list.
+- **What review round 6 found** (core). As ruled, a page script moves a tab only when it can navigate (a location
+  change, by an alias or `Object.assign(location, ...)` too, `open`, a history step, and off a local app a click, a
+  submit or a dispatched event), not when it sets a value or writes by fetch, and on a local app's page a navigate or a
+  click moves nothing, so a click and then a script that clicks Save runs there; a local page that sends the tab on,
+  and a page that redirects itself, are on the open list. The sender's ticket reads the system's `/bin/ps` with a clean
+  environment, whatever comes first on PATH.
+- **What review round 7 found** (core). As ruled, a hook whose ancestors hold no harness process of the session's own
+  (shells alone, or a login, a remote login or a multiplexer every program of a terminal shares) files no sender
+  ticket, and each send waits for its code; round 6's binding to the topmost shell, which two sessions under it shared,
+  is gone. An entry spent by a call that is then held is given back, as a per-call grant is: an "undone" line in the
+  spends ledger and the batch's spent mark taken back; a call left with no answer keeps its spend.
+- **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
+  request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
+  batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
+- **The Messenger importer reads the filtered chats from before the switch to encryption.** Meta's regular download files them under `e2ee_cutover_filtered`, as `filtered_threads` is to `inbox`; the importer refused such a download with "not a folder this layout holds". The section is now read like `e2ee_cutover`.
+- **A program that loads synthesis another way is judged as one that imports it, and a check a script or the CLI enters
+  reads a recorded transcript only inside a harness's own folders.** Review round 4 of this fix found the guard read an
+  agent's Python program as reaching synthesis only when a line began with `import synthesis` or `from synthesis`, the
+  same before this release: a program that loaded it through `importlib`, `__import__`, `exec` or `eval` of a string it
+  built, or `runpy`, from a clone or the plugin cache, could write the send ledger's lines, open a send window with no
+  code, void a grant, or point the session's recorded transcript at a record it wrote and grant itself what a check a
+  script enters releases, such as a send by the local-messaging sender. A program that hands a loader (`exec`, `eval`,
+  `__import__`, `importlib`'s and `runpy`'s, `pkgutil.resolve_name`, `pydoc.locate` and the like) a name or a text that
+  says synthesis as code does (the package's name alone or leading a dotted name, an import of it, a path to its folder
+  or one of its files), through its arguments, a name it assigns, its own function's parameters or the words it is
+  handed, or that runs a file or loads a module of its own whose code reaches synthesis, now waits for the principal's
+  code as a script file and is refused on the line or its input, as one that imports synthesis and reaches it in a way
+  its reader cannot follow; the modules of its own that a program on the line imports are read as a script file's are.
+  A program whose loaders are handed other code passes, whatever else it says about synthesis. With no transcript in a
+  hook's payload, a check reads the path the prompt hook recorded only inside the folders each harness keeps its
+  records in as the prompt hook's environment named them, recorded beside it; the environment of the command running
+  the check, which an agent sets, never widens them, now that the runners below are read too. A record from an earlier
+  release names none, so a script's check holds until the session's next prompt. Codex's archived rollouts count as its
+  records. Of 73,637 shell commands recorded over 60 days and judged under the hook's 3 s deadline, none newly waits or is
+  refused, while two planted programs that load synthesis through `importlib` do.
+- **A shell script a command runs, the test files pytest runs, and programs run through `ipython`, `uv run` and their
+  like are judged as the programs they hold.** The same review found the guard read a shell script's text only for the
+  protected folders it names, and never read the test files pytest collects, an `ipython -c` program, or what `uv run`,
+  `poetry run` or `pipx run` start: through any of them, a program could import synthesis in plain words and open a send
+  window, void a grant, or record a transcript under folders of its own. A shell script run by a shell, by its path or
+  sourced is now judged as the command lines it holds, three scripts deep, a script the line writes from a heredoc
+  by its text, and `$0` as the script's own path; one the guard cannot open waits. A line of Python in such a script, inline
+  or on its input, that reaches synthesis waits for the principal's code with the script's bytes bound to it, where the
+  same line typed on the command is refused. The release's own scripts are trusted as
+  before, the CLI's launcher among them where install wrote it, in the synthesis home's `bin`: a launcher anywhere else
+  is read as what it runs. A Python script run by its path, `ipython`, and what `uv run`, `poetry run`, `pipx run`,
+  `pdm run`, `uvx` and their like start are read as Python and as the command they run. The test files pytest collects
+  and the conftests it loads are read for one of the writers approvals rest on, or synthesis loaded another way, unless
+  each test file runs with the synthesis home at a temporary path for every test: under a fixture that sets
+  `SYNTHESIS_HOME` (or `HOME`) from the test's `tmp_path` and is autouse, in a conftest above the file or in the file
+  itself, or that every test in the file requests, as synthesis's own conftests do, so the suite runs from its checkout
+  or a worktree with no code. Only a test, and the function-scoped fixtures it uses, run under that fixture; a writer
+  named, a path of synthesis's taken (`STATE = paths.state()`) or synthesis loaded anywhere else leaves the file read:
+  at a test module's or a conftest's top level, in a class body, a decorator or a default, in the file's own functions
+  those call, in xunit setup and teardown (`setup_module`, `setup_class` and their like), in a fixture scoped wider than
+  a function, in pytest's hooks, or in a plugin of its own named with `-p`. A writer is read under any name it is
+  imported by, and through `getattr` with its name written out, and a program that only reads that way passes, also
+  under a `PYTHONPATH` whose folders are there when judged, hold nothing the program imports or that hides a module of
+  Python's own installation (its standard library and site-packages) but a synthesis byte for byte the guard's own, and
+  are neither written into by the line nor beside another of its programs that may fill them unseen. A module the
+  line writes where a program on it starts counts as one that could stand in, as a file already there does. An import
+  after `;` on a program's line counts as one at a line's start. Of 73,936 shell commands recorded over 60 days, 12
+  newly wait: 6 runs of probe and measurement tests with no isolation the guard can read, and 6 programs whose import
+  after a `;` names one of synthesis's writers, as the same program on separate lines already did. One that waited is
+  refused: three `python3 -c` programs typed on its line import synthesis's own code in text Python cannot parse. Four
+  more wait only in the replay, which moves the synthesis home to a temporary folder: the CLI's launcher in the default
+  home, reached by a path the replay does not move, which in use stands in that home's own `bin` and is trusted. A
+  planted shell script and a planted test file wait too.
+- **Prose that names the approval functions is not a reach of them** (22.22). A peer Codex seat's small program, which
+  only wrote its own project-management files, was refused as running synthesis's approval code: the self-grant rule
+  matched the names of the approval and send-window functions anywhere in a program's text, and strings it wrote to a
+  file quoted them. Now the rule reads the program's code: a string counts only where it is the bare name or a dotted
+  path to it (as getattr, a subscript or attrgetter takes it), an f-string only for its expressions, and comments not
+  at all. A program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function), or starts a program
+  (node's child_process family, Python's subprocess, os.system, os.exec and os.spawn), keeps every string: a string it
+  hands that program, or writes to a file it then starts, is code, and one that starts `synthesis sends open` is refused
+  as one that opens the window (review round 1). A call, an import, an attribute reach, a getattr or subscript by the
+  name, and a program it starts that reaches them are refused as before. A script the same line writes with `cat`
+  from a heredoc (`cat > s.py <<'EOF'`) and then runs is judged by the heredoc's body, as the script it is: one that
+  calls the approval or send-window code waits as a script file's would (an older gap, the same on 5.23.1); one the
+  line writes any other way is not read (the runtime doc's open list). Replayed over 60 days of this
+  Mac's records, each guard from its installed runtime: of 257 commands the rule could fire on, 155 were refused for this
+  reason before and 66 after; 88 now pass, 1 waits on another rule, and 5 that passed now wait, each a heredoc script read
+  as its body. Of the 119 that review round 1's head let pass, 88 still do and 31 are refused again, programs that start
+  a program. Read by Python's own syntax tree (78) or its tokenizer (10), none of the 88 reaches the functions in code,
+  and four planted self-grant programs are refused before and after.
+- **A call Codex's hook refused is left out, as Claude Code's is** (core). The page tracker and the send step leave out a
+  call a hook refused, and knew only Claude Code's words for a refusal, so a call Codex refused (its result `Command
+  blocked by PreToolUse hook: ...` or `Tool call blocked by PreToolUse hook: ...`, direct or made inside a code-mode
+  script) counted as run: a refused navigate placed the page a browser tool then acted on, and another session's refused
+  call voided a send step.
+- **An autopilot run stops when its own work outruns the principal's, and the stop holds** (`synthesis-autopilot`
+  4.2.0, plan item 22.37(d), the principal's rulings of 2026-11-16). A review of a run's own fixes can always find one
+  more way around them, and each finding can become an item, so a plan could keep growing while the principal's own
+  work waited. Each checklist item now carries its origin: `origin: principal` when it delivers the principal's
+  request, their backlog or a build their ruling ordered (another session's request counts), `origin: self` when it
+  only fixes, reviews or re-reviews what the run produced. An item added after engagement carries `added <time>`, and
+  a checked item `closed <time>`; the template marks the items a plan starts with as principal, and a run that adopts
+  origins mid-run tags every item and stamps what closed in the last 24 hours. At every wake `cycle` counts, over the
+  last 24 hours, the principal items closed and the self-generated items added, prints both and writes them on the
+  wake's ledger line, and at each day's first wake writes the open principal items under a new `## Backlog count`
+  section. When the second outnumbers the first, or the open principal items rose two days running (the day before
+  yesterday, yesterday and today, each higher than the one before), the count stops the run until the principal
+  answers, past its 24 hours while the count's blocker is open and alerted with no answer after it, when the line says
+  the question is still waiting: `cycle --advanced` refuses the advance and prints the one line to bring them, ending
+  "Continue, narrow, or stop?" and naming any item whose origin or time it could not read; a cycle that only names a
+  wait is recorded and opens with "start nothing new until the principal answers", as does the hourly wake's prompt.
+  The stop is the one exception to never blocking a whole run on one question (binding rule 8 and the decision
+  protocol): the turn-end check asks for the line in any open status but paused, asks a run that has asked to set
+  `Status: blocked`, and names every item added or closed after the count blocker's alert until the principal is told
+  and alerted again. Only the principal's own reply lets the run go on: quoted on the `Principal answer:` line with
+  where and when they gave it, its first word continue or narrow (a reply such as "Yes, continue." is quoted from that
+  word, the whole reply kept on the checked blocker), dated after the count blocker's alert and inside the window, and
+  never written from the agent's own judgement, since the count's question is a checkpoint the principal reserved. A
+  time more than five minutes ahead, or one that cannot be read (a year such as 9999 used to end `cycle` with a
+  traceback and switch the turn-end check off), is rejected and named: a self item with such a time counts as added
+  now, a principal item as not closed, and both checks keep working. A plan written before origins counts nothing and
+  never stops, and `cycle` says so once; in a plan that counts, it names each item it could not read once. The
+  session-start brief, after compaction too, says a stopped run waits for the principal's answer and gives the line.
+  The check reads only the plan it already loaded, and each section's items once: on a 201-item plan with 2,000 ledger
+  lines and 60 days of counts the whole check took 1.0 ms under Python 3.12 and 1.4 ms under Apple's 3.9; on a real
+  620 KB plan of 146 items, with every item tagged as the run's own so the count stops it and reads each item against
+  the alert, it took 9.7 ms and 11.7 ms, and as a new process 32.3 ms where the hook budget allows 43.1, twice what
+  its standard-library modules take to load there (77.0 against 124.2 under 3.9). It imports nothing new. The fan-out
+  rules and binding rule 11 name the principal's cap of three agents at once. Binding rules 8, 11 and 14 carry these;
+  `references/plan-file.md` the convention, the answer and the template; `references/procedure.md`,
+  `references/turn-end-check.md`, the re-entry protocol and runaway control the rest. To make room for rule 14, the
+  Procedure's six numbered steps (1,313 bytes) moved word for word from SKILL.md to the new `references/procedure.md`;
+  SKILL.md keeps the helper path and a pointer, and is 7,479 bytes. The crafted ways past the count that remain (an
+  item of the run's own marked principal, a close stamped again later, one of the principal's items split in several,
+  work done during a stop without its time) are on the open list in `docs/runtime-integration.md`.
+- **A review has caps, and the coordinator holds them** (`synthesis-adversarial-review` 2.1.0). Two review rounds per
+  item, counted per item, so a fix, or a fix to a fix, never starts them again. After the second, the coordinator
+  applies the test: a finding blocks only if an honest agent would hit it in ordinary work or it appears in the
+  principal's records, and anything else goes on the open list, as the adjudicator records. The coordinator bounds the
+  review, not the reviewer. At most three agents run at once, and a release ships what has passed review and never
+  waits for another round. Binding rules 15 and 16, in full in the new `references/review-caps.md`; the findings
+  template gains a `Rounds:` line.
+- **One ordered backlog per project, and it must shrink** (`synthesis-project-management` 3.6.0). The plan CONTEXT.md
+  names holds it, each item marked with its origin as autopilot marks it. Its open principal items are written at each
+  day's first session; two rises running mean stop and re-plan with the principal. At every checkpoint, principal
+  items closed are counted against self-generated items added since the last; when, over a day, the second outnumbers
+  the first, new work stops for the principal's one line. Work goes top-down: finish, ship and install before anything
+  new, and a side quest only when it serves the principal's goals: it unblocks the current item, it is an important
+  issue that serves those goals, or the principal asked for it. Binding rules 14 to 16, in full in the new
+  `references/backlog.md`. The checkpoint's procedure leads to that count from its step 4 (`synthesis-checkpoint`
+  2.1.0).
+- **Decide what the goals already decide** (`synthesis-thinking-framework` 3.1.0). The principal's ruling of 2026-11-16:
+  when a recommendation follows from their goals, guidelines and wish for the best-quality work, the agent decides it,
+  acts, and reports it in one line. What still goes to the principal is the project's rule as the brief for this
+  change gave it: what needs their own authority (money, sends, deploys, their accounts and settings, their voice, an
+  approval only they can give, a checkpoint they reserved, whose answer is never written from the agent's own
+  judgement), or a real conflict between their goals that their rulings don't settle. The rule names its approval
+  item "an approval code", the runtime's typed approval; this skill ships in the hook-free directory package, which
+  has none and whose check refuses the phrase, so the skill says what the item means anywhere. Binding rule 10, in
+  full in `references/decision-ownership.md`. To make room, the last paragraph of "Decision ownership and execution"
+  (492 bytes, on the decisive-uncertainty method) moved word for word to the head of
+  `references/decisive-uncertainty.md`, its link now naming that file; SKILL.md keeps a one-line pointer and is 7,872
+  bytes.
+- **The deploy guard holds a deploy CLI's own script run by an interpreter.** A production deploy ran on 2026-11-16 with
+  no approval asked, as `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=<site>
+  --branch=main`: the guard read an interpreter's script from the start of its path, so `wrangler pages deploy` never
+  matched, while `npx wrangler`, `./node_modules/.bin/wrangler` and bare `wrangler` were held. A script an interpreter
+  runs by path is now also read by the names it answers to: its basename without a `.js`, `.mjs`, `.cjs` or `.ts`
+  extension (a `.bin` shim's name too), and the package it sits in under the last `node_modules`, by the name after
+  its scope; netlify-cli runs netlify, firebase-tools runs firebase, and npm's own `npm-cli.js` runs npm. Such a
+  deploy is held with the same words as `npx wrangler`, and a Python script by path is read the same way (`python3
+  venv/bin/twine upload`). A dry run, `--help` and the same CLIs' ordinary commands (`pages deployment list`, a draft
+  netlify deploy, `npm install`) stay free. A copy of a CLI under another name is not read as the CLI; the open list
+  in `docs/runtime-integration.md` says so.
+- **The skill format takes the current prompting guidance** (backlog item B2). `docs/skill-format.md` gains rules 8 to
+  22, each with its reason, on writing a skill's text the way current models read it, from Anthropic's and OpenAI's
+  current guidance, which its new "Where these rules come from" section names: normal volume, saying what to do, scope,
+  one home per rule, the rule as it stands, detail matched to risk, a named check, approval as the last step, when to
+  delegate, examples, an explanation rather than the reasoning, outside text as data, descriptions, what SKILL.md
+  holds, and measured rewrites. A linked file's own contents list starts at 100 lines, not 150, since a model may read
+  only the first 100 lines of a long file; CONTRIBUTING.md says the same. The format test checks the three parts it
+  can check with no false alarm on any skill today: a description in the first or second person, a SKILL.md that limits
+  tools or updates in general, and a SKILL.md that asks for the model's reasoning in its output. No skill's text
+  changes here; the rewrites that apply the rules come later, each measured against an evaluation.
+- **An agent's write of the guard's own settings waits for the principal's code, and one of a git hook is refused** (plan
+  item 22.20).
+  `~/.synthesis/v5/config.json` holds the guard's own settings: the commit lines he approved, his own repositories, the
+  hosts his action sheets upload to, the signatures a send window lets through, the forbidden phrases, the account each
+  workspace acts as and the turn-end judge's settings. `~/.synthesis/v5/git-hooks` holds what git runs before every
+  commit, merge and commit message in every repository. A review on 2026-11-15 found that a file tool rewrote either
+  with no code, and a second showed what a written setting reaches: the turn-end check made to run any program, the
+  cloud judge made to post to any host. A write of the settings now waits for his code for exactly that call; the git
+  hooks lie in the runtime's own protected folder, where a write is refused outright (A8). A file tool (Write, Edit,
+  MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the file
+  and everything it writes. A shell command is read as for the protected folders, with these two among them (a
+  redirect, `cp`, `mv`, `tee`, `install`, `ln`, `sed -i`, `rm`, `dd`, `curl -o`, a pattern that names the config, a
+  folder changed throughout, a Python, node or perl program that writes there or starts a command that does, a program
+  using synthesis's own `paths.config_file()`), and bound to the command, the folder it runs in, each script it runs and
+  each file it names as it stands, so a file changed after the approval makes it a new command. The copy that installs
+  his settings from his private repository after a pull request merges waits like any other write: a change to the
+  guard's settings changes what approvals mean, and no agent grants itself an approval. A path is judged where it really
+  leads and in any case, so a link made beforehand, `..`, `~`, `$HOME` or capitals change nothing. A command that also
+  reaches the state folder, its board or a harness's transcripts is still refused outright. Reading needs no code
+  (`cat`, `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, `cat` for a copy); `cp` and
+  `ln` of them wait, as for every protected file, since they can link as well as copy. Codex's and Muse's shells are
+  now judged in the folder a command names as its own (`workdir`), not the session's, so a bare name written there lands
+  where the guard looks. A config that cannot be read held every shell call and let every file tool through unjudged, so
+  a file tool could rewrite the config or forge a grant in the state folder; a file tool is now judged without it: an
+  ordinary write goes, the config's repair waits for his code, the state folder stays refused. The installer's own
+  route (`synthesis install`, `synthesis update`, the release script's install stage) is unchanged, by his ruling on
+  the sandbox that releases install from the protected tool without a code. Measured first, read only, over 60 days of
+  this Mac's records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, each call
+  counted once): no file tool wrote either; 19 shell commands on 12 days copied his settings into place from his private
+  repository (5 on 2026-10-22, 2 on each of three other days, 1 on the rest), 1 other shell command wrote the config,
+  and the guard's Python reader holds 15 programs on 6 days as writing one or the other. Replayed over the 39,360
+  recorded calls that name the settings, `.synthesis` or `v5-config`, and every file-tool call: 40 newly wait for the
+  code, 19 of them writes of the settings and 21 commands that name them while running a program the guard cannot prove
+  only reads or writing where it cannot read; 41 that already waited for a protected folder now wait for the settings'
+  code; none is newly refused and none newly passes; no file-tool call newly waits. Judging a shell command took a
+  median 3.0 ms against 2.8 before, and its 99th percentile 80 ms against 72; a file write through the hook is held to
+  the hook's budget by a test of its own.
+- **What Codex types into a session is judged as the line it is** (22.20, review round 1). Codex starts a long-running
+  process with `exec_command`, on a terminal with `tty: true`, and types into it with `write_stdin`. No guard read that
+  tool, so a shell started on a terminal and a write typed into it reached the guard's settings, its hooks and
+  everything else the shell guard protects with no code. `write_stdin` now reaches the hook: the PreToolUse matcher in
+  `hooks/hooks.json` names it, which makes Codex ask once more to trust the plugin's hooks (Muse runs the hook for every
+  tool, and its manifest does not change). A typed line is judged in the folder its session's `exec_command` named,
+  found by the session's number in the record (an `exec_command` whose output gave it, or a code-mode script that
+  started one command and whose output gave it): as a command line, by every shell guard, and for a program that is no
+  shell also as its input; typed into an interpreter started with no script, with all it was typed as its program. Text
+  typed before and not yet submitted joins the line, so a line split across calls is judged whole. A poll and keys that
+  start nothing new (Ctrl-C, Ctrl-D, Enter) pass; keys and history that edit or recall a line (backspace, Tab, an arrow,
+  `!!`, `fc -s`) wait. A session the record does not show, a shell whose folder or variables a typed line changed (`cd`,
+  an assignment, `export`, `alias`, a bare folder name), and a shell in a container or reached by ssh on this machine
+  let only a line that just reads go without a code. Measured over 60 days of Codex's records: no `write_stdin` as a
+  function call; inside 119,058 code-mode scripts, 15,325 polls, 143 keys, 804 submitted lines and 463 unsubmitted texts;
+  17 interpreters started on a terminal with no script, all on one day, and no shell. Replayed over the 1,276 typed
+  calls that were neither a poll nor quiet keys, each judged on the record as it stood then: 1,121 pass, 132 wait as
+  typed into a session the record does not show (on two days), 23 for keys or history that edit or recall a line, and
+  none is refused. An interpreter or a shell started on a terminal with no command is still not held at its start.
+- **An agent's write of a shell's startup files, Claude Code's shell snapshots or a harness program waits for the
+  principal's code** (plan item 22.26). Claude Code runs every command through zsh, which reads `~/.zshenv` after
+  sourcing a snapshot of the shell; Codex runs `bash -lc`, which reads `~/.bash_profile`. A review on 2026-11-15 wrote
+  those files with no code, and an ordinary `ls` then ran the agent's code first; it also showed `synthesis doctor`
+  running an agent-written `~/.local/bin/codex`, which wrote the runtime. A write now waits for his code for exactly that
+  call, bound and read as for the guard's own settings: `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and
+  `~/.zlogout` (and the same in `ZDOTDIR`, from the environment or where `~/.zshenv` sets it), `~/.bash_profile`,
+  `~/.bash_login`, `~/.profile`, `~/.bashrc`, the files `BASH_ENV` and `ENV` name, Claude Code's `shell-snapshots`; and
+  `claude`, `codex`, `muse` and `gh` at every folder on PATH and in the vendors' known places that this user can write,
+  whether or not a file is there yet (one put there runs instead), each link on the way to the file it ends at, the
+  folder its installer keeps it in (Claude Code's versions, the desktop app's `claude-code`, Codex's app-server CLI, a
+  Homebrew keg or cask, an npm package, the Codex CLI folder inside an app) and the files muse keeps beside its launcher.
+  An installer told to change one of them waits too, since it writes where the guard does not see: brew or a Node
+  package manager installing, upgrading, removing or linking `gh`, `codex`, `claude-code` or their npm packages, a bare
+  `brew upgrade` or `npm update -g` while one is installed that way, and `claude update` or `claude install`. Reading
+  them, sourcing a startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or
+  by its path (a launcher's text may name where its program is kept), and installing other tools need no code. A
+  harness's own variables that name its program or a startup file (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`)
+  hold no program that reads the environment or hands it to a child, and a name that only begins with a protected path
+  (`muse-bin-<version>` beside muse, `ghostscript` beside gh) names another file. The vendors' known places now live in
+  `paths`, which the doctor and the guard both read. A protected path outside the home folder had a `~` spelling that
+  matched any `~` a program holds (reached only by these paths); a program's text is looked through only for the
+  protected parts it holds, and the protected paths, their real paths and the variables that hold one are
+  read once, so judging a command takes about as long as before with some 60 more paths (1,500 recorded commands: a
+  median of 2.3 ms against 2.0, 8.1 s in all against 7.5; 3.8 ms and 12.3 s without this); a variable given a
+  value (`XDG_DATA_HOME=…`) is no longer read as a path built from that variable; and a command that waits whatever is
+  protected (it names synthesis's own writers, or runs input the guard cannot read) waits for the protected folders'
+  code in those words, not as a settings hold that lists every kind of setting first. Measured first, read only, over
+  60 days of this Mac's records (Claude Code, Codex and Muse, each call counted once): 2 file-tool writes of a harness
+  program (the `codex` launcher in `~/.local/bin`, rewritten on one day), 1 shell write of a startup file (`~/.zshrc`),
+  and at most 8 installer runs told to change a harness program, on 7 days (brew naming gh, codex or claude 3, a bare
+  `brew upgrade` 3, npm installing a harness package 1, `claude update` or `claude install` 1).
+- **A claimed file written as `~/…` is a claimed path.** The shell's writes were joined to the folder a command ran in
+  before the home folder was put in, so `echo x > ~/…/notes.md` into a file another session had claimed was never
+  looked at, and the session export tagged no project for such a write. Each target now has `~` put in first, as the
+  shell does.
+- **A program under the name of a command the guard judges by name is read as what it is** (22.32). The guard read a
+  program the agent runs by its path when it had a name of its own, but one named like a command it judges by name (a
+  shell, an interpreter, `ls`, `git` and their like) was judged as that command and its file never read: by its
+  absolute path, by a relative one, or found first on PATH in a folder the user can write. A review (2026-11-15, C9)
+  replaced the runtime's guard that way in nine forms of nine. Now a command word the guard judges by name that
+  leads, by its path or through PATH as the shell looks it up, to a script (a text file, with a `#!` line or none)
+  rather than a compiled program is also judged as that script, under the rules for scripts: the command its `#!`
+  line starts, or a shell for a file with none, goes into what the line runs, and its judgment by name still applies
+  (a look-alike `npx` still has the deploy it is handed held). That holds for each wrapper's word (`env`, `nohup`,
+  `xargs` and their like), for the command a wrapper or `find -exec` starts from PATH (a builtin's name included:
+  `env echo` runs whatever `echo` stands first on PATH), for a PATH the line gives itself, for a word written as a
+  pattern, and for a look-alike the line writes before it runs it (a copy or a link is judged as what it copies, so a
+  real interpreter linked into a folder and run there passes). A builtin the shell runs itself is not looked up.
+  The commands that really are scripts pass by their name where their installer puts them: under its own name where no
+  program of the agent's writes (root's own, as macOS's `/usr/bin/cd`, `shasum` and `irb` and Linux's `which`, `egrep`
+  and `zcat`; the runtime's launcher in its protected `bin/`), and in a folder the user writes only under a name that
+  installer provides there (an npm package's bin such as `npx`, an interpreter's version manager shim, a Homebrew
+  formula's script in Homebrew's Cellar), the list in the guardrails' config reference, "Commands judged by name".
+  So does a script whose one line hands every word to a compiled program of that name root installed (`exec
+  /usr/bin/python3 "$@"`, as CI puts Apple's Python first as `python`), and the launchers keep `HOMEBREW_PREFIX`,
+  `HOMEBREW_CELLAR` and the version managers' roots that it reads.
+  Measured first, read only, on 60 days of records (2026-09-16 to 2026-11-15: 265,897 shell runs, 252,649 distinct
+  commands): no such word led to any other script; 6,211 led to the synthesis launcher, 2,050 to npm's `npx` and 535
+  to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled look-alike (a
+  program built, copied or linked under such a name) is judged by its name, on the open list as crafted
+  (`docs/runtime-integration.md`).
+- **Site addresses follow the published sites.** The synthesis practices now share one site, synthesiswork.org, with a
+  collection for each, and the former synthesiscoding.org, synthesisengineering.org and synthesiswriting.org addresses
+  redirect to those collections. Each link now names the address its old one redirects to: the "synthesis writing"
+  footer link in 19 skill files (`https://synthesiswork.org/writing/`), the ecosystem footer of the slop-detection
+  manifest and prompt template and the homepage in the Claude Code plugin and marketplace manifests, the Codex
+  manifest and the directory package (`https://synthesiswork.org/engineering/`), and the README's related links,
+  including the two articles' new homes. synthesis-content-framing 2.0.1 routes topics to the coding, engineering and
+  project-management collections and keeps the replaced lines in its coverage map. The content-quality no-removals
+  allowlist records the seven frozen baseline lines whose link changed, each with its exact old and new text.
+  tools.synthesiswriting.org is unchanged.
+- **The date rules reach a site published from a JSON catalog by upload.** Three gaps let a page go live early or
+  move a published date unseen. `deploy_catalogs` names JSON catalogs whose articles' `published` time, or documented
+  `publishedInstantOverride` instant, the date rules now read beside front matter, as `<catalog>#<id>`: an instant
+  kept only in a catalog, which no front-matter date line shows, can no longer move on a live page or go live before
+  its time. A `deploy_also_renders` entry `{"variable": "NAME", "default": "<path>"}` follows the path the deploy
+  command hands its build in `NAME`, so a build that reads its source from another worktree has that tree checked; a
+  value the guard cannot follow to a checkout blocks the deploy, as does a renders map of another shape. And an
+  approved deploy's record now keeps the HEAD it was approved at: the next upload of that site, and the check of a
+  repository it renders, compare published dates with that commit, since a change can reach origin's main before its
+  upload; a push still compares with origin's main. The guardrails config and deploys references say so, and the line
+  budgets rise by the measured 74, itemized.
+- **What the integration review of 5.24.0 found** (core). Its four blocking findings, each with its failing test committed
+  first. CI's Linux runners: the install tests ask the interpreter the launchers pin for its compiled code (Ubuntu 26.04
+  pins its own system Python, a newer one than the suite's, so the suite's own tag found none), a test runs only the
+  shells a system has, sets `XDG_CONFIG_HOME` itself and reads module paths that hold only what it tests, and a command
+  found in a system folder through links root installed is that command whatever the file it reaches is named
+  (Ubuntu's `/usr/bin/open`, through `/etc/alternatives` to the script `xdg-open`, was read as a look-alike); a link in
+  a folder the user writes, or a chain through one, is still read. The folder rule reads an alias only where a command
+  on the line defines one, never a word in a message, a note or a heredoc's body (the private skills' installer, whose
+  comment calls its update step "just an alias", waited at every run), and now catches one whose value changes folder;
+  a function moves the folder only when its body (any compound command) does and it is called outside a command
+  substitution, so a helper that only reads, beside a `cd`, passes; a text the parser cannot read is still left
+  unplaced by a CDPATH it cannot read.
+  The HOME rule reads a heredoc's body only where a shell runs it (fed to a shell, `source` or `eval`, itself or down
+  its pipeline, or inside a command substitution), an unquoted body's substitutions always, and what `echo` or `printf`
+  only print as data. A process substitution (`diff <(…) file`) is a file's name to its command, where the line was
+  read as a subshell and then a command named `file`, which 22.21 ran as a script; and a `case` statement's patterns
+  run nothing (a list of notes there was read as scripts and ran the guard out of its time). A pytest command whose own
+  words put every home at absolute paths apart from every protected folder is not read (`env -u PYTHONPATH HOME=…
+  SYNTHESIS_HOME=… … python3 -m pytest -q tests`), and pytest asked only for its version or its help reads only the
+  conftests it loads at its start, for what they run outside a test. Re-judged on this Mac with the fix, every Claude
+  Code call of the review's replay in those classes passes: the 56 the folder rule held (the private installer's runs
+  among them), the 20 the HOME rule held, the 12 pytest runs and the four that ran out of the guard's time, one of
+  them a line of two nested scripts now judged in 2.1 s where it took 2.8: a pytest reading is made once a call, and
+  the transcripts' folders once for the variables that place them. The guardrails' config and deploys references and
+  `docs/runtime-integration.md` say so: `deploy_also_renders`' default names the checkout itself, never a file in it;
+  the open list records how the merges narrowed the reading of scripts a line writes (parked for the sandbox on
+  2026-11-16) and gains the ritual-script holds' wording and three `eslint`/`tsc` holds. The line budgets rise by the
+  measured 203, itemized. And CI runs the suite in six jobs for each system and Python, the core's tests in four parts
+  by file name and the skills' in two by the skill's name: the second half of 5.24.0's core tests (361 of their 530
+  seconds on this Mac) was cancelled at the ten-minute limit on every macOS runner, at 9527c158 as at the fix, and the
+  skills' job (203 seconds here) once on Apple's Python. Each part is now at most 169 seconds on this Mac, and the source
+  lint holds that each test file runs in exactly one job. Run to its end on macOS for the first time, that half showed
+  three pinned-interpreter tests failing there: they plant `DYLD_INSERT_LIBRARIES`, which macOS's loader strips from
+  `/bin/sh` where System Integrity Protection is on, so a launcher clears it; GitHub's macOS runners have it off, and
+  the loader stops `/bin/sh` itself on a planted library before any launcher line runs. They plant it only where the
+  loader strips it.
+
 ## [5.23.2] - 2026-11-15
 
 - **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved

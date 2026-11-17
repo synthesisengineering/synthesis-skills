@@ -268,6 +268,140 @@ def test_a_site_that_renders_another_repository_checks_that_repository_s_dates(s
     assert "approve" in _push(site, {"push_deploys": [str(site)]})  # without the mapping, an ordinary deploy
 
 
+# --- a catalog's dates, the source a build is handed, and what an upload published (2026-11-16) ---
+# A unified site keeps each article's published instant in a JSON catalog, beside front matter that shows only the
+# source clock. A personal site's build reads that catalog from whichever checkout its deploy command hands it. And a
+# site published by upload can have its change on origin's main before the upload, so main is no record of what is live.
+
+FIRST, SECOND = "urn:uuid:00000000-0000-4000-8000-000000000001", "urn:uuid:00000000-0000-4000-8000-000000000002"
+CATALOG = {"deploy_content": ["astro-site/content/articles/*/index.md"], "deploy_catalogs": ["astro-site/content/catalog.json"]}
+
+
+def _utc(when):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(when))
+
+
+def _article(site, ident, when, instant=None):
+    """One catalog article: its Markdown, whose front-matter date the entry's `published` repeats, and its entry, with
+    the documented instant that replaces the published clock where it has one."""
+    page = site / "astro-site" / "content" / "articles" / ident.rsplit(":", 1)[-1] / "index.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(f"---\ntitle: \"An article\"\ndate: '{_stamp(when)}'\n---\n\nBody text.\n", encoding="utf-8")
+    catalog = site / "astro-site" / "content" / "catalog.json"
+    data = json.loads(catalog.read_text(encoding="utf-8")) if catalog.exists() else {"schemaVersion": 1, "articles": []}
+    entry = {"id": ident, "published": _stamp(when), **({"publishedInstantOverride": instant} if instant else {})}
+    data["articles"] = [a for a in data["articles"] if a["id"] != ident] + [entry]
+    catalog.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+
+
+@pytest.fixture
+def unified(tmp_path):
+    """A site published by upload, whose catalog's one article went live last week with a documented instant."""
+    root = tmp_path / "unified"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+    _article(root, FIRST, LIVE, instant=_utc(LIVE))
+    _commit(root, "first article")
+    subprocess.run(["git", "init", "-q", "--bare", str(tmp_path / "unified.git")], check=True)
+    _git(root, "remote", "add", "origin", str(tmp_path / "unified.git"))
+    _git(root, "push", "-q", "origin", "main")
+    (tmp_path / "elsewhere").mkdir(exist_ok=True)
+    return root
+
+
+def _upload(site, config, handed=""):
+    command = f"cd {site}/astro-site && {handed}npx wrangler pages deploy dist --project-name=site --branch=main"
+    return guards.check("Bash", {"command": command}, config, cwd=str(site.parent / "elsewhere"))
+
+
+def test_a_catalog_article_dated_ahead_is_refused_by_its_entry(unified):
+    _article(unified, SECOND, time.time() + DAY)
+    reason = _upload(unified, CATALOG)
+    assert "never go live before its stated date" in reason and f"catalog.json#{SECOND}" in reason
+    assert not (approvals.paths.state() / "approval-requests").exists()
+
+
+def test_a_documented_instant_ahead_is_refused_though_its_clock_is_past(unified):
+    _article(unified, SECOND, time.time() - HOUR, instant=_utc(time.time() + 2 * HOUR))
+    reason = _upload(unified, CATALOG)
+    assert "never go live before its stated date" in reason and f"catalog.json#{SECOND}" in reason
+
+
+def test_moving_a_live_articles_instant_is_refused_though_no_front_matter_changed(unified):
+    catalog = unified / "astro-site" / "content" / "catalog.json"
+    data = json.loads(catalog.read_text(encoding="utf-8"))
+    data["articles"][0]["publishedInstantOverride"] = _utc(LIVE - DAY)
+    catalog.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+    reason = _upload(unified, CATALOG)
+    assert "Published dates never change" in reason and f"catalog.json#{FIRST}" in reason
+    assert _stamp(LIVE, "%Y-%m-%d %H:%M") in reason and _stamp(LIVE - DAY, "%Y-%m-%d %H:%M") in reason
+    # The front matter alone shows nothing moved: without the catalog, an ordinary deploy.
+    assert "approve" in _upload(unified, {"deploy_content": CATALOG["deploy_content"]})
+
+
+def test_a_new_article_beside_an_unchanged_catalog_is_an_ordinary_upload(unified):
+    _article(unified, SECOND, time.time() - HOUR)
+    assert "approve" in _upload(unified, CATALOG)
+
+
+def test_a_catalog_the_guard_cannot_read_blocks_the_upload(unified):
+    (unified / "astro-site" / "content" / "catalog.json").write_text('{"articles": ', encoding="utf-8")
+    assert "could not read the content dates" in _upload(unified, CATALOG)
+
+
+def test_a_malformed_catalogs_config_fails_closed(unified):
+    assert "deploy_catalogs" in _upload(unified, {**CATALOG, "deploy_catalogs": "astro-site/content/catalog.json"})
+
+
+def test_an_upload_compares_with_what_its_last_approved_upload_published(unified):
+    """A change pushed to origin's main before its upload is not yet live: main cannot be the record of what is."""
+    _approve(_upload(unified, CATALOG))
+    assert _upload(unified, CATALOG) is None  # the upload goes, and its record keeps the HEAD it was approved at
+    _article(unified, FIRST, LIVE - DAY, instant=_utc(LIVE - DAY))
+    _commit(unified, "redate")
+    _git(unified, "push", "-q", "origin", "main")  # on main before its upload
+    reason = _upload(unified, CATALOG)
+    assert "Published dates never change" in reason and FIRST.rsplit(":", 1)[-1] in reason
+
+
+def test_the_brake_reads_a_record_that_keeps_the_published_head(unified):
+    _approve(_upload(unified, CATALOG))
+    assert _upload(unified, CATALOG) is None
+    _article(unified, SECOND, time.time() - HOUR)
+    _commit(unified, "a new article")
+    assert "within 45 minutes" in _upload(unified, CATALOG)
+
+
+def test_the_catalog_a_deploy_command_hands_its_build_is_the_one_checked(site, unified, tmp_path):
+    default = tmp_path / "default-unified"
+    subprocess.run(["git", "init", "-q", "-b", "main", str(default)], check=True)
+    _article(unified, SECOND, time.time() + DAY)  # ahead, in the checkout the command names
+    config = {**CATALOG, "deploy_also_renders": {str(site): [{"variable": "ARTICLE_CATALOG", "default": str(default)}]}}
+    handed = f"ARTICLE_CATALOG={unified}/astro-site/content/catalog.json "
+    built = f"cd {site} && {handed}bash build.sh cloudflare && npx wrangler pages deploy dist --project-name=site"
+    reason = guards.check("Bash", {"command": built}, config, cwd=str(tmp_path / "elsewhere"))
+    assert "never go live before its stated date" in reason and f"catalog.json#{SECOND}" in reason
+    # Without the assignment the build reads its default checkout, which holds nothing ahead: an ordinary deploy.
+    plain = f"cd {site} && bash build.sh cloudflare && npx wrangler pages deploy dist --project-name=site"
+    assert "approve" in guards.check("Bash", {"command": plain}, config, cwd=str(tmp_path / "elsewhere"))
+
+
+@pytest.mark.parametrize("value", ["$HOME/unified/astro-site/content/catalog.json", "unified/catalog.json",
+                                   "/nowhere/at/all/catalog.json"])
+def test_a_catalog_the_guard_cannot_follow_to_a_checkout_blocks_the_deploy(site, tmp_path, value):
+    config = {"deploy_also_renders": {str(site): [{"variable": "ARTICLE_CATALOG", "default": str(site)}]}}
+    command = f"cd {site} && ARTICLE_CATALOG={value} npx wrangler pages deploy dist --project-name=site"
+    reason = guards.check("Bash", {"command": command}, config, cwd=str(tmp_path / "elsewhere"))
+    assert "ARTICLE_CATALOG" in reason and "approve" not in reason
+
+
+@pytest.mark.parametrize("renders", ["{site}", ["{site}", 7], [{"variable": "X"}]])
+def test_a_malformed_renders_config_fails_closed(site, tmp_path, renders):
+    value = json.loads(json.dumps(renders).replace("{site}", str(site)))
+    command = f"cd {site} && npx wrangler pages deploy dist --project-name=site"
+    reason = guards.check("Bash", {"command": command}, {"deploy_also_renders": {str(site): value}}, cwd=str(tmp_path / "elsewhere"))
+    assert "deploy_also_renders" in reason and "approve" not in reason
+
+
 # --- an action sheet's upload to a private host the principal listed (2026-10-22) --------------
 
 SHEET_SCRIPT = Path(__file__).resolve().parents[1] / "skills" / "synthesis-action-sheet" / "scripts" / "publish_sheet.py"

@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:
   author: "Rajiv Pant"
-  version: "3.5.0"
+  version: "3.6.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -35,6 +35,9 @@ board (one small file per session).
 10. **Re-derive scope before dispatch.** A count in a record is a claim from when it was written; recount from live files and fix the record in the same pass.
 11. **A reader meeting newer state names its version and the update.** Never rewrite or "repair" a file a newer version wrote.
 12. **Dispatch Codex only through `scripts/codex_dispatch.py`;** never call Codex unavailable without `--doctor`.
+14. **One ordered backlog per project.** One checklist, in the plan CONTEXT.md names on `**Plan:**`, each item marked `origin: principal` (the principal's request or backlog, a build their ruling ordered, or another session's request) or `origin: self` (it only fixes, reviews or re-reviews what the work produced).
+15. **The backlog must shrink.** Write its count of open principal items at each day's first session; when it rises two days running, stop and re-plan with the principal. At every checkpoint count principal items closed and self items added since the last checkpoint; when, over a day, the second outnumbers the first, stop new work and ask the principal one line: continue, narrow or stop.
+16. **Finish before starting.** Work the list top-down: finish, ship and install an item before starting anything new. A side quest is fine only when it serves the principal's goals; anything else goes on the list at its place.
 
 ## Contents
 
@@ -43,6 +46,7 @@ board (one small file per session).
 - [references/coordination.md](references/coordination.md): how claims behave, scope over a task, context ownership and contribution files, the index claim, priority and stale claims, peer messages, worktrees, release trains, crashes, version skew, durable placement. Read before claiming alongside other sessions, and when a claim or message is refused.
 - [references/discovery-and-handoff.md](references/discovery-and-handoff.md): project discovery and the wrong-project guard, scope re-verification, status table, session start and end, handoff to another harness or Mac, work briefs between agents, sub-agent fan-out, common mistakes. Read when resuming, handing off or dispatching.
 - [references/codex-dispatch.md](references/codex-dispatch.md): the wrapper, its output, and the failures it removes. Read before dispatching to Codex.
+- [references/backlog.md](references/backlog.md): the one ordered backlog, each item's origin and times, the count at every checkpoint, the daily count that must fall, finishing first, and the side-quest test. Read when planning, when adding an item, and at each checkpoint.
 - [references/coverage-map.md](references/coverage-map.md): where every part of 2.21.6 and its scripts lives now.
 - [references/preserved.md](references/preserved.md), [references/preserved-coordination.md](references/preserved-coordination.md), [references/preserved-state.md](references/preserved-state.md): why the old machinery was cut, the incidents behind the kept rules, and the 2.21.6 text verbatim. Read only to review the cut.
 

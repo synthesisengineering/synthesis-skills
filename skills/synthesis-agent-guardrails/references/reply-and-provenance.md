@@ -4,6 +4,7 @@
 
 - [Why advice goes back to the model, not to stderr](#why-advice-goes-back-to-the-model-not-to-stderr)
 - [The reply check](#the-reply-check)
+- [The judge](#the-judge)
 - [The file-link rule](#the-file-link-rule)
 - [The provenance scan](#the-provenance-scan)
 
@@ -46,6 +47,89 @@ the reply back once with `Before this reply goes out, revise it: ...` when the r
 It never sends a reply back twice in a row and lets the reply through on any internal
 error: a turn-end check that fails closed loops forever. When a reply is sent back, revise
 exactly what it names.
+
+### The judge
+
+With a `judge` section in the config ([config.md](config.md)), a model reads each reply the shortcut list flags
+before it goes back (M38; the principal's rulings of 2026-11-14). The list, the built-in phrases and
+`shortcut_phrases`, stays the trigger and the backstop:
+
+- Only a reply with a list hit goes to the judge, so most turn ends pay nothing for it: of 6,081 recorded turn ends in
+  Claude Code, Codex and Muse over 30 days, 330 (5.4%) had one. Reading replies the list passes, to add holds, comes
+  later with its own gate.
+- It reads the reply by `synthesis/policies/shortcut-phrasing.md`, which turns on one question: does what the reply
+  holds back need the principal's code or consent (a gated send, spending, sharing their files, their calendar, a fact
+  only they hold), or does it sit inside the agent's delegated authority (its own records, the rest of delegated work,
+  a technical option, another route after one is blocked)? A reply that holds back several things holds if any one is
+  the agent's. Blind labels of 70 recorded hits found 7 real shortcuts and 3 unsure; 43 of the 49 hits of `your call`
+  were legitimate, 12 of them a phone call. The verdict is hold or pass, a rule, the exact words that decide it, a short
+  reason, and whether the judge is sure.
+- On this check the judge decides, since a reply sent back costs one turn: a hit it holds is sent back once with the
+  words it read and why, and a pass it is not sure of clears nothing. A hit the first reading is sure is benign is
+  asked a second, narrow question (`synthesis/policies/shortcut-asks.md`): does the reply ask leave for, wait on or
+  offer back a step the agent could take itself, one that sends, spends, shares and changes nothing others see? It
+  clears only when both pass surely (two prompts, the principal's decision 2(c)); the labeled hits the first reading
+  wrongly cleared were all such asks, set among choices that really were the principal's. A second question with no
+  answer, from a slow model or the hook's own time running out, clears nothing.
+- A judge that cannot answer (no model installed, the server down, past `deadline_seconds`, an answer that is not a
+  strict verdict, words cited that are not in the reply) leaves the list to decide exactly as before. A judge section
+  of another shape is said in the reply sent back, and the list decides until it is fixed.
+- With the reply, the judge reads the principal's last message before it: in a Claude Code record, the newest user entry
+  that no harness marked as not theirs, what a harness wrapped into it left out, cut to its last 3,000 characters. It
+  tells a step those words already asked for or settled from a choice still theirs. Codex and Muse records are not read
+  for it, so there the judge reads the reply alone.
+- The reply is data, never instructions: it goes in a block whose markers carry a code made from its digest, the request
+  is fresh and has no tools, and text in it that addresses the judge or claims to change its rules is held. The
+  principal's message comes in a block of its own, read as data the same way.
+- The local model answers on this Mac through Ollama's loopback API, at temperature 0.
+- `subscription` runs the judge on the plan of the harness the reply came from, through its own command line, so no one
+  buys API credits for it (the principal, 2026-11-15); it reads a reply first where no local model is configured, for a
+  harness the config names and a workspace not in `leave_out`. It runs only the harness's own program: `claude` or
+  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/usr/local/bin` and the apps' own folders). A `command` that resolves anywhere else runs nothing, so a written
+  setting does not choose what the Stop hook runs (logged as `not_the_harness`); a program planted in one of those
+  folders the person can write, or earlier on PATH, counts as the harness's own, an open item in
+  `docs/runtime-integration.md` (What remains open). Claude
+  Code's `claude -p` runs the configured model with
+  no tools, every hook off (`--settings '{"disableAllHooks": true}'`), no user settings, plugins or memory
+  (`--setting-sources local`) and no session kept, and the verdict comes through its structured-output tool as the
+  model's first act: an answer written as text first is asked for again after a summary step of Claude Code's own, two
+  to three seconds more. Codex's `codex exec` runs read only, ephemeral, without the user's config and with hooks off.
+  Each run is in a room of the judge's own under `state/judge/`, with `SYNTHESIS_JUDGE_RUN` set: a synthesis hook
+  started inside it returns at once, so a verdict is never itself judged, and the guard still guards. It runs on the
+  plan's sign-in alone: an API key, a gateway token or a cloud account in the environment is kept out of its run, since
+  print mode would use them before the plan, so its verdicts count against the plan's usage and cost nothing more.
+  A run that gives no verdict is logged with why in fixed words: `not_signed_in`, `unknown_flag` (a command line too
+  old for a flag the judge passes), `model_unavailable`, `missing`, `timeout`, `refused`. `synthesis doctor` reads each
+  configured harness's sign-in from its own status command and, where it is a plan, asks its judge one invented
+  sentence the same way (`judge.probe`, at most 20 seconds, nothing logged), and warns with the fix when it would not
+  answer or answers past the deadline, so the fall back to the list is never silent. Claude Code says `--bare`, which never reads the plan's sign-in, will
+  become the default for `-p`; when it does, these runs fail, the log shows `refused`, and the list decides.
+- The Stop hook is registered with 10 seconds in every harness, and the reply check gives the judge 8 of them from its
+  own start (the principal's approval, 2026-11-15), so a slow model never pushes the hook past its limit; a reply the
+  list does not flag never waits on a judge.
+- Where the judge is a service, the plan's or the cloud's, the two questions are asked at once, so a flagged reply waits
+  about one answer's time; this Mac's one local model answers one at a time, so there they are asked in turn.
+- `cloud` is the judge itself when neither a local model nor the reply's plan judges it, and otherwise a second opinion
+  only where the first verdict is unsure. It asks only its provider's own host over https (`api.anthropic.com`); a
+  `cloud.url` anywhere else is a section that cannot be used. Its key is read
+  at call time from `keys_file`, for the workspace the reply belongs to (its folder under ~/workspaces): `keys` names
+  the default and any workspace's own, and a workspace mapped to null keeps the word list. The key goes into the
+  request's header and nowhere else. The request asks for adaptive thinking and the verdict's strict schema, and the
+  certificate is verified with the system's bundle where the interpreter has none. Its spend is kept by
+  month in `state/judge/spend.json`; past `monthly_cap_usd` the other judges, or with none the word list, decide alone,
+  and the reply sent back asks the agent to tell the principal, once that month.
+- Verdicts are cached in `state/judge/cache.json` by the check, the policy's version and digest, the models and the
+  reply's digest, so the same reply gets the same answer. `state/judge/log.jsonl` records each with its model, policy
+  version, verdict, rule, counts and digests, never the reply's words.
+- Before a model or policy change ships, replay it: `scripts/judge_replay.py --since <date> --model <name>`, with
+  `SYNTHESIS_HOME` pointing at a copy of the config, judges the recorded list hits and prints counts only.
+  `--subscription <name>` judges on the plan of the harness `--harness` names, `--cloud <name>` on the cloud, and
+  `--leave-out <workspace>` leaves a workspace's items out of both, counted. With
+  `--labels` (rows of path, line, digest, source and label) it splits the labeled list hits by label with a fixed seed,
+  tunes on `--split dev`, and prints for each half how many real shortcuts, unsure and legitimate hits the judge
+  cleared, and the gate: no real shortcut or unsure item cleared, and the warm 95th percentile inside the deadline.
+  `--cleared` lists each cleared item's record, line and digest for a person to read in the record.
 
 ### What the reply check reads as a wait
 

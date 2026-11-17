@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Import a message export the principal authorized into private markdown transcripts, one per conversation.
 
-    python3 import_messages.py EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]
+    python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-message-exports/scripts/import_messages.py" EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]
 
 EXPORT is the export as downloaded: a ZIP, or the folder it was extracted to. It reads Meta's "Download your
 information" export of Messages in JSON (Facebook Messenger) in each folder layout it has used, and Messenger's
@@ -33,7 +33,8 @@ import zipfile
 from pathlib import PurePosixPath
 
 FORMAT_LINE = "<!-- synthesis-message-exports: transcript, format 2 -->"  # 2: keys no longer hold a sender or a folder
-SECTIONS = ("inbox", "archived_threads", "filtered_threads", "message_requests", "e2ee_cutover")
+SECTIONS = ("inbox", "archived_threads", "filtered_threads", "message_requests", "e2ee_cutover",
+            "e2ee_cutover_filtered")  # the filtered chats from before the switch, as filtered_threads is to inbox
 PARENTS = ("your_activity_across_facebook", "your_facebook_activity")  # the messages folder's parent from 2024, from 2025
 MEDIA_FOLDERS = ("media", "photos", "videos", "audio", "gifs", "files", "stickers_used")
 MEDIA = frozenset("jpg jpeg png gif webp heic heif bmp tif tiff mp4 mov m4v webm 3gp avi mkv m4a aac mp3 wav ogg oga "

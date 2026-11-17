@@ -19,7 +19,7 @@ Read when checking where a rule of the 3.14.0 text lives now (ruling D8). Every 
 | Date Verification | references/provenance-and-errors.md (verbatim); binding rule 12 |
 | Following Continuing Conversations | references/lookups-and-absence.md (verbatim) |
 | Error Handling | references/provenance-and-errors.md (verbatim) |
-| When This Skill Runs | SKILL.md (verbatim) |
+| When This Skill Runs | references/sync-protocol.md (verbatim; moved out of SKILL.md in 5.24.0, when its commands began naming the runtime's path) |
 
 ## Text other tests read
 

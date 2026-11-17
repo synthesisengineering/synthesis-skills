@@ -79,7 +79,8 @@ def test_runtime_files_changed_after_install_fail(runtime):
 
 def test_drifted_hook_script_fails(runtime):
     home, _ = runtime
-    (home / "bin" / "synthesis-hook").write_text(install.HOOK_SCRIPT.replace("-S", ""))
+    hook = home / "bin" / "synthesis-hook"
+    hook.write_text(hook.read_text().replace(" -I -S ", " -S "))  # isolation dropped from the pinned launcher
     assert doctor.check_hook_script(home).status == "fail"
 
 
@@ -438,7 +439,11 @@ def test_the_user_level_guard_carries_the_plugins_setting_and_failure_tail_and_c
     declared = doctor.codex_user_declaration(REPO_HOOKS)
     guard = declared["PreToolUse"][0]
     assert guard["hooks"][0]["onFailure"] == "block" and doctor.codex_hooks_problem({"hooks": declared}) == ""
-    assert doctor.codex_hook_hash("PreToolUse", guard["matcher"], guard["hooks"][0]) == USER_VECTORS[-1][3] != USER_VECTORS[0][3]
+    event, matcher, handler, listed = USER_VECTORS[-1]
+    assert guard["hooks"][0] == handler and doctor.codex_hook_hash(event, matcher, handler) == listed != USER_VECTORS[0][3]
+    # 22.20, review round 1: the matcher names Codex's write_stdin, so the guard's identity is new, and Codex asks its
+    # approval once more (the hash as the doctor reproduces Codex's, which the vectors above pin)
+    assert "write_stdin" in guard["matcher"].split("|") and doctor.codex_hook_hash(event, guard["matcher"], guard["hooks"][0]) != listed
 
 
 def user_level(tmp_path, declared=None, trusted=True, plugin_off=True, home=None):
@@ -2822,3 +2827,132 @@ def test_unsaved_counts_live_seats_claims_alone(tmp_path, capsys):
     assert [c.status for c in doctor.run_checks(find=lambda h: None) if c.name == "unsaved records"] == ["ok"]
     board.touch("S1")
     assert doctor.main(["--unsaved"]) == 0 and capsys.readouterr().out == "1\n"
+
+
+# ---- the plan's judge (M38): the fall back to the word list is never silent ----------------------------------------
+
+PLAN = {"judge": {"deadline_seconds": 3.0, "subscription": {"claude-code": {"model": "small-model"}, "codex": {"model": "small-codex"}}}}
+FAKE_STATUS = """#!/usr/bin/env python3
+import json, os, sys
+signed = os.environ.get("FAKE_SIGNED_IN", "plan")
+with open(os.environ["FAKE_LOG"], "a") as handle:
+    handle.write(json.dumps({"argv": sys.argv[1:], "keys": sorted(k for k in ("ANTHROPIC_API_KEY", "CODEX_API_KEY") if k in os.environ),
+                             "marker": os.environ.get("SYNTHESIS_JUDGE_RUN")}) + "\\n")
+if sys.argv[1:3] == ["auth", "status"]:
+    print(json.dumps({"loggedIn": signed != "none", "authMethod": "console" if signed == "api" else "claude.ai",
+                      "subscriptionType": "max" if signed == "plan" else None}))
+elif sys.argv[1:3] == ["login", "status"]:
+    sys.stderr.write({"plan": "Logged in using ChatGPT", "api": "Logged in using an API key", "none": "Not logged in"}[signed] + "\\n")
+    sys.exit(1 if signed == "none" else 0)
+else:
+    sys.exit(2)
+"""
+
+
+@pytest.fixture
+def plans_on_path(tmp_path, monkeypatch):
+    """Stand-ins named `claude` and `codex` first on PATH: the judge runs only a harness's own program, and this
+    machine's own must never answer a test."""
+    folder = tmp_path / "plan-bin"
+    folder.mkdir()
+    for name in ("claude", "codex"):
+        (folder / name).write_text(FAKE_STATUS, encoding="utf-8")
+        (folder / name).chmod(0o755)
+    monkeypatch.setenv("PATH", f"{folder}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "status.jsonl"))
+    return folder
+
+
+def test_no_plan_judge_configured_adds_no_line():
+    assert doctor.check_plan_judge({}) == [] and doctor.check_plan_judge({"judge": {"local": {"models": ["m"]}}}) == []
+
+
+@pytest.mark.parametrize("signed, why, seconds, status, words", [
+    ("plan", "", 1.4, "ok", "answered an invented sentence in 1.4 s on the plan"),
+    ("plan", "", 2.1, "warn", "a flagged reply takes about twice as long, past the judge's deadline of 3.0 s"),
+    ("plan", "", 4.2, "warn", "past the judge's deadline of 3.0 s: most verdicts are cut off"),
+    ("unknown", "", 1.2, "ok", "room for a flagged reply"),
+    ("none", "", 0.0, "warn", "is not signed in"),
+    ("api", "", 0.0, "warn", "an API account, not a plan"),
+    ("missing", "", 0.0, "warn", "is not on PATH"),
+    ("plan", "not_signed_in", 1.0, "warn", "did not use the sign-in"),
+    ("plan", "unknown_flag", 0.5, "warn", "too old"),
+    ("plan", "model_unavailable", 1.0, "warn", "does not offer small-model"),
+    ("plan", "missing", 0.0, "warn", "is not on PATH"),
+    ("plan", "timeout", 40.0, "warn", "no answer within"),
+    ("plan", "malformed", 2.0, "warn", "gave no verdict (malformed)"),
+])
+def test_the_plan_judge_line_says_whether_it_answers_and_what_to_do(plans_on_path, signed, why, seconds, status, words):
+    """A plan judge that would not answer leaves the word list deciding every reply; the doctor says so as a warn with
+    the fix, and asks nothing of a sign-in that is missing or bills an API account."""
+    asked = []
+    lines = doctor.check_plan_judge(PLAN, probe=lambda config, harness: (asked.append(harness), (why, seconds))[1],
+                                    status=lambda harness, command: signed)
+    assert [c.name for c in lines] == ["claude-code plan judge", "codex plan judge"]
+    line = lines[0]
+    assert line.status == status and words in line.detail, line
+    assert ("claude-code" in asked) == (signed in ("plan", "unknown"))  # no sign-in, an API account or no command: never probed
+    assert status == "ok" or "word list" in line.detail or signed == "api"
+
+
+@pytest.mark.parametrize("took, status, words", [
+    (1.6, "warn", "give judge.deadline_seconds up to 8"), (3.9, "ok", "room for a flagged reply"),
+    (4.5, "warn", "8 s is the most the Stop hook gives: name a faster model in judge.subscription.claude-code.model")])
+def test_the_fix_for_a_slow_plan_judge_is_the_deadline_up_to_eight_then_a_faster_model(plans_on_path, took, status, words):
+    """The Stop hook gives the plan's judge up to 8 s (the principal's approval, 2026-11-15): below that the fix is the
+    config's deadline; at 8 it is a faster model. A flagged reply took about twice the probe's time in the replay."""
+    deadline = 3.0 if took == 1.6 else 8.0
+    config = {"judge": {**PLAN["judge"], "deadline_seconds": deadline}}
+    line = doctor.check_plan_judge(config, probe=lambda config, harness: ("", took), status=lambda harness, command: "plan")[0]
+    assert line.status == status and words in line.detail, line
+
+
+def test_a_judge_section_that_cannot_be_used_is_one_warn():
+    lines = doctor.check_plan_judge({"judge": {"subscription": {"claude-code": {}}}})
+    assert [(c.status, c.name) for c in lines] == [("warn", "judge")] and "word list" in lines[0].detail
+
+
+def test_the_doctor_names_a_command_that_is_not_the_harness_own_and_runs_nothing(plans_on_path, tmp_path):
+    """Review round 1, H1 (2026-11-15): the doctor ran the config's `command` outside any guard. Where it is not the
+    harness's own program, the doctor names the setting and runs nothing: no status command, no probe."""
+    other = tmp_path / "another-program"
+    other.write_text(f"#!/bin/sh\necho ran > {tmp_path / 'another-ran'}\nexit 1\n", encoding="utf-8")
+    other.chmod(0o755)
+    config = {"judge": {"deadline_seconds": 8, "subscription": {"claude-code": {"model": "small-model", "command": str(other)}}}}
+    line = doctor.check_plan_judge(config)[0]
+    assert line.status == "warn" and "judge.subscription.claude-code.command" in line.detail and "not Claude Code's own program" in line.detail
+    assert not (tmp_path / "another-ran").exists() and not (tmp_path / "status.jsonl").exists()
+
+
+def test_the_doctor_says_why_a_cloud_judge_off_its_providers_host_does_not_run():
+    """Review round 1, H2 (2026-11-15): a cloud address off the provider's host is a section that cannot be used."""
+    cloud = {"provider": "anthropic", "model": "m", "keys_file": "keys.yaml", "keys": {"default": "default.anthropic"},
+             "price_per_mtok": {"input": 1, "output": 5}, "url": "https://collector.example.net/v1/messages"}
+    lines = doctor.check_plan_judge({"judge": {"cloud": cloud}})
+    assert [(c.status, c.name) for c in lines] == [("warn", "judge")]
+    assert "api.anthropic.com" in lines[0].detail and "word list" in lines[0].detail
+
+
+@pytest.mark.parametrize("harness", ["claude-code", "codex"])
+@pytest.mark.parametrize("signed", ["plan", "api", "none"])
+def test_the_sign_in_is_read_from_each_command_lines_own_status_without_the_keys_that_outrank_it(tmp_path, monkeypatch, harness, signed):
+    fake = tmp_path / "fake"
+    fake.write_text(FAKE_STATUS, encoding="utf-8")
+    fake.chmod(0o755)
+    monkeypatch.setenv("FAKE_SIGNED_IN", signed)
+    monkeypatch.setenv("FAKE_LOG", str(tmp_path / "status.jsonl"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "invented-key")
+    monkeypatch.setenv("CODEX_API_KEY", "invented-key")
+    assert doctor.plan_status(harness, str(fake)) == signed
+    seen = json.loads((tmp_path / "status.jsonl").read_text().splitlines()[0])
+    assert seen["keys"] == [] and seen["marker"] == "1"  # what the judge's own run would see
+    assert doctor.plan_status(harness, str(tmp_path / "absent")) == "missing"
+
+
+def test_the_doctor_runs_the_plan_judge_line_only_where_one_is_configured(isolated_home, monkeypatch):
+    seen = []
+    monkeypatch.setattr(doctor, "check_plan_judge", lambda config, **_: seen.append(config) or [doctor.Check("ok", "codex plan judge", "x")])
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    (isolated_home / "config.json").write_text(json.dumps(PLAN), encoding="utf-8")
+    assert [c.name for c in doctor.run_checks(find=lambda h: None) if c.name.endswith("plan judge")] == ["codex plan judge"]
+    assert seen and seen[0]["judge"] == PLAN["judge"]

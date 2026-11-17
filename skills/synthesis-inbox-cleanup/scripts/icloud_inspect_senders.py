@@ -9,7 +9,7 @@ sample — so a categorization decision is grounded in the data rather than
 in inferred patterns.
 
 Usage:
-  python3 icloud_inspect_senders.py <pattern> [<pattern> ...] [--body-budget N]
+  python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/icloud_inspect_senders.py" <pattern> [<pattern> ...] [--body-budget N]
 
 Each pattern is matched (case-insensitive substring) against the From-header.
 For each pattern, prints: distinct From variants with counts, date range, all

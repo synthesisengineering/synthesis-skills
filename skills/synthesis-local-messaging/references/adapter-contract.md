@@ -232,3 +232,16 @@ This scan cannot reconstruct deletions, edits between historical generations,
 unsynced messages (a stale store is reported, never filled in), unsupported
 schemas, structured group mentions, or a whole conversation's meaning. Those
 limits remain visible in review coverage.
+
+## What the reader skips and marks
+
+The reader skips configured chats, short-code senders, reactions, status,
+broadcast and Channel material, likely verification codes, delivery notices, and marketing.
+These are conservative triage rules. A group message needs an exact configured
+self name (generic “you” is insufficient), unless the chat is in `watched_chats`,
+which keeps every message but codes. Media is only a
+presence flag. Unsupported attributed bodies remain explicit gaps, except on a
+link or attachment row, listed under `coverage.marked` as `[link]` or
+`[attachment: image/jpeg]` with any caption unread. A message the principal
+deleted takes the chat its Recently Deleted record names and is skipped as
+`deleted`; any other row without one chat stays a gap saying why.

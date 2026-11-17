@@ -19,10 +19,10 @@ demand and in the rituals, never in a per-call hook (R1.5).
 ## Running it
 
 ```bash
-python3 <skill>/scripts/context_doctor.py                        # every knowledge root
-python3 <skill>/scripts/context_doctor.py --root ~/workspaces/w/ai-knowledge-w
-python3 <skill>/scripts/context_doctor.py --project <root>/projects/<id>
-python3 <skill>/scripts/context_doctor.py --root <root> --json   # the full report
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py"                        # every knowledge root
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --root ~/workspaces/w/ai-knowledge-w
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --project <root>/projects/<id>
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-context-lifecycle/scripts/context_doctor.py" --root <root> --json   # the full report
 ```
 
 With neither flag it audits every knowledge root named by `knowledge_roots` in

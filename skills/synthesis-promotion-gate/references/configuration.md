@@ -74,7 +74,7 @@ Run the scan after the build writes its output folder and before the deploy
 command, and stop on any non-zero exit:
 
 ```bash
-python3 <synthesis-promotion-gate-root>/scripts/promotion_gate.py dist --config .agents/promotion-markers.json || exit 1
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-promotion-gate/scripts/promotion_gate.py" dist --config .agents/promotion-markers.json || exit 1
 ```
 
 The deploy command after it is still a production deploy: the v5 deploy guard

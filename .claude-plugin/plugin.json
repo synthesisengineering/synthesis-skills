@@ -1,12 +1,12 @@
 {
   "name": "synthesis-skills",
-  "version": "5.23.2",
+  "version": "5.24.0",
   "description": "Synthesis engineering workflows for durable human-agent work across Claude Code, ChatGPT, Codex, and other Agent Skills runtimes.",
   "author": {
     "name": "Rajiv Pant",
     "url": "https://rajiv.com"
   },
-  "homepage": "https://synthesisengineering.org",
+  "homepage": "https://synthesiswork.org/engineering/",
   "repository": "https://github.com/synthesisengineering/synthesis-skills",
   "license": "Apache-2.0 AND CC0-1.0",
   "keywords": [

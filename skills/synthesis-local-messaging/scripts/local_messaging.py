@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Read one explicitly selected iMessage or WhatsApp window into pointer-only notes.
 
-Run: python3 local_messaging.py --request REQUEST.json --state STATE_DIR [--stale-after-hours HOURS]
+Run: python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/local_messaging.py" --request REQUEST.json --state STATE_DIR [--stale-after-hours HOURS]
 
 The database is opened read-only inside the OS sandbox (os_sandbox.py); a reader that can
 open the database for writing refuses before SQLite runs. Each run reads one page of the
@@ -497,7 +497,7 @@ def scan(request, state, review=None, stale_after_hours=None) -> dict:
     state.mkdir(mode=0o700, exist_ok=True)
     info = Path(request["database"]).stat()
     binding = {"request": digest(request), "database": [info.st_dev, info.st_ino]}
-    with open(state / ".lock", "a") as lock:
+    with os.fdopen(os.open(state / ".lock", os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600), "a") as lock:  # no link
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:

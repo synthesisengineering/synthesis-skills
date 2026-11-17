@@ -122,13 +122,13 @@ explicitly refused descendant.
 
 ```bash
 # Schema only
-python3 <skill-root>/scripts/kb_config.py <repo-root>
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root>
 
 # Schema plus configured path and containment checks
-python3 <skill-root>/scripts/kb_config.py <repo-root> --check-paths
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> --check-paths
 
 # Mechanical path classification
-python3 <skill-root>/scripts/kb_config.py <repo-root> \
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" <repo-root> \
   --resolve source/datasets/reference/example.md
 ```
 
@@ -145,7 +145,7 @@ yet filled in, no phrases given or listed, or a contract it cannot change
 safely), and `2` for usage or loading failures:
 
 ```bash
-python3 <skill-root>/scripts/kb_config.py adopt-sharing-policy <repo-root> --phrase "zephyr ledger"
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/kb_config.py" adopt-sharing-policy <repo-root> --phrase "zephyr ledger"
 ```
 
 When the contract names a sharing policy, the phrase scan reads it and the
@@ -153,5 +153,5 @@ phrases; its commands, output and exit status are in
 [`sharing-standard.md`](sharing-standard.md), "The phrase scan":
 
 ```bash
-python3 <skill-root>/scripts/sharing_scan.py <repo-root> --range origin/main...HEAD
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-kb-edit/scripts/sharing_scan.py" <repo-root> --range origin/main...HEAD
 ```

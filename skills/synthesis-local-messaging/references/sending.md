@@ -19,8 +19,13 @@ text is in [preserved.md](preserved.md).
 ## The command and the approval
 
 ```bash
-python3 scripts/messages_send.py --to +15551234567 --text-file reply.txt [--account ACCOUNT_ID]
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to +15551234567 --text-file reply.txt [--account ACCOUNT_ID]
 ```
+
+The sender names no session. When the guard lets a command that runs `messages_send.py` by name through, it files a
+one-use ticket for the session its hook names, and only on the granting session's ticket, taken within a minute, can
+a send spend an entry of a reviewed batch (synthesis-message-guard, references/config.md, "Batches"). A run the guard
+did not see as the sender's (a link, `runpy`) finds no ticket, and its send waits for its own code as before.
 
 1. It refuses at once when an earlier attempt with this recipient and text
    exists, unless that attempt is known not to have reached the send call.
@@ -47,7 +52,7 @@ fails closed.
 ## A group or an SMS chat, by its members (2026-10-20)
 
 ```bash
-python3 scripts/messages_send.py --members +15551234567,+15557654321 --text-file post.txt [--service iMessage|SMS] [--account ACCOUNT_ID]
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --members +15551234567,+15557654321 --text-file post.txt [--service iMessage|SMS] [--account ACCOUNT_ID]
 ```
 
 `--members` names an existing chat by exactly its members: the one iMessage or
@@ -78,7 +83,7 @@ in that chat as a note, not only the ones that name the principal.
 ## A photo, alone or with a caption (2026-10-22)
 
 ```bash
-python3 scripts/messages_send.py --to +15551234567 --photo dinner.jpg --text-file caption.txt
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/messages_send.py" --to +15551234567 --photo dinner.jpg --text-file caption.txt
 ```
 
 The principal's ruling on 2026-10-22: iMessage and SMS photos send directly, under the same approval. `--photo`
@@ -102,7 +107,7 @@ WhatsApp's Mac app has no scripting interface, and the principal ruled that an a
 they press Send. `scripts/whatsapp_prefill.py` does exactly that much:
 
 ```bash
-python3 scripts/whatsapp_prefill.py --to +15551234567 --text-file reply.txt [--photo dinner.jpg]
+python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts/whatsapp_prefill.py" --to +15551234567 --text-file reply.txt [--photo dinner.jpg]
 ```
 
 - It opens `whatsapp://send` with the number and the exact text, once. Nothing is sent, so no approval code is
