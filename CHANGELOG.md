@@ -817,7 +817,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   by file name and the skills' in two by the skill's name: the second half of 5.24.0's core tests (361 of their 530
   seconds on this Mac) was cancelled at the ten-minute limit on every macOS runner, at 9527c158 as at the fix, and the
   skills' job (203 seconds here) once on Apple's Python. Each part is now at most 169 seconds on this Mac, and the source
-  lint holds that each test file runs in exactly one job.
+  lint holds that each test file runs in exactly one job. Run to its end on macOS for the first time, that half showed
+  three pinned-interpreter tests failing there: they plant `DYLD_INSERT_LIBRARIES`, which macOS's loader strips from
+  `/bin/sh` where System Integrity Protection is on, so a launcher clears it; GitHub's macOS runners have it off, and
+  the loader stops `/bin/sh` itself on a planted library before any launcher line runs. They plant it only where the
+  loader strips it.
 
 ## [5.23.2] - 2026-11-15
 

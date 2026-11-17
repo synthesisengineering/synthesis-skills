@@ -35,6 +35,20 @@ def _trusted() -> str:
     return python
 
 
+def _planted_dyld(path: str) -> dict:
+    """DYLD_INSERT_LIBRARIES for a hostile environment, where macOS's loader strips it from /bin/sh, as System Integrity
+    Protection has it do for every program the system protects: there the launcher, a script /bin/sh runs, is what
+    clears it before the interpreter starts. With that protection off, as on GitHub's macOS runners, the loader acts on
+    /bin/sh itself before any line of a launcher runs, so no launcher can come first, and a planted library that is not
+    there stops the shell (the integration review of 5.24.0's CI). Elsewhere the variable means nothing, and is planted."""
+    if sys.platform == "darwin":
+        done = subprocess.run(["/bin/sh", "-c", 'echo "${DYLD_INSERT_LIBRARIES-stripped}"'], capture_output=True, text=True,
+                              env={"PATH": "/usr/bin:/bin", "DYLD_INSERT_LIBRARIES": "/nonexistent/none.dylib"})
+        if not (done.returncode == 0 and done.stdout.strip() == "stripped"):
+            return {}
+    return {"DYLD_INSERT_LIBRARIES": path}
+
+
 def test_an_interpreter_this_user_can_change_is_never_pinned(tmp_path):
     mine = tmp_path / "bin" / "python3"
     mine.parent.mkdir()
@@ -58,7 +72,7 @@ def test_the_launcher_runs_isolated_with_only_the_named_variables(tmp_path):
     launcher.write_text(install.launcher_text(python, shlex.quote(str(probe))))
     launcher.chmod(0o755)
     hostile = {"PATH": f"{tmp_path}:/usr/bin:/bin", "HOME": str(tmp_path), "PYTHONPATH": str(tmp_path), "PYTHONHOME": "/x",
-               "PYTHONSTARTUP": "/x", "DYLD_INSERT_LIBRARIES": "/x.dylib", "LD_PRELOAD": "/x.so", "DEVELOPER_DIR": str(tmp_path),
+               "PYTHONSTARTUP": "/x", **_planted_dyld("/x.dylib"), "LD_PRELOAD": "/x.so", "DEVELOPER_DIR": str(tmp_path),
                "GIT_EXEC_PATH": str(tmp_path), "SYNTHESIS_HOME": str(tmp_path / "s"), "CLAUDE_CODE_SESSION_ID": "S-1"}
     seen = json.loads(subprocess.run([str(launcher), "a b", "c"], env=hostile, capture_output=True, text=True,
                                      check=True).stdout)
@@ -100,7 +114,7 @@ def _hostile_world(tmp_path, home: Path) -> dict:
         (site / "placed.pth").write_text(f"import os; open({str(marker)!r}, 'w').write('pth')\n")
         (site / "usercustomize.py").write_text(f"open({str(marker)!r}, 'w').write('usercustomize')\n")
     env = {**os.environ, "PATH": f"{planted}{os.pathsep}{os.environ.get('PATH', '')}", "PYTHONPATH": str(planted),
-           "DYLD_INSERT_LIBRARIES": str(planted / "none.dylib"), "HOME": str(home)}
+           **_planted_dyld(str(planted / "none.dylib")), "HOME": str(home)}
     return {"marker": marker, "env": env}
 
 
