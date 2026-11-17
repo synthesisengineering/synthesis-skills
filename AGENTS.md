@@ -63,9 +63,10 @@ CI runs exactly what you run locally, and it is the only gate (R7.3):
 python3 -m pytest -q tests/ skills/
 ```
 
-It runs this command in three jobs for each system and Python, the core's tests in two
-halves by file name and the skills', so that no job nears its ten-minute limit even on a
-slow runner; a lint test holds that together they miss no test file.
+It runs this command in six jobs for each system and Python, the core's tests in four
+parts by file name and the skills' in two by the skill's name, so that no job nears its
+ten-minute limit even on a slow runner; a lint test holds that together they run each test
+file once.
 
 That covers the v5 core (`synthesis/`), every skill's own tests wherever they live
 (beside its scripts, at its root or in `tests/`), the format check for

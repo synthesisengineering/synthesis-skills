@@ -813,7 +813,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   `docs/runtime-integration.md` say so: `deploy_also_renders`' default names the checkout itself, never a file in it;
   the open list records how the merges narrowed the reading of scripts a line writes (parked for the sandbox on
   2026-11-16) and gains the ritual-script holds' wording and three `eslint`/`tsc` holds. The line budgets rise by the
-  measured 203, itemized.
+  measured 203, itemized. And CI runs the suite in six jobs for each system and Python, the core's tests in four parts
+  by file name and the skills' in two by the skill's name: the second half of 5.24.0's core tests (361 of their 530
+  seconds on this Mac) was cancelled at the ten-minute limit on every macOS runner, at 9527c158 as at the fix, and the
+  skills' job (203 seconds here) once on Apple's Python. Each part is now at most 169 seconds on this Mac, and the source
+  lint holds that each test file runs in exactly one job.
 
 ## [5.23.2] - 2026-11-15
 

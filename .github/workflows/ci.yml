@@ -3,8 +3,8 @@ name: CI
 # The only release gate (R7.3): core tests, every skill's tests (collected from all of
 # skills/, beside scripts or in tests/) and the source lint, within the 10-minute budget,
 # on Linux and macOS, including the Python 3.9 Apple ships as /usr/bin/python3. The suite
-# runs in three jobs for each system and Python, tests/ in two halves and skills/, so no job
-# nears the limit even on a slow runner.
+# runs in six jobs for each system and Python, tests/ in four parts and skills/ in two, so no
+# job nears the limit even on a slow runner.
 # tests/test_source_lint.py fails if any test_*.py under skills/ would not be collected.
 
 on:
@@ -21,11 +21,14 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
         python: ["3.12", "3.13"]
-        # What `python3 -m pytest -q tests/ skills/` runs, in three jobs: the core's tests in two halves by file
-        # name, and the skills'. On 2026-11-12 the whole suite took 526 seconds on a macOS runner and one job was
-        # cancelled at the ten-minute limit with no test failing; as two jobs, the core's tests took 6 minutes on
-        # one macOS runner and over 10 on a slower one beside it. A lint test holds that no test file is missed.
-        part: ["tests/test_[a-g]*.py", "tests/test_[h-z]*.py", "skills/"]
+        # What `python3 -m pytest -q tests/ skills/` runs, in six jobs: the core's tests in four parts by file name,
+        # and the skills' in two by the skill's name. On 2026-11-12 the whole suite took 526 seconds on a macOS runner
+        # and one job was cancelled at the ten-minute limit with no test failing; as two jobs, the core's tests took 6
+        # minutes on one macOS runner and over 10 on a slower one beside it. On 2026-11-17 the second half of 5.24.0's
+        # core tests (361 of their 530 seconds on the principal's Mac) was cancelled at the limit on every macOS runner,
+        # and the skills' (203 seconds there) on Apple's Python once; macOS runners take about twice a Mac's time. Each
+        # part here is at most 169 seconds on that Mac. A lint test holds that each test file runs in exactly one job.
+        part: ["tests/test_[a-g]*.py", "tests/test_[h-p]*.py", "tests/test_[q-r]*.py", "tests/test_[s-z]*.py", "skills/synthesis-[a-l]*", "skills/synthesis-[m-z]*"]
         include:
           # Apple's own /usr/bin/python3 (3.9), the oldest Python the plugin runs on. Until 2026-11-11 a Linux job on
           # setup-python's 3.9 stood in for it. That day apt on the two images that still have a 3.9 build
@@ -36,10 +39,19 @@ jobs:
             part: "tests/test_[a-g]*.py"
           - os: macos-latest
             python: apple
-            part: "tests/test_[h-z]*.py"
+            part: "tests/test_[h-p]*.py"
           - os: macos-latest
             python: apple
-            part: "skills/"
+            part: "tests/test_[q-r]*.py"
+          - os: macos-latest
+            python: apple
+            part: "tests/test_[s-z]*.py"
+          - os: macos-latest
+            python: apple
+            part: "skills/synthesis-[a-l]*"
+          - os: macos-latest
+            python: apple
+            part: "skills/synthesis-[m-z]*"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
