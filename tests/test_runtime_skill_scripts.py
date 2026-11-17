@@ -685,10 +685,11 @@ def test_a_subscript_assignment_to_an_environment_or_startup_variable_is_not_a_p
 
 def _interpreter(prefix: Path) -> dict:
     """A Python laid out under `prefix` as a framework or Homebrew one is (bin/python3 leading to bin/python3.12, and
-    lib/python3.12/site-packages), first on PATH; the guard only looks at where it is and what it would load."""
+    lib/python3.12/site-packages), first on PATH; the guard only looks at where it is and what it would load. The
+    interpreter is a compiled program, as a real one is (22.32 reads a script under an interpreter's name as a script)."""
     (prefix / "bin").mkdir(parents=True)
     (prefix / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
-    (prefix / "bin" / "python3.12").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (prefix / "bin" / "python3.12").write_bytes(b"\xcf\xfa\xed\xfe" + bytes(60))  # a Mach-O program's first bytes
     (prefix / "bin" / "python3.12").chmod(0o755)
     (prefix / "bin" / "python3").symlink_to("python3.12")
     return {"PATH": f"{prefix / 'bin'}:{os.environ.get('PATH', '/usr/bin:/bin')}"}
