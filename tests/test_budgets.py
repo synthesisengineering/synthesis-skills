@@ -2369,10 +2369,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # wait the pass with them found stands, and the pass with the settings alone is not begun (the rituals' scripts, read
 # whole with every module of theirs, took 2.3 to 2.8 s in the first pass: the second ended unfinished, and its words,
 # out of time, replaced the first pass's, which name what the program reaches).
+# The catalog dates, the deploy guard's date check on the article catalogs the sites publish from (fix/catalog-dates, from
+# main at 218da465):
+# Then each 74 more, all in guards.py, so the date rules reach a site published from a JSON catalog by upload (2026-11-16:
+# an article's published instant kept only in its catalog, a personal site's build reading that catalog from whichever
+# worktree its command names, and a change on origin's main before its upload were each outside the date check):
+# _catalog_dates 27 with 2 blank lines (each catalog article's published time or documented instant, at a commit or in
+# the working tree; unreadable blocks), _rendered_checkouts 18 with 2 blank (the checkout a deploy command hands its
+# build in a variable, else the default; a value it cannot follow blocks), _published_head 7 with 2 blank (the HEAD the
+# last approved deploy kept), check_dates 8 more (catalogs read beside front matter and checked as config, the published
+# base from that HEAD), check_deploy 7 more (the renders map checked as config, each rendered checkout compared with its
+# own last approved deploy), _record_deploys 1 more (the record keeps the HEAD it was approved at).
+# 5.24.0, the catalog dates (940f3c7f) merged into release/next, after the site topology (997fc2d7), which changes no
+# code: release/next's ceilings (core 23195, plugin 49853) and the raise just above (74 each), measured: core 23269 and
+# plugin 49927. The merge's own lines change nothing.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23195
-PLUGIN_BUDGET = 49853
+CORE_BUDGET = 23269
+PLUGIN_BUDGET = 49927
 
 
 def _lines(files):

@@ -769,6 +769,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   project-management collections and keeps the replaced lines in its coverage map. The content-quality no-removals
   allowlist records the seven frozen baseline lines whose link changed, each with its exact old and new text.
   tools.synthesiswriting.org is unchanged.
+- **The date rules reach a site published from a JSON catalog by upload.** Three gaps let a page go live early or
+  move a published date unseen. `deploy_catalogs` names JSON catalogs whose articles' `published` time, or documented
+  `publishedInstantOverride` instant, the date rules now read beside front matter, as `<catalog>#<id>`: an instant
+  kept only in a catalog, which no front-matter date line shows, can no longer move on a live page or go live before
+  its time. A `deploy_also_renders` entry `{"variable": "NAME", "default": "<path>"}` follows the path the deploy
+  command hands its build in `NAME`, so a build that reads its source from another worktree has that tree checked; a
+  value the guard cannot follow to a checkout blocks the deploy, as does a renders map of another shape. And an
+  approved deploy's record now keeps the HEAD it was approved at: the next upload of that site, and the check of a
+  repository it renders, compare published dates with that commit, since a change can reach origin's main before its
+  upload; a push still compares with origin's main. The guardrails config and deploys references say so, and the line
+  budgets rise by the measured 74, itemized.
 
 ## [5.23.2] - 2026-11-15
 
