@@ -389,3 +389,22 @@ def test_an_unreadable_config_still_holds_a_file_tool_that_writes_it_or_the_stat
     forged = {"file_path": str(paths.state() / "approvals" / ("a" * 64 + ".json")), "content": "{}"}
     assert "Refused" in _hook(world, "Write", forged, capsys)
     assert _hook(world, "Write", {"file_path": str(world["work"] / "notes.md"), "content": "x"}, capsys) == ""
+
+
+def test_a_wait_found_with_the_settings_protected_stands_when_the_reading_without_them_runs_out_of_time(monkeypatch):
+    """A heavy program (the rituals' scripts, read with every module of theirs) can take most of the guard's time in
+    the first pass: the pass without the settings then ended unfinished, and its words, out of time, replaced the wait
+    the first pass found, which names what the program reaches (the merge of 22.26 into release/next, 2026-11-16)."""
+    passes = []
+
+    def judged(command, text, cwd, config, settings, depth=0):
+        passes.append(settings)
+        if settings is True:
+            return guards.Unproven("runs `python3` on tool.py, which this guard cannot prove only reads, and names the runtime")
+        guards._CALL["until"] = time.monotonic() - 1  # the pass without the settings used the rest of the guard's time
+        return guards.Unproven("is more than this guard could judge in its time")
+    monkeypatch.setattr(guards, "_judged", judged)
+    monkeypatch.setitem(guards._CALL, "until", time.monotonic() + 60)
+    monkeypatch.setitem(guards._CALL, "settings", None)
+    reason = guards.check_self_grant("python3 tool.py", "/tmp", {}, None, hold=False)
+    assert "names the runtime" in str(reason) and passes == [True, False], (reason, passes)
