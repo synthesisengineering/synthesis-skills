@@ -604,22 +604,24 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    Reading a transcript, and working on the hook's source, stay allowed. Before 5.7.0
    shipped, 30 days of shell commands recorded on one machine were run through the old
    guard and this one, and every command the new one refused was read.
-3. **The guard's own settings and the global commit check's entry points take the
-   person's code.** `config.json` in the synthesis home holds what every approval
+3. **The guard's own settings take the person's code; the global commit check's entry
+   points take none.** `config.json` in the synthesis home holds what every approval
    means: the commit lines the person approved, their own repositories, the hosts their
    action sheets upload to, the signatures a send window lets through, the forbidden
    phrases, the account each workspace acts as and the turn-end judge's program and host.
    `git-hooks` beside it holds what git runs before every commit, merge and commit message
-   in every repository. The person changes both, so a write there is not refused: it waits
-   for their code for exactly that call. A file tool (Write, Edit, MultiEdit, NotebookEdit,
+   in every repository: it is one of the runtime's own protected folders (above), which
+   only its installer writes, so a write there is refused outright. The person changes the
+   settings, so a write to them is not refused: it waits for their code for exactly that
+   call. A file tool (Write, Edit, MultiEdit, NotebookEdit,
    Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
    file and everything it writes; a shell command to the command, the folder it runs in,
    each script it runs and each file it names, as each stands then, so a file changed after
    the approval makes it a new command. A shell command is read as for the protected
-   folders above, with these two among them: a redirect, what a file utility changes, a
+   folders above, with the settings among them: a redirect, what a file utility changes, a
    pattern that may name them, a folder changed throughout that holds them, a program that
    writes there or starts a command that does, and synthesis's own `paths.config_file()`
-   read as the config's path; a program the guard cannot prove only reads that names either
+   read as the config's path; a program the guard cannot prove only reads that names them
    waits. A command that also reaches one of the protected folders above is refused, as
    before. The copy that installs the person's settings from a private repository waits like
    any other write. A path is judged where it really leads and in any case, so a link made

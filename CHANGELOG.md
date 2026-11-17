@@ -646,15 +646,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   can check with no false alarm on any skill today: a description in the first or second person, a SKILL.md that limits
   tools or updates in general, and a SKILL.md that asks for the model's reasoning in its output. No skill's text
   changes here; the rewrites that apply the rules come later, each measured against an evaluation.
-- **An agent's write of the guard's own settings or of a git hook waits for the principal's code** (plan item 22.20).
+- **An agent's write of the guard's own settings waits for the principal's code, and one of a git hook is refused** (plan
+  item 22.20).
   `~/.synthesis/v5/config.json` holds the guard's own settings: the commit lines he approved, his own repositories, the
   hosts his action sheets upload to, the signatures a send window lets through, the forbidden phrases, the account each
   workspace acts as and the turn-end judge's settings. `~/.synthesis/v5/git-hooks` holds what git runs before every
   commit, merge and commit message in every repository. A review on 2026-11-15 found that a file tool rewrote either
   with no code, and a second showed what a written setting reaches: the turn-end check made to run any program, the
-  cloud judge made to post to any host. A write there now waits for his code for exactly that call. A file tool (Write,
-  Edit, MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the
-  file and everything it writes. A shell command is read as for the protected folders, with these two among them (a
+  cloud judge made to post to any host. A write of the settings now waits for his code for exactly that call; the git
+  hooks lie in the runtime's own protected folder, where a write is refused outright (A8). A file tool (Write, Edit,
+  MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the file
+  and everything it writes. A shell command is read as for the protected folders, with these two among them (a
   redirect, `cp`, `mv`, `tee`, `install`, `ln`, `sed -i`, `rm`, `dd`, `curl -o`, a pattern that names the config, a
   folder changed throughout, a Python, node or perl program that writes there or starts a command that does, a program
   using synthesis's own `paths.config_file()`), and bound to the command, the folder it runs in, each script it runs and

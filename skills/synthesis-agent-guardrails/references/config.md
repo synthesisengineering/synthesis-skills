@@ -7,11 +7,12 @@ that a file tool is still judged without it, so a write into the state folder st
 and the file's repair waits for the principal's code.
 
 **The file is the principal's to change.** It sets what every approval means, so an agent's
-write to it waits for the principal's code for exactly that write, and so does a write to
-anything under `~/.synthesis/v5/git-hooks`, the commit check's entry points: by a file tool
-(Write, Edit, MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and
-`edit_file`) or by any shell command the guard reads (a redirect, `cp`, `mv`, `tee`,
-`install`, `ln`, `sed -i`, `rm`, a program that writes it), however its path is spelled. The
+write to it waits for the principal's code for exactly that write: by a file tool (Write,
+Edit, MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`)
+or by any shell command the guard reads (a redirect, `cp`, `mv`, `tee`, `install`, `ln`,
+`sed -i`, `rm`, a program that writes it), however its path is spelled. A write under
+`~/.synthesis/v5/git-hooks`, the commit check's entry points, is refused outright: it is one
+of the runtime's own protected folders, which only its installer writes. The
 copy that installs the principal's settings from a private repository waits too, and its
 code binds the file it copies as it stood. Reading needs no code (`cat`, `head`, `grep`,
 `jq`, `diff`, and `cat … > copy` for a copy); `cp` and `ln` of it wait, as for every file
