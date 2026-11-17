@@ -2387,10 +2387,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # (CI's Apple job puts Apple's Python first as `python` by a two-line script, since a link breaks Xcode's shim; judged
 # as a look-alike, its `"$@"` lost the program it hands on, and an ordinary read through it waited): HANDS_ON 1, and
 # _installed 4 (the hand-off read from the script, to a compiled program of that name root installed, 3; its docstring 1).
+# Then the plugin 11 more, all in the root conftest.py: no_synthesis_launcher_of_this_mac 9 and its 2 blank lines (no
+# test finds the Mac's own synthesis launcher on PATH, since 22.32 looks a command up there and that launcher is no
+# test home's own).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
 CORE_BUDGET = 23274
-PLUGIN_BUDGET = 49932
+PLUGIN_BUDGET = 49943
 
 
 def _lines(files):
