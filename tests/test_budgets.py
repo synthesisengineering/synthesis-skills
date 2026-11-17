@@ -2257,10 +2257,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # it), Run 1 (that mark, which a script it runs is read with), check_self_grant 2 (none ran before the line; before a
 # command a program starts, any may have), _cd_sources 1 (zsh's path_dirs looks for such a file along PATH), and
 # _own_text 2 (its reading from no folder, for the programs it hands on, no longer leaves the line unplaced).
+# Then core and plugin each 14 more, all in guards.py, so the hook's normal call stays under 50 ms (the coordinator,
+# 2026-11-16: 51.7 ms on the merged head against main's 47.9): _Pattern 12 with its 2 blank lines, a regular expression
+# compiled the first time a call uses it rather than as the module loads, which took 9.4 ms of the guard's 12 ms load.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 22478
-PLUGIN_BUDGET = 49136
+CORE_BUDGET = 22492
+PLUGIN_BUDGET = 49150
 
 
 def _lines(files):

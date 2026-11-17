@@ -20,6 +20,20 @@ from datetime import date, datetime, timezone
 
 from synthesis import approvals, paths
 
+
+class _Pattern:
+    """A regular expression compiled the first time a call uses it, not as the guard loads: a normal call uses few of
+    them, and compiling every one as the module loaded was most of the hook's cost (the coordinator, 2026-11-16). Its
+    first use keeps the compiled pattern's own methods, so each later call goes straight to them."""
+    def __init__(self, pattern: str, flags: int = 0):
+        self.pattern, self._flags = pattern, flags
+
+    def __getattr__(self, name: str):  # only a name it does not hold yet
+        compiled = re.compile(self.pattern, self._flags)
+        vars(self).update((n, getattr(compiled, n)) for n in ("search", "match", "fullmatch", "finditer", "findall", "sub", "subn", "split",
+                                                                "flags", "groups", "groupindex"))
+        return getattr(compiled, name)
+
 DEFAULT_SEND_TOOLS = [
     "mcp__*slack*send_message*", "mcp__*slack*schedule_message*", "mcp__*gmail*send*",
     "mcp__*send_gmail_message*", "mcp__*draft_gmail_message*", "mcp__*create_draft*",
@@ -33,7 +47,7 @@ DEFAULT_DEPLOY_PATTERNS = [
     r"\S*publish_drive\.py\b",  # the knowledge base's Drive copy: a script's own upload is not in the command's text
 ]
 SHEET_SCRIPT = os.path.join("skills", "synthesis-action-sheet", "scripts", "publish_sheet.py")
-SEPARATORS = re.compile(r"\s*(?:&&|\|\||;|\||\n)\s*")
+SEPARATORS = _Pattern(r"\s*(?:&&|\|\||;|\||\n)\s*")
 GIT_VALUE_OPTIONS = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--super-prefix"}
 
 # --- sends (R3.1) -------------------------------------------------------------------------------
@@ -68,20 +82,20 @@ FILE_MAIL_TOOLS = frozenset({"send_gmail_message", "draft_gmail_message"})
 FILE_DRIVE_TOOLS = {"update_drive_file": "file_path", "import_to_google_doc": "file_path", "import_to_google_sheets": "file_path",
                     "import_to_google_slides": "file_path", "create_drive_file": "fileUrl"}
 ENTRY_KEYS = ("url", "path", "content", "filename", "mime_type", "content_id")  # the first three are where it reads from
-CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
-CONTENT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
+CONTROL = _Pattern(r"[\x00-\x1f\x7f-\x9f]")  # it takes line breaks and NULs out of a filename and fails on others
+CONTENT_ID = _Pattern(r"[A-Za-z0-9][A-Za-z0-9._+\-@]*")  # gmail_tools.CONTENT_ID_SAFE_RE, the `content_id` it takes
 SECRET_NAMES = frozenset({".credentials", ".credentials.json", "credentials.json", "client_secret.json", "client_secrets.json",
                           "service_account.json", "service-account.json", ".npmrc", ".pypirc", ".netrc", ".git-credentials"})
 SECRET_FOLDERS = ("/proc", "/sys", "/dev", "/etc/shadow", "/etc/passwd", "/private/etc/shadow", "/private/etc/passwd",
                   "~/.kube", "~/.gnupg", "~/.config/gcloud")
 HTML_TAGS = frozenset({"p", "div", "span", "a", "em", "strong", "b", "i", "u", "ul", "ol", "li", "blockquote",
                        "html", "body", "br"})
-LOOKS_HTML = re.compile(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
+LOOKS_HTML = _Pattern(r"</?(?:p|div|span|br|a|b|i|em|strong|u|ul|ol|li|blockquote|html|body|table|img|pre|h[1-6])"
                         r"(?:\s[^<>]*)?/?>", re.I)
-MARKDOWN = re.compile(r"\]\(\s*(?:https?|mailto):|\*\*[^*\n]+\*\*|^#{1,6} \S", re.M)
-LINKED = re.compile(r"href\s*=\s*(?:\"[^\"]*\"|'[^']*')|<(?:https?|mailto):[^>|\s]*(?:\|[^>]*)?>"
+MARKDOWN = _Pattern(r"\]\(\s*(?:https?|mailto):|\*\*[^*\n]+\*\*|^#{1,6} \S", re.M)
+LINKED = _Pattern(r"href\s*=\s*(?:\"[^\"]*\"|'[^']*')|<(?:https?|mailto):[^>|\s]*(?:\|[^>]*)?>"
                     r"|\]\((?:https?|mailto):[^)]*\)")
-BLOCK_START = re.compile(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
+BLOCK_START = _Pattern(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
 
 
 def is_send_tool(tool: str, config: dict) -> bool:
@@ -171,16 +185,16 @@ TUNNELS = (".trycloudflare.com", ".ngrok.io", ".ngrok.app", ".ngrok.dev", ".ngro
            ".lhr.life", ".lhr.rocks", ".pinggy.io", ".pinggy.link", ".pinggy-free.link", ".devtunnels.ms", ".app.github.dev",
            ".ts.net", ".tunnelmole.net", ".bore.pub", ".loophole.site")
 # The knowledge-base connector refuses to start on the same services (its TEMPORARY_HOSTS); a test holds the two equal.
-HOSTNAME = re.compile(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
-NAMED = re.compile(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
+HOSTNAME = _Pattern(r"(?<![\w.@-])(?:[a-z0-9-]+\.)+[a-z][a-z0-9-]*(?![\w-])")
+NAMED = _Pattern(rf"({HOSTNAME.pattern})(?::(\d{{1,5}})(?!\w))?")  # a name and its port, if it has one
 _HOST = r"(localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)*\.local(?:host)?|\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-f:.]+(?:%[\w.-]+)?\])"
 # A host is read whole: after any scheme or where a bare one starts, to where its name ends, then its port. A public
 # name that only begins like a local one (localhost.example.org, 10.2.3.4.example.org) is no match (2026-11-12). The
 # host of a file:// URL names this disk, as a connector takes a local file: file://localhost/<path> is no address.
-LOCAL = re.compile(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
+LOCAL = _Pattern(rf"(?:(?<!file)(://)|(?<![\w.@-])){_HOST}(?![\w-]|\.[\w-])\.?(?::(\d+)(?!\w))?")
 NEAR = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10", "fc00::/7")  # the private ranges, the shared one
 # (a carrier's, and a tailnet's addresses: the knowledge-base connector refuses it too) and IPv6's unique-local one
-FILED = re.compile(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
+FILED = _Pattern(r"(?:^|\.)(?:config|conf|cfg|cnf|ini|env|rc|settings|properties|json|ya?ml|toml|makefile|dockerfile)\.local$")
 
 
 def _only_here(m, low: str) -> str:
@@ -745,7 +759,7 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
                "principal too: one changed before the call needs a new code." if files else ""))
 
 
-FETCHES = re.compile(r"(?i)url|uri|link|path|file|attach|upload|download|media|image|photo|picture|video|audio|voice|blob"
+FETCHES = _Pattern(r"(?i)url|uri|link|path|file|attach|upload|download|media|image|photo|picture|video|audio|voice|blob"
                      r"|sticker|thumb|avatar")  # a key naming what a call fetches, reads or carries (a photo: 5.24.0's review)
 
 
@@ -777,11 +791,11 @@ def _reshapes_calendar(tool: str, tool_input: dict) -> bool:
 # calendar. Replayed over recorded messages (2026-11-13): of 451 distinct messages sent to people on 76 days, 143
 # named a clock time, about six in ten of those were about when people meet, and 54 went with a calendar read in the
 # ten minutes before.
-CLOCK = re.compile(r"(?i)(?:(?<![\w:=/.+#])(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm, and the 3pm of 2-3pm
+CLOCK = _Pattern(r"(?i)(?:(?<![\w:=/.+#])(?:1[0-2]|0?[1-9])(?:[:.][0-5]\d)?\s?[ap]\.?m\.?(?:ish)?(?![a-z])"  # 3 pm, 3:30 p.m., 7.30 pm, and the 3pm of 2-3pm
                    r"|(?<![\w:=/.+#-])(?:(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[ap]\b|h\b)?(?![\w:])"  # 14:00, 3:30p, 14:00h; no part of 1:23:45, of a stamp, of an offset or of an address
                    r"|(?:[01]?\d|2[0-3])h[0-5]\d\b))")  # 15h30
-CALENDAR_READ = re.compile(r"(?:get|list|search|list[_-]all)[_-]events?$")
-CALENDARS = re.compile(r"calendar|gcal|caldav|__(?:google[_-])?workspace(?:[_-]mcp)?__")  # what says, in a tool's whole name, that its events are a calendar's
+CALENDAR_READ = _Pattern(r"(?:get|list|search|list[_-]all)[_-]events?$")
+CALENDARS = _Pattern(r"calendar|gcal|caldav|__(?:google[_-])?workspace(?:[_-]mcp)?__")  # what says, in a tool's whole name, that its events are a calendar's
 PERSON = ("email", "slack", "chat", "messages")  # the channels on which a message reaches a person
 CARRIES = {"send", "reply", "forward", "draft", "drafts", "message", "messages", "dm"}  # what a tool's name says when it carries one
 
@@ -879,9 +893,9 @@ def _time_without_calendar(texts: list, config: dict, session: dict | None) -> s
 # requester had said "tomorrow or Monday". The principal approved every invitation, and no approval said it was today.
 
 START_KEYS = frozenset({"start", "start_time", "startTime", "start_datetime", "startDateTime", "start_date", "startDate"})
-ADDRESS = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+ADDRESS = _Pattern(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
-WRITTEN = re.compile(r"\b(?:(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?|([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?)\s+(\d{4})\b")  # 9 November 2026; Nov 9, 2026
+WRITTEN = _Pattern(r"\b(?:(\d{1,2})\s+([A-Za-z]{3})[a-z]*\.?,?|([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?)\s+(\d{4})\b")  # 9 November 2026; Nov 9, 2026
 
 
 def _today() -> date:
@@ -899,9 +913,9 @@ def _starts(value):
         yield from _starts(item)
 
 
-GUESTS = re.compile(r"attend|guest|invite|particip", re.I)
+GUESTS = _Pattern(r"attend|guest|invite|particip", re.I)
 ADDRESS_KEYS = ("email", "address", "emailAddress", "mail")  # an entry's own address; a display name can look like one
-CALENDAR_WRITE = re.compile(r"(?:create|update|manage|move)[_-]events?$")
+CALENDAR_WRITE = _Pattern(r"(?:create|update|manage|move)[_-]events?$")
 
 
 def _invitees(value, inside: bool = False):
@@ -1273,7 +1287,7 @@ PUTS = ("form_input", "file_upload", "upload_image", "javascript_tool")  # and a
 READS, STILL = ("get_page_text", "read_page", "find"), ("screenshot", "wait", "scroll", "scroll_to", "zoom", "hover")  # what cannot move a tab
 QUIET_KEYS = {"escape", "esc", "tab", "up", "down", "left", "right", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown", "home", "end", "f5"}
 QUIET_CHORDS = {"cmd+r", "ctrl+r", "cmd+c", "ctrl+c", "cmd+a", "ctrl+a", "cmd+f", "ctrl+f"}  # reload, copy, select, find: nothing is put
-MAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+MAIL = _Pattern(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 
 
 def named_sites(meta: dict) -> list | None:
@@ -1471,11 +1485,11 @@ OUTPUTS = frozenset({"<>", "&>>!", "&>>|", "&>>", "&>!", "&>|", "&>", ">>&!", ">
 REDIRECTS = OUTPUTS | {"<<<", "<&", "<", ">&"}
 SHIELD = str.maketrans("{},", "\1\2\3")  # a quoted brace or comma takes no part in brace expansion
 UNREAD_INPUT = "\0unread-input"  # stands for a script on a program's input that the guard could not read
-PLAIN = re.compile(r"[^\s'\"\\`$#;&|()<>]+")
+PLAIN = _Pattern(r"[^\s'\"\\`$#;&|()<>]+")
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
 STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
-INTERPRETER = re.compile(r"(node|bun|deno|python(\d+(\.\d+)*)?)$")  # python3.12 runs scripts too
+INTERPRETER = _Pattern(r"(node|bun|deno|python(\d+(\.\d+)*)?)$")  # python3.12 runs scripts too
 KEYWORDS = frozenset({"{", "}", "!", "if", "then", "else", "elif", "do", "while", "until", "time", "fi", "done"})
 # Commands that run the command after their own options; the set holds options that take a value.
 WRAPPERS = {"env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"}, "command": set(), "exec": {"-a"},
@@ -1788,8 +1802,8 @@ def _bare(words: list[str], moved: list | None = None) -> tuple[list[str], list[
     return words, scripts
 
 
-POSITIONAL = re.compile(r"\$(?:\{(\d+|[@*])\}|([\d@*]))")
-REBOUND = re.compile(r"\bset\s+--|\bshift\b|\(\)\s*[{(]|\bfunction\s")  # the script gives $1 another value: a function's own, `set --`
+POSITIONAL = _Pattern(r"\$(?:\{(\d+|[@*])\}|([\d@*]))")
+REBOUND = _Pattern(r"\bset\s+--|\bshift\b|\(\)\s*[{(]|\bfunction\s")  # the script gives $1 another value: a function's own, `set --`
 
 
 def _placed(script: str, given: list[str]) -> str:
@@ -1884,17 +1898,17 @@ class Run(list):
         self.wrapped, self.clean = wrapped, clean
 
 
-PLACE = re.compile(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
+PLACE = _Pattern(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
 DEEP = "/**"  # after a folder a command runs in: that folder or any under it (`find -execdir` runs in the folder of what it found)
 OPAQUE = frozenset({"php", "lua", "luajit", "Rscript", "julia", "swift", "tclsh", "groovy", "scala", "elixir", "pwsh", "jshell"})
-MESSAGE = re.compile(r"--?(?:m|msg|message|body|title|subtitle|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
+MESSAGE = _Pattern(r"--?(?:m|msg|message|body|title|subtitle|subject|description|notes?|comment|text|caption|summary|prompt)")  # its value is words for a reader
 PROMPTED = frozenset({"codex", "claude", "muse", "gh", "say"})  # their words are prompts and messages: each runs under its own guards
 STARTERS = frozenset({"echo", "printf", "cat", "cd", "pushd", "find", "sed", "perl", "tee", "touch", "truncate", "mkdir", "rmdir", "rm",
                       "unlink", "shred", "chmod", "chown", "chgrp", "dd", "cp", "mv", "ln", "install", "rsync", "ditto", "gzip", "gunzip"})
 
 
 PLACINGS = 256  # the starting points a line's changes of folder may give its commands; past them the line waits (round 4)
-FOLDER_MOVE = re.compile(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd|popd)(?=[\s;&|)`}]|$)")  # a change of folder in a script
+FOLDER_MOVE = _Pattern(r"(?:^|[\s;&|(`{])(?:builtin\s+|command\s+)?(?:cd|pushd|popd)(?=[\s;&|)`}]|$)")  # a change of folder in a script
 FOLDER_BUILTINS = frozenset({"cd", "pushd", "popd", "builtin", "command", "enable"})  # a function named so redefines how folders move
 
 
@@ -2092,7 +2106,7 @@ def _keeps(words: list) -> bool:
 
 
 QUIET = frozenset("cd pushd popd pwd echo printf true false : test [ [[ set ls which type dirname basename mkdir rmdir rm touch".split())  # put no text in a file
-EXPANDS = re.compile(r"[$`*?\[\\]")  # a word the shell may expand: the name it reads is another
+EXPANDS = _Pattern(r"[$`*?\[\\]")  # a word the shell may expand: the name it reads is another
 VENV_OPTIONS = frozenset({"--clear", "--copies", "--symlinks", "--system-site-packages", "--without-pip", "--upgrade-deps", "--without-scm-ignore-files",
                           "--seed", "--no-pip", "--no-setuptools", "--no-wheel", "-q", "--quiet"})  # none of them keeps an activate script that is there
 
@@ -2169,8 +2183,8 @@ def _landings(operands: list, cwd: str, back: str, mode: dict) -> list:
     return list(dict.fromkeys(lands))
 
 
-UNQUOTED = re.compile(r"\$'((?:[^'\\]|\\.)*)'|\\(.)|['\"]")  # $'…', a backslash and its letter, a quote
-FUNCTION = re.compile(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*[{(]")  # a function defined
+UNQUOTED = _Pattern(r"\$'((?:[^'\\]|\\.)*)'|\\(.)|['\"]")  # $'…', a backslash and its letter, a quote
+FUNCTION = _Pattern(r"(?:^|[\s;&|(])(?:function\s+[\w.:-]+(?:\s*\(\s*\))?|[\w.:-]+\s*\(\s*\))\s*[{(]")  # a function defined
 ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "v": "\v"}
 
 
@@ -2316,7 +2330,7 @@ REDEPLOY_WINDOW = 45 * 60  # a second deploy of one site this soon is the rushed
 FUTURE_SKEW = 15 * 60  # a date this far ahead is a clock artifact, not a post published early
 DEFAULT_CONTENT = ["content/posts/**/index.md", "**/src/content/articles/*.md"]  # nested-date and flat layouts
 DATE_LINE = r"^(date|pubDate|publishDate)[[:space:]]*[:=]"
-DATE_VALUE = re.compile(r"[:=]\s*[\"']?(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?)?")
+DATE_VALUE = _Pattern(r"[:=]\s*[\"']?(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?\s*(Z|[+-]\d{2}:?\d{2})?)?")
 
 
 def _run_git(root: str, *args: str) -> tuple[int, str]:
@@ -2457,7 +2471,7 @@ def _sheet_host(words: list[str], cwd: str, config: dict) -> bool:
 
 SCRIPT_LIMIT = 256 * 1024
 TOO_LARGE = "\0 a script too large to read"  # what such a script runs cannot be told, so it is held (5.20.1's review)
-SHEBANG = re.compile(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
+SHEBANG = _Pattern(rb"#![^\n]*\b(?:ba|z|da|k)?sh\b")
 
 
 def _script_file(words: list[str], cwd: str) -> str | None:
@@ -3101,8 +3115,8 @@ VALUED = {"touch": ("-r", "--reference", "-t", "-d", "--date"), "truncate": ("-r
           "mkdir": ("-m", "--mode"), "install": ("-m", "--mode", "-o", "--owner", "-g", "--group"),
           "xxd": ("-c", "-cols", "-g", "-groupsize", "-l", "-len", "-s", "-seek", "-o", "-n", "-name")}  # options whose next word is no file
 WRITERS = COPIERS | PACKERS | {"tee", "touch", "truncate", "mkdir", "rmdir", "rm", "unlink", "shred", "chmod", "chown", "chgrp", "dd"}
-IN_PLACE = re.compile(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
-INTO = re.compile(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
+IN_PLACE = _Pattern(r"-\w*i(?:\W.*)?|--in-place(?:=.*)?")  # sed -i, sed -Ei.bak, perl -pi
+INTO = _Pattern(r"--target-directory(?:=(.*))?|-[A-Za-su-z]*t(.*)")  # cp -t DIR, mv -ft DIR, --target-directory=DIR
 # Programs that only read the files they are given. A path inside a protected folder may be handed to one of these,
 # to an interpreter or a shell (judged by what it runs), and to git and synthesis's own CLI, which keep the approved
 # lines and the board. Any other program may change what it is given, so the guard does not pass it one (2026-11-11:
@@ -3117,13 +3131,13 @@ READERS = frozenset(("cat head tail grep egrep fgrep rg ls stat wc file du diff 
 WORDS = frozenset("for case select read test [ [[ : true false export readonly local declare typeset unset less more sleep kill wait exit "
                   "return break continue shift trap which file id synthesis".split())  # a shell's own words, and words a sentence starts with
 AWKS = ("awk", "gawk", "mawk", "nawk")
-AWK_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
+AWK_TOKEN = _Pattern(r'"(?:[^"\\]|\\.)*"|/(?:[^/\\\n]|\\.)+/|>>?|\|\||\||[;{}\n]|\bprintf?\b|\bsystem\s*\(|\S')
 OWN_RULES = ("sed", "perl", "find", "xxd", "source", ".", "eval", "apply_patch", *AWKS)  # each is read where it is handled
 GIT_READS = frozenset({"status", "log", "diff", "show", "ls-files", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog"})
-SCRIPT = re.compile(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
+SCRIPT = _Pattern(r"(?:python[\d.]*|node|bun|deno|perl|ruby)$")
 # What makes a script able to write, not words a reader also uses (json.dumps, str.replace, d["x"] refused a
 # read on 2026-10-08): a file opened to write, a mutating file call, or anything that can run other programs.
-SCRIPTED_WRITE = re.compile(
+SCRIPTED_WRITE = _Pattern(
     r"\bopen\([^)]*(?:,\s*|mode\s*=\s*)['\"][rbtU]*[wax+]|\.open\(\s*['\"][rbtU]*[wax+]"
     r"|\.(?:write_text|write_bytes|writelines|touch|mkdir|rmdir|unlink|symlink_to|hardlink_to|chmod|truncate)\("
     r"|\.(?:rename|replace)\(\s*[^,()]+\)"  # Path.rename/replace(target); str.replace takes two arguments
@@ -3135,14 +3149,14 @@ SCRIPTED_WRITE = re.compile(
     r"|open\s*\(?\s*(?:my\s+)?[$\w]+\s*,\s*['\"]\s*\+?[>|]")
 # A script that opens a send window or a batch, grants or spends an approval or a batch's entry, or writes into
 # synthesis state. Reading the window, a batch, the ledger or the board stays allowed (a read-only check was refused on 2026-10-13).
-SELF_GRANT_CALLS = re.compile(r"\b(?:open_window|open_batch|batch_spend|batch_unspend|grant_from_prompt|consume|put_back|_window_file|_batch_file)\b"
+SELF_GRANT_CALLS = _Pattern(r"\b(?:open_window|open_batch|batch_spend|batch_unspend|grant_from_prompt|consume|put_back|_window_file|_batch_file)\b"
                               r"|\bpaths\.state\b[\s\S]*\b(?:"
                               r"write_json|write_text|touch|unlink)\b|\b(?:write_json|write_text|touch|unlink)\b[\s\S]*\bpaths\.state\b")
-GRANT_NAME = re.compile(r"[\w.]*\b(?:open_window|grant_from_prompt|consume|put_back|_window_file|write_json|write_text|touch|unlink|paths\.state)")
-RUNS_STRINGS = re.compile(r"\b(?:exec|eval|compile|execfile|run_path|run_module|runcode|runsource|Function)\s*\(|\bnew\s+Function\b|\bvm\s*\.\s*run"
+GRANT_NAME = _Pattern(r"[\w.]*\b(?:open_window|grant_from_prompt|consume|put_back|_window_file|write_json|write_text|touch|unlink|paths\.state)")
+RUNS_STRINGS = _Pattern(r"\b(?:exec|eval|compile|execfile|run_path|run_module|runcode|runsource|Function)\s*\(|\bnew\s+Function\b|\bvm\s*\.\s*run"
                           r"|\b(?:subprocess|child_process|Popen|execSync|execFile|execFileSync|spawn|spawnSync|fork|create_subprocess_\w+)\b"
                           r"|\bos\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)\b|\bpty\s*\.\s*spawn\b")  # or starts a program with them
-WINDOW_CLI = re.compile(r"\bsynthesis\b[\s\S]{0,200}?\bsends\b[\s\S]{0,40}?\bopen\b")  # the send window's CLI, started by a program
+WINDOW_CLI = _Pattern(r"\bsynthesis\b[\s\S]{0,200}?\bsends\b[\s\S]{0,40}?\bopen\b")  # the send window's CLI, started by a program
 
 
 def _granting_text(script: str, head: str) -> str:
@@ -3164,10 +3178,10 @@ def _granting_text(script: str, head: str) -> str:
     text = PROGRAM_STRINGS.sub(kept, script)
     hashed = not re.match(r"(?:node|nodejs|bun|deno|tsx|ts-node|swift|java|jshell|groovy|scala)", head)
     return re.sub(r"(?m)#.*$", "", text) if hashed else re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
-HOOK_RUN = re.compile(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
-ASSIGNED = re.compile(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
-LOOPED = re.compile(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
-USED = re.compile(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
+HOOK_RUN = _Pattern(r"(?:^|/)(?:synthesis-hook|synthesis/hook\.py)$|^synthesis\.hook$")
+ASSIGNED = _Pattern(r"(?:^|(?<=[\s;&|({'\"]))([A-Za-z_]\w*)(\+?)=(\"[^\"\n]*\"|'[^'\n]*'|\$\([^()\n]*\)[^\s;&|()<>\"']*|[^\s;&|()<>\"']*)")
+LOOPED = _Pattern(r"\bfor\s+([A-Za-z_]\w*)\s+in\s+([^;\n]*)")
+USED = _Pattern(r"\$\{([A-Za-z_]\w*)(?:(%%?|##?|:?[-=?+])([^{}$`'\"]*))?\}|\$([A-Za-z_]\w*)")
 READINGS = 32  # past this many, a variable the command gives several values stays as written
 
 
@@ -3409,7 +3423,7 @@ def _changes(run: list[str]) -> bool:
     return any(w.startswith("{}") for w in _landing(run) + _named(run))
 
 
-PATCH_PATHS = re.compile(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
+PATCH_PATHS = _Pattern(r"(?m)^\*\*\* (?:Add|Update|Delete) File: (.+?)\s*$|^\*\*\* Move to: (.+?)\s*$")
 FILE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit", "write_file", "edit_file", "apply_patch"}
 
 
@@ -3556,7 +3570,7 @@ def _python_source(words: list, fed: str) -> tuple[str, list]:
     return ("", []) if kind == "file" else (text, ["-c"] + words[i:]) if kind == "inline" else (fed, words[i:] or [""])
 
 
-OS_WRITES = re.compile(r"remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime|open"
+OS_WRITES = _Pattern(r"remove|unlink|rmdir|removedirs|renames?|replace|makedirs|mkdir|symlink|link|truncate|chmod|chown|utime|open"
                        r"|write|system|popen|exec\w*|(?:posix_)?spawn\w*")
 OPENERS = ("builtins", "io", "codecs", "gzip", "bz2", "lzma", "tarfile", "zipfile")  # their open (or ZipFile) takes the file, then the mode
 COPIES = ("copy", "copy2", "copyfile", "copytree", "copymode", "copystat", "copyfileobj")  # shutil's: only the second place changes
@@ -3573,12 +3587,12 @@ LIBRARY_WRITES = ("basicConfig", "FileHandler", "RotatingFileHandler", "TimedRot
 # when the reader cannot tell (`to_<anything else>`, `write_<anything else>`, another module's `save(a, b)`); and,
 # as a module's own function only, a deletion or a move (`send2trash`), since a list has a `remove` of its own.
 # PATH_KEYS: the keywords such writers take a path under.
-BY_NAME = re.compile(r"(to_(?:csv|json|excel|parquet|pickle|feather|hdf|stata|html|latex|xml|markdown|orc|string|file|netcdf|zarr|disk)|tofile|writeto|savefig|imsave|imwrite"
+BY_NAME = _Pattern(r"(to_(?:csv|json|excel|parquet|pickle|feather|hdf|stata|html|latex|xml|markdown|orc|string|file|netcdf|zarr|disk)|tofile|writeto|savefig|imsave|imwrite"
                      r"|mimsave|mimwrite|dump_stats|write_(?:csv|json|parquet|excel|ipc|ndjson|avro|image|html|videofile|audiofile|gif|png|pdf|svg))"
                      r"|(to_[a-z_]+|write_\w+)|(save\w*)|(dump)|((?:remove|delete|unlink|trash|send2trash|rmtree|move|rename|extract|unpack|truncate)\w*)")
 OBJECT_FIRST = {"torch", "joblib", "pickle", "dill", "cloudpickle", "nibabel", "torchvision", "tensorflow", "keras", "pandas", "pyarrow", "networkx"}  # save(what, where)
 PATH_FIRST = {"numpy", "cv2", "imageio", "scipy", "skimage", "matplotlib", "tifffile", "PIL"}  # save(where, what)
-OPENED = re.compile(r"\w*(?:File|Store|Writer)|Dataset|open_\w+|memmap|get_writer")  # a library's own way to open a file: h5py.File(path, "w"), ExcelWriter(path)
+OPENED = _Pattern(r"\w*(?:File|Store|Writer)|Dataset|open_\w+|memmap|get_writer")  # a library's own way to open a file: h5py.File(path, "w"), ExcelWriter(path)
 STRINGS = ("join", "joinpath", "Path", "PurePath", "PosixPath", "str", "fspath", "expanduser", "expandvars", "abspath", "realpath", "normpath", "resolve", "absolute",
            "with_suffix", "with_name", "with_stem", "format", "replace", "dirname", "basename", "getcwd", "cwd", "home", "mkdtemp", "mktemp", "gettempdir", "strip",
            "rstrip", "lstrip", "lower", "upper", "removesuffix", "removeprefix", "relative_to", "relpath", "getenv")  # hand back a string or a path
@@ -4974,14 +4988,14 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
 # in any spelling passes only when its program is proven to read only: Python whose writes the reader follows, an awk
 # or sed program that writes no file and runs no command, a shell's script on the line (each command is judged).
 # Anything else waits for the principal's code for exactly that command, as a send does.
-UNREAD = re.compile(r"(?:pypy[\d.]*|node(?:js)?|bun|deno|tsx|ts-node|perl[\d.]*|ruby[\d.]*|irb|jruby|php[\d.]*|lua(?:jit)?[\d.]*"
+UNREAD = _Pattern(r"(?:pypy[\d.]*|node(?:js)?|bun|deno|tsx|ts-node|perl[\d.]*|ruby[\d.]*|irb|jruby|php[\d.]*|lua(?:jit)?[\d.]*"
                     r"|tclsh[\d.]*|wish[\d.]*|expect|osascript|Rscript|julia|swift|groovy|scala|elixir|pwsh|jshell|java|fish|csh|tcsh)$")
 EDITORS = frozenset({"ed", "ex", "vi", "vim", "nvim", "emacs", "sqlite3"})  # their scripts come on their input or in their words
-AWK_SAFE = re.compile(r"-[Fv].*|--(?:field-separator|assign)(?:=.*)?|-[bcNOPrsSt]+|--(?:sandbox|posix|traditional|re-interval)|--?")
+AWK_SAFE = _Pattern(r"-[Fv].*|--(?:field-separator|assign)(?:=.*)?|-[bcNOPrsSt]+|--(?:sandbox|posix|traditional|re-interval)|--?")
 EXTRACTS = {**dict.fromkeys(("tar", "bsdtar", "gtar"), r"-?[A-Za-z]*x[A-Za-z]*|--extract|--get"), "pax": r"-[A-Za-z]*r[A-Za-z]*",
             "cpio": r"-[A-Za-z]*[ip][A-Za-z]*|--extract|--pass-through", **dict.fromkeys(("unzip", "unar"), r"[^-].*"),
             **dict.fromkeys(("7z", "7za", "ar"), r"-?[a-z]*[xe][a-z]*")}  # the word that says it unpacks where it stands
-CANDIDATE = re.compile(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
+CANDIDATE = _Pattern(r"\"([^\"\n]{1,400})\"|'([^'\n]{1,400})'|(?<![\w$])((?:~|\.{0,2}/)[^\s'\"`;|&()<>]{0,400})")  # a path in code
 SPELLINGS: dict = {}  # (home, roots, anchors): the pattern of every way a program's text spells a protected folder
 
 
@@ -5004,12 +5018,12 @@ def _real(path) -> str:
 
 READER_WRITES = {"less": r"-[A-Za-z]*[oO].*|--(?:log-file|LOG-FILE)(?:=.*)?", "rg": r"--pre(?:-glob)?(?:=.*)?", "sort": r"-o.*|--output(?:=.*)?",
                  "file": r"-[A-Za-z]*C[A-Za-z]*|--compile", "date": r"-s|--set(?:=.*)?"}  # a reader's own options that write or run
-GIT_FIRST = re.compile(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
-GIT_RUNS = re.compile(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
-ABSOLUTE = re.compile(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
-SYNTHESIS_IMPORT = re.compile(  # wherever a statement may start: a line, after `;` or `:`, in a list (5.23.1: `import sys; from
+GIT_FIRST = _Pattern(r"-c|--config-env(?:=.*)?|--work-tree(?:=.*)?|--exec-path(?:=.*)?|-p|--paginate")  # git's own, before its subcommand
+GIT_RUNS = _Pattern(r"--output(?:=.*)?|--ext-diff|--textconv|-O.*|--open-files-in-pager(?:=.*)?|--upload-pack(?:=.*)?|--exec(?:=.*)?")
+ABSOLUTE = _Pattern(r"-[A-Za-z]*P[A-Za-z]*|--absolute-names|--absolute-filenames|--insecure|-:|-spf")  # an archive's members land where they say
+SYNTHESIS_IMPORT = _Pattern(  # wherever a statement may start: a line, after `;` or `:`, in a list (5.23.1: `import sys; from
     r"(?:^|[;:])[ \t]*(?:from[ \t]+synthesis\b|import[ \t]+(?:[\w.]+(?:[ \t]+as[ \t]+\w+)?[ \t]*,[ \t]*)*synthesis\b)", re.M)  # synthesis ...` passed)
-SYNTHESIS_LOADED = re.compile(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
+SYNTHESIS_LOADED = _Pattern(r"\b(?:__import__|import_module|run_module|run_path|spec_from_file_location|SourceFileLoader|load_source|(open))"
                               r"[ \t]*\([^)\n]*?['\"][^'\"\n]*\bsynthesis(?:[./]|['\"])")  # a name or a file of synthesis's handed to a loader
 # What runs code it is handed by a name or a text, and the modules whose loaders may be imported by another name (review
 # round 4 of 5.23.1's approval fix, finding 1); of them, what runs a file; and how a string or a word says synthesis as
@@ -5023,10 +5037,10 @@ LOADERS = frozenset({"exec", "eval", "__import__", "import_module", "reload", "e
                      "dictConfig", "fileConfig"})
 FILE_RUNNERS = frozenset({"exec", "eval", "exec_module", "load_module", "run_path", "load_source", "load_compiled"})
 LOADER_MODULES = frozenset({"importlib", "runpy", "pkgutil", "imp", "pydoc", "zipimport", "code", "codeop"})
-MAY_LOAD = re.compile(r"\b(?:%s|compile)\b|^[ \t]*(?:import|from)[ \t]+(?:%s)\b" % ("|".join(sorted(LOADERS)), "|".join(sorted(LOADER_MODULES))), re.M)
-IMPORTS_IT = re.compile(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+import\b|[ \t]*$)"
+MAY_LOAD = _Pattern(r"\b(?:%s|compile)\b|^[ \t]*(?:import|from)[ \t]+(?:%s)\b" % ("|".join(sorted(LOADERS)), "|".join(sorted(LOADER_MODULES))), re.M)
+IMPORTS_IT = _Pattern(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+import\b|[ \t]*$)"
                         r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
-SAYS_SYNTHESIS = re.compile(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
+SAYS_SYNTHESIS = _Pattern(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
     ("approvals", "_expire _spend alone answered consume grant_from_prompt put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
@@ -5191,7 +5205,7 @@ def _isolated(words: list) -> bool:
     return "I" in flags or ("P" in flags and "E" in flags)
 
 
-PYTHON_ENV = re.compile(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
+PYTHON_ENV = _Pattern(r"(?:^|[\s;&|(])(?:export\s+)?(?:PYTHONPATH|PYTHONSTARTUP|PYTHONHOME|PYTHONUSERBASE|PYTHONSAFEPATH)=")
 
 
 def _stand_in(code: str, where: str, module: str = "", written: set | frozenset = frozenset()) -> str:
@@ -5247,17 +5261,17 @@ def _module_path_is_synthesis(line: str, where: str, code: str, written: set | f
 # `RELEASE_KIT` is never the plugin's own (`_shipped`).
 RELEASE_REPOSITORY = "synthesisengineering/synthesis-skills"
 RELEASE_KIT = ("skills/synthesis-skills-manager/scripts/", "skills/synthesis-onboarding/scripts/")  # its imports with it
-GITHUB_REMOTE = re.compile(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
+GITHUB_REMOTE = _Pattern(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/\s]+/[^/\s]+?)(?:\.git)?/?$")
 RELEASE_OPTIONS = {"--repo-root": r"/.+", "--tag": r"v\d+\.\d+\.\d+", "--clients": r"(?:claude|codex|muse)(?:,(?:claude|codex|muse))*",
                    "--session": r"[\w.:-]{1,128}", "--install-only": None, "--dry-run": None}
-RELEASE_CONFIG = re.compile(  # a checkout's own config keys that run no program and send git nowhere
+RELEASE_CONFIG = _Pattern(  # a checkout's own config keys that run no program and send git nowhere
     r"core\.(?:repositoryformatversion|filemode|bare|logallrefupdates|ignorecase|precomposeunicode|symlinks)|user\.(?:name|email)"
     r"|remote\.[^.\s]+\.(?:url|fetch|gh-resolved)|branch\..+\.(?:remote|merge|pushremote|rebase|vscode-merge-base|description)"
     r"|extensions\.(?:worktreeconfig|objectformat)")
-PLAIN_LINE = re.compile(r"[\w./:@%+,=~-]+(?: +[\w./:@%+,=~-]+)*")  # words no shell changes: no quote, variable, glob or operator
+PLAIN_LINE = _Pattern(r"[\w./:@%+,=~-]+(?: +[\w./:@%+,=~-]+)*")  # words no shell changes: no quote, variable, glob or operator
 KIT_FILES = ("skills/synthesis-skills-manager/scripts/release.py", "skills/synthesis-onboarding/scripts/setup.py",
              "skills/synthesis-onboarding/scripts/workspace.py")  # the release tool's modules that write
-KIT_LOADS = re.compile(r"\b(?:import_module|__import__)\(\s*['\"](release|setup|workspace)['\"]")
+KIT_LOADS = _Pattern(r"\b(?:import_module|__import__)\(\s*['\"](release|setup|workspace)['\"]")
 
 
 def _kit_file(path: str) -> bool:
@@ -5447,14 +5461,14 @@ def _shipped(path: str) -> bool:
         os.sep, "/").startswith(tuple(map(paths.spelled, RELEASE_KIT)))
 
 
-PLAIN_OPTIONS = re.compile(r"-[BEIPSsqu]+")  # Python's options that only take away what it loads, or change no code it runs
+PLAIN_OPTIONS = _Pattern(r"-[BEIPSsqu]+")  # Python's options that only take away what it loads, or change no code it runs
 SETTERS = frozenset({"export", "declare", "typeset", "local", "alias", "hash", "enable", "builtin", "source", ".", "function", "read",
                      "mapfile", "readarray", "autoload", "getopts", "unset", "let", "vared", "zparseopts", "select"})  # each sets one
-STARTUP = re.compile(r"PYTHON\w*|DYLD_\w*|LD_\w*|PATH|HOME|BASH_ENV|ENV|TMPDIR|path|fpath|manpath|cdpath|module_path")  # zsh ties the last five
-DEFINES = re.compile(r"(?:^|[\s;&|({])(?:function[ \t]+[^\s;&|()]|(?:functions|aliases|commands|builtins|path|fpath|manpath|cdpath|module_path)\["
+STARTUP = _Pattern(r"PYTHON\w*|DYLD_\w*|LD_\w*|PATH|HOME|BASH_ENV|ENV|TMPDIR|path|fpath|manpath|cdpath|module_path")  # zsh ties the last five
+DEFINES = _Pattern(r"(?:^|[\s;&|({])(?:function[ \t]+[^\s;&|()]|(?:functions|aliases|commands|builtins|path|fpath|manpath|cdpath|module_path)\["
                      r"|[^\s;&|()<>'\"=$]+[ \t]*\([ \t]*\)[ \t\n]*[{(])|\$\{\w+:{0,2}=")  # and a parameter expansion that assigns
-MOVES_HOME = re.compile(r"(?<![\w${])HOME\b(?!=)|\$\{HOME:{0,2}=")  # HOME given a value by anything but a HOME= the guard reads
-USES_HOME = re.compile(r"\$\{?HOME\b|(?<![\w$~./-])~(?=/|\s|$|[\"'])|(?:^|[;&|(]\s*)cd\s*(?:$|[;&|)])")
+MOVES_HOME = _Pattern(r"(?<![\w${])HOME\b(?!=)|\$\{HOME:{0,2}=")  # HOME given a value by anything but a HOME= the guard reads
+USES_HOME = _Pattern(r"\$\{?HOME\b|(?<![\w$~./-])~(?=/|\s|$|[\"'])|(?:^|[;&|(]\s*)cd\s*(?:$|[;&|)])")
 
 
 def _moves_home(text: str) -> bool:
@@ -5482,7 +5496,7 @@ SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-work
     "install-autostart.sh", "uninstall-autostart.sh"))  # they write or load a LaunchAgent or a systemd unit (review round 2, R2-8)
 
 
-SUBSCRIPTED = re.compile(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
+SUBSCRIPTED = _Pattern(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
 
 
 def _globbed(path: str) -> list:
@@ -6148,7 +6162,7 @@ def _spellings(raw: list, env: dict) -> tuple:
     return SPELLINGS[key]
 
 
-LITERAL = re.compile(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`[^`\n]*`|(?<![\w$])(?:~|\.{0,2}/)[^\s'\"`;|&()<>,]*")  # a string, or a path written bare
+LITERAL = _Pattern(r"\"(?:[^\"\\\n]|\\.)*\"|'(?:[^'\\\n]|\\.)*'|`[^`\n]*`|(?<![\w$])(?:~|\.{0,2}/)[^\s'\"`;|&()<>,]*")  # a string, or a path written bare
 
 
 def _statements(text: str) -> list:
@@ -6402,7 +6416,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         except (RecursionError, TimeoutError):  # nested too deeply to follow, or past the call's time: judged by its text
             hit, wrote = None, None
         inner, hit = (hit, False) if isinstance(hit, Unproven) else (None, hit)  # it starts a command that waits: it waits too
-        wrote = bool(re.search(SCRIPTED_WRITE, source or script)) if wrote is None else wrote  # by its syntax, else by its text
+        wrote = bool(SCRIPTED_WRITE.search(source or script)) if wrote is None else wrote  # by its syntax, else by its text
         carried = re.search(r"\b(?:environ|getenv|ENV)\b|\.env\b", script) and (any(n in m[3] for m in ASSIGNED.finditer(text) for n in names) or any(
             v[:1] == "/" and paths.inside(v, _real(r)) for v in os.environ.values() for r in raw))
         reaches = hit is None and (carried or any(n in w for w in words[1:] if w != source for n in names))  # read by its syntax, both are placed
@@ -6538,7 +6552,7 @@ BROWSER_STEPS = {"computer": "browser", "browser_batch": "browser_batch", "form_
                  "navigate": "browser_navigate"}  # a javascript: address runs a page script (round 4 of 5.24.0's review, #1)
 RETURNS = {"return", "enter", "kp_enter", "kp_return", "numpadenter"}  # the last as Playwright names it
 MODIFIERS = {"alt": "option", "opt": "option", "command": "cmd", "meta": "cmd", "super": "cmd", "control": "ctrl", "controlormeta": "cmd"}
-SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
+SAYS_SENT = _Pattern(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|invite|respond|comment|mention|announce"
                        r"|notif(?:y|ie)|remind|schedule|deliver|email|text)(?:s|es|d|ed|ing)?\b"
                        r"|(?:click|press|tap|hit|choose|select)(?:s|es)?\s+(?:on\s+)?(?:the\s+)?send\b)|\bto send\b", re.I)
 # A click whose summary says it publishes waits too, in every app and on every page: an effect-first verb that posts
@@ -6546,18 +6560,18 @@ SAYS_SENT = re.compile(r"^\W*(?:(?:send|repl(?:y|ie)|forward|post|publish|share|
 # label a word or three after it ("Clicks the blue Post button"). It passes when what follows the label says it only
 # opens or closes a box, when it signs in or searches and names nothing that posts, and on the principal's own app on a
 # local host (2026-11-14: Post, Comment and Reply post on facebook.com, LinkedIn and Instagram; the second review).
-PUBLISHES = re.compile(r"^\W*(?:submit|repost|retweet|quote|rate)(?:s|d|ed|ted|ting|ing)?\b|\b(?:click|press|tap|hit|choose"
+PUBLISHES = _Pattern(r"^\W*(?:submit|repost|retweet|quote|rate)(?:s|d|ed|ted|ting|ing)?\b|\b(?:click|press|tap|hit|choose"
                        r"|select)(?:s|es|ed|ing)?\s+(?:on\s+)?(?:the\s+)?(?:[\w'’-]+\s+){0,3}?[\"'“‘]?(?:send|post|comment"
                        r"|reply|repost|share|publish|submit|tweet|done)\b", re.I)
-OPENS = re.compile(r"^\W*(?:box|field|input|area|composer|editor)\b|\b(?:to\s+(?:open|expand|focus|show|reveal|close)|opens"
+OPENS = _Pattern(r"^\W*(?:box|field|input|area|composer|editor)\b|\b(?:to\s+(?:open|expand|focus|show|reveal|close)|opens"
                    r"|opening|expands|focuses|shows|reveals|closes)\s+(?:[\w'’-]+\s+){0,3}?(?:box|field|input|area|composer"
                    r"|editor|menu|dialog|options|panel|sheet|form|window|list|modal|pop-?up|drawer)s?\b", re.I)
-POSTS = re.compile(r"\bto\s+(?:post|publish|send|submit)\b|\b(?:posting|publishing|sending|submitting)\b", re.I)
-ROUTINE = re.compile(r"\b(?:sign(?:s|ing|ed)?[\s-]?in|log(?:s|ging|ged)?[\s-]?(?:in|on)|search\w*|quer(?:y|ies)|filter\w*"
+POSTS = _Pattern(r"\bto\s+(?:post|publish|send|submit)\b|\b(?:posting|publishing|sending|submitting)\b", re.I)
+ROUTINE = _Pattern(r"\b(?:sign(?:s|ing|ed)?[\s-]?in|log(?:s|ging|ged)?[\s-]?(?:in|on)|search\w*|quer(?:y|ies)|filter\w*"
                      r"|look(?:s|ing)?\s?up|password|passcode|verification code)\b", re.I)
-MESSAGE_WORDS = re.compile(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
+MESSAGE_WORDS = _Pattern(r"\b(?:message|repl(?:y|ies)|comment|review|rating|post|tweet|feedback|answer)s?\b", re.I)
 # Off a messaging site, typed words then a key that submits wait only when the call names one of these (the principal, 2026-11-14)
-NAMES_POST = re.compile(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|repl(?:y|ies|ied|ying)|tweet\w*)\b", re.I)
+NAMES_POST = _Pattern(r"\b(?:messag\w*|comment\w*|review\w*|post(?:s|ed|ing)?|repl(?:y|ies|ied|ying)|tweet\w*)\b", re.I)
 # A page script that can send (the second review: one that clicked a comment's submit button went out): on a messaging
 # site's page one that clicks, submits, sends a key or an event, writes by fetch, sets a value or moves the tab (a chat's
 # address opens it and marks it read, 2026-11-14); elsewhere one that submits a form, sends a key or an event, writes by
@@ -6569,11 +6583,11 @@ MOVES = (r"\blocation\s*\.\s*(?:assign|replace)\s*\(|\blocation(?:\s*\.\s*href)?
 # A browser server's own code (Playwright's run_code, Puppeteer's) acts through its page and its keyboard and mouse.
 DRIVES = r"\.(?:press|pressSequentially|type|fill|tap|dblclick|check|uncheck|selectOption|setInputFiles|dragTo|goto|goBack|reload)\s*\(|\b(?:keyboard|mouse|touchscreen)\s*\."
 PRESSES_ENTER = r"\.press\s*\(\s*['\"`](?:[^'\"`]*\+)?(?:Enter|Return|NumpadEnter)['\"`]"
-SCRIPT_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
+SCRIPT_ACTS = _Pattern(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
                          + WRITES + "|" + MOVES + "|" + DRIVES, re.I)
-SCRIPT_SENDS = re.compile(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
+SCRIPT_SENDS = _Pattern(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
-SCRIPT_ROUTINE = re.compile(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
+SCRIPT_ROUTINE = _Pattern(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
 
 
 def _publishes(said: str, local: bool) -> bool:
@@ -6673,20 +6687,20 @@ UNREAD_FORMS = (("a member named as it runs", r"\]\s*\)?\s*(?:\(|\0)"), ("Reflec
                 ("call, apply or bind", r"\.\s*(?:call|apply|bind)\s*\("), ("eval", r"\beval\s*\("), ("Function", r"\bFunction\s*\("),
                 ("with", r"\bwith\s*\("), ("import()", r"\bimport\s*\("), ("a timer given a string", r"\b(?:setTimeout|setInterval)\s*\(\s*\0"),
                 ("a name written in escapes", r"\\u[0-9a-fA-F{]"))
-CODE_SINKS = re.compile(r"\bcreateElement\s*\(\s*\0(\d+)\0|(?:\bsetAttribute|\bsetAttributeNS)\s*\(\s*\0(\d+)\0|(?:innerHTML|outerHTML"
+CODE_SINKS = _Pattern(r"\bcreateElement\s*\(\s*\0(\d+)\0|(?:\bsetAttribute|\bsetAttributeNS)\s*\(\s*\0(\d+)\0|(?:innerHTML|outerHTML"
                         r"|srcdoc)\s*" + ASSIGN + r"\s*\0(\d+)\0|(?:insertAdjacentHTML|\bwrite(?:ln)?|\bBlob)\s*\(([^()]*)"
                         r"|(?:\blocation(?:\s*\.\s*href)?|\.\s*(?:href|src))\s*" + ASSIGN + r"\s*\0(\d+)\0|\blocation\s*\.\s*(?:assign|replace)\s*\(\s*\0(\d+)\0")
 HANDLERS = r"on(?:click|dblclick|submit|keydown|keyup|keypress|input|change|mousedown|mouseup|pointerdown|pointerup|touchstart|touchend)"
-PAGE_ACTS = re.compile(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
+PAGE_ACTS = _Pattern(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|KeyboardEvent|\.value\s*" + ASSIGN + r"|execCommand|"
                        + WRITES + "|" + MOVES, re.I)  # SCRIPT_ACTS but a browser server's own calls, which no page script makes (#8)
-SCRIPT_ACTS_MORE = re.compile(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
+SCRIPT_ACTS_MORE = _Pattern(r"(?:\b(?:window|globalThis|self|top|parent|frames|defaultView)\s*\.\s*|(?<![\w$.]))open\s*(?:\(|\0)"
                               r"|\.\s*on[a-z]+\s*\(|\.\s*" + HANDLERS + r"\b(?!\s*=[^=])|(?<![\w$.])" + HANDLERS + r"\b"
                               r"|\.\s*postMessage\s*\("
                               r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*navigate\s*\("
                               r"|\bhistory\s*\.\s*(?:go|back|forward)\s*\(", re.I)
-SHOWS_PAGE = re.compile(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
-BARE_SENDS = re.compile(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
-MEMBER_SENDS = re.compile(r"(?:\bnew\s+([A-Za-z_$][\w$]*)\s*\([^()]*\)|(?<![\w$.])([A-Za-z_$][\w$]*))?\s*\.\s*((?:send|post|submit|publish|reply"
+SHOWS_PAGE = _Pattern(r"claude-in-chrome|claude[_-]browser|playwright|chrome-devtools", re.I)  # whose reads show the page
+BARE_SENDS = _Pattern(r"(?<![\w$.])((?:send|post|submit|publish|reply|share|tweet)\w*)\s*\(", re.I)  # a page's own, unless the script defines it
+MEMBER_SENDS = _Pattern(r"(?:\bnew\s+([A-Za-z_$][\w$]*)\s*\([^()]*\)|(?<![\w$.])([A-Za-z_$][\w$]*))?\s*\.\s*((?:send|post|submit|publish|reply"
                           r"|share|tweet)\w*)\s*\(", re.I)  # (a class the receiver is made by, the receiver, the method)
 SERVER_CODE = "/* the browser server's own code */ "
 
@@ -6881,7 +6895,7 @@ WEB_MESSAGING = (  # (site, and every host under it; path prefix, or * for every
     ("fb.me", "*", "facebook+messenger", "shift"), ("instagram.com", "*", "instagram", "shift"), ("instagr.am", "*", "instagram", "shift"),
     ("linkedin.com", "*", "linkedin", "shift"), ("x.com", "*", "x", "shift"), ("twitter.com", "*", "x", "shift"),
 )
-TAB_LINE = re.compile(r'tabId ([\w-]+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until
+TAB_LINE = _Pattern(r'tabId ([\w-]+): .*\("?([^"\s]*?)"?\)\s*$', re.M)  # the address in quotes, or without them as the extension wrote it until
 # August 2026 and the built-in pane writes it still; Chrome's tab ids are numbers, the pane's `tab-N` as well (round 4 of 5.24.0's review, #5)
 
 
@@ -7132,7 +7146,7 @@ def _local(address: str) -> bool:
 
 # A page script that can move its tab (round 6, #4, as ruled): a location change, by name, alias or Object.assign (#1),
 # `open`, a history or navigation step, and off a local app's page a click, a submit or a dispatched event.
-NAVIGATES = re.compile(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*"
+NAVIGATES = _Pattern(MOVES + r"|\blocation\s*\.\s*(?:pathname|search|hash|host|hostname|port|protocol)\s*" + ASSIGN + r"|\bnavigation\s*\.\s*"
                        r"navigate\s*\(|\bhistory\s*\.\s*(?:go|back|forward)\s*\(|\bObject\s*\.\s*assign\s*\(\s*(?:\w+\s*\.\s*)?location\b", re.I)
 
 
@@ -7495,7 +7509,7 @@ INPUT_WORDS = {"cliclick": r"(?:c|dc|tc|rc|kd|ku|kp|t|dd|du|dm):.*|-f|--file|-|.
                "xdotool": r"key|keydown|keyup|type|click|mousedown|mouseup|exec|script|behave|.*\$.*", "ydotool": r"key|type|click|mousedown|mouseup",
                "tmux": r"send-keys|send|send-prefix|paste-buffer|pasteb", "screen": r"stuff", "kitty": r"send-text|send-key",
                "wezterm": r"send-text"}  # the words that act; a program with none named acts on every run (hs is read by its Lua)
-HS_ACTS = re.compile(r"\b(?:eventtap|keyStrokes?|osascript|applescript|execute|task|axuielement|uielement|mouse|selectMenuItem|urlevent"
+HS_ACTS = _Pattern(r"\b(?:eventtap|keyStrokes?|osascript|applescript|execute|task|axuielement|uielement|mouse|selectMenuItem|urlevent"
                      r"|messages|shortcuts|loadstring|load|dofile|require|http)\b")
 KEYS = "presses keys or clicks in whatever app is in front"
 OTHER = "runs code in another app"
@@ -7508,37 +7522,37 @@ ACTING_APPS = {**dict.fromkeys(("systemuiserver", "com.apple.systemuiserver", "b
                                 "com.runningwithcrayons.alfred", "osascript"), OTHER)}
 SENDING_APPS = {"messages": "messages", "com.apple.mobilesms": "messages", "com.apple.ichat": "messages", "mail": "email",
                 "com.apple.mail": "email", "microsoft outlook": "email", "com.microsoft.outlook": "email"}
-OSA_KEYS = re.compile(r"\bkeystroke\b|\bkey\s+code\b|\bkey\s+(?:down|up)\b|\bkey(?:Code|Down|Up)\b", re.I)
-SE_VERBS = re.compile(r"\bclick\b|\bperform\b|\bselect\b|\bset\s+(?:the\s+)?(?:value|focused|selected)\b|\bconfirm\b|\bpick\b"
+OSA_KEYS = _Pattern(r"\bkeystroke\b|\bkey\s+code\b|\bkey\s+(?:down|up)\b|\bkey(?:Code|Down|Up)\b", re.I)
+SE_VERBS = _Pattern(r"\bclick\b|\bperform\b|\bselect\b|\bset\s+(?:the\s+)?(?:value|focused|selected)\b|\bconfirm\b|\bpick\b"
                       r"|\b(?:in|de)crement\b|\.value\s*=(?!=)|\bAX(?:Press|Confirm)\b", re.I)  # System Events' UI verbs, where it is named
-OSA_OTHER = re.compile(r"\bdo\s+script\b|\bdoScript\b|\bdo\s+javascript\b|\bdoJavaScript\b|\bexecute\b[^\n]*\bjavascript\b"
+OSA_OTHER = _Pattern(r"\bdo\s+script\b|\bdoScript\b|\bdo\s+javascript\b|\bdoJavaScript\b|\bexecute\b[^\n]*\bjavascript\b"
                        r"|\bexecute\s*\(|\bwrite\s+text\b|\bcommand\s+\0\d+\0|\brun\s+trigger\b|\bexecute\s+lua\b", re.I)
-OSA_UNREAD = re.compile(r"\bdo\s+shell\s+script\b|\bdoShellScript\b|\b(?:run|load|store)\s+script\b|\b(?:run|load|store)Script\b"
+OSA_UNREAD = _Pattern(r"\bdo\s+shell\s+script\b|\bdoShellScript\b|\b(?:run|load|store)\s+script\b|\b(?:run|load|store)Script\b"
                         r"|«\s*(?:event|class)|\buse\s+(?:framework|script)\b|\bcurrent\s+application's\b|\beval\s*\(|\bFunction\s*\("
                         r"|\bscript\s+\0\d+\0|\bLibrary\s*\(|=\s*\$\s*[;,)\n]|NSAppleEvent\w*"
                         r"|ObjC\s*\.\s*(?:bindFunction|castRefToObject|registerSubclass)|\$\s*(?:\[|\.\s*(?:system|popen|exec\w*|fork"
                         r"|NSTask|NSAppleScript|NSUserAppleScriptTask|NSUserUnixTask|CGEvent\w*|NSWorkspace|dlopen|dlsym|NSBundle"
                         r"|NSClassFromString|performSelector\w*)\b)", re.I)
-OSA_CALLED = re.compile(r"\[(?!\s*(?:\0\d+\0|\d+)\s*\])[^\]\n]*\]\s*(?:\(|\.\s*(?:call|apply|bind)\s*\()")  # a member named when it runs, called
+OSA_CALLED = _Pattern(r"\[(?!\s*(?:\0\d+\0|\d+)\s*\])[^\]\n]*\]\s*(?:\(|\.\s*(?:call|apply|bind)\s*\()")  # a member named when it runs, called
 OBJC_SAFE = ("Foundation", "AppKit", "Cocoa", "stdlib")  # stdlib's system and popen are held by name
-AUTOMATION_URL = re.compile(r"(?i)^(?:shortcuts|kmtrigger|keyboardmaestro|alfred|hammerspoon|raycast|btt|bettertouchtool|x-callback-url):")
+AUTOMATION_URL = _Pattern(r"(?i)^(?:shortcuts|kmtrigger|keyboardmaestro|alfred|hammerspoon|raycast|btt|bettertouchtool|x-callback-url):")
 TERMINALS = ("terminal", "iterm", "warp", "kitty", "alacritty", "wezterm", "ghostty", "hyper")  # `open -a` one of these runs the file
-INPUT_LIBS = re.compile(r"\b(?:pyautogui|pynput|autopy|pydirectinput|pywinauto|robotjs|CGEvent\w*|CGPost(?:Keyboard|Mouse)Event"
+INPUT_LIBS = _Pattern(r"\b(?:pyautogui|pynput|autopy|pydirectinput|pywinauto|robotjs|CGEvent\w*|CGPost(?:Keyboard|Mouse)Event"
                         r"|AXUIElement\w*|NSAppleScript|NSUserAppleScriptTask|SBApplication|ScriptingBridge|appscript)\b"
                         r"|\b(?:import|from)\s+(?:osascript|applescript|py_applescript)\b")
-INPUT_MODULES = re.compile(r"pyautogui|pynput|robotjs|@nut-tree/.*|nut-js|node-key-sender|keysender|@jxa/run|applescript|run-applescript"
+INPUT_MODULES = _Pattern(r"pyautogui|pynput|robotjs|@nut-tree/.*|nut-js|node-key-sender|keysender|@jxa/run|applescript|run-applescript"
                            r"|node-osascript|osascript")  # a module a program imports by a string (`require("…")`)
-IMPORTED = re.compile(r"""(?:\b(?:require|import|__import__|import_module)\s*\(\s*|\bfrom\s+|\bimport\s+)(["'`])([^"'`\n]+)\1""")
-SPAWNS = re.compile(r"\b(?:subprocess|Popen|check_output|check_call|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)"
+IMPORTED = _Pattern(r"""(?:\b(?:require|import|__import__|import_module)\s*\(\s*|\bfrom\s+|\bimport\s+)(["'`])([^"'`\n]+)\1""")
+SPAWNS = _Pattern(r"\b(?:subprocess|Popen|check_output|check_call|os\s*\.\s*(?:system|popen|exec\w*|spawn\w*|posix_spawn\w*)"
                     r"|pty\s*\.\s*spawn|create_subprocess_\w+|child_process|execSync|execFileSync|spawnSync|Open3|NSTask|execa"
                     r"|Runtime\s*\.\s*getRuntime|executableURL|launchPath)\b|\b(?:system|exec|spawn|popen|Process)\s*\("
                     r"|\b(?:system|exec|spawn)\s+[\w\"'\[(]|\bIO\s*\.\s*popen|\bDeno\s*\.\s*(?:Command|run)\b|\bBun\s*\.\s*(?:spawn|\$)"
                     r"|\bsh\s*\.\s*[\w-]+\s*\(")
-QUOTED_RUN = re.compile(r"`([^`\n]*)`|%x[({\[]([^)}\]\n]*)[)}\]]|\bqx\s*[({/'\"]([^)}/'\"\n]*)")  # Perl's and Ruby's commands
-CALLED_WITH = re.compile(r"(?:\b(?:system|popen|run|call|check_call|check_output|getoutput|getstatusoutput|Popen|execSync|exec|spawn|spawnSync"
+QUOTED_RUN = _Pattern(r"`([^`\n]*)`|%x[({\[]([^)}\]\n]*)[)}\]]|\bqx\s*[({/'\"]([^)}/'\"\n]*)")  # Perl's and Ruby's commands
+CALLED_WITH = _Pattern(r"(?:\b(?:system|popen|run|call|check_call|check_output|getoutput|getstatusoutput|Popen|execSync|exec|spawn|spawnSync"
                          r"|execFile|execFileSync|execa|create_subprocess_shell)\s*\(|\b(?:system|exec)\s+)\s*$")  # a string handed to one starts
-LOOKS_OSA = re.compile(r"\btell\s+(?:application|app)\b|\bApplication\s*\(|\bdo\s+shell\s+script\b|«", re.I)  # an AppleScript itself
-PROGRAM_STRINGS = re.compile(r'''[rRbBuUfF]{0,2}(?:"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)''')
+LOOKS_OSA = _Pattern(r"\btell\s+(?:application|app)\b|\bApplication\s*\(|\bdo\s+shell\s+script\b|«", re.I)  # an AppleScript itself
+PROGRAM_STRINGS = _Pattern(r'''[rRbBuUfF]{0,2}(?:"""[\s\S]*?"""|\'\'\'[\s\S]*?\'\'\'|"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`)''')
 
 
 def _osa_code(text: str, jxa: bool) -> tuple:
@@ -7766,10 +7780,10 @@ def _program_acts(text: str, head: str = "", where: str = "/", depth: int = 0, p
 
 # A program that hands osascript a script it read from a file ran with no code while `osascript <file>` waited: pointed at
 # the local-messaging skill's transport, a Messages send (review of the runtime's carried scripts, 2026-11-15, problem B).
-OSA_EXT = re.compile(r"\.(?:js|jxa|scpt|scptd|applescript|osa)$", re.I)
-FILE_READS = re.compile(r"\bopen\s*\(|\.read_(?:text|bytes)\s*\(|\breadFile(?:Sync)?\s*\(|\bFile\s*\.\s*(?:read|open)\b|\bIO\s*\.\s*read"
+OSA_EXT = _Pattern(r"\.(?:js|jxa|scpt|scptd|applescript|osa)$", re.I)
+FILE_READS = _Pattern(r"\bopen\s*\(|\.read_(?:text|bytes)\s*\(|\breadFile(?:Sync)?\s*\(|\bFile\s*\.\s*(?:read|open)\b|\bIO\s*\.\s*read"
                         r"|\bslurp\b|\bfile_get_contents\s*\(|\bDeno\s*\.\s*readTextFile|\bjson\s*\.\s*load\s*\(|\bload\s*\(")
-WRITE_TARGET = re.compile(r"""\bopen\s*\(\s*([^,\n]{1,300}?)\s*,\s*['"][wax]|\.write_(?:text|bytes)\s*\(|"""
+WRITE_TARGET = _Pattern(r"""\bopen\s*\(\s*([^,\n]{1,300}?)\s*,\s*['"][wax]|\.write_(?:text|bytes)\s*\(|"""
                           r"""\b(?:writeFile(?:Sync)?|File\s*\.\s*write|IO\s*\.\s*write|file_put_contents|Deno\s*\.\s*writeTextFile)\s*\(\s*([^,\n]+)""")
 
 
@@ -7991,7 +8005,7 @@ def _acts_in_line(command: str, cwd: str, written: set, bodies: str, parsed: tup
 # its own results, or its own last navigate, show; a click is read by the control the page's newest snapshot names as
 # well as the agent's words for it; a tool the guard does not know is a step that may send; and where nothing shows the
 # page, it is held as one that may send. The code binds the call itself, not the steps read from it.
-DRIVERS = re.compile(r"browser|chrome|chromium|playwright|puppeteer|devtools|webdriver|selenium|firefox|safari|stagehand", re.I)
+DRIVERS = _Pattern(r"browser|chrome|chromium|playwright|puppeteer|devtools|webdriver|selenium|firefox|safari|stagehand", re.I)
 DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), **dict.fromkeys(("press_key", "press", "key", "keyboard"), "key"),
           **dict.fromkeys(("click", "double_click", "dblclick", "tap", "select_option", "select", "check", "drag", "handle_dialog"), "click"),
           **dict.fromkeys(("fill_form", "form_input"), "form"), "drop": "drop",
@@ -7999,10 +8013,10 @@ DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), 
           **dict.fromkeys(("evaluate", "evaluate_script", "run_code", "run_code_unsafe", "execute_script", "script", "javascript"), "script"),
           **dict.fromkeys(("snapshot", "take_screenshot", "screenshot", "console_messages", "network_requests", "network_request", "wait_for",
                            "find", "hover", "resize", "close", "emulate_media", "install", "file_upload", "list_pages", "select_page"), "read")}
-READ_WORDS = re.compile(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
+READ_WORDS = _Pattern(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
                         r"|title|url|cookies|logs?|status|info|search)(?:_|$)")  # an unknown tool that says it only reads
 UNKNOWN_PAGE = "a page the record does not show"
-PAGE_LINE = re.compile(r"^- Page URL: (\S+)\s*$|^\d+: (\S+) \[selected\]\s*$|^- \d+: \(current\) \[[^\]\n]*\]\((\S+?)\)\s*$|^Navigated to (\S+)", re.M)
+PAGE_LINE = _Pattern(r"^- Page URL: (\S+)\s*$|^\d+: (\S+) \[selected\]\s*$|^- \d+: \(current\) \[[^\]\n]*\]\((\S+?)\)\s*$|^Navigated to (\S+)", re.M)
 PAGE_MARKS = ("Page URL", "[selected]", "(current)", "Navigated to", "[ref=")
 
 
@@ -8032,7 +8046,7 @@ def _caller(lines: list, i: int, ident: str) -> dict | None:
     return None
 
 
-REFUSED_BY_HOOK = re.compile(r"\s*(?:PreToolUse:|(?:Command|Tool call) blocked by PreToolUse hook: )")  # Claude Code's, then Codex's
+REFUSED_BY_HOOK = _Pattern(r"\s*(?:PreToolUse:|(?:Command|Tool call) blocked by PreToolUse hook: )")  # Claude Code's, then Codex's
 
 
 def _mcp_name(server: str, tool: str) -> str:
@@ -8322,7 +8336,7 @@ def shell_command(tool_input: dict) -> str:
 # pragma, a call on the global `tools`, or one of its global helpers, each working inside Codex by the tool's own
 # description: on the script's result (text, image, audio, generatedImage, notify, yield_control; a remote media URL is
 # refused), its session's store (store, load) or its run (exit). None reaches a person, a service, a file or a process.
-CODE_MODE_SIGN = re.compile(r"\A\s*//\s*@exec:|(?<![.\w$])tools\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]\n]+\])\s*\(|(?<![.\w$])ALL_TOOLS\b"
+CODE_MODE_SIGN = _Pattern(r"\A\s*//\s*@exec:|(?<![.\w$])tools\s*(?:\.\s*[A-Za-z_$][\w$]*|\[[^\]\n]+\])\s*\(|(?<![.\w$])ALL_TOOLS\b"
                             r"|(?<![.\w$])(?:text|image|audio|generatedImage|store|load|notify|exit|yield_control)\s*\(")
 
 
@@ -8394,10 +8408,10 @@ def _project(session: dict | None) -> str:
 # server's tool, by an HTTP client to its endpoint or by a program that posts its JSON-RPC (the client is one), is judged
 # as that tool's call is, by `_connector`; one whose tool or arguments the guard cannot read waits when it may send.
 LOCAL_MCP = "workspace-mcp"  # the server the meeting skill runs here, as the harnesses name it
-MCP_CALLS = re.compile(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
-MCP_LINE = re.compile(r"tools/call|call_?[tT]ool|mcp_client|:8765\b|/mcp\b")  # a line that names a local MCP server or its call
-MCP_NAMED = re.compile(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
-MCP_HOST = re.compile(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$", re.I)
+MCP_CALLS = _Pattern(r"tools/call|\bcall_?[tT]ool\s*\(")  # the JSON-RPC method, or a client library's call
+MCP_LINE = _Pattern(r"tools/call|call_?[tT]ool|mcp_client|:8765\b|/mcp\b")  # a line that names a local MCP server or its call
+MCP_NAMED = _Pattern(r"""["']?\bname["']?\s*:\s*["'`]([\w.-]+)["'`]|\bcall_?[tT]ool\s*\(\s*["'`]([\w.-]+)["'`]""")
+MCP_HOST = _Pattern(r"(?:(https?)://)?(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?::(\d+))?(/[^\s?#]*)?(?:[?#]\S*)?$", re.I)
 BODIES = {"-d", "--data", "--data-raw", "--data-binary", "--data-ascii", "--data-urlencode", "--json", "--post-data",
           "--body-data", "--post-file", "--body-file", "-T", "--upload-file", "-F", "--form"}
 ADDRESSLESS = BODIES | {"--raw", "-H", "--header", "-X", "--request", "-u", "--user", "-A", "--user-agent", "-e", "--referer", "-b", "--cookie",
@@ -8732,19 +8746,19 @@ def _mcp_calls(commands: list, feeds: list, written: set, line: str = "", bodies
 # makes any HTTP write (a write method, a request call handed a body by position or by keyword, a request's .write() or
 # .end(), a client it starts) is judged by every body it hands over that the guard can read, and waits when one cannot be
 # read. A program that only reads (a GET, a liveness check) hands over none.
-LOCAL_IN = re.compile(r"(?:^|[/@\s\[])(?:localhost|127\.0\.0\.1|::1|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?=$|[\]:/\s])", re.I)
+LOCAL_IN = _Pattern(r"(?:^|[/@\s\[])(?:localhost|127\.0\.0\.1|::1|0\.0\.0\.0|[\w.-]+\.localhost)\.?(?=$|[\]:/\s])", re.I)
 BODY_KEYS = ("data", "json", "body", "content", "files")
 WRITE_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 SHELLED = ("system", "popen", "run", "call", "check_output", "check_call", "Popen", "getoutput", "getstatusoutput")
 LOGGED = ("print", "log", "debug", "info", "warning", "warn", "error", "exception", "critical")
 KINDS = 256  # the distinct values a body expression is read as, past which one more is a value the guard cannot read
-HTTP_HINT = re.compile(r"\burlopen\b|\bRequest\b|\b(?:requests|httpx|aiohttp|urllib3|pycurl|socket|axios|got|curl|wget|xh|subprocess|child_process)\b"
+HTTP_HINT = _Pattern(r"\burlopen\b|\bRequest\b|\b(?:requests|httpx|aiohttp|urllib3|pycurl|socket|axios|got|curl|wget|xh|subprocess|child_process)\b"
                        r"|http\.client|HTTPConnection|\bfetch\s*\(|\.(?:request|post|put|patch)\s*\(|\b(?:execSync|spawn|spawnSync|execFile)\b"
                        r"|\bos\s*\.\s*(?:system|popen)\b|['\"](?:POST|PUT|PATCH|DELETE)['\"]", re.I)  # a request a file may make
-CLIENT_LINE = re.compile(r"""[`'"]?\s*(?:\S*/)?(?:curl|wget|https?|xh)(?:\s|$)""")  # a command line that starts an HTTP client
-JS_SITES = re.compile(r"(?<![\w$.])(body|data|json)\s*:(?!:)|[{,]\s*(body|data|json)\s*(?=[,}])|\.\s*(write|end|send)\s*\(|\.\s*(post|put|patch)\s*\(|\.\s*(pipe)\s*\(")
-JS_RUNS = re.compile(r"(?<![\w$])(exec|execSync|spawn|spawnSync|execFile|execFileSync|execa|execaSync)\s*\(")
-JS_FUNCS = re.compile(r"\bfunction\s+([\w$]+)\s*\(([^()]*)\)|([\w$]+)\s*[=:]\s*(?:async\s+)?(?:function\s*[\w$]*\s*)?\(([^()]*)\)\s*(?:=>|\{)"
+CLIENT_LINE = _Pattern(r"""[`'"]?\s*(?:\S*/)?(?:curl|wget|https?|xh)(?:\s|$)""")  # a command line that starts an HTTP client
+JS_SITES = _Pattern(r"(?<![\w$.])(body|data|json)\s*:(?!:)|[{,]\s*(body|data|json)\s*(?=[,}])|\.\s*(write|end|send)\s*\(|\.\s*(post|put|patch)\s*\(|\.\s*(pipe)\s*\(")
+JS_RUNS = _Pattern(r"(?<![\w$])(exec|execSync|spawn|spawnSync|execFile|execFileSync|execa|execaSync)\s*\(")
+JS_FUNCS = _Pattern(r"\bfunction\s+([\w$]+)\s*\(([^()]*)\)|([\w$]+)\s*[=:]\s*(?:async\s+)?(?:function\s*[\w$]*\s*)?\(([^()]*)\)\s*(?:=>|\{)"
                       r"|(?<![\w$.])(?!(?:if|for|while|switch|catch|function)\b)([\w$]+)\s*\(([^()]*)\)\s*\{")
 
 
@@ -9452,7 +9466,7 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
 # repository's own config (with the files it includes and its worktree's) and a file the line points git at, the line's
 # own (-c, --config-env, GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS), and the programs the line's environment gives git. A
 # value the guard cannot read waits, and an alias counts only when it is the command run.
-GIT_PROGRAMS = re.compile(r"core\.(?:fsmonitor|hookspath|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor"
+GIT_PROGRAMS = _Pattern(r"core\.(?:fsmonitor|hookspath|sshcommand|editor|pager|askpass|gitproxy|alternaterefscommand)|sequence\.editor"
                           r"|pager\..+|credential\.(?:.+\.)?helper|diff\.(?:external|.+\.(?:command|textconv))|filter\..+\.(?:clean|smudge|process)"
                           r"|merge\..+\.driver|gpg\.(?:.+\.)?program|gpg\.ssh\.defaultkeycommand|interactive\.difffilter|web\.browser"
                           r"|remote\..+\.(?:uploadpack|receivepack)|submodule\..+\.update|trailer\..+\.(?:command|cmd)"
@@ -9622,7 +9636,7 @@ def _hook_names(sub: str) -> set:
 
 BOOLEAN_WORDS = {"", "true", "false", "yes", "no", "on", "off", "1", "0", "keep"}
 GIT_NET = frozenset({"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule", "archive", "fetch-pack", "send-pack"})
-GIT_REMOTE_KEYS = re.compile(r"credential\.(?:.+\.)?helper|core\.(?:sshcommand|askpass|gitproxy)|remote\..+\.(?:uploadpack|receivepack)")
+GIT_REMOTE_KEYS = _Pattern(r"credential\.(?:.+\.)?helper|core\.(?:sshcommand|askpass|gitproxy)|remote\..+\.(?:uploadpack|receivepack)")
 GIT_QUIET = frozenset({"log", "show", "rev-parse", "blame", "grep", "describe", "cat-file", "shortlog", "rev-list", "ls-tree", "for-each-ref",
                        "show-ref", "merge-base", "name-rev", "count-objects", "config", "help", "version", "var", "check-ignore", "check-attr",
                        "reflog", "whatchanged", "diff-tree", "ls-remote", ""})  # they run no hook and reach no submodule
