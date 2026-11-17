@@ -223,7 +223,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      script that gives them its own values (`set --`, `shift`, a function) is left as
      written. `$PWD` and `$OLDPWD` are the folder each command is in and the one it was in
      before, in its own words and targets; a script it hands a shell puts its own. `~` and
-     `$HOME` are the home a command gives itself when it sets `HOME`. A word
+     `$HOME` are the home a command gives itself when it sets `HOME`; a line that gives
+     `HOME` a value the guard does not read (`read`, `printf -v`, a loop over it, a
+     parameter that assigns) and then uses it waits, but text it only prints or hands a
+     program as input (`echo "HOME: $HOME"`, a heredoc fed to anything but a shell) gives
+     `HOME` no value (5.24.0). A process substitution (`diff <(…) file`) is a file's name
+     to its command and its own command is read; a `case` statement's patterns run
+     nothing; and an alias is one a command on the line defines, never a word in a
+     message, a note or a heredoc's body. A word
      that starts with a substitution the guard can read is read with what that names put
      in: the folder of a path that is spelled out (`$(dirname <path>)`,
      `$(realpath <path>)`), a fresh temporary file or folder (`$(mktemp)`, `$(mktemp -d)`,
@@ -861,8 +868,11 @@ stay open, and no hook running as that same user can close them:
   sets, at OLDPWD, a cdable_vars value or an auto_cd folder, where zsh's `cd old new` leads, and where the shell stays
   when a `cd` may fail: no folder there when the guard looks, or a command before it that may make, remove or move one
   (round 4, Q1). A line whose folder it cannot tell waits for the principal's code (a CDPATH it cannot read, a
-  redefined `cd`, a `cd` inside eval, a sourced file, a function, an alias or a trap, BASH_ENV or ZDOTDIR). What it
-  cannot see stays open: a folder another process removes or makes between the guard's look and the `cd`; a CDPATH,
+  redefined `cd`, a `cd` inside eval, a sourced file or a trap, a function whose body changes folder called anywhere
+  but in a command substitution, an alias a command on a line that changes folder defines or one whose value does,
+  BASH_ENV or ZDOTDIR). A `cd` outside every function's body is the line's own, which it follows (5.24.0). What it
+  cannot see stays open: a function called by a name a variable holds (`f=q; $f`, crafted); a folder another process
+  removes or makes between the guard's look and the `cd`; a CDPATH,
   cdable_vars or auto_cd set in the user's shell profile without being exported; and a shell startup file (the
   harness's shell snapshot, `~/.zshenv`) that changes folder before a command runs. The agent can start such a process
   with no code, and a startup file or snapshot written before the guard held them (22.26), or by a route above, still
@@ -928,8 +938,20 @@ stay open, and no hook running as that same user can close them:
   at all), run with no code even when they name synthesis's writers. A shell script the line
   writes from a heredoc is read as that heredoc's text (22.21), a script `cat` writes from one
   as its body (22.22), and a script the line writes with no heredoc (`printf` or `echo` into
-  a file) waits as one the guard cannot read. Reading what each writer puts in a file is
-  parked (review round 4 of 22.21 and round 2 of 22.22; ordinary, and the same on main).
+  a file) waits as one the guard cannot read. Review round 4 of 22.21 and round 2 of 22.22
+  ruled that what a line writes would be read whatever the writer; the merges that brought
+  them into 5.24.0 read only `cat`'s heredocs, which narrows those rulings to the planted
+  file `tee`, `printf`, `dd` or a written module leaves unread. Reading what each writer puts
+  in a file is parked for the sandbox (the run's decision of 2026-11-16 13:57 under rule 8:
+  both items shipped as net improvements; the same on main).
+- The holds of the rituals' `decay_sweep.py` and `ritual_state.py` run from a plugin cache
+  rather than the runtime say the script is more than the guard could read in its time, and
+  never point at the runtime's own copy, which 5.24.0's skill text runs and which passes
+  (22.15). Only a session on an older skill's text meets them (the integration review of
+  5.24.0).
+- Three holds of `eslint` and `tsc` in one scratch project on 2026-11-06 did not repeat in a
+  bare folder; why they waited there is not known (the integration review of 5.24.0's
+  replay; one day, one project).
 - A launcher line handed to a bare shell (`bash -lc '<line>'`, as Codex's shell tool hands
   it) passes when the first shell of that name on the harness's PATH is the system's. A
   shell of the agent's put in a folder this user writes, ahead of the system's, after the

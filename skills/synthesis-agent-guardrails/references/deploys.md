@@ -110,7 +110,9 @@ site's own timeline.
   repositories a site's build renders, each compared with its own last approved upload. A
   `{"variable", "default"}` entry follows the path the deploy command hands the build, so
   a catalog read from another worktree is the tree checked (2026-11-16: a personal site's
-  build read its article catalog from whichever checkout its command named).
+  build read its article catalog from whichever checkout its command named). Its `default`
+  is the checkout itself, so it names the repository's top folder, never the catalog file:
+  a file there blocks every deploy that does not hand the build the variable.
 
 ## The rapid-redeploy brake
 

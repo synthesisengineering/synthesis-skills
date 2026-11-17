@@ -455,7 +455,7 @@ def _system(world, monkeypatch):
 def test_a_command_root_installed_as_a_link_to_a_script_of_another_name_is_that_command(world, monkeypatch):
     system = _system(world, monkeypatch)
     world["first_on_path"](system / "bin")
-    for line in ("open -a Docker", f"{system}/bin/open -a Docker", "cd {work} && grep -c x notes.md; open -a Docker".format(work=world["work"])):
+    for line in ("open -a Docker", "cd {work} && grep -c x notes.md; open -a Docker".format(work=world["work"]), "command open -a Docker"):
         assert world["verdict"](line) is None, line
 
 

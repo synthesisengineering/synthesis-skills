@@ -1400,7 +1400,7 @@ def test_tests_under_a_conftest_that_puts_the_home_at_a_temporary_path_run_with_
 
 @pytest.mark.parametrize("line", ["python3 -m pytest -q tests/test_approval_provenance.py", "pytest -q -x tests/test_unproven_programs.py -k transcript",
                                   "python3 -m pytest -q tests/ skills/", "uv run pytest skills/synthesis-local-messaging/tests/test_imessage_send.py",
-                                  "pytest"])
+                                  "pytest", "python3 -m pytest --version", "pytest -V tests"])
 def test_synthesis_s_own_suite_runs_from_its_checkout_with_no_code(world, line):
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(ROOT), session=world["session"]) is None, line
 
@@ -1684,6 +1684,10 @@ ORDINARY_LINES = {
     "a commit message that says 'printf -v HOME'": "cd {work} && git commit -q --allow-empty -m 'A printf -v HOME x line is held; read it back'",
     "a subshell's cd in a loop": "cd {work} && for d in sub; do (cd $d && ls); done",
     "a Python heredoc after cd": "cd {work} && python3 - <<'EOF'\nprint(open('notes.md').read())\nEOF",
+    "an echo that labels HOME": 'cd {work} && echo "HOME: $HOME" && ls ~',
+    "a printf that labels HOME": "cd {work} && printf 'HOME=%s\\n' \"$HOME\" && ls ~",
+    "a diff against a process substitution": "cd {work} && diff <(head -2 notes.md) held.txt",
+    "a tee into a process substitution": "cd {work} && ls | tee >(wc -l) > list.txt",
 }
 HELD_LINES = {  # (the line, what holds it); {away} is a folder of no importance, so only the rule named can hold it
     "a function that changes folder, called, then a write": ("q() {{ cd {away}; }}; q; touch made.txt", UNPLACED),
@@ -1700,6 +1704,9 @@ HELD_LINES = {  # (the line, what holds it); {away} is a folder of no importance
     "a heredoc sourced": ("source /dev/stdin <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF", HOMELESS),
     "a heredoc in a substitution the line evaluates": ("eval \"$(cat <<'EOF'\nfor HOME in {away}; do ls $HOME; done\nEOF\n)\"", HOMELESS),
     "an unquoted heredoc whose substitution moves HOME": ("cat > notes.md <<EOF\n$(for HOME in {away}; do ls $HOME; done)\nEOF", HOMELESS),
+    "an echo whose word assigns HOME": ('unset HOME; echo "${{HOME:={away}}}"; ls ~', HOMELESS),
+    "printf -v HOME": ("printf -v HOME %s {away}; ls ~", HOMELESS),
+    "a loop in a process substitution": ("diff <(for HOME in {away}; do ls $HOME; done) notes.md", HOMELESS),
 }
 
 
@@ -1707,6 +1714,7 @@ def _notes(world) -> dict:
     (world["work"] / "sub").mkdir(exist_ok=True)
     for name in ("notes.md", "a.md", "b.md"):
         (world["work"] / name).write_text("x\n", encoding="utf-8")
+    (world["work"] / "held.txt").write_text(CASE_RUNS.format(state=paths.state()), encoding="utf-8")  # read as a script, refused
     (world["work"] / "away").mkdir(exist_ok=True)
     return {"work": world["work"], "away": world["work"] / "away"}
 
@@ -1820,16 +1828,18 @@ def test_pytest_asked_for_its_version_or_help_reads_no_test_file(world, line):
     assert _verdict(world, line) is None, line
 
 
-@pytest.mark.parametrize("where", ["the folder it stands in", "a test* folder beside it", "a folder above it", "a testpaths folder"])
+@pytest.mark.parametrize("where", ["the folder it stands in", "a test* folder beside it", "a folder above it", "a testpaths folder",
+                                   "a test* folder, handed a path that is not there"])
 def test_a_conftest_pytest_loads_at_its_start_is_still_read(world, where):
-    folder = {"the folder it stands in": world["work"], "a test* folder beside it": world["work"] / "tests",
-              "a folder above it": world["work"], "a testpaths folder": world["work"] / "deep" / "er"}[where]
+    folder = {"the folder it stands in": world["work"], "a folder above it": world["work"], "a testpaths folder": world["work"] / "deep" / "er"}.get(
+        where, world["work"] / "tests")
     _script(folder, "conftest.py", WRITES_THROUGH.replace("COPY", COPY))
     cwd = world["work"] / "sub" if where == "a folder above it" else world["work"]
     cwd.mkdir(exist_ok=True)
     if where == "a testpaths folder":
         _script(world["work"], "pytest.ini", "[pytest]\ntestpaths = deep/er\n")
-    reason = guards.check("Bash", {"command": "python3 -m pytest --version"}, CONFIG, cwd=str(cwd), session=world["session"])
+    line = "python3 -m pytest --version" + (" not-there" if "not there" in where else "")
+    reason = guards.check("Bash", {"command": line}, CONFIG, cwd=str(cwd), session=world["session"])
     assert HELD in (reason or ""), where
 
 

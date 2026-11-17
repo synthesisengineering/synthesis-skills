@@ -1651,8 +1651,8 @@ def _lex(s: str) -> list:
             tokens += [("sub", x) for x in subs]
             word.append(text.translate(SHIELD))
             started = True
-        elif c == "`" or (s.startswith("$(", i) and not s.startswith("$((", i)):
-            start = i + (1 if c == "`" else 2)
+        elif c == "`" or (s.startswith("$(", i) and not s.startswith("$((", i)) or s.startswith(("<(", ">("), i):
+            start = i + (1 if c == "`" else 2)  # a process substitution is a file's name to the command, its script run beside it
             end = _close(s, start, c if c == "`" else "(")
             tokens.append(("sub", s[start:end - 1]))
             word.append(s[i:end].translate(SHIELD))
@@ -1711,12 +1711,57 @@ def _bodies(s: str, i: int, pending: list, tokens: list) -> int:
     return i
 
 
+def _clause(tokens: list, at: int) -> tuple:
+    """Where a `case` clause's patterns that start at `at` end, past their `)`, with False; where the statement's `esac`
+    ends, with True; or (None, False) when what is there is no pattern list on one line. A line with a `)` no pattern
+    list explains is one the shell refuses whole, so a list closed on its line runs nothing whatever the shell reads."""
+    while at < len(tokens) and tokens[at][:2] in (("op", "\n"), ("op", ";")):
+        at += 1
+    if at < len(tokens) and tokens[at][:2] == ("w", "esac"):
+        return at + 1, True
+    at, word = at + (at < len(tokens) and tokens[at][:2] == ("op", "(")), True  # word: a pattern comes next
+    for at in range(at, len(tokens)):
+        kind, value = tokens[at][:2]
+        if kind != "sub" and not ((word and kind == "w") or (not word and kind == "op" and value == "|")):
+            return (at + 1, False) if not word and (kind, value) == ("op", ")") else (None, False)
+        word = word if kind == "sub" else not word
+    return None, False
+
+
+def _uncased(tokens: list) -> list:
+    """The tokens with each `case` statement's own words taken out: `case WORD in`, each clause's patterns with the `(`
+    before them and the `)` after (`_clause`), and `esac`, none of which is a command (the integration review of 5.24.0:
+    `case "$f" in ./a.md|./b.md) continue;; esac` was read as a pipeline that ran each file as a script). A substitution
+    among them stays, since it runs, and so does each clause's body."""
+    out, opened, start, at, expect = [], 0, True, 0, False  # case statements open; a command's first word next; a clause next
+    while at < len(tokens):
+        kind, value = tokens[at][:2]
+        if expect:
+            end, closing = _clause(tokens, at)
+            expect, opened = False, opened - (end is None or closing)
+            if end is not None:
+                out, at, start = out + [t for t in tokens[at:end] if t[0] == "sub"], end, not closing
+                continue
+        words = [k for k in range(at + 1, len(tokens)) if tokens[k][0] != "sub"][:2] if kind == "w" and value == "case" and start else []
+        if len(words) == 2 and tokens[words[0]][0] == "w" and tokens[words[1]][:2] == ("w", "in"):  # the word cased: its substitutions run
+            out, at, opened, expect = out + [t for t in tokens[at + 1:words[1]] if t[0] == "sub"], words[1] + 1, opened + 1, True
+            continue
+        if opened and kind == "w" and value == "esac" and start:  # the last clause, with no `;;` after it
+            opened, start, at = opened - 1, False, at + 1
+            continue
+        out.append(tokens[at])
+        expect = bool(opened) and kind == "op" and (value == ";;" or (value == ";" and tokens[at + 1:at + 2] == [("op", "&")]))
+        at += 1 + (expect and tokens[at + 1:at + 2] == [("op", "&")])  # `;&` and `;;&` go on to the next clause as `;;` does
+        start = kind == "op" or (kind == "w" and value in KEYWORDS)
+    return out
+
+
 def _simple(tokens: list) -> list:
     """Simple commands: "(" and ")" for subshells, else (words, stdin texts, scripts, piped in, files written,
     link, the operator after it). The link is "&&" when only `&&` stands between a command and the one before it, so it
     runs only if that one succeeded; "||" when it runs only if that one failed; "" otherwise."""
     items, words, stdin, scripts, skip, piped, writes, before = [], [], [], [], "", False, [], []
-    for kind, *rest in tokens + [("op", ";")]:  # a closing ";" flushes the last command
+    for kind, *rest in _uncased(tokens) + [("op", ";")]:  # a closing ";" flushes the last command
         if kind == "w":
             if skip == "<<<":
                 stdin.append((rest[0], True))
@@ -1896,10 +1941,11 @@ class Quoted(str):
 class Run(list):
     """A command's words; `wrapped` when an assignment or a wrapper (env, timeout, xargs and the rest of WRAPPERS) stood
     in front of its program, which may give it an environment, a folder or words of its own; `clean` when no command
-    before it on the line may have written a file (`_walk`), which a script it runs is read with."""
-    def __init__(self, words, wrapped: bool = False, clean: bool = False):
+    before it on the line may have written a file (`_walk`), which a script it runs is read with; `given`, the words in
+    front of its program as written, or None where the wrapper rewrote them (`_homes_apart`)."""
+    def __init__(self, words, wrapped: bool = False, clean: bool = False, given: list | None = None):
         super().__init__(words)
-        self.wrapped, self.clean = wrapped, clean
+        self.wrapped, self.clean, self.given = wrapped, clean, given
 
 
 PLACE = _Pattern(r"\$(?:(OLD)?PWD\b|\{(OLD)?PWD\})")  # the folder a command is in, and the one it was in before
@@ -1971,10 +2017,29 @@ def _root_owned(path: str) -> bool:
     return memo[("root", path)]
 
 
+def _system_chain(found: str) -> bool:
+    """Whether `found`, each link it leads through and the file it reaches are all root's (`_root_owned`): a command root
+    installed where no program of the agent's can turn it elsewhere."""
+    spot = found
+    for _ in range(40):  # as many links as the kernel follows
+        if not _root_owned(spot):
+            return False
+        try:
+            spot = os.path.join(os.path.dirname(spot), os.readlink(spot)) if os.path.islink(spot) else ""
+        except OSError:
+            return False
+        if not spot:
+            return True
+    return False
+
+
 def _installed(name: str, real: str, found: str) -> bool:
-    """A script that really is the command `name`, where its installer puts it. Anywhere no program of the agent's
-    writes, by its own name (a version or a suffix after it: `wish8.5`, `which.debianutils`): one root installed, or the
-    runtime's own launcher in its protected `bin/`. In a folder the user writes, only a name that installer provides:
+    """A script that really is the command `name`, where its installer puts it. Found in a system folder by a chain of
+    links root installed, every step in folders the user cannot write, whatever the file it reaches is named (the
+    integration review of 5.24.0: Ubuntu's /usr/bin/open leads through /etc/alternatives to the script xdg-open).
+    Anywhere else no program of the agent's writes, by its own name (a version or a suffix after it: `wish8.5`,
+    `which.debianutils`): one root installed, or the runtime's own launcher in its protected `bin/`. In a folder the
+    user writes, only a name that installer provides:
     an npm package's bin (NPM_BINS) linked from its global folder (`<prefix>/bin/<name>` into `<prefix>/lib/node_modules/`,
     or Debian's `<prefix>/share/nodejs/`) or a project's `node_modules/.bin/`; an interpreter's version manager shim;
     a Homebrew formula's script (BREWED) in Homebrew's own Cellar. Anywhere, a script that only hands its words to a
@@ -1984,6 +2049,8 @@ def _installed(name: str, real: str, found: str) -> bool:
     if name in NPM_BINS and ((os.path.basename(at) == "bin" and any(paths.inside(real, _real(os.path.join(os.path.dirname(at), *w)))
                                                                   for w in (("lib", "node_modules"), ("share", "nodejs")))) or (
             os.path.basename(at) == ".bin" and os.path.basename(os.path.dirname(at)) == "node_modules" and paths.inside(real, _real(os.path.dirname(at))))):
+        return True
+    if _system_chain(found):
         return True
     if not re.fullmatch(re.escape(name) + r"[\d.]*(?:\.[a-z]+)?", base):
         return False
@@ -2156,8 +2223,12 @@ def _commands(command: str, cwd: str, depth: int = 0, writes: list | None = None
         return found
     if depth > MAX_DEPTH:
         raise Unreadable("nested too deeply")
-    _cd_sources(command, mode)
-    items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "", False, frozenset(), frozenset())], set()
+    try:
+        items, found, todo, seen = _simple(_lex(command)), [], [(0, cwd, cwd, (), (), "", False, frozenset(), frozenset())], set()
+    except (Unreadable, StopIteration, IndexError, RecursionError):
+        _cd_sources(command, mode, None)  # what it sets up is still read, its aliases as any it may define
+        raise
+    _cd_sources(command, mode, items)
     while todo:
         state = todo.pop()
         if (*state[:5], repr(state[5]), *state[6:]) in seen:
@@ -2209,6 +2280,7 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
         moved, fronts = [], []  # fronts: each program word _bare takes off in front of the command, with its words (22.32)
         before, (words, inner) = words, _bare(words, moved, fronts)
         wrapped = len(words) > len(before) or any(w not in KEYWORDS for w in before[:len(before) - len(words)])
+        given = before[:len(before) - len(words)] if words and before[len(before) - len(words):] == words else None
         scripts = scripts + inner
         here = cwd
         for folder in moved:  # `env -C a env -C b`: b is read from a
@@ -2260,7 +2332,7 @@ def _walk(items: list, state: tuple, depth: int, writes, runs, feeds, prose: boo
         clean = not mode["wrote"] and not scripts and not wrapped  # nothing before it may have written a file, nor its substitutions, nor in its environment
         mode["wrote"] += bool(set(targets) - {"/dev/null"}) or not (not words or head in QUIET or venv or (head in SHELLS and any(_shell_input(words)[:2])))
         if words:
-            found.append((Run(words, wrapped, clean), here))
+            found.append((Run(words, wrapped, clean, given), here))
             if runs is not None:
                 runs.append((chain, needed))
             if feeds is not None:
@@ -2424,15 +2496,33 @@ def _unquoted_line(text: str) -> str:
     return UNQUOTED.sub(lambda m: ansi(m[1]) if m[1] is not None else m[2] or "", text)
 
 
-def _cd_sources(text: str, mode: dict) -> None:
+def _aliased(items: list) -> list:
+    """The value of each alias a line's commands define (`alias name=value`, through `builtin` or `command` too, and
+    zsh's `aliases[name]=value` and its kin), with a space before it as a command line would start: an alias is one a
+    command the shell runs defines, never the word in a message, a note or a heredoc's body (the integration review of
+    5.24.0: the private installer's comment that its update step "is just an alias" made every run wait)."""
+    found = []
+    for item in (i for i in items if i not in ("(", ")")):
+        words = [w for w in item[0] if w not in KEYWORDS]
+        found += [" " + w.split("=", 1)[1] for w in words if re.match(r"[gs]?aliases\[[^\]]*\]\+?=", w)]
+        words = list(itertools.dropwhile(lambda w: w in ("builtin", "command") or bool(re.match(r"[A-Za-z_]\w*\+?=", w)), words))
+        found += [" " + w.split("=", 1)[1] for w in words[1:] if "=" in w and w[:1] not in "-+"] if words[:1] == ["alias"] else []
+    return found
+
+
+def _cd_sources(text: str, mode: dict, items: list) -> None:
     """What a line sets up that its changes of folder read (review round 4 of 5.23.1, Q1), read with its quoting taken
     away: CDPATH (given a value, exported, or in `${CDPATH:=…}`) and zsh's cdpath; OLDPWD; the variables it gives
     values and the folders `hash -d` names, read under cdable_vars; and whether it turns cdable_vars or auto_cd on (zsh
     reads option names in any case and without underscores; -T and -J are their letters). A CDPATH or cdpath set in a
     way this cannot read, or a name set through another name (a nameref, `printf -v`, zsh's (P) flag), leaves a
-    relative `cd` unplaced; so does, for any change of folder, an alias, a function or enable/disable on a line that
-    changes folder, and BASH_ENV or ZDOTDIR given to the shells it starts. An unplaced line waits."""
+    relative `cd` unplaced; so does, for any change of folder, an alias (`_aliased`) or enable/disable on a line that
+    changes folder or an alias that does, a function that moves it (`_moves_by_function`), and BASH_ENV or ZDOTDIR given
+    to the shells it starts. An unplaced line waits."""
     src, plain = mode["sources"], _unquoted_line(text)
+    aliased = _aliased(items) if items is not None else [" " + m[1] for m in re.finditer(  # a text the parser cannot read: each
+        r"(?m)(?:^|[;&|({]|\b(?:then|do|else)\b)\s*(?:builtin\s+|command\s+)?(?:alias\s+(?:[-+]\w+\s+)*[^\s=]+|[gs]?aliases\[[^\]]*\])\+?=([^\n;&|]*)",
+        plain)]  # `alias name=value` where a command would start, never a comment's or a message's word
     flat = plain.lower().replace("_", "")
     letters = "".join(w for words in re.findall(r"\b(?:set|setopt|zsh|emulate)\b([^;&|\n]*)", plain) for w in re.findall(r"(?:^|\s)[-+]([A-Za-z]+)", words))
     src["cdable"] = src["cdable"] or "cdablevars" in flat or "T" in letters
@@ -2457,16 +2547,18 @@ def _cd_sources(text: str, mode: dict) -> None:
         r"\b(?:declare|typeset|local)\s+(?:-\w+\s+)*-\w*n|\bprintf?\s+(?:-\w+\s+)*-v" + ("" if src["cdable"] else  # of a literal name
         r"\s*(?:(?:CDPATH|cdpath|OLDPWD|HOME)\b|[^\w\s])") + r"|\$\{\([^)]*P", plain))  # no cd reads sets nothing a cd reads
     if not mode["quiet"] and (re.search(r"(?:^|[\s;&|(])(?:BASH_ENV|ZDOTDIR)=|\b(?:enable|disable)\s[^;&|\n]*?\b(?:cd|pushd|popd|builtin"
-                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and ((FUNCTION.search(plain) and text not in _CALL.get(
-                                            "still", ()) and _moves_by_function(text)) or re.search(r"\balias\s+\S", plain)))):
-        _CALL["unplaced"] = True
+                                        r"|command)\b", plain) or (FOLDER_MOVE.search(plain) and FUNCTION.search(plain) and text not in _CALL.get(
+                                            "still", ()) and _moves_by_function(text)) or (aliased and (FOLDER_MOVE.search(plain) or any(
+                                                FOLDER_MOVE.search(value) for value in aliased))) or (items is None and src["unread"] and FOLDER_MOVE.search(plain))):
+        _CALL["unplaced"] = True  # a text the parser cannot read is never walked: a CDPATH it cannot read may place any cd in it
 
 
 def _moves_by_function(text: str) -> bool:
-    """Whether a function a line defines may move its folder: one named for a folder builtin, a change of folder outside
-    every function's body, or a function whose body moves (itself or through another) called anywhere but in a command
-    substitution, which runs in a subshell (2026-11-16: Homebrew's own `brew`, read since 22.21, defines `quiet_cd` and
-    calls it only in `$(...)`). Text the parser cannot read may."""
+    """Whether a function a line defines may move its folder: one named for a folder builtin, or a function whose body
+    moves (itself or through another) called anywhere but in a command substitution, which runs in a subshell
+    (2026-11-16: Homebrew's own `brew`, read since 22.21, defines `quiet_cd` and calls it only in `$(...)`). A change of
+    folder outside every function's body is the line's own, which the guard follows (the integration review of 5.24.0:
+    `cd <repo> && q() { grep -c x "$1"; }; q a.md` waited). Text the parser cannot read may."""
     try:
         tokens = _lex(text)
     except (Unreadable, StopIteration, IndexError, RecursionError):
@@ -2490,7 +2582,7 @@ def _moves_by_function(text: str) -> bool:
     moving = {n for n, words in bodies.items() if words & {"cd", "pushd", "popd"}}
     while any(n not in moving and words & moving for n, words in bodies.items()):
         moving |= {n for n, words in bodies.items() if words & moving}
-    return bool(FOLDER_BUILTINS & set(bodies)) or any(t[0] == "w" and t[1] in {"cd", "pushd", "popd"} | moving for t in outside)
+    return bool(FOLDER_BUILTINS & set(bodies)) or any(t[0] == "w" and t[1] in moving for t in outside)
 
 
 def _piped(upstream) -> str:
@@ -3967,10 +4059,11 @@ def _claude_parts(real: str) -> list:
     """A path's parts below the Claude Code `projects` folder it lies in, the CLI's or a desktop agent-mode session's
     (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words alone;
     [] where it lies in neither. No folder is listed on the hook's path."""
-    root = _real(paths.transcript_roots()["claude-code"])
+    if "claude" not in _CALL["looks"]:  # the two folders, read once a call (a line of nested scripts asked 13,188 times)
+        _CALL["looks"]["claude"] = [_real(paths.transcript_roots()["claude-code"]), _real(paths.desktop_dir() / "local-agent-mode-sessions")]
+    root, base = _CALL["looks"]["claude"]
     if paths.inside(real, root):
         return os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)
-    base = _real(paths.desktop_dir() / "local-agent-mode-sessions")
     parts = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) else []
     return parts[5:] if len(parts) > 5 and parts[2].startswith("local_") and parts[3:5] == [".claude", "projects"] else []
 
@@ -5988,26 +6081,54 @@ MOVES_HOME = _Pattern(r"(?<![\w${])HOME\b(?!=)|\$\{HOME:{0,2}=")  # HOME given a
 USES_HOME = _Pattern(r"\$\{?HOME\b|(?<![\w$~./-])~(?=/|\s|$|[\"'])|(?:^|[;&|(]\s*)cd\s*(?:$|[;&|)])")
 
 
-def _moves_home(text: str) -> bool:
+def _shell_fed(tokens: list) -> set:
+    """The heredoc bodies of a line that a shell runs: each fed to a shell, `source`, `.` or `eval`, itself or further
+    down its pipeline."""
+    fed, pipeline = set(), []
+    for item in [i for i in _simple(tokens) if i not in ("(", ")")] + [None]:
+        if item is None or not item[3]:  # a pipeline ends where the next command reads no pipe
+            if any({os.path.basename(next((w for w in words if w not in KEYWORDS and not re.match(r"[A-Za-z_]\w*=", w)), "")),
+                    os.path.basename((_bare(list(words))[0] or [""])[0])} & {*SHELLS, "source", ".", "eval"} for words, _ in pipeline):
+                fed |= {text for _, stdin in pipeline for text, _ in stdin}
+            pipeline = []
+        pipeline += [item[:2]] if item else []
+    return fed
+
+
+def _moves_home(text: str, top: bool = True) -> bool:
     """MOVES_HOME in what the shell runs: never in a comment, an array's values or the words a for or select loop walks,
     since a list of variable names gives none of them a value (2026-11-16: Homebrew's own `brew`, read since 22.21, waited
-    on a comment naming HOME and on the names it keeps from the environment). Text the parser cannot read is read whole."""
+    on a comment naming HOME and on the names it keeps from the environment). A heredoc's body is input to the program it
+    feeds: it counts where a shell runs it (`_shell_fed`) or inside a command substitution, whose output a command may
+    run, and an unquoted body's own substitutions always run; and the words echo or printf only print (`echo "HOME:
+    $HOME"`) give nothing a value but by `${HOME:=…}` (the integration review of 5.24.0: a note appended with `cat
+    <<'EOF'` that showed a `for HOME in` loop waited). Text the parser cannot read is read whole."""
     try:
-        tokens = _lex(text)
+        tokens, loose = _lex(text), []  # loose: the substitutions in unquoted bodies no shell runs, which run all the same
+        fed = _shell_fed(tokens) if top else None
+        for kind, value, *rest in tokens:
+            if kind == "in" and fed is not None and value not in fed and not rest[0]:
+                _dquote(value, 0, loose, "")
     except (Unreadable, StopIteration, IndexError, RecursionError):
         return bool(MOVES_HOME.search(text))
-    walking = False  # past a for or select loop's `in`, before its `do` or the end of its command
+    if any(_moves_home(s, False) for s in loose):
+        return True
+    walking, head, said = False, "", False  # said: past echo or printf (with no -v), whose words it only prints
     for at, (kind, value, *_) in enumerate(tokens):
         if kind == "op" or (kind == "w" and value == "do"):
-            walking = False
+            walking, head, said = False, "", False
         elif walking:
             continue
         elif kind == "w" and value == "in" and at >= 2 and tokens[at - 2][:2] in (("w", "for"), ("w", "select")) and (
                 at == 2 or tokens[at - 3][0] == "op" or (tokens[at - 3][0] == "w" and tokens[at - 3][1] in KEYWORDS)):
             walking = True
-        elif (kind == "sub" and _moves_home(value)) or (kind == "in" and MOVES_HOME.search(value)) or (  # an array's values cut
-                kind == "w" and MOVES_HOME.search(re.sub(r"^([A-Za-z_]\w*\+?=)\([\s\S]*", r"\1", value))):
-            return True
+        elif (kind == "sub" and _moves_home(value, False)) or (kind == "in" and (fed is None or value in fed) and MOVES_HOME.search(value)) or (
+                kind == "w" and (not said or "${HOME" in value) and MOVES_HOME.search(re.sub(r"^([A-Za-z_]\w*\+?=)\([\s\S]*", r"\1", value))):
+            return True  # (an array's values cut)
+        if kind == "w" and not head and value not in KEYWORDS and not re.match(r"[A-Za-z_]\w*\+?=", value):
+            head, said = value, value in ("echo", "printf", "print")
+        elif kind == "w" and said and value == "-v" and head != "echo":
+            said = False  # printf -v NAME, zsh's print -v NAME: it gives NAME a value
     return False
 SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-workspace-mcp/{name}" for name in (
     "install-autostart.sh", "uninstall-autostart.sh"))  # they write or load a LaunchAgent or a systemd unit (review round 2, R2-8)
@@ -6532,12 +6653,82 @@ def _outside_tests(text: str) -> bool:
     return bool(_writers_named(top)) or _synthesis_reach(top)[0] in ("names", "places") or bool(_synthesis_loads([top], [], "/"))
 
 
-def _pytest_reach(words: list, where: str) -> str:
+HOMES = {"SYNTHESIS_HOME": ".synthesis/v5", "CLAUDE_CONFIG_DIR": ".claude", "CODEX_HOME": ".codex", "XDG_DATA_HOME": ".local/share",
+         "SYNTHESIS_CLAUDE_DESKTOP_DIR": "Library/Application Support/Claude"}  # where synthesis finds each protected place, else under HOME
+PYTEST_ASKS = frozenset({"--version", "-V", "--help", "-h"})  # pytest only reports itself: no test file is collected
+PYTEST_INIS = ("pytest.ini", ".pytest.ini", "pyproject.toml", "tox.ini", "setup.cfg")  # where a testpaths setting may say where it starts
+
+
+def _homes_apart(given, where: str, raw: list, command: str) -> bool:
+    """Whether a command's own words in front of its program (assignments, and env with -i or -u) put HOME and each folder
+    synthesis finds a protected place under (HOMES, else under HOME) at absolute paths apart from every protected folder:
+    none inside one, none holding one. A program it starts then reaches only folders of its own, as under a conftest that
+    isolates the home (the integration review of 5.24.0, finding 4: a full-suite run with every home on its line waited
+    while the guard read every test file). Any other word there proves nothing, nor does a home the line spells with `~`,
+    a variable or a substitution other than mktemp's: the shell may put another value there than the guard's reading
+    of the line does, as it expands env's words with the homes the line had and each assignment in front of a program
+    with the ones before it."""
+    if given is None or re.search(r"\b(?:HOME|%s)=[\"']?(?:[~`]|\$(?!\(\s*mktemp\b))" % "|".join(HOMES), command):
+        return False
+    values, cleared, words = {}, False, iter(given)
+    for w in words:
+        if re.match(r"[A-Za-z_]\w*=", w):
+            values[w.split("=", 1)[0]] = w.split("=", 1)[1]
+        elif w in ("-i", "-", "--ignore-environment"):
+            values, cleared = {}, True
+        elif w in ("-u", "--unset") or w.startswith("--unset="):
+            values[w[8:] if "=" in w else next(words, "")] = None
+        elif w != "env":
+            return False
+    home = values["HOME"] if "HOME" in values else None if cleared else os.environ.get("HOME")
+    for place in [home] + [(values[k] if k in values else None if cleared else os.environ.get(k)) or (home and os.path.join(home, rel))
+                           for k, rel in HOMES.items()]:
+        place = _led(place, where) if place else ""
+        if not place.startswith("/") or EXPANDS.search(place) or any(
+                paths.inside(_real(place), _real(r)) or paths.inside(_real(r), _real(place)) for r in raw):
+            return False
+    return True
+
+
+def _first_conftests(root: str) -> list:
+    """The conftests pytest loads before it collects a test, for a folder or a file it is handed or the folder it starts
+    in: there and in every folder above it, and in each folder there whose name starts with `test`."""
+    folder, found = root if os.path.isdir(root) else os.path.dirname(root), []
+    if os.path.isdir(root):
+        found += [os.path.join(root, d, "conftest.py") for d in sorted(os.listdir(root)) if d.startswith("test")
+                  and os.path.isfile(os.path.join(root, d, "conftest.py"))]
+    while True:
+        found += [os.path.join(folder, "conftest.py")] * os.path.isfile(os.path.join(folder, "conftest.py"))
+        if folder == os.path.dirname(folder):
+            return found
+        folder = os.path.dirname(folder)
+
+
+def _test_reach(text: str, where: str) -> str:
+    """What a test file or a conftest reaches of synthesis's code: one of the writers approvals rest on named, or
+    synthesis loaded another way; else ''."""
+    return ("names one of synthesis's writers that approvals rest on" if _writers_named(text) & GRANTING
+            else _synthesis_loads([text], [], where) if "synthesis" in text else "")
+
+
+def _pytest_reach(words: list, where: str, apart: bool = False) -> str:
     """'' unless pytest, as this command runs it, collects a test file or loads a conftest whose code reaches synthesis's
     (names one of its writers, reaches it in a way its reader cannot follow, or hands a loader synthesis) with no conftest
     above it that isolates the synthesis home (_isolates_home); else which file and how. Review round 1 of 22.19, finding 1:
     an agent's test file opened a send window in plain words through pytest. Synthesis's own suite, under its conftests,
-    runs with no code; `--noconftest` and `--confcutdir` leave no conftest trusted."""
+    runs with no code; `--noconftest` and `--confcutdir` leave no conftest trusted. A command whose own words put every
+    home apart (`apart`, `_homes_apart`) proves what such a conftest would, and nothing is read; asked only for its version
+    or its help, pytest loads the conftests at its start (`_first_conftests`, or every conftest where a testpaths setting
+    may send it) and no test file, and what those run outside a test is read (the integration review of 5.24.0, finding 4).
+    One reading of the same command in the same folder is made once a call and pass."""
+    key = ("pytest", tuple(words), where, apart, repr(_CALL.get("settings")))
+    if key not in _CALL["looks"]:
+        _CALL["looks"][key] = "" if apart else _pytest_read(words, where)
+    return _CALL["looks"][key]
+
+
+def _pytest_read(words: list, where: str) -> str:
+    """`_pytest_reach`'s reading, made once a call."""
     at = next(i for i, w in enumerate(words) if os.path.basename(w) in ("pytest", "py.test"))
     args, i = [], at + 1
     while i < len(words):
@@ -6546,14 +6737,23 @@ def _pytest_reach(words: list, where: str) -> str:
         code = _code_of(plugin) if os.path.isfile(plugin) else ""  # a plugin of its own, named with -p: all of it runs outside the tests
         if code and (_writers_named(code) & GRANTING or _synthesis_loads([code], [], where)):
             return f"{plugin}, a plugin of its own that reaches synthesis's writers outside every test"
+    roots, asks = [os.path.join(where, os.path.expanduser(a)) for a in args] or [where], bool(PYTEST_ASKS & set(words[at + 1:]))
+    every = asks and not args and any(b"testpaths" in (_regular(os.path.join(where, n), TEXT_LIMIT) or (b"",))[0] for n in PYTEST_INIS)
     files = []
-    for root in [os.path.join(where, os.path.expanduser(a)) for a in args] or [where]:
+    for root in roots if not asks or every else ():
         for folder, dirs, names in os.walk(root) if os.path.isdir(root) else [(os.path.dirname(root), [], [os.path.basename(root)])] * os.path.isfile(root):
             dirs[:] = [d for d in dirs if not d.startswith(".") and not d.endswith(".egg") and d not in (
                 "node_modules", "__pycache__", "venv", "site-packages", "build", "dist", "Library")]  # as pytest's norecursedirs
-            files += [os.path.join(folder, n) for n in names if re.fullmatch(r"test_.*\.py|.*_test\.py", n) or not os.path.isdir(root)]
+            files += [os.path.join(folder, n) for n in names if (n == "conftest.py" if every else re.fullmatch(
+                r"test_.*\.py|.*_test\.py", n) or not os.path.isdir(root))]
             if len(files) > 3000 or time.monotonic() > _CALL["until"]:
                 return "more test files than this guard reads in its time"
+    if asks:  # the conftests it loads at its start, from where it starts if nothing it is handed is there: what they run outside a test
+        for path in dict.fromkeys(files + [c for r in [r for r in roots if os.path.exists(r)] or [where] for c in _first_conftests(r)]) if (
+                "--noconftest" not in words) else ():
+            if _outside_tests(_code_of(path)):
+                return f"{path}, a conftest it loads at its start, whose code outside its tests reaches synthesis's"
+        return ""
     trusted, conftests, isolating, judged = not any(w == "--noconftest" or w.startswith("--confcutdir") for w in words), {}, {}, set()
     for file in files:
         folder = os.path.dirname(_real(file))
@@ -6573,9 +6773,7 @@ def _pytest_reach(words: list, where: str) -> str:
             return "more test files than this guard reads in its time"
         for path, text in [(p, _code_of(p)) for p in [file] + conftests[folder] if p not in judged]:
             judged.add(path)  # a writer named, or synthesis loaded another way; a test that patches a module changes only its process
-            reach = _synthesis_reach(text) if "synthesis" in text else ("", "", None)
-            why = ("names one of synthesis's writers that approvals rest on" if _writers_named(text) & GRANTING
-                   else _synthesis_loads([text], [], where) if "synthesis" in text else "")
+            why = _test_reach(text, where)
             if why:
                 return f"{path}, which {why}, with no conftest that puts the synthesis home at a temporary path for every test"
     return ""
@@ -7105,7 +7303,8 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
             waits = waits or (Unproven(f"runs {shown} that {inner}") if isinstance(inner, Unproven) else None)
             if not inner and re.search(r"\b(?:from|import)\s+synthesis\b|\bsynthesis\.\w", text_) and not _parse(text_, where)[1]:
                 waits = waits or Unproven(f"runs {target}, a shell script this guard cannot read with certainty that names synthesis's code")
-        tested = _pytest_reach(words, where) if head in ("pytest", "py.test") or (python and words[_program(words)[1]:][:2] == ["-m", "pytest"]) else ""
+        tested = _pytest_reach(words, where, _homes_apart(getattr(words, "given", None), where, raw, command)) if head in (
+            "pytest", "py.test") or (python and words[_program(words)[1]:][:2] == ["-m", "pytest"]) else ""
         waits = waits or (Unproven(f"runs pytest, which loads {tested}") if tested else None)
         if head == "apply_patch":  # Codex's file editor, run as a command: the patch names every file it writes
             asked += [(a or b, where) for a, b in PATCH_PATHS.findall(text)]

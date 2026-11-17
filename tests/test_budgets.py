@@ -2390,10 +2390,37 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then the plugin 11 more, all in the root conftest.py: no_synthesis_launcher_of_this_mac 9 and its 2 blank lines (no
 # test finds the Mac's own synthesis launcher on PATH, since 22.32 looks a command up there and that launcher is no
 # test home's own).
+# The integration review of 5.24.0 (release/next at 9527c158), its four blocking findings fixed on release/next:
+# Then each 199 more, all in guards.py. Finding 1, CI's Linux runners: a command found in a system folder through links
+# root installed is that command whatever the file it reaches is named (Ubuntu's /usr/bin/open, through
+# /etc/alternatives to the script xdg-open): _system_chain 14 (the link, each link it leads through and the file it
+# reaches, all root's), _installed 5 more (the chain asked before the name rule 2, its docstring 3). Finding 2, the
+# folder and HOME rules read only what the shell runs: _aliased 12 (an alias is one a command on the line defines, by
+# `alias`, through builtin or command, or in zsh's aliases table, with its value), _cd_sources 5 more (the aliases read
+# from the line's commands; for a text the parser cannot read, only an `alias name=` where a command would start, and a
+# CDPATH it cannot read unplacing any cd in it; its docstring), _commands 4 more (what a line sets up is still read when
+# its text cannot be lexed), _moves_by_function 1 more (its docstring: a cd outside every function's body is the line's
+# own, as 6cb0a2c1 said; the rule itself stays one line), _shell_fed 12 (the heredoc bodies a shell runs: fed to a
+# shell, source or eval, itself or down its pipeline), _moves_home 14 more (a heredoc's body counts where a shell runs
+# it or inside a command substitution, an unquoted body's substitutions always; what echo or printf only print gives
+# HOME no value but by ${HOME:=...}), _clause 15 and _uncased 26 (a case statement's word, patterns and esac taken out,
+# a pattern list read only where a `)` closes it on its line, so a list of notes is no pipeline of scripts), and _lex
+# none (a process substitution read as a file's name with its command run, in the branch that reads `$(...)`, so
+# `diff <(...) file` runs no `file`). Finding 4, the narrower holds: HOMES, PYTEST_ASKS and PYTEST_INIS 4,
+# _homes_apart 29 (the words in front of a program, assignments and env with -i or -u, put HOME and each folder
+# synthesis finds a protected place under at absolute paths apart from every protected folder; a home spelled with ~,
+# a variable or a substitution but mktemp's proves nothing), Run 1 more and _walk 1 more (those words kept as written),
+# _self_grant 1 more (the rule handed to the pytest reading), _first_conftests 12 (the conftests pytest loads at its
+# start), _test_reach 5 (what a test file or a conftest reaches, asked from two places), _pytest_reach 33 fewer and
+# _pytest_read 50 (the reading made once a call and pass, as a line of nested scripts asked it 384 times; asked only for
+# its version or its help, the conftests at its start read for what they run outside a test; a computation of each
+# file's reach that nothing read taken out), _claude_parts 1 more (its two folders read once a call: the same line built
+# them 13,188 times, and it now judges in 2.1 s where it took 2.8 against the guard's 3). The new definitions' 20 blank
+# lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23274
-PLUGIN_BUDGET = 49943
+CORE_BUDGET = 23473
+PLUGIN_BUDGET = 50142
 
 
 def _lines(files):
