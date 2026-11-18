@@ -139,6 +139,10 @@ UNPLACED = {
     "a variable the guard cannot read": "plutil -p $A13_UNSET {agent}",
     "the files xargs hands it": "printf '%s\\n' {agent} | xargs plutil -p",
     "a pattern that may name an option": "cd {agents} && plutil *",
+    "a negated class, which fnmatch reads as no negation": "plutil [^a]convert json [^a]o {agents}/new.plist {work}/job.plist",
+    "zsh's negation": "plutil ^nothing {agents}/new.plist {work}/job.plist",
+    "zsh's exclusion": "plutil *~nothing {agents}/new.plist {work}/job.plist",
+    "a brace inside a brace": "plutil {{{{-convert,json}},-o}} {agents}/new.plist {work}/job.plist",
     "defaults read with a word too many": "defaults read {domain} Label Extra",
     "defaults with a substitution for its command": "defaults $(echo write) {domain} Label x",
 }
