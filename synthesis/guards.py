@@ -10796,24 +10796,25 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
     if tool in STDIN_TOOLS:
         return check_typed(tool_input, config, cwd, session)
     if shell_tool(tool):
-        command = shell_command(tool_input)
-        verdict = (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
-                   or check_self_grant(command, cwd, config, session)
-                   or check_pr_gate(command, config, cwd, session)
-                   or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
-                   or check_outgoing(command, config, cwd, session)
-                   or check_claimed(_shell_writes(command, cwd), cwd, session)
-                   or check_hook_writes(tool, tool_input, cwd, session))
-        senders = list(_CALL.get("senders") or [])  # before the check below judges each git program as a call of its own
-        verdict = verdict or check_git_programs(command, config, cwd, session)  # last: it judges each program as a call of its own
+        command, senders = shell_command(tool_input), []
+        verdict = _one_code((lambda: check_destructive(command, config, cwd), lambda: check_runtime(command, cwd, session),  # a
+                             lambda: check_self_grant(command, cwd, config, session),  # recursive delete is named as one
+                             lambda: check_pr_gate(command, config, cwd, session),
+                             lambda: check_deploy(command, config, cwd, session), lambda: check_tunnel(command, config, cwd, session),
+                             lambda: check_outgoing(command, config, cwd, session),
+                             lambda: check_claimed(_shell_writes(command, cwd), cwd, session),
+                             lambda: check_hook_writes(tool, tool_input, cwd, session),
+                             lambda: senders.extend(_CALL.get("senders") or []),  # before the check below judges each git program
+                             lambda: check_git_programs(command, config, cwd, session)))  # last: each program as a call of its own
         if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
             from synthesis import sends
             for run in senders:
                 sends.sender_ticket(paths.session_id(session), run)
         return verdict
     if tool in FILE_TOOLS:
-        return (check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session)
-                or check_hook_writes(tool, tool_input, cwd, session) or check_settings_write(tool, tool_input, cwd, session))
+        return _one_code((lambda: check_file_write(tool, tool_input, cwd, config, session),
+                          lambda: check_claimed(_file_targets(tool, tool_input), cwd, session),
+                          lambda: check_hook_writes(tool, tool_input, cwd, session), lambda: check_settings_write(tool, tool_input, cwd, session)))
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
@@ -10822,6 +10823,26 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
     reason = check_driven(kind, tool, tool_input, config, session) if kind else None
     return reason or _connector(tool, tool_input, config, cwd, session)
+
+
+ASKS_CODE = _Pattern(r"\bapprove followed by the code [0-9][0-9a-f]{5}\b")  # what every wait says (approvals.how)
+
+
+def _one_code(checks) -> str | None:
+    """Judge every check of one call: the first refusal is what it gets, and nothing after it is judged; the checks that
+    wait are said together, every request they file under one code (A5, 2026-11-17: one command the runtime check, then
+    the writers check, held asked the principal for two codes, minutes apart)."""
+    waits = []
+    with approvals.one_code():
+        for judge in checks:
+            reason = judge()
+            if reason and not ASKS_CODE.search(reason):
+                return reason
+            waits += [reason] if reason else []
+    if len(waits) > 1:
+        return f"This waits on {len(waits)} of the guard's checks. Each names the same code, so it is typed once:\n" + "\n".join(
+            f"{n}. {w}" for n, w in enumerate(waits, 1))
+    return waits[0] if waits else None
 
 
 def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:

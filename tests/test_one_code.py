@@ -62,7 +62,7 @@ def test_one_command_two_checks_hold_asks_one_code_and_that_code_lets_it_run(tmp
     line = {"command": "synthesis install /tmp/plugin; wrangler pages deploy dist"}
     session = {"session_id": "S-principal", "transcript_path": str(principal.transcript)}
     reason = guards.check("Bash", line, {}, cwd=str(tmp_path), session=session)
-    assert "installs a synthesis runtime" in reason and "deploy" in reason and len(_codes(reason)) == 1, reason
+    assert "installs a synthesis runtime" in reason and "publishes to production" in reason and len(_codes(reason)) == 1, reason
     assert len(principal(reason)) == 2  # one code typed, both requests granted
     assert guards.check("Bash", line, {}, cwd=str(tmp_path), session=session) is None
 

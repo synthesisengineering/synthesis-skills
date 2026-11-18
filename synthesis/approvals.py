@@ -64,17 +64,50 @@ def pending() -> list[str]:
 
 
 def request(kind: str, subject, summary: str) -> str:
-    """File (or refresh) a pending request; returns the code the principal types. A retry keeps the
-    code the principal was already shown."""
+    """File (or refresh) a pending request; returns the code the principal types. A retry keeps the code the principal
+    was already shown. Inside `one_code` every request takes the call's one code, listed beside the first."""
     key = digest(kind, subject)
     _expire()
-    code = next((c for c in pending() if paths.read_json(_dir("approval-requests") / f"{c}.json").get("digest") == key), "")
+    entry = {"kind": kind, "digest": key, "summary": summary}
+    code = CALL.get("code") or next((c for c in pending() if key in _keys(_dir("approval-requests") / f"{c}.json")), "")
     if not code:  # a leading digit keeps every code apart from English words
         import secrets
         code = str(secrets.randbelow(10)) + secrets.token_hex(3)[:5]
-    paths.write_json(_dir("approval-requests") / f"{code}.json",
-                     {"kind": kind, "digest": key, "summary": summary, "at": time.time()})
+    data = {} if CALL and "code" not in CALL else paths.read_json(_dir("approval-requests") / f"{code}.json")  # a call's
+    CALL.update({"code": code} if CALL else {})  # first request lists afresh what the call asks
+    if data.get("digest") not in (None, key):
+        data["also"] = [e for e in _entries(data)[1:] if e["digest"] != key] + [entry]
+    else:
+        data.update(entry)
+    paths.write_json(_dir("approval-requests") / f"{code}.json", {**data, "at": time.time()})
     return code
+
+
+CALL: dict = {}  # while one call is judged (`one_code`): {"on": True}, then the code its first request was given
+
+
+@contextlib.contextmanager
+def one_code():
+    """Every request filed inside takes one code, so a call several checks hold asks the principal once (A5, 2026-11-17);
+    a call judged inside another files under the outer one's."""
+    if CALL:
+        yield
+        return
+    CALL["on"] = True
+    try:
+        yield
+    finally:
+        CALL.clear()
+
+
+def _entries(data: dict) -> list:
+    """The requests one code carries: the first, then those listed beside it."""
+    also = data.get("also") if isinstance(data.get("also"), list) else []
+    return [e for e in [data, *also] if isinstance(e, dict) and isinstance(e.get("digest"), str) and e.get("kind")]
+
+
+def _keys(path: Path) -> list:
+    return [e["digest"] for e in _entries(paths.read_json(path))]
 
 
 def _expire() -> None:
@@ -133,12 +166,11 @@ def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
     for code in typed_codes(prompt):
         pending_file = _dir("approval-requests") / f"{code}.json"
         data = paths.read_json(pending_file)
-        if not data.get("digest"):
-            continue
-        paths.write_json(_dir("approvals") / f"{data['digest']}.json",
-                         {**data, "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
+        for entry in _entries(data) if data.get("digest") else []:  # every request the code carries (A5)
+            paths.write_json(_dir("approvals") / f"{entry['digest']}.json", {"kind": entry["kind"], "digest": entry["digest"],
+                             "summary": entry.get("summary", ""), "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
+            granted.append(entry.get("summary", ""))
         pending_file.unlink(missing_ok=True)
-        granted.append(data["summary"])
     return granted
 
 
@@ -341,11 +373,15 @@ def answered(kind: str, subject, session: dict | None = None) -> bool:
     key, record = digest(kind, subject), transcript(session)
     for code in pending() if record else []:
         data = paths.read_json(_dir("approval-requests") / f"{code}.json")
-        if data.get("digest") != key or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+        if key not in [e["digest"] for e in _entries(data)] or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
             continue
         try:
             if typed(record, code, float(data.get("at", 0)), paths.session_id(session)):
-                (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+                rest = [e for e in _entries(data) if e["digest"] != key]  # the code's other requests stay for their own checks
+                if rest:
+                    paths.write_json(_dir("approval-requests") / f"{code}.json", {**rest[0], "at": data.get("at", 0), "also": rest[1:]})
+                else:
+                    (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
                 return True
         except OSError:
             return False
