@@ -64,11 +64,11 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   is reported unknown, for the principal to look at. The user's system and global git configuration is run as git runs
   it for every command on the Mac.
 - **It starts no harness's program and not the hook.** A harness's own listing writes its housekeeping (on 2026-11-18,
-  `claude plugin list` rewrote marker files in Claude Code's plugin cache), and the guard holds a shell that starts a
-  harness's program. So the doctor's checks that start a harness's program, run the hook, try writes or ask a model are
-  not run, and the review says so in its header: each harness's plugin, package, hooks and their approval, Claude
-  Code's version, Codex's skill catalog and instruction chain, the hook's self-test and shell names, the turn-end wait
-  check, the plan judge and the seal. `synthesis doctor` runs them.
+  `claude plugin list` rewrote marker files in Claude Code's plugin cache), and the hook writes what it saw. So the
+  doctor's checks that start a harness's program, run the hook, try writes or ask a model are not run, and the review
+  says so in its header: each harness's plugin, package, hooks and their approval, Claude Code's version, Codex's skill
+  catalog and instruction chain, the hook's self-test and shell names, the turn-end wait check, the plan judge and the
+  seal. `synthesis doctor` runs them.
 - **No bytecode.** The two scripts load with bytecode writing off, so nothing is compiled beside them in the release.
 - **It fetches nothing unless `--fetch` is given.** With it, `git fetch --all --prune` writes git's own remote-tracking
   refs and `FETCH_HEAD` in each repository, as the strand scan's `--fetch` does, and the stable release's manifest is
