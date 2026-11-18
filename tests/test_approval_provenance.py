@@ -322,6 +322,22 @@ def test_a_note_5_23_wrote_never_counts_in_folders_a_variable_names(account, tmp
     assert approvals.transcript(None) == ""
 
 
+def test_an_account_the_user_database_does_not_know_finds_no_old_note_and_reads_a_new_one(tmp_path, monkeypatch):
+    """The integration review of 5.24.1: the account's home was looked up for every note, and a user id with no entry in
+    the user database raised; it is looked up only for a note that names no folders, and such a note then counts for
+    nothing."""
+    monkeypatch.setenv("SYNTHESIS_SESSION", SID)
+
+    def unknown():
+        raise KeyError("getpwuid(): uid not found")
+    monkeypatch.setattr(paths, "account_home", unknown)
+    real = _record(Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "-work" / f"{SID}.jsonl", claude("hello", time.time()))
+    approvals.remember(SID, str(real))
+    assert approvals.transcript(None) == str(real)
+    _old_note(real)
+    assert approvals.transcript(None) == ""
+
+
 def test_the_account_s_own_home_comes_from_the_user_database_never_from_home(tmp_path, monkeypatch):
     import pwd
     monkeypatch.setenv("HOME", str(tmp_path / "elsewhere"))
@@ -478,6 +494,15 @@ def roots(tmp_path, monkeypatch):
 ])
 def test_writing_into_the_state_folder_or_a_transcript_is_refused(roots, command, tmp_path):
     command = command.format(**roots)
+    assert "Approvals come only from the principal's own prompt" in guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path))
+
+
+@pytest.mark.parametrize("command", ["echo x >> {archived}/rollout-2026-11-15T10-00-00-x.jsonl",
+                                     "cp /tmp/forged.jsonl {archived}/rollout-2026-11-15T10-00-00-x.jsonl"])
+def test_codex_s_archived_rollouts_are_protected_as_its_live_ones(roots, command, tmp_path):
+    """The integration review of 5.24.1: a check finds a session's record among Codex's archived rollouts too (the prompt
+    hook records that folder beside each note, as sessions.natives reads it), yet a shell wrote there with no code."""
+    command = command.format(archived=paths.codex_home() / "archived_sessions")
     assert "Approvals come only from the principal's own prompt" in guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path))
 
 

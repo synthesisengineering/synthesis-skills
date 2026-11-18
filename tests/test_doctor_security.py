@@ -101,3 +101,80 @@ def test_the_doctor_runs_the_check_on_the_account_s_own_home(monkeypatch, tmp_pa
     monkeypatch.setattr(paths, "account_home", lambda: tmp_path / "account")
     doctor.run_checks(find=lambda name: None)
     assert seen == [tmp_path / "account"]
+
+
+# --- The integration review of 5.24.1, finding 2: false warnings. A Finder file in a private ~/.ssh was named as
+# readable by other users, as was a list of public keys; a linked ~/.ssh was judged by the link's own mode, which the
+# suggested chmod never changes; and Ubuntu's 750 home, whose group is the user's own, warned. ---------------------------
+
+def test_files_in_a_closed_ssh_folder_are_no_one_else_s_to_read(tmp_path):
+    files = {".DS_Store": 0o644, "id_ed25519": 0o644, "allowed_signers": 0o644}
+    assert [c.status for c in doctor.check_security(_home(tmp_path, files=files), run=_mac(), platform="darwin")] == ["ok"]
+
+
+def test_an_open_ssh_folder_names_its_private_files_and_no_public_or_finder_one(tmp_path):
+    files = {".DS_Store": 0o644, "id_ed25519": 0o644, "allowed_signers": 0o644, "id_ed25519.pub": 0o644}
+    checks = doctor.check_security(_home(tmp_path, ssh_mode=0o755, files=files), run=_mac(), platform="darwin")
+    assert [c.name for c in checks] == ["security ~/.ssh"] and "id_ed25519 " in checks[0].detail.replace(",", " ")
+    assert ".DS_Store" not in checks[0].detail and "allowed_signers" not in checks[0].detail and ".pub" not in checks[0].detail
+
+
+def test_a_linked_ssh_folder_is_judged_where_it_leads(tmp_path):
+    home = tmp_path / "account"
+    home.mkdir(mode=0o700)
+    keys = tmp_path / "keys"
+    keys.mkdir(mode=0o700)
+    (home / ".ssh").symlink_to(keys)
+    assert [c.status for c in doctor.check_security(home, run=_mac(), platform="darwin")] == ["ok"]
+
+
+def test_a_group_of_the_user_s_own_lets_no_one_else_in(tmp_path, monkeypatch):
+    """Ubuntu gives each user a group of their own and a 750 home; macOS puts every user in the group staff."""
+    home = _home(tmp_path, home_mode=0o750)
+    monkeypatch.setattr(doctor, "_private_group", lambda gid: True)
+    assert [c.status for c in doctor.check_security(home, run=_mac(), platform="linux")] == ["ok"]
+    monkeypatch.setattr(doctor, "_private_group", lambda gid: False)
+    assert [c.name for c in doctor.check_security(home, run=_mac(), platform="linux")] == ["security home folder"]
+
+
+# --- The same review: python.org's 3.15 installed writable by the admin group, which this user is in, so the installer
+# passed it over and the hooks stayed on 3.12 with nothing said. The doctor says which Python the hooks run, and names a
+# newer python.org version the installer had to pass over, with why and the steps that let it be pinned. ----------------
+
+def _python(folder: Path, name: str, says: str) -> str:
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text(f"#!/bin/sh\necho '{says}'\n", encoding="utf-8")
+    path.chmod(0o755)
+    import os
+    return os.path.realpath(path)
+
+
+def _pinned(home: Path, python: str) -> None:
+    (home / "bin").mkdir(parents=True, exist_ok=True)
+    (home / "bin" / "synthesis-hook").write_text(f'#!/bin/sh\nexec /usr/bin/env -i HOME="$HOME" {python} -I -S /x/hook.py "$@"\n',
+                                                 encoding="utf-8")
+
+
+def test_the_doctor_names_a_newer_python_the_installer_had_to_pass_over_and_how_to_let_it(tmp_path, monkeypatch):
+    from synthesis import install
+    versions = tmp_path / "Versions"
+    old = _python(versions / "3.12" / "bin", "python3", "3 12 final")
+    new = _python(versions / "3.15" / "bin", "python3", "3 15 final")
+    monkeypatch.setattr(install, "FRAMEWORKS", str(versions / "*" / "bin" / "python3"))
+    monkeypatch.setattr(install, "interpreter_problems", lambda p: [f"{p} is writable by this user or its groups"] if p == new else [])
+    home = tmp_path / "home"
+    _pinned(home, old)
+    check = doctor.check_interpreter(home)
+    assert check.status == "warn" and check.name == "hook interpreter"
+    assert "3.12" in check.detail and "3.15" in check.detail and "writable by this user" in check.detail
+    assert f"chmod -R go-w {versions / '3.15'}" in check.detail and "--install-only" in check.detail
+    _pinned(home, new)
+    assert doctor.check_interpreter(home).status == "ok"
+
+
+def test_a_hook_launcher_that_names_no_python_that_answers_warns(tmp_path):
+    home = tmp_path / "home"
+    _pinned(home, str(tmp_path / "gone" / "python3"))
+    check = doctor.check_interpreter(home)
+    assert check.status == "warn" and "install again" in check.detail

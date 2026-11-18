@@ -236,3 +236,15 @@ def test_the_newest_python_the_installer_pins_is_the_newest_the_checks_test():
     text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     matrix = re.search(r"^\s+python: \[(.*)\]", text, re.M).group(1)
     assert install.TESTED == max(tuple(map(int, v.split("."))) for v in re.findall(r'"(3\.\d+)"', matrix))
+
+
+def test_with_no_python_to_pin_the_installer_says_which_versions_it_takes():
+    """The integration review of 5.24.1: a machine whose only Python owned by root is newer than the checks test now
+    installs nothing, and the message said only 3.9 or later."""
+    assert f"3.9 to {install.TESTED[0]}.{install.TESTED[1]}" in install.NO_PYTHON
+
+
+def test_a_python_says_its_version_only_when_it_is_a_final_release(tmp_path):
+    assert install.final_version(_fake(tmp_path, "py315", "3 15 final")) == (3, 15)
+    assert install.final_version(_fake(tmp_path, "py315b", "3 15 beta")) is None
+    assert install.final_version(str(tmp_path / "missing")) is None
