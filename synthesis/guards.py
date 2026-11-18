@@ -10834,12 +10834,17 @@ def _one_code(checks) -> str | None:
     wait are said together, every request they file under one code (A5, 2026-11-17: one command the runtime check, then
     the writers check, held asked the principal for two codes, minutes apart)."""
     waits = []
-    with approvals.one_code():
+    with approvals.one_code() as call:
+        shown = call["code"]
         for judge in checks:
-            reason = judge()
+            try:
+                reason = judge()
+            except approvals.Unverified as held:  # a grant its record did not back, asked again: said with the rest (review
+                reason = str(held)                 # of 5.24.1: the waits before it were dropped, though the code carried them)
             if reason and not ASKS_CODE.search(reason):
                 return reason
             waits += [reason] if reason else []
+    waits = [w.replace(shown, call["code"]) for w in waits]  # the code they share is known once the call's requests are filed
     if len(waits) > 1:
         return f"This waits on {len(waits)} of the guard's checks. Each names the same code, so it is typed once:\n" + "\n".join(
             f"{n}. {w}" for n, w in enumerate(waits, 1))

@@ -65,39 +65,49 @@ def pending() -> list[str]:
 
 def request(kind: str, subject, summary: str) -> str:
     """File (or refresh) a pending request; returns the code the principal types. A retry keeps the code the principal
-    was already shown. Inside `one_code` every request takes the call's one code, listed beside the first."""
-    key = digest(kind, subject)
+    was already shown. Inside `one_code` the request joins the call's, filed together under one code when it ends."""
+    entry = {"kind": kind, "digest": digest(kind, subject), "summary": summary}
+    if CALL:
+        CALL[0]["entries"] += [] if any(e["digest"] == entry["digest"] for e in CALL[0]["entries"]) else [entry]
+        return CALL[0]["code"]
+    return _file([entry], _new_code())
+
+
+def _new_code() -> str:
+    import secrets
+    return str(secrets.randbelow(10)) + secrets.token_hex(3)[:5]  # a leading digit keeps every code apart from English words
+
+
+def _file(entries: list, code: str) -> str:
+    """File these requests under the code a pending request of exactly these already has (a retry), else under `code`.
+    Never a code that carries anything else: a code the principal was shown names exactly what it grants (the
+    integration review of 5.24.1, finding 1: a later call's requests joined a code shown for fewer)."""
     _expire()
-    entry = {"kind": kind, "digest": key, "summary": summary}
-    code = CALL.get("code") or next((c for c in pending() if key in _keys(_dir("approval-requests") / f"{c}.json")), "")
-    if not code:  # a leading digit keeps every code apart from English words
-        import secrets
-        code = str(secrets.randbelow(10)) + secrets.token_hex(3)[:5]
-    data = {} if CALL and "code" not in CALL else paths.read_json(_dir("approval-requests") / f"{code}.json")  # a call's
-    CALL.update({"code": code} if CALL else {})  # first request lists afresh what the call asks
-    if data.get("digest") not in (None, key):
-        data["also"] = [e for e in _entries(data)[1:] if e["digest"] != key] + [entry]
-    else:
-        data.update(entry)
-    paths.write_json(_dir("approval-requests") / f"{code}.json", {**data, "at": time.time()})
+    keys = sorted(e["digest"] for e in entries)
+    code = next((c for c in pending() if sorted(_keys(_dir("approval-requests") / f"{c}.json")) == keys), code)
+    paths.write_json(_dir("approval-requests") / f"{code}.json", {**entries[0], "at": time.time(),
+                                                                    **({"also": entries[1:]} if entries[1:] else {})})
     return code
 
 
-CALL: dict = {}  # while one call is judged (`one_code`): {"on": True}, then the code its first request was given
+CALL: list = []  # while one call is judged (`one_code`): {"code": the code its requests will share, "entries": them}
 
 
 @contextlib.contextmanager
 def one_code():
-    """Every request filed inside takes one code, so a call several checks hold asks the principal once (A5, 2026-11-17);
-    a call judged inside another files under the outer one's."""
+    """Every request filed inside joins the call's, so a call several checks hold asks the principal once (A5,
+    2026-11-17). They are filed when it ends, and `code` is then the one they share; a call judged inside another
+    joins the outer one's."""
     if CALL:
-        yield
+        yield CALL[0]
         return
-    CALL["on"] = True
+    call = {"code": _new_code(), "entries": []}
+    CALL.append(call)
     try:
-        yield
+        yield call
     finally:
         CALL.clear()
+        call["code"] = _file(call["entries"], call["code"]) if call["entries"] else call["code"]
 
 
 def _entries(data: dict) -> list:
@@ -392,10 +402,11 @@ def void(kind: str, subject) -> list:
     """Spend a grant of exactly this subject, and drop a request for one that still waits, using neither: the same
     thing went out on another code, so a second copy has to be shown again (2026-11-13: a message released by the
     code for a time in its words left the ordinary grant live, and an identical call went a second time on it).
-    Returns what it removed, (file, bytes) each, for a call that is then held to put back."""
+    Returns what it removed, (file, bytes) each, for a call that is then held to put back. A request carried beside
+    others takes its code with it: that code was shown granting it (the integration review of 5.24.1)."""
     key = digest(kind, subject)
     files = [_dir("approvals") / f"{key}.json"] + [_dir("approval-requests") / f"{code}.json" for code in pending()
-                                                   if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key]
+                                                   if key in _keys(_dir("approval-requests") / f"{code}.json")]
     removed = []
     for path in files:
         try:
