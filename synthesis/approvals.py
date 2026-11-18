@@ -82,11 +82,16 @@ def _folders() -> tuple:
     return _dir("requests"), paths.requests()
 
 
+def hooks(code: str) -> bool:
+    """Whether the hook filed this code: its first digit is 0 to 4, a shell's 5 to 9 (`_new_code`)."""
+    return code[:1] in "01234"
+
+
 def _request_file(code: str) -> Path:
-    """The pending request of this code: the hook's where one is filed under it, else a shell's. A shell's under a code
-    the hook filed is never granted: a shell can read the hook's codes and plant its own request under one."""
-    sealed = _dir("requests") / f"{code}.json"
-    return sealed if sealed.exists() else paths.requests() / f"{code}.json"
+    """The pending request of this code, in the folder its shape names. A shell can read the hook's codes and write its own
+    folder, so a file there under a code of the hook's is never read, even once the hook's request has expired (review
+    round 1 of 5.25.0, finding 2: a request planted under one then was granted by the code the hook had shown)."""
+    return (_dir("requests") if hooks(code) else paths.requests()) / f"{code}.json"
 
 
 def how(code: str) -> str:
@@ -96,7 +101,7 @@ def how(code: str) -> str:
 
 def pending() -> list[str]:
     """The codes of requests waiting for the principal, the hook's and the shells'."""
-    return list(dict.fromkeys(p.stem for folder in _folders() for p in folder.glob("*.json")))
+    return list(dict.fromkeys(p.stem for folder in _folders() for p in folder.glob("*.json") if _request_file(p.stem) == p))
 
 
 def request(kind: str, subject, summary: str, carry: dict | None = None) -> str:
@@ -113,20 +118,20 @@ def request(kind: str, subject, summary: str, carry: dict | None = None) -> str:
 
 
 def _new_code() -> str:
+    """A leading digit keeps every code apart from English words, and says who filed it (`hooks`)."""
     import secrets
-    return str(secrets.randbelow(10)) + secrets.token_hex(3)[:5]  # a leading digit keeps every code apart from English words
+    return str(secrets.randbelow(5) + 5 * (not IN_HOOK)) + secrets.token_hex(3)[:5]
 
 
 def _file(entries: list, code: str) -> str:
     """File these requests under the code a pending request of exactly these already has (a retry), else under `code`.
     Never a code that carries anything else: a code the principal was shown names exactly what it grants (the
     integration review of 5.24.1, finding 1: a later call's requests joined a code shown for fewer). The hook files in
-    the sealed folder; any other process beside its state, marked as a shell's, under a code the hook has not filed."""
+    the sealed folder; any other process beside its state, marked as a shell's, under a code of a shell's shape."""
     _expire()
     folder, keys = _dir("requests") if IN_HOOK else paths.requests(), sorted(e["digest"] for e in entries)
-    code = next((p.stem for p in folder.glob("*.json") if sorted(_keys(p)) == keys), code)
-    while not IN_HOOK and (_dir("requests") / f"{code}.json").exists():
-        code = _new_code()
+    code = next((p.stem for p in folder.glob("*.json") if hooks(p.stem) is IN_HOOK and sorted(_keys(p)) == keys and not
+                 (_dir("answered") / p.name).exists()), code)  # a code he has typed is never shown again
     paths.write_json(folder / f"{code}.json", {**entries[0], "at": time.time(), **({"also": entries[1:]} if entries[1:] else {}),
                                                **({} if IN_HOOK else {"by": "shell"})})
     return code
@@ -166,7 +171,7 @@ def _expire() -> None:
     """Drop requests and grants older than the TTL, so state never grows (R8.3); a process that cannot write the sealed
     folder drops only the requests beside its state."""
     cutoff = time.time() - TTL_SECONDS
-    for path in (p for folder in (*_folders(), _dir("grants"), _dir("effects")) for p in folder.glob("*.json")):
+    for path in (p for folder in (*_folders(), _dir("grants"), _dir("effects"), _dir("answered")) for p in folder.glob("*.json")):
         try:
             if path.stat().st_mtime < cutoff:
                 path.unlink()
@@ -219,15 +224,16 @@ def grant_from_prompt(prompt: str, transcript_path: str = "", session_id: str = 
         ended = {}
     for code in typed_codes(prompt):
         pending_file = _request_file(code)
-        data, shell = paths.read_json(pending_file), pending_file.parent == paths.requests()
+        data, shell = paths.read_json(pending_file), not hooks(code)
         for entry in _entries(data) if data.get("digest") else []:  # every request the code carries (A5)
             effect = entry["kind"] in EFFECTS and digest(entry["kind"], entry.get("subject")) == entry["digest"]
             paths.write_json(_dir("effects" if effect else "grants") / f"{entry['digest']}.json", {
                 **(entry if effect else {}), "kind": entry["kind"], "digest": entry["digest"], "summary": entry.get("summary", ""),
                 "code": code, "asked": data.get("at", 0), "at": time.time(), "session": me, "shell": shell, **ended})
             said.append(entry.get("summary", "") + SHELL * shell)
-        for folder in _folders():  # a shell's request planted under the hook's code goes with it
-            (folder / f"{code}.json").unlink(missing_ok=True)
+        if data.get("digest"):
+            paths.write_json(_dir("answered") / f"{code}.json", {"left": []})  # nothing planted under it again counts (`answered`)
+            pending_file.unlink(missing_ok=True)
     return said
 
 
@@ -441,16 +447,21 @@ def answered(kind: str, subject, session: dict | None = None) -> bool:
     """True once where the session's own record shows the principal typing the code of the request for exactly this
     subject after it was filed, though no prompt hook made a grant of it: a command that checks its own approval (the
     CLI's install and uninstall) reads that record itself, so a runtime can be approved while none runs the hook. The
-    request is spent."""
+    request is spent. A typed code answers each request it carried when first answered, once: a shell writes the time a
+    request of its own says it was filed, so one planted under the code again after he typed it would count his prompt
+    again (review round 1 of 5.25.0, its note on finding 2). The sealed folder keeps what is left."""
     key, record = digest(kind, subject), transcript(session)
     for code in pending() if record and not _muse(session) else []:
-        file = _request_file(code)
+        file, spent = _request_file(code), paths.read_json(_dir("answered") / f"{code}.json")
         data = paths.read_json(file)
-        if key not in [e["digest"] for e in _entries(data)] or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+        if key not in [e["digest"] for e in _entries(data)] or time.time() - float(data.get("at", 0)) > TTL_SECONDS or (
+                spent and key not in spent.get("left", [])):
             continue
         try:
             if typed(record, code, float(data.get("at", 0)), paths.session_id(session)):
                 rest = [e for e in _entries(data) if e["digest"] != key]  # the code's other requests stay for their own checks
+                paths.write_json(_dir("answered") / f"{code}.json", {"left": [e["digest"] for e in rest if not spent or
+                                                                              e["digest"] in spent.get("left", [])]})
                 if rest:
                     paths.write_json(file, {**rest[0], "at": data.get("at", 0), "also": rest[1:]})
                 else:

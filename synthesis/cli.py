@@ -473,11 +473,9 @@ def cmd_searches(args) -> int:
 def cmd_approvals(args) -> int:
     """The requests waiting for the principal's code: the hook's, then those a shell filed, named as a shell's."""
     from synthesis import approvals
-    for directory in approvals._folders():
-        for f in sorted(directory.glob("*.json")):
-            data = paths.read_json(f)
-            shell = approvals.SHELL if directory == paths.requests() else ""
-            print(f"{f.stem}  {time.strftime('%H:%M', time.localtime(float(data.get('at') or 0)))}  {data.get('summary', '')}{shell}")
+    for code in sorted(approvals.pending(), key=lambda c: (not approvals.hooks(c), c)):  # a file under another's code is none
+        data, shell = paths.read_json(approvals._request_file(code)), "" if approvals.hooks(code) else approvals.SHELL
+        print(f"{code}  {time.strftime('%H:%M', time.localtime(float(data.get('at') or 0)))}  {data.get('summary', '')}{shell}")
     return 0
 
 
