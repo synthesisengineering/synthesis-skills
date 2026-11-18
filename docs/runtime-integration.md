@@ -183,6 +183,16 @@ when granted, and never granted under a code the hook filed), the close mark of
   `sandbox_permissions: "require_escalated"` or `with_escalated_permissions`, the desktop
   app's terminal panel) waits for the principal's code of exactly that command, where it
   runs; the release launcher's own line leaves the sandbox with no code.
+- **The guard's own settings** change through `synthesis config apply <file>`, run outside the
+  sandbox: it shows the change key by key and waits for the principal's code of exactly that
+  file's content, and the runtime's own launcher running that line outside the sandbox needs
+  no second code. A file tool's write of `config.json`, a harness's hook or sandbox settings
+  or a launch agent waits for the code of that call.
+- **An MCP tool that writes a file** is judged by its path arguments, as the file tools are:
+  an MCP server runs outside every sandbox, so one that writes into a sealed or protected
+  folder is refused.
+- **The installer** refuses, naming the folder, where it cannot write the sealed runtime,
+  rather than install half of it.
 - **A Muse session gets no approval** until Muse's sandbox is shown to seal the folders:
   its prompt hook grants nothing, a grant made elsewhere lets nothing through there, and a
   held call says to make it in a Claude Code or Codex session.

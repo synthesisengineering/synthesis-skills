@@ -373,6 +373,64 @@ def cmd_sessions(args) -> int:
     return 0
 
 
+def config_change(file: str) -> dict:
+    """What applying a settings file changes in the guard's own settings: {"subject": what the principal's code binds
+    (the file, every byte it holds and the settings it replaces), "data": its settings, "said": each key that changes,
+    old and new}. ValueError for a file that holds no JSON object. The guard asks it of the same line (the sandbox)."""
+    import hashlib
+    real = os.path.realpath(os.path.expanduser(file))
+    try:
+        raw = Path(real).read_bytes()
+        data = json.loads(raw)
+    except (OSError, ValueError) as exc:
+        data, why = None, f" ({exc})"
+    else:
+        why = ""
+    if not isinstance(data, dict):
+        raise ValueError(f"{file} holds no JSON object of settings{why}")
+    try:
+        now = paths.config_file().read_bytes()
+    except FileNotFoundError:
+        now = b""
+    try:
+        old = paths.config()
+    except paths.Unreadable:  # a file of settings is how an unreadable one is mended
+        old = {}
+    said = [f"  {key}: {json.dumps(old[key])[:200] if key in old else '(not set)'} -> "
+            f"{json.dumps(data[key])[:200] if key in data else '(removed)'}" for key in sorted(set(old) | set(data)) if old.get(key, KeyError) != data.get(key, KeyError)]
+    return {"subject": {"file": real, "to": hashlib.sha256(raw).hexdigest(), "from": hashlib.sha256(now).hexdigest()},
+            "data": data, "said": "\n".join(said)}
+
+
+def cmd_config(args) -> int:
+    """`synthesis config apply <file>`: the guard's own settings change only on the principal's code for exactly that
+    file's content, and only outside the sandbox, since config.json is sealed (the guard's sandbox, design 2.3). The
+    change is shown key by key; a file changed after his code is another change."""
+    from synthesis import approvals
+    try:
+        change = config_change(args.file)
+    except ValueError as exc:
+        print(f"This settings file can't be applied: {exc}", file=sys.stderr)
+        return 2
+    if not change["said"]:
+        print(f"{paths.config_file()} already holds these settings")
+        return 0
+    session = _shell(args)
+    try:
+        if approvals.consume("config", change["subject"], session) or approvals.answered("config", change["subject"], session):
+            paths.write_json(paths.config_file(), change["data"])
+            print(f"{paths.config_file()} changed:\n{change['said']}")
+            return 0
+    except (approvals.Unverified, approvals.Sealed) as exc:
+        print(exc)
+        return 2
+    code = approvals.request("config", change["subject"], f"change the guard's settings from {change['subject']['file']}"[:160])
+    print(f"This changes {paths.config_file()}, the guard's own settings, which changes what every approval means:\n"
+          f"{change['said']}\nShow the principal this change and ask them to type {approvals.how(code)}; then run the identical "
+          "command again outside the sandbox (config.json is sealed), with the file as it is now.")
+    return 2
+
+
 def cmd_approvals(args) -> int:
     """The requests waiting for the principal's code: the hook's, then those a shell filed, named as a shell's."""
     from synthesis import approvals
@@ -529,6 +587,10 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--limit", type=int, default=20)
     s.set_defaults(fn=cmd_sessions)
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
+    s = sub.add_parser("config", help="apply a settings file to the guard's own settings, on the principal's code")
+    s.add_argument("action", choices=["apply"])
+    s.add_argument("file", help="a JSON file holding the whole of the new settings")
+    s.set_defaults(fn=cmd_config)
     s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
     s.add_argument("plugin", nargs="?", default="")
     s.set_defaults(late="plugin")

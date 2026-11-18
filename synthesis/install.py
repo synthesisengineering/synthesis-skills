@@ -551,6 +551,10 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
         raise RuntimeError(f"{home} holds {', '.join(found)}, left by a runtime installed there, so a session start does not "
                            f"install one from {plugin_root}, the harness's own folder. Install it from your own terminal: "
                            "setup.py, or `synthesis install` with no folder where the runtime is still there")
+    shut = _unwritable(home)
+    if shut:  # a shell a harness's sandbox confines: install nothing rather than half (the guard's sandbox, design 4.5)
+        raise Refused(f"this process cannot write {shut}, part of the sealed runtime, which a harness's sandbox keeps every "
+                      "shell out of, so nothing was installed: install from outside the sandbox, as the release launcher does")
     python = pinned_python()
     if not python:  # nothing could run the guard: install nothing (review round 3 of 5.23.1, M3)
         raise Refused(NO_PYTHON)
@@ -571,6 +575,20 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
     if not config.exists():
         config.write_text("{}\n", encoding="utf-8")
     return f"synthesis runtime {wanted} at {home / 'current'}"
+
+
+def _unwritable(home: Path) -> str:
+    """The first folder of the sealed runtime an install writes that this process cannot, with why; '' for none. Each is
+    tried by making a file and removing it, since a sandbox's rules show only when a write is made."""
+    for folder in (home / "releases", home / "bin", home / "approvals"):
+        probe = folder / f".probe.{os.getpid()}"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            probe.touch()
+            probe.unlink()
+        except OSError as exc:
+            return f"{folder} ({exc.strerror or exc})"
+    return ""
 
 
 def _install_locked(plugin_root: Path, home: Path, python: str, found: list, git_hooks: bool, session, expected) -> str:

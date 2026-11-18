@@ -2489,10 +2489,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # plugin's 3 more: local_messaging._close, the review read as a grant, an unbacked one said why.
 # Ruling 2, a command outside the sandbox waits for the code of exactly it: guards.UNSANDBOXED 1, check_unsandboxed 17 and
 # its 5 comment lines, the shell's chain in _check 1 more, 4 blank lines.
+# Then each 126 more, all in synthesis/, for the rest of part 1 (design 2.3 and 4.5). The guard's settings:
+# cli.config_change 27 (what a settings file changes, key by key, and what the principal's code binds) and cmd_config 27
+# (`synthesis config apply`, on his code for exactly that content, outside the sandbox), the parser 4 more, 4 blank lines;
+# guards._config_apply 12 (the launcher's own settings line needs only the code of the change) and _launcher 12 with
+# _release_tool 7 fewer (the runtime's own launcher, read in one place for both). An MCP tool's writes: guards.MCP_WRITES 2,
+# MCP_PATH_KEYS 2 and check_mcp_write 13 with their 4 comment lines (judged by its path arguments, as the file tools are);
+# the dispatch's line in _check keeps its length. The installer: install._unwritable 12 and install 4 more (it refuses,
+# naming the folder, where it cannot write the sealed runtime, rather than install half). The new definitions' 8 blank
+# lines in guards.py and 2 in install.py.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23943
-PLUGIN_BUDGET = 50615
+CORE_BUDGET = 24069
+PLUGIN_BUDGET = 50741
 
 
 def _lines(files):

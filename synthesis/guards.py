@@ -5667,13 +5667,13 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
-    ("cli", "_batch _main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
+    ("cli", "_batch _main cmd_claim cmd_config cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_wait_check main run_checks"),
     ("hook", "_batch _carried_since _line _newer_plugin_note _ran _upgrade_note _window apply_effects main pre_tool_use session_start stop "
              "user_prompt_submit"),
-    ("install", "_install_lock _install_locked _merge _spend_release _stage _write_exec approval grant_release install move_approvals move_board "
-                "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("install", "_install_lock _install_locked _merge _spend_release _stage _unwritable _write_exec approval grant_release install move_approvals "
+                "move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
@@ -5959,6 +5959,20 @@ def release_checkout(repo: str) -> list:
         [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
 
 
+def _launcher(word: str, name: str) -> bool:
+    """Whether a command's first word is the runtime's own launcher `name` in its protected bin/, by an absolute path the
+    shell hands on as written (`~/` only at its start), as install wrote it for an interpreter it would still pin."""
+    from synthesis import install
+    target, python = paths.home() / "bin" / name, install.pinned(paths.home())
+    word = os.path.expanduser("~") + word[1:] if word.startswith("~/") else word
+    try:
+        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, name)
+    except OSError:
+        written = False
+    return (written and bool(python) and not install.interpreter_problems(python) and word[:1] == "/" and "~" not in word
+            and os.path.realpath(word) == os.path.realpath(target))
+
+
 def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
     """The options of a command line that is exactly the release launcher install wrote, on the canonical checkout or
     naming a tag to install (above); {} for any other. Its paths are absolute, so no folder the command runs from moves
@@ -5980,14 +5994,7 @@ def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
     def place(word: str, shell: bool) -> str:  # an absolute path as the shell hands it on: `~/` leads home only at a word's start
         word = home + word[1:] if shell and word.startswith("~/") else word
         return word if word[:1] == "/" and "~" not in word else ""
-    from synthesis import install
-    target, python = paths.home() / "bin" / "synthesis-release", install.pinned(paths.home())
-    try:
-        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, "synthesis-release")
-    except OSError:
-        written = False
-    if not written or not python or install.interpreter_problems(python) or os.path.realpath(place(words[0], True) or "/") != (
-            os.path.realpath(target)):
+    if not _launcher(words[0], "synthesis-release"):
         return False  # not the launcher install wrote, for an interpreter it would still pin
     given, at = {}, 1
     while at < len(words):
@@ -10760,7 +10767,7 @@ def check_unsandboxed(tool: str, tool_input: dict, cwd: str, session: dict | Non
     asked = [key for key, value in UNSANDBOXED if type(tool_input.get(key)) is type(value) and tool_input.get(key) == value]
     panel = tool.endswith("__run_in_terminal")
     command = shell_command(tool_input)
-    if not (asked or panel) or _release_tool(command, cwd, session):
+    if not (asked or panel) or _release_tool(command, cwd, session) or _config_apply(command, cwd, session):
         return None
     subject = {"command": command, "runs_in": os.path.realpath(cwd)}
     if approvals.consume("unsandboxed", subject, session):
@@ -10771,6 +10778,45 @@ def check_unsandboxed(tool: str, tool_input: dict, cwd: str, session: dict | Non
             "guard runs or the harnesses' settings, so it waits for the principal's code of exactly this command. Show them the "
             f"command and ask them to type {approvals.how(code)}; then run the identical command again the same way. A command "
             "the sandbox allows needs no code: run it inside the sandbox where it can.")
+
+
+def _config_apply(command: str, cwd: str, session: dict | None) -> bool:
+    """Whether a line is exactly the runtime's own launcher applying a settings file whose change the principal's code
+    grants: its run outside the sandbox waits for no second code, since the command itself spends that one (design 2.3)."""
+    words = command.split()
+    if len(words) != 4 or words[1:3] != ["config", "apply"] or not PLAIN_LINE.fullmatch(command.strip()) or not _launcher(words[0], "synthesis"):
+        return False
+    from synthesis import cli
+    try:
+        change = cli.config_change(os.path.join(cwd, os.path.expanduser(words[3])))
+    except ValueError:
+        return False
+    return bool(change["said"]) and approvals.granted("config", change["subject"], session)
+
+
+# --- an MCP tool that writes a file (design 4.5) --------------------------------------------------------------------------
+# An MCP server runs outside every sandbox, as the harness's own process, so a tool of one that writes a file reaches the
+# sealed folders where no shell can: such a tool is judged by its path arguments against the protected folders, as the
+# file tools are (`check_file_write`), the agent's memory notes beside its transcripts excepted.
+MCP_WRITES = frozenset("write create edit replace insert delete remove move rename save append update put patch copy mkdir touch "
+                       "download export extract unzip".split())
+MCP_PATH_KEYS = frozenset({"file", "filename", "dest", "dst", "destination", "target", "output", "out", "save_to", "directory",
+                           "dir", "folder"})
+
+
+def check_mcp_write(tool: str, tool_input, cwd: str, config: dict) -> str | None:
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", tool.rpartition("__")[2]).lower()
+    if not tool.startswith("mcp__") or not isinstance(tool_input, dict) or not set(re.findall(r"[a-z]+", name)) & MCP_WRITES:
+        return None
+    roots = [os.path.realpath(r) for r in _protected_roots(config)]
+    for key, value in tool_input.items():
+        if isinstance(value, str) and value and "\0" not in value and ("path" in key.lower() or key.lower() in MCP_PATH_KEYS):
+            real = os.path.realpath(os.path.join(cwd, os.path.expanduser(value)))
+            if any(paths.inside(real, r) for r in roots) and not _own(real):
+                return (f"Refused: {tool} would write {value}, inside a folder only the hook, the installer or a harness writes "
+                        "(the sealed approvals, the runtime, the board, the archive or a harness's records). An MCP server runs "
+                        "outside every sandbox, so the guard judges where its tools write; approvals come only from the principal.")
+    return None
 
 
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
@@ -10832,7 +10878,7 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
     if desktop_tool(tool):
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
-    reason = check_driven(kind, tool, tool_input, config, session) if kind else None
+    reason = check_mcp_write(tool, tool_input, cwd, config) or (check_driven(kind, tool, tool_input, config, session) if kind else None)
     return reason or _connector(tool, tool_input, config, cwd, session)
 
 
