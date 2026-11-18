@@ -12,6 +12,12 @@ def home() -> Path:
     return Path(os.environ.get("SYNTHESIS_HOME") or Path.home() / ".synthesis" / "v5")
 
 
+def account_home() -> Path:
+    """This account's home as the system's user database names it, never HOME, which a command sets for itself (A9)."""
+    import pwd
+    return Path(pwd.getpwuid(os.getuid()).pw_dir)
+
+
 def state() -> Path:
     return home() / "state"
 

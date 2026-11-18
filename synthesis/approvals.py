@@ -153,8 +153,12 @@ def transcript(session: dict | None) -> str:
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
     record = paths.read_json(_dir("transcripts") / f"{sid}.json")
-    recorded = str(record.get("path") or "")
-    return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, record.get("folders")) else ""
+    recorded, home = str(record.get("path") or ""), paths.account_home()
+    folders = record["folders"] if "folders" in record else {  # a note 5.23's prompt hook wrote names none (A9)
+        "claude-code": home / ".claude" / "projects", "codex": home / ".codex" / "sessions", "codex-archived": home /
+        ".codex" / "archived_sessions", "muse": home / ".local" / "share" / "muse" / "sessions",
+        "desktop": home / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions"}
+    return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, folders) else ""
 
 
 def remember(session_id: str, transcript_path: str) -> None:
@@ -174,7 +178,8 @@ def remember(session_id: str, transcript_path: str) -> None:
 def _kept_by_a_harness(path: str, folders) -> bool:
     """Whether a path, where it really leads, lies inside one of the folders the prompt hook recorded: a harness's own,
     or, under the desktop app's, an agent-mode session's records (`<account>/<org>/local_<session>/.claude/projects`),
-    never another file of that session. A record that names none (written before 5.24.0, or by hand) is no harness's."""
+    never another file of that session. A note 5.23's prompt hook wrote names none: `transcript` reads it against each
+    harness's folders under the account's own home, which no variable a command sets can move (A9)."""
     real = os.path.realpath(path)
     for name, root in folders.items() if isinstance(folders, dict) else ():
         base = os.path.realpath(str(root))
