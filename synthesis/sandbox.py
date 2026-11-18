@@ -159,9 +159,9 @@ def install_command(name: str) -> str:
     """The one command the principal types: the staged file checked against the bytes setup staged, then copied into
     place, owned by root and read by everyone. A copy changed since then installs nothing (review round 1 of 5.25.0)."""
     there, copy = target(name), staged(name)
-    check = "shasum -a 256 -c" if sys.platform == "darwin" else "sha256sum -c"
-    digest = hashlib.sha256(expected(name).encode("utf-8")).hexdigest()  # printf, as echo reads a backslash as an escape
-    return (f"printf '%s\\n' {shlex.quote(f'{digest}  {copy}')} | {check} && sudo install -d -o root -g {ROOT_GROUP} -m 755 "
+    check = "shasum -a 256" if sys.platform == "darwin" else "sha256sum"
+    digest = hashlib.sha256(expected(name).encode("utf-8")).hexdigest()  # the file read by the shell: no checker parses a name
+    return (f"{check} < {shlex.quote(str(copy))} | grep -qxF {shlex.quote(digest + '  -')} && sudo install -d -o root -g {ROOT_GROUP} -m 755 "
             f"{shlex.quote(str(there.parent))} && "
             f"sudo install -o root -g {ROOT_GROUP} -m 644 {shlex.quote(str(copy))} {shlex.quote(str(there))}")
 

@@ -187,11 +187,11 @@ the guard trusts it, and it alone prints the one command that installs each file
 command first checks the staged file's SHA-256 against the bytes setup staged, so a copy
 changed since then installs nothing. The principal runs it with his password, once per Mac
 and again when a release changes a file; setup prints each with its digest in place of
-`<sha256>` and the full path:
+`<sha256>` and the full path. The shell reads the file, so no checker parses its name:
 
 ```bash
-printf '%s\n' "<sha256>  $HOME/.synthesis/v5/install/managed-settings.json" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
-printf '%s\n' "<sha256>  $HOME/.synthesis/v5/install/requirements.toml" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
+shasum -a 256 < ~/.synthesis/v5/install/managed-settings.json | grep -qxF '<sha256>  -' && sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
+shasum -a 256 < ~/.synthesis/v5/install/requirements.toml | grep -qxF '<sha256>  -' && sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
 ```
 
 - Claude Code's managed settings,
