@@ -290,6 +290,19 @@ def test_overlay_reports_a_fallback_list_without_claude_md_but_leaves_it():
     assert '["README.md"]' in new and any("lacks CLAUDE.md" in n for n in notes)
 
 
+def test_an_ordinary_install_leaves_codex_unsealed_and_the_sandbox_step_seals_it():
+    """5.25.0's integration: the profile's read-only rules (the approval records among them) are the Codex half of the
+    sandbox's rollout, which the design note starts by testing whether Codex runs its hooks inside its sandbox. Every
+    release's install runs this overlay, so it writes them only when `setup.py sandbox`, the principal's own step, asks."""
+    keep = 'project_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n[features]\nhooks = true\n'
+    sealed = json.dumps(str(setup.paths.approvals()))
+    plain, notes = setup.codex_overlay(keep)
+    assert sealed not in plain and not any("read-only" in n for n in notes)
+    new, notes = setup.codex_overlay(keep, seal=True)
+    assert f'{sealed} = "read"' in new and any("read-only to Codex" in n for n in notes)
+    assert setup.codex_overlay(new, seal=True) == (new, [])  # a rerun changes nothing
+
+
 def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_reads():
     """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Codex reads
     permission profiles unless `sandbox_mode` is set, and then the older [sandbox_workspace_write]. The outbox is
@@ -307,11 +320,11 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
                                  (legacy + keep + '[sandbox_workspace_write]\nwritable_roots = [\n  "/opt/cache",\n]\n', "", ""),
                                  (legacy + 'sandbox_workspace_write.network_access = true\n' + keep, "", ""),
                                  (legacy + keep, "", "")):
-        new, notes = setup.codex_overlay(given if keep in given else given + keep)
+        new, notes = setup.codex_overlay(given if keep in given else given + keep, seal=True)
         config = setup.doctor.read_toml(new)
         assert setup.doctor.check_codex_board(config, board, sealed, outbox).status == "ok", given
         assert [str(folder) in note for folder, note in zip((board, outbox), notes)] == [True, True], notes
-        assert len(notes) == (3 if profile else 2) and setup.codex_overlay(new) == (new, []), given  # a profile is sealed too
+        assert len(notes) == (3 if profile else 2) and setup.codex_overlay(new, seal=True) == (new, []), given  # a profile is sealed too
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, given
         if profile:
             assert config["default_permissions"] == profile and config["permissions"][profile]["extends"] == base, given
@@ -320,7 +333,7 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
     for unsandboxed in ('sandbox_mode = "danger-full-access"\n' + keep, 'default_permissions = ":danger-full-access"\n' + keep):
         assert setup.codex_overlay(unsandboxed) == (unsandboxed, []), unsandboxed
     inline = mine + 'filesystem = { "~/x" = "read" }\n'
-    new, notes = setup.codex_overlay(inline)
+    new, notes = setup.codex_overlay(inline, seal=True)
     assert new == inline and "form setup does not edit" in notes[0] and str(board) in notes[0]
     assert len(notes) == 3 and "form setup does not edit" in notes[1] and str(outbox) in notes[1]
     assert "form setup does not edit" in notes[2] and "read-only" in notes[2]
