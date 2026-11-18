@@ -5,6 +5,7 @@ principal's ruling: `synthesis searches [--agents N] [--session ID]` counts ever
 have made, from each harness's own records, says when the records cannot tell (never zero for that), and prints each of
 N agents' share of what is left of `search_budget`, exiting 1 to refuse a fan-out whose share is under one search."""
 
+import base64
 import contextlib
 import json
 import os
@@ -66,6 +67,20 @@ def claude_session():
     _claude("S1", [_calls(("WebSearch", "t4"), sidechain=True)], "workflows", "wf_1", "agent-a2.jsonl")
     _claude("S2", [_calls(("WebSearch", "t9"))])
     return own
+
+
+PNG = base64.b64encode(b"\x89PNG\r\n\x1a\n not really an image").decode()
+
+
+def test_a_row_with_an_image_in_a_record_never_exported_is_read_and_writes_nothing(claude_session):
+    """A dry reading writes no medium, and needs no archive folder for the session to read one (the adapter files each
+    image under it)."""
+    _claude("S1", [{"type": "user", "isSidechain": True, "cwd": "/work", "timestamp": "2026-11-18T10:00:03.000Z", "message": {
+        "role": "user", "content": [{"type": "tool_result", "tool_use_id": "t3", "content": [
+            {"type": "text", "text": "WebSearch results, and a screenshot of them"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": PNG}}]}]}}], "agent-a1.jsonl")
+    assert sessions.searches("S1")["count"] == 4
+    assert not sessions.root().exists()
 
 
 def test_claude_code_counts_each_websearch_call_of_the_session_and_every_sub_agent_once(claude_session):
