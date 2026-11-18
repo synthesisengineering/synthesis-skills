@@ -26,7 +26,7 @@ A pull request in a synthesis-coded project is not just "does the code work?" It
 6. **Grade every finding:** Must fix (blocks merge), Should fix, Consider or Nit. Be specific, explain the consequence, and name what is good, so the contributor knows what blocks merge and what to repeat.
 7. **No rubber stamps.** An approval without reading creates a false record; if you lack the time, say so.
 8. **Check the project's own conventions first** (`CLAUDE.md`, `AGENTS.md`, project review checklists). One convention violation means checking the whole diff for related ones.
-9. **Approval is not authorization.** Technical acceptance, merge authorization, release or deployment authorization and the delivered outcome are separate facts under the [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.0/skills/synthesis-thinking-framework/references/decision-ownership.md); required remaining work stays an open obligation.
+9. **Approval is not authorization.** Technical acceptance, merge authorization, release or deployment authorization and the delivered outcome are separate facts under the [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.1/skills/synthesis-thinking-framework/references/decision-ownership.md); required remaining work stays an open obligation.
 10. **Merge is step one of two.** Run the project's post-merge verification, and flag files that other in-flight PRs also touch.
 
 ## Contents
