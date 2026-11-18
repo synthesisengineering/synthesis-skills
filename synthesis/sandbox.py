@@ -61,12 +61,19 @@ def _harness() -> list:
     codex = paths.codex_home()
     return [(roots["claude-code"], True, True, "claude-code"), (desktop / "local-agent-mode-sessions", True, True, "desktop"),
             (desktop / "claude-code", True, True, ""), (claude / "settings.json", False, False, ""),
-            (claude / "settings.local.json", False, False, ""), (claude / "plugins", True, False, ""),
+            (claude / "settings.local.json", False, False, ""), (claude_json(), False, False, ""), (claude / "plugins", True, False, ""),
             (roots["codex"], True, False, "codex"), (codex / "archived_sessions", True, False, "codex-archived"),
             (codex / "config.toml", False, False, ""), (codex / "hooks.json", False, False, ""), (codex / "plugins", True, False, ""),
             (roots["muse"], True, False, "muse"), (user / ".config" / "muse", True, False, ""),
             (user / "Library" / "LaunchAgents", True, False, ""), (user / ".local" / "share" / "claude", True, False, ""),
             (user / ".local" / "bin", True, False, "")]
+
+
+def claude_json() -> Path:
+    """Claude Code's own state file, which holds the user's and each project's MCP servers: beside its folder, or inside
+    the one `CLAUDE_CONFIG_DIR` names."""
+    named = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(named) / ".claude.json" if named else Path.home() / ".claude.json"
 
 
 def sealed() -> list:
@@ -97,7 +104,7 @@ def codex_rules() -> list:
     harness's own folders read-only."""
     home, user, roots = paths.home(), Path.home(), paths.transcript_roots()
     above = home.parent if home.parent not in (user, Path(home.anchor)) else home
-    harness = [roots["claude-code"].parent, paths.codex_home(), roots["muse"].parent, user / ".config" / "muse",
+    harness = [roots["claude-code"].parent, claude_json(), paths.codex_home(), roots["muse"].parent, user / ".config" / "muse",
                user / "Library" / "LaunchAgents", paths.desktop_dir(), user / ".local" / "share" / "claude", user / ".local" / "bin"]
     return [(home / w, "write") for w in WRITABLE] + [(above, "read"), (home / APPROVALS, "read")] + [(p, "read") for p in harness]
 
@@ -549,7 +556,7 @@ def _commands() -> list:
         hooks(file, {"CLAUDE_PROJECT_DIR": str(repo)} if repo else {})
     for file in sorted((claude / "plugins" / "cache").glob("*/*/*/hooks/hooks.json")):
         hooks(file, {"CLAUDE_PLUGIN_ROOT": str(file.parent.parent)})
-    for file in dict.fromkeys([Path.home() / ".claude.json", claude / ".claude.json"] + [r / PROJECT[2] for r in _repos()]):
+    for file in dict.fromkeys([claude_json()] + [r / PROJECT[2] for r in _repos()]):
         data = paths.read_json(file)
         tables = [data.get("mcpServers")] + [p.get("mcpServers") for p in (data.get("projects") or {}).values() if isinstance(p, dict)]
         found += [(f"{tilde(file)} mcpServers.{name}", " ".join(map(str, [spec["command"], *(spec.get("args") or [])])), {})

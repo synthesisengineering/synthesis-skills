@@ -2491,10 +2491,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # _repos 8 (the workspace repositories), _claude_settings 5 (the user's and each repository's settings files), _excluded
 # 5 and config_read 4 more (the seal check's `excluded` row), _commands with each repository's hooks and .mcp.json in the
 # same lines, and 6 blank lines.
+# Then each 7 more, all in sandbox.py, for the same route one level up: claude_json 5 with 2 blank lines (Claude Code's own
+# ~/.claude.json, which holds the user's and each project's MCP servers, denied to the file tools and read-only to Codex's
+# shells, in the lists that already name each harness's settings, and tried by the probe set).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24419
-PLUGIN_BUDGET = 51145
+CORE_BUDGET = 24426
+PLUGIN_BUDGET = 51152
 
 
 def _lines(files):

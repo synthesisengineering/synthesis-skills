@@ -153,7 +153,8 @@ Setup changes only these keys in `~/.codex/config.toml`, after copying the file 
 - The guard's sandbox, in the profile form only (design note 22.9, 4.3): what the guard
   trusts made read-only to Codex's shells, with `read` rules for `~/.synthesis` (every
   ancestor of the sealed folders, so none can be renamed away), `~/.synthesis/v5/approvals`
-  (stated again), `~/.claude`, `~/.codex`, `~/.local/share/muse`, `~/.config/muse`,
+  (stated again), `~/.claude`, `~/.claude.json` (Claude Code's MCP servers), `~/.codex`,
+  `~/.local/share/muse`, `~/.config/muse`,
   `~/Library/LaunchAgents`, `~/Library/Application Support/Claude`, `~/.local/share/claude`
   and `~/.local/bin`, and a `write` rule for `~/.synthesis/v5/state/requests`, where a shell
   files a request. A narrower rule wins in Codex, so the board and the outbox stay writable
@@ -195,7 +196,8 @@ sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wh
   `.mcp.json` are denied too: with unsandboxed commands allowed, Claude Code honors a
   repository's settings that loosen the sandbox (an `excludedCommands` entry runs a command
   outside it, past the guard's hold), and their hooks and MCP servers run with full access, so
-  the principal edits those files himself. Managed values outrank every other settings file,
+  the principal edits those files himself; `~/.claude.json`, which holds the user's and each
+  project's MCP servers, is denied for the same reason. Managed values outrank every other settings file,
   and once they configure the sandbox's folders only managed settings can turn it off.
 - Codex's requirements, `/etc/codex/requirements.toml` (Codex's own documentation names
   it for macOS and Linux): a profile of its own, `synthesis-sealed`, with the rules above,
