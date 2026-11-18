@@ -2550,10 +2550,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # found them): natives 7 (each session's subagent/ folders found 1, each listed with one closed to it named 6), _place 6
 # (a sub-agent filed where its parent ran, read from the parent's record), export_file 2 (its role and its parent);
 # _identity keeps its lines (named after its parent session, as Claude Code's are).
+# Then each 10 more, all in guards.py, for a workflow's agents' records, one folder below subagents/, which the browser
+# rules never read (B5's builder found them): _agents 11 and its 2 blank lines (each sub-agent record, a workflow
+# agent's included, written since a time), _record 2 more (its docstring 1; a workflow agent's own record looked for
+# below 1), _shared_tabs 4 fewer (the folder's listing is _agents'), _made_here 1 fewer (the import it no longer needs;
+# a record last written before the tab was made is not read, which keeps the read within its budget).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24841
-PLUGIN_BUDGET = 51570
+CORE_BUDGET = 24851
+PLUGIN_BUDGET = 51580
 
 
 def _lines(files):

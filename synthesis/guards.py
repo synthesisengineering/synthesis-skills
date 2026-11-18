@@ -7769,10 +7769,25 @@ def _browser_call(lines: list, i: int, ident: str) -> dict | None:
 
 def _record(session: dict | None) -> str:
     """The record that shows this call's own earlier calls: a sub-agent's own when the hook names one (its reads and
-    pages are kept out of its session's record), else the session's (review round 1 of 5.23.1, #3)."""
+    pages are kept out of its session's record), else the session's (review round 1 of 5.23.1, #3). A workflow's agent
+    keeps its own below the session's subagents/ folder."""
     main, agent = str((session or {}).get("transcript_path") or ""), str((session or {}).get("agent_id") or "")
-    name = agent if agent.startswith("agent-") else f"agent-{agent}"
-    return os.path.join(os.path.splitext(main)[0], "subagents", f"{name}.jsonl") if main and agent else main
+    name = f"{agent if agent.startswith('agent-') else 'agent-' + agent}.jsonl"
+    own = os.path.join(os.path.splitext(main)[0], "subagents", name) if main and agent else main
+    return own if own == main or os.path.exists(own) else next((r for r in _agents(main) if os.path.basename(r) == name), own)
+
+
+def _agents(main: str, since: float = 0.0) -> list:
+    """The records of a session's sub-agents written since `since`: those in its subagents/ folder, and a workflow's
+    agents' below it (subagents/workflows/<run>/), where `synthesis searches` reads them as subagents/**/*.jsonl too."""
+    found = []
+    for top, _, names in os.walk(os.path.join(os.path.splitext(main)[0], "subagents")):  # a folder it cannot list holds none
+        for name in (n for n in names if n.startswith("agent-") and n.endswith(".jsonl")):
+            try:
+                found += [os.path.join(top, name)] if os.path.getmtime(os.path.join(top, name)) >= since else []
+            except OSError:  # removed since its folder was listed
+                continue
+    return found
 
 
 def _tabs(transcript: str, server: str = "") -> tuple:
@@ -7848,12 +7863,8 @@ def _shared_tabs(session: dict | None, server: str) -> tuple:
     tabs, front, when = _listed(own, server)
     if "claude-in-chrome" not in server or not main:
         return tabs, front
-    folder, newest = os.path.join(os.path.splitext(main)[0], "subagents"), {tab: (when, address) for tab, address in tabs.items()}
-    try:
-        others = [os.path.join(folder, n) for n in os.listdir(folder) if n.startswith("agent-") and n.endswith(".jsonl")]
-    except OSError:
-        others = []
-    for record in dict.fromkeys([main] + others):
+    newest = {tab: (when, address) for tab, address in tabs.items()}
+    for record in dict.fromkeys([main] + _agents(main)):  # a workflow's agents' too, one folder deeper
         try:
             if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
                 continue  # nothing in it is newer than this call's own list
@@ -8055,7 +8066,6 @@ def _made_here(tab: str, session: dict | None, server: str) -> str:
     in the built-in pane voided the step). Else why the send step may not run there (the coordinator's ruling on the
     opener, 2026-11-15: a page holds a handle to another window only by opening it, and none opened a tab the browser
     tool made)."""
-    from pathlib import Path
     record, made, readers = str((session or {}).get("transcript_path") or ""), 0.0, _read_only_scripts()
     for i, line, lines in ((i, line, lines) for path in dict.fromkeys([_record(session), record]) if path  # a sub-agent's own
                            for lines in [_tail(path)] for i, line in enumerate(lines)):  # tabs_create too (round 5, #5)
@@ -8069,7 +8079,7 @@ def _made_here(tab: str, session: dict | None, server: str) -> str:
         return ("This send step's tab was not made by this session's tabs_create, so a page may hold a handle to it: open a "
                 "fresh tab with tabs_create, navigate it to the conversation, then run the send step there.")
     others = [str(paths.read_json(kept).get("path") or "") for kept in (paths.approvals() / "records").glob("*.json")]
-    mine = [record, *map(str, Path(os.path.splitext(record)[0], "subagents").glob("*.jsonl"))]
+    mine = [record, *_agents(record, made)]  # a sub-agent's or a workflow agent's record last written before the tab was made shows nothing since
     for path in mine + [p for p in others if p and os.path.isfile(p) and not os.path.samefile(p, record)
                         and time.time() - os.path.getmtime(p) <= 12 * 3600]:
         tail = [line for line in _tail(path) if _when(line) >= made]
