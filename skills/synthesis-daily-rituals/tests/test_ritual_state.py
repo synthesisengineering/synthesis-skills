@@ -323,6 +323,32 @@ def test_a_close_written_after_midnight_counts_for_the_workday_it_names(tmp_path
     assert query_json(tmp_path, "open", "--workspace", "alpha", "--today", "2026-09-15")["open_workdays"] == []
 
 
+def test_a_close_corrected_within_the_same_second_reads_as_corrected(tmp_path: Path, monkeypatch, capsys) -> None:
+    """day-end.md: when a gate fails after a clean close, a corrected record for the same day is appended, and the
+    later record wins. A record's time is kept to the second, so a correction recorded within that second tied with
+    the close, and the close was read: clean (5.25.1). The record runs in this process, its clock held to one second."""
+    from datetime import datetime, timedelta, timezone
+    sys.path.insert(0, str(SCRIPT.parent))
+    import ritual_state
+
+    class OneSecond(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 14, 18, 30, 5, tzinfo=timezone(timedelta(hours=-4)))
+    (tmp_path / "config.json").write_text(json.dumps({"defaults": {"plans_dirs": []}, "workspaces": {}}), encoding="utf-8")
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(ritual_state, "datetime", OneSecond)
+    for outcome in ("clean", "blocked"):
+        assert ritual_state.main(["record", "--direction", "day-end", "--workspace", "alpha", "--date", "2026-09-14",
+                                  "--outcome", outcome]) == 0
+    capsys.readouterr()
+
+    close, correction = log_lines(tmp_path)
+    assert close["ts"] == correction["ts"] and (close["outcome"], correction["outcome"]) == ("clean", "blocked")
+    assert ritual_state.main(["query", "last", "--workspace", "alpha", "--today", "2026-09-14", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["workspaces"]["alpha"]["last_day_end"]["outcome"] == "blocked"
+
+
 def test_a_record_needs_its_logical_date(tmp_path: Path) -> None:
     done = run(tmp_path, "record", "--direction", "day-end", "--workspace", "alpha", "--date", "yesterday")
     assert done.returncode != 0 and "never inferred" in done.stderr
