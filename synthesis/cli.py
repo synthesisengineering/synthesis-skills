@@ -378,9 +378,12 @@ def config_change(file: str) -> dict:
     (the file, every byte it holds and the settings it replaces), "data": its settings, "said": each key that changes,
     old and new}. ValueError for a file that holds no JSON object. The guard asks it of the same line (the sandbox)."""
     import hashlib
+    from synthesis import install
     real = os.path.realpath(os.path.expanduser(file))
     try:
-        raw = Path(real).read_bytes()
+        if os.stat(real).st_size > 1 << 20:
+            raise ValueError("it is larger than a megabyte")
+        raw = install._read(Path(real))  # a regular file, opened without waiting: the guard asks this of an agent's path
         data = json.loads(raw)
     except (OSError, ValueError) as exc:
         data, why = None, f" ({exc})"

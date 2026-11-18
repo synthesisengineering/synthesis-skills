@@ -2498,10 +2498,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # the dispatch's line in _check keeps its length. The installer: install._unwritable 12 and install 4 more (it refuses,
 # naming the folder, where it cannot write the sealed runtime, rather than install half). The new definitions' 8 blank
 # lines in guards.py and 2 in install.py.
+# Then each 3 more, in cli.config_change: the file an agent names is read as a regular file opened without waiting, and
+# one over a megabyte is refused (a FIFO there held the guard to its deadline).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24069
-PLUGIN_BUDGET = 50741
+CORE_BUDGET = 24072
+PLUGIN_BUDGET = 50744
 
 
 def _lines(files):
