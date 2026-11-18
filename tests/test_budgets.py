@@ -2441,10 +2441,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # each with what says it is off or on and the one step that turns it on), SSH_SHARED 1, check_security 45 (the home
 # folder and ~/.ssh open to no other user, no private key readable by one, the four asked at once, a warning per thing
 # naming its fix), their 4 blank lines, and run_checks 3 more (the check started beside the rest, its lines added).
+# Then each 66 more, all in synthesis/, for the integration review of 5.24.1 (its one round): finding 1, a code names
+# exactly what it grants: approvals.request 9 fewer (a request inside a call joins the call's and returns the code the
+# call said, made on its first request), _new_code 3 and _file 10 (the call's requests filed together, under a pending
+# code only when that code carries exactly them), one_code 3 more (the code said and the code filed kept apart), void 1
+# more (its docstring: a code carrying the voided request beside others goes with it; the match itself stays a line),
+# guards._one_code 5 more (an approval a later check cannot verify said with the call's other waits; the code filed put
+# in place of the code said, only by the call that files); finding 2, the doctor's false warnings: _private_group 10 (a
+# group of the user's own lets no one else in) and check_security 1 more (a folder judged where a link leads, the files
+# of ~/.ssh only when the folder is open), SSH_SHARED's comment 1 (public and Finder files); the notes:
+# check_interpreter 19 (the Python the hooks run, and a newer python.org version the installer passed over, with why
+# and the steps that let it be pinned) and doctor's `import glob` 1; install.final_version 9 and pinned_python 8 fewer
+# (an interpreter's version read in one place for both); approvals._account_folders 10 and transcript 3 fewer (the
+# account's home looked up only for a note that names no folders, none for an account the user database does not know);
+# guards._protected_roots 1 more (Codex's archived rollouts). The new definitions' 12 blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23616
-PLUGIN_BUDGET = 50285
+CORE_BUDGET = 23682
+PLUGIN_BUDGET = 50351
 
 
 def _lines(files):

@@ -10836,7 +10836,6 @@ def _one_code(checks) -> str | None:
     the writers check, held asked the principal for two codes, minutes apart)."""
     waits = []
     with approvals.one_code() as call:
-        shown = call["code"]
         for judge in checks:
             try:
                 reason = judge()
@@ -10845,7 +10844,8 @@ def _one_code(checks) -> str | None:
             if reason and not ASKS_CODE.search(reason):
                 return reason
             waits += [reason] if reason else []
-    waits = [w.replace(shown, call["code"]) for w in waits]  # the code they share is known once the call's requests are filed
+    if call["code"]:  # the code they share, known once the call's requests are filed (an outer call files them itself)
+        waits = [w.replace(call["shown"], call["code"]) for w in waits]
     if len(waits) > 1:
         return f"This waits on {len(waits)} of the guard's checks. Each names the same code, so it is typed once:\n" + "\n".join(
             f"{n}. {w}" for n, w in enumerate(waits, 1))

@@ -17,22 +17,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   from 3.9 to the newest the checks test (`install.TESTED`, which a test reads from the workflow), among the interpreter
   running it, the system's own and each of python.org's versions; a pre-release or a newer version is never pinned. A
   release installed by 5.24.0's installer pins as before; installing the tag again with the new runtime
-  (`synthesis-release --install-only --tag v5.24.1`) moves the hooks, with no code.
+  (`synthesis-release --install-only --tag v5.24.1`) moves the hooks, with no code. The doctor's new `hook interpreter`
+  line says which Python the hooks run and names a newer python.org version the installer had to pass over, with why
+  and the steps that let it be pinned: python.org's 3.15 installs writable by the admin group, which a Mac's own user is
+  in, so it is passed over until `sudo chmod -R go-w` on its folder.
 - **The checks test four interpreters:** Linux on 3.12 and 3.15, macOS on 3.15 and Apple's own 3.9, in 24 jobs, 12 of
   them on macOS, where GitHub's runners are scarcest (were 30, 18 on macOS, on 3.12 and 3.13).
 - **One command, one code.** The guard stopped at the first check that held a command, so a command two checks held
   asked for two codes, one after the other: on 2026-11-17 the runtime check and then the check on a script that names
   synthesis's writers held one command minutes apart. Every check of a shell command or a file write is now judged; a
   refusal is what the call gets, and the checks that wait are said together, every request they file under one code
-  that grants them all (`approvals.one_code`). A retry keeps the code, and a program's own check (the CLI's install)
-  finds its request among the code's others.
+  that grants them all (`approvals.one_code`). The call's requests are filed together when it ends, and a pending code
+  is reused only for exactly the requests it carries, so a code names exactly what it grants: the integration review
+  found a draft of this change letting a deploy added after an install, or a deploy's new HEAD after a commit, join the
+  code shown for less. An identical retry keeps its code; a program's own check (the CLI's install) finds its request
+  among the code's others; an approval a later check cannot verify is said with the call's other waits; and voiding a
+  request takes a code that carries it beside others with it.
 - **One approval per send.** The send hold, the message guard's procedure and the correspondence skill say the code is
   the principal's only approval: make the call when the text is final and show the text with its code in one message,
   never after a separate go-ahead on the draft, which made the principal approve twice.
 - **The doctor checks the Mac's security.** One `machine security` line when all is well, otherwise a `security <name>`
   warning for each problem, naming the one step that fixes it: the home folder and `~/.ssh` open to no other local user,
   no private key in `~/.ssh` readable by one, and on macOS FileVault, the firewall, System Integrity Protection and
-  Gatekeeper on. The doctor runs at each day's start and after every install, so a new Mac's first setup runs it too.
+  Gatekeeper on. A folder is judged where a link leads, a group of the user's own (Linux's user private groups) lets no
+  one else in, and the files in `~/.ssh` are named only when the folder itself lets another user in. The doctor runs at
+  each day's start and after every install, so a new Mac's first setup runs it too.
+- **The guard protects Codex's archived rollouts** (`~/.codex/archived_sessions`) as it does its live ones: a session's
+  note may point there, and a shell wrote there with no code.
 - **The browser tests find Chrome's headless shell** where AGENTS.md now says to install it (`~/.cache/synthesis/browsers`),
   so a local run skips none of them.
 - **CI can run a maintainer's own macOS jobs on a self-hosted Mac.** When the repository variable

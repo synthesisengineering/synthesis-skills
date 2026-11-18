@@ -69,7 +69,8 @@ def request(kind: str, subject, summary: str) -> str:
     entry = {"kind": kind, "digest": digest(kind, subject), "summary": summary}
     if CALL:
         CALL[0]["entries"] += [] if any(e["digest"] == entry["digest"] for e in CALL[0]["entries"]) else [entry]
-        return CALL[0]["code"]
+        CALL[0]["shown"] = CALL[0]["shown"] or _new_code()  # made on the first request: a call that asks none pays nothing
+        return CALL[0]["shown"]
     return _file([entry], _new_code())
 
 
@@ -90,24 +91,24 @@ def _file(entries: list, code: str) -> str:
     return code
 
 
-CALL: list = []  # while one call is judged (`one_code`): {"code": the code its requests will share, "entries": them}
+CALL: list = []  # while one call is judged (`one_code`): {"shown": the code its requests said, "entries": them, "code"}
 
 
 @contextlib.contextmanager
 def one_code():
     """Every request filed inside joins the call's, so a call several checks hold asks the principal once (A5,
-    2026-11-17). They are filed when it ends, and `code` is then the one they share; a call judged inside another
-    joins the outer one's."""
+    2026-11-17). They are filed when it ends, and `code` is then the one they share, which replaces the `shown` one in
+    what the call says; a call judged inside another joins the outer one's."""
     if CALL:
         yield CALL[0]
         return
-    call = {"code": _new_code(), "entries": []}
+    call = {"shown": "", "entries": [], "code": ""}
     CALL.append(call)
     try:
         yield call
     finally:
         CALL.clear()
-        call["code"] = _file(call["entries"], call["code"]) if call["entries"] else call["code"]
+        call["code"] = _file(call["entries"], call["shown"]) if call["entries"] else ""
 
 
 def _entries(data: dict) -> list:
