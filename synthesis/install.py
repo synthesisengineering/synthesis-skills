@@ -539,11 +539,6 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
     found = traces(home)
-    try:
-        move_board(home)  # before any switch, so the new release's first read finds the board in place
-        move_approvals(home)  # and the sealed records in theirs
-    except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
-        print(f"synthesis: the board or the approvals could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
     if first_only and found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
         _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
         return f"synthesis runtime kept at {current_hash()}: a session start installs only into a home no runtime has been in"
@@ -617,12 +612,26 @@ def _install_locked(plugin_root: Path, home: Path, python: str, found: list, git
                               "so current did not move")
             link = home / f".current.{os.getpid()}"
             link.symlink_to(release)
+            _move_records(home)
             os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+        else:
+            _move_records(home)  # this release runs already: they belong where it reads them
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     for name in (*ENTRY_POINTS, *GIT_HOOKS):  # before compiling: the compile runs the interpreter the hook launcher names
         _write_exec(home / ("git-hooks" if name in GIT_HOOKS else "bin") / name, launcher(home, python, name))
     return wanted
+
+
+def _move_records(home: Path) -> None:
+    """The board and the sealed records into the places this release reads, just before its switch and never sooner:
+    until then the release running reads them where it keeps them, and an install that waits for the principal's code
+    moves nothing (review round 1 of 5.25.0, finding 3). Never blocks an install; the doctor names what is left."""
+    try:
+        move_board(home)
+        move_approvals(home)
+    except OSError as exc:
+        print(f"synthesis: the board or the approvals could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
 
 
 def move_board(home: Path) -> list:
@@ -644,11 +653,11 @@ def move_board(home: Path) -> list:
 def move_approvals(home: Path) -> list:
     """The sealed records live in approvals/ and install/ since the guard's sandbox (the principal's rulings of
     2026-11-15), where only the hook and the installer write. What a release before kept in state/, and the approved
-    commit lines the config placed beside the commit policy, move there once: by the first install or hook that finds
-    approvals/ not there. After that a file in an old place is a shell's and stays where it is. Nothing is deleted: a
+    commit lines the config placed beside the commit policy, move there once (`paths.moved`): by the first install to switch
+    or hook to find them. After that a file in an old place is a shell's and stays where it is. Nothing is deleted: a
     name already taken in the new place keeps it, and the old copy goes to the archive. Returns what moved."""
     home = Path(home)
-    if os.path.lexists(home / "approvals"):
+    if paths.moved(home):
         return []
     try:
         old = paths.old_line_allowances(paths.config())

@@ -800,9 +800,10 @@ def test_board_entries_left_in_the_state_folder_are_named(tmp_path):
 
 
 def test_a_layout_that_has_both_the_old_approval_records_and_the_sealed_folder_fails(tmp_path):
-    """Design 4.1 of the guard's sandbox: the first hook or install that finds approvals/ not there moves the sealed
-    records once, and the doctor fails a layout that has both, since nothing reads a record left in an old place and
-    only a shell could have put one there after the move. Before the move, what waits for it is named."""
+    """Design 4.1 of the guard's sandbox: the first hook, or install at its switch, moves the sealed records once, and the
+    doctor fails a layout that has both, since nothing reads a record left in an old place and only a shell could have
+    put one there after the move. Before the move, what waits for it is named, even beside a code an install answered
+    while it waited (review round 1 of 5.25.0, finding 3): the move's last write, the store of lines, says it is done."""
     assert doctor.check_approvals_layout(tmp_path).status == "ok"
     (tmp_path / "state" / "approvals").mkdir(parents=True)  # grants, where releases before the sandbox kept them
     (tmp_path / "state" / "codex-user-hooks.json").write_text("{}")
@@ -810,7 +811,9 @@ def test_a_layout_that_has_both_the_old_approval_records_and_the_sealed_folder_f
     waiting = doctor.check_approvals_layout(tmp_path)
     assert waiting.status == "warn" and "approvals, codex-user-hooks.json, registrations.json" in waiting.detail
     assert "moves them" in waiting.detail
-    (tmp_path / "approvals" / "grants").mkdir(parents=True)
+    (tmp_path / "approvals" / "answered").mkdir(parents=True)
+    assert doctor.check_approvals_layout(tmp_path).status == "warn"
+    (tmp_path / "approvals" / "line-allowances.json").write_text('{"lines": {}}')
     both = doctor.check_approvals_layout(tmp_path)
     assert both.status == "fail" and doctor._short(tmp_path / "approvals") in both.detail and "your own terminal" in both.detail
     shutil.rmtree(tmp_path / "state" / "approvals")

@@ -879,12 +879,12 @@ def check_board(home: Path) -> Check:
 
 
 def check_approvals_layout(home: Path) -> Check:
-    """The sealed records live in approvals/ and install/ since the guard's sandbox (design 4.1): the first hook or install
-    that finds approvals/ not there moves them once. One left in an old place is named until then, and fails beside
-    approvals/, where nothing reads it and only a shell or an older release's process could have put it."""
+    """The sealed records live in approvals/ and install/ since the guard's sandbox (design 4.1): the first hook, or install
+    at its switch, moves them once. One left in an old place is named until then, and fails once they are moved, where
+    nothing reads it and only a shell or an older release's process could have put it."""
     old = [n for n in (*paths.MOVED, "codex-user-hooks.json") if os.path.lexists(home / "state" / n)] + [
         "registrations.json"] * os.path.lexists(home / "registrations.json")
-    if old and not os.path.lexists(home / "approvals"):
+    if old and not paths.moved(home):
         return Check("warn", "approvals", f"{', '.join(old)} still where releases before the guard's sandbox kept them; the next "
                      "hook or `synthesis install` moves them into approvals/ and install/ (install prints why it could not)")
     if old:

@@ -18,11 +18,15 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
   that showed it), `records/` (each session's record), `sends/`, `deploys/`, `desktop/`, `typed/`, `imessage-sends/`,
   `stop/`, `release-grants/`, the browser files, the lock and the approved commit lines. `~/.synthesis/v5/install/`
   holds what only the installer writes: setup's record of the Codex hooks it declared, install's own record, and the
-  staged policy files. The installer and the first hook that finds `approvals/` not there move the old layout once,
-  merging a line store the config placed elsewhere; nothing is deleted. A shell files its requests in `state/requests/`,
-  which with the board and the outbox is all of the synthesis home a sandboxed agent writes.
+  staged policy files. The installer moves the old layout at its switch, never before, so an install that waits for
+  the principal's code leaves the running release's records where it reads them and reads his code there; the first
+  hook of this release to find the old layout moves it too. The move is made once, merging a line store the config
+  placed elsewhere, and nothing is deleted. A shell files its requests in `state/requests/`, which with the board and
+  the outbox is all of the synthesis home a sandboxed agent writes.
 - **The hook is the only writer of approvals.** It grants a shell's request only on the principal's typed code, names
-  it as a shell's, and never grants one planted under a code the hook filed. What a typed code approves whose effect is
+  it as a shell's, and never grants one planted under a code the hook filed: a code's first digit says who filed it (0
+  to 4 the hook, 5 to 9 a shell), so no file a shell writes stands for a code the hook showed, even once that code's
+  request has expired. A typed code answers each request it carried once, and is never shown again. What a typed code approves whose effect is
   a sealed record (a commit line, a send window, a batch) the hook applies at the prompt, the turn's next tool call or
   its end, once the session's record shows the code. The commit check, `synthesis sends open` and `sends batch` only
   ask; `sends close` writes a mark that only ends a window. The lost-session and gap-review commands read a live, typed
@@ -40,12 +44,15 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
 - **The two administrator files.** `setup.py sandbox`, and every `plugin` or full run, stages Claude Code's managed
   settings and Codex's requirements in `install/` and prints the one `sudo` command that installs each; setup installs
   neither. Both are built from one sealed set (`synthesis/sandbox.py`): the sandbox on and never off for want of one,
-  the write area of ruling 8 (a session's folders and temp, plus `~/workspaces` and `~/.Trash`), an `Edit` deny rule
+  the write area of ruling 8 (a session's folders and temp, plus `~/workspaces` and `~/.Trash`) with the board, the
+  outbox and `state/requests` named, as Codex's profile names them, an `Edit` deny rule
   for every sealed path, Claude Code's own records denied to the shell alone, and an ask rule behind the guard's hold;
   for Codex, a profile of its own pinned with no full access, and the guard's four hooks as managed hooks (ruling 7),
   the only hooks Codex runs. The Codex profile in `config.toml` keeps the same set read-only, every ancestor of a sealed
   folder included, once `setup.py sandbox` writes it: that is the rollout's Codex step, which first tests whether Codex
-  runs its hooks inside its sandbox (the note's section 5), so no release's install seals Codex before then.
+  runs its hooks inside its sandbox (the note's section 5), so no release's install, and no `plugin` or full run of
+  setup, seals Codex before then. Each printed command checks the staged file's SHA-256 first, so a copy changed after
+  setup staged it installs nothing.
 - **The doctor** reports the sandbox in one `sandbox` line (off, staged, or installed and holding the keys: root's with
   every folder above it, this release's bytes, nothing outranking it), counts Codex's hook trust as policy once the
   requirements hold, and fails, in a new `approvals` line, a layout that has both the old records and `approvals/`.

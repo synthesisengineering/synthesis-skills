@@ -7,6 +7,7 @@ with his password; the doctor reads them back. Nothing here installs a file, and
 from __future__ import annotations
 
 import errno
+import hashlib
 import json
 import os
 import plistlib
@@ -90,10 +91,12 @@ def _rule(path) -> str:
 
 def claude_managed() -> dict:
     """Claude Code's managed settings (the note's 4.2): the sandbox on, never off for want of one, the write area the
-    ruling on D8 set, and every sealed path denied to the file tools and the shell alike, apart from Claude Code's own
-    records, which only the shell is denied."""
+    ruling on D8 set with the synthesis folders a session writes, named as Codex's profile names them (review round 1 of
+    5.25.0: they were writable only through a person's own setting), and every sealed path denied to the file tools and
+    the shell alike, apart from Claude Code's own records, which only the shell is denied."""
+    writes = [*WRITE_AREA, *(tilde(paths.home() / w) for w in WRITABLE)]
     return {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": True,
-                        "filesystem": {"allowWrite": list(WRITE_AREA), "denyWrite": [tilde(p) for p, _, only in sealed() if only]}},
+                        "filesystem": {"allowWrite": writes, "denyWrite": [tilde(p) for p, _, only in sealed() if only]}},
             "permissions": {"deny": [f"Edit({_rule(p)}{'/**' if folder else ''})" for p, folder, only in sealed() if not only]
                             + [f"Edit(//**/{name})" for name in PROJECT], "ask": [ASK]}}
 
@@ -151,9 +154,13 @@ def staged(name: str) -> Path:
 
 
 def install_command(name: str) -> str:
-    """The one command the principal types: the staged file copied into place, owned by root and read by everyone."""
+    """The one command the principal types: the staged file checked against the bytes setup staged, then copied into
+    place, owned by root and read by everyone. A copy changed since then installs nothing (review round 1 of 5.25.0)."""
     there, copy = target(name), staged(name)
-    return (f"sudo install -d -o root -g {ROOT_GROUP} -m 755 {shlex.quote(str(there.parent))} && "
+    check = "shasum -a 256 -c" if sys.platform == "darwin" else "sha256sum -c"
+    digest = hashlib.sha256(expected(name).encode("utf-8")).hexdigest()
+    return (f"echo {shlex.quote(f'{digest}  {copy}')} | {check} && sudo install -d -o root -g {ROOT_GROUP} -m 755 "
+            f"{shlex.quote(str(there.parent))} && "
             f"sudo install -o root -g {ROOT_GROUP} -m 644 {shlex.quote(str(copy))} {shlex.quote(str(there))}")
 
 

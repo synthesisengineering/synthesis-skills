@@ -141,7 +141,8 @@ records hook text as a prompt can never turn it into an approval. Ordinary words
 ## Approvals
 
 When a guard holds a send or a deploy, it files a request under a random
-six-character code (a digit, then five hexadecimal characters), keyed to a SHA-256 digest of the exact call (for a send, the
+six-character code (a digit, 0 to 4 when the hook files it and 5 to 9 when a shell does, then five hexadecimal
+characters), keyed to a SHA-256 digest of the exact call (for a send, the
 tool and its whole input; for a deploy, the command and, inside a git checkout, the
 commit at HEAD). A retry of the same call keeps its code; nobody can know a code
 before its request exists. The block message tells the agent to show the person the

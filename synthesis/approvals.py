@@ -56,9 +56,9 @@ class Sealed(PermissionError):
 
 
 def _sealed(exc: OSError) -> Sealed:
-    return Sealed(f"This process cannot write {paths.approvals()}, the sealed approvals folder ({exc.strerror or exc}): only the "
-                  "hook spends or withdraws an approval, and a shell the sandbox confines files requests alone. Make the call the "
-                  "approval is for, and the hook spends it there.")
+    return Sealed(f"This process cannot write {paths.approvals()}, the sealed approvals folder ({exc.strerror or exc}): a shell the "
+                  "sandbox confines files requests and spends none. The hook spends a guarded call's approval as the call is made; "
+                  "a command that spends its own, such as an install or `config apply`, runs outside the sandbox.")
 
 
 IN_HOOK = False  # set by the hook process (hook.main): a request it files is sealed, anyone else's goes to state/requests
@@ -247,7 +247,8 @@ def transcript(session: dict | None) -> str:
     sid = paths.session_id(session)
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
-    record = paths.read_json(_dir("records") / f"{sid}.json")
+    record = paths.read_json(_dir("records") / f"{sid}.json") or ({} if paths.moved() else paths.read_json(
+        paths.state() / "transcripts" / f"{sid}.json"))  # until the move, where the release running keeps it (install)
     recorded = str(record.get("path") or "")
     folders = record["folders"] if "folders" in record else _account_folders()  # a note 5.23's prompt hook wrote names none
     return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, folders) else ""

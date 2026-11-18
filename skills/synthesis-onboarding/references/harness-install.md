@@ -177,18 +177,21 @@ own operating-system sandbox enforces that, set by one file owned by root that a
 cannot change. `setup.py sandbox`, and every `plugin` or full run, stages the exact bytes of
 each file in `~/.synthesis/v5/install/` (a sealed folder, so no session changes a staged
 file before it is installed) and prints the one command that installs it; setup never
-installs either, and never writes `/Library` or `/etc`. The principal runs the command with
-his password, once per Mac and again when a release changes a file:
+installs either, and never writes `/Library` or `/etc`. Each command first checks the staged
+file's SHA-256 against the bytes setup staged, so a copy changed since then installs
+nothing. The principal runs the command with his password, once per Mac and again when a
+release changes a file; setup prints each with its digest in place of `<sha256>` and the full path:
 
 ```bash
-sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
-sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
+echo "<sha256>  $HOME/.synthesis/v5/install/managed-settings.json" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
+echo "<sha256>  $HOME/.synthesis/v5/install/requirements.toml" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
 ```
 
 - Claude Code's managed settings,
   `/Library/Application Support/ClaudeCode/managed-settings.json`: the sandbox on
   (`enabled`, and `failIfUnavailable`, so no session runs unsandboxed for want of one), its
-  write area a session's own folders and temp plus `~/workspaces` and `~/.Trash`, an `Edit`
+  write area a session's own folders and temp plus `~/workspaces` and `~/.Trash`, with the
+  board, the outbox and `state/requests` named as Codex's profile names them, an `Edit`
   deny rule for every sealed path (it binds the file tools in every mode and the shell's
   sandbox alike), Claude Code's own records denied to the shell alone (`denyWrite`, so the
   file tools keep the memory files the guard allows), and an ask rule for a command run

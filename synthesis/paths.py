@@ -46,18 +46,24 @@ def requests() -> Path:
 
 
 # Each sealed record's name in state/, where releases before the sandbox kept it, and its name in approvals/: the
-# installer and the first hook that finds the old layout move it once, while approvals/ is not there (install.move_approvals).
+# installer, at the switch, and the first hook that finds the old layout move it once, until `moved` (install.move_approvals).
 MOVED = {"approvals": "grants", "approval-requests": "requests", "transcripts": "records", "approvals.lock": "lock", "sends": "sends",
          "deploys": "deploys", "desktop": "desktop", "typed": "typed", "imessage-sends": "imessage-sends", "stop": "stop",
          "browser.json": "browser.json", "browser-accounts.json": "browser-accounts.json",
          "browser-accounts.lock": "browser-accounts.lock", "release-grants": "release-grants"}
 
 
+def moved(home_folder: Path | None = None) -> bool:
+    """Whether the sealed records are in approvals(): the move's last write is the store of approved lines, so what an
+    install writes there before its switch, such as the code it answered, never stops the move (review round 1 of 5.25.0,
+    finding 3). After it, a file in an old place is a shell's and never moves in."""
+    return os.path.lexists((home_folder or home()) / "approvals" / "line-allowances.json")
+
+
 def old_approvals() -> list[str]:
     """Sealed records left in state() by a release before the sandbox, and approved lines the config placed elsewhere,
-    while approvals() is not there yet: once it is, a file in an old place is a shell's and never moves in (one lstat on
-    every hook call after the move)."""
-    if os.path.lexists(approvals()):
+    until they are moved (one lstat on every hook call after the move)."""
+    if moved():
         return []
     try:
         lines = old_line_allowances(config())
