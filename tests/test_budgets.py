@@ -2459,10 +2459,55 @@ ROOT = Path(__file__).resolve().parents[1]
 # interpreter_problems before it is run, each python.org version read from its folder's name and never by running it
 # (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
 # the version's own fixed alone, so the warning goes once the steps are run.
+# C1, the guard's sandbox, part 1 (2026-11-18; the principal's eight rulings of 2026-11-15 on that day's design note):
+# the core 251 more, the plugin 254. The layout (design 4.1): paths.approvals 5, install_dir 3 and requests 3 (the sealed
+# approvals and install folders, and a shell's requests beside its state), MOVED 4 (each sealed record's name in state/
+# and in approvals/), old_approvals 12 (the old layout, a line store the config placed elsewhere among it, found while
+# approvals/ is not there), line_allowances 1 fewer and old_line_allowances 5 (the store sealed; where an older release
+# kept it, read once), harness_settings 8 (each harness's hook and sandbox settings and the launch agents, whose writes wait
+# for the code), their 2 comment lines and 14 blank lines; install.move_approvals 20 (the move, once, nothing deleted) and
+# install 1 more (it runs beside move_board), 2 blank lines; hook.main 7 more (the hook names itself the requests' filer,
+# and its first event moves the old layout).
+# The hook as the only writer (design 2.3 and 4.5): approvals.Sealed 3 and _sealed 4 (a process that cannot write the
+# folder spends nothing, and says why), IN_HOOK, SHELL and EFFECTS 3, _folders 3 and _request_file 5 (two folders of
+# requests, the hook's taking a code a shell planted beside it), request 2 more (an effect's request carries its subject),
+# _file 3 more (filed where its filer may, never under a code the hook holds), _expire 1 more, grant_from_prompt 4 more (a
+# shell's named as one, effects kept apart, the session typed in), showing 26 for typed 22 fewer (the record's read also
+# says where it found the prompt), held 4 and backed 12 gone for granted 12 and _muse 4 (ruling 6: no approval in a Muse
+# session), _backing 11 and unbacked 3 with consume 4 fewer (one reading of the record and one wording of an unbacked
+# grant, for the spend and the read-only check), answered 3, void 2, alone 4 and _spend 2 more (each sealed write named),
+# _ledger 7, ready 18 and apply 13 (granted.jsonl; the effect grants a session's record backs, applied once and given back
+# if they fail), 7 comment lines and 23 blank lines; hook.apply_effects 14, _line 5, _window 5, _batch 7 and EFFECT 1 (what
+# each code applies), MUSE 3, user_prompt_submit 6 more, pre_tool_use 6 more and stop 4 more (effects at the prompt, the
+# next tool call and the turn's end; Muse's notes), 12 blank lines; commit_check.unapproved 5 fewer (it files the request
+# and writes nothing); cli.cmd_sends 9 fewer, _batch 13 fewer and cmd_approvals 3 more (the commands ask, close by a mark,
+# and the listing reads both folders); sends.window_request 9 and batch_request 16 for window_refusal 7 and batch_refusal
+# 17, APPLIED 2, _closed_file 2, _closed 8 and close_mark 2 (a close mark that only ends), filed 6 (the hook's record of a
+# batch's code), cli_calls 25 and close_batches 8 gone, 6 blank lines; sessions.lost 3 more (the loss read as a grant, an
+# unbacked one said why); guards.check_outgoing 28 fewer (no hold of the sends commands), SYNTHESIS_WRITES 2 and
+# SYNTHESIS_PLACES 2 more, _protected_roots 2 more, SETTINGS_SAID 2 and _settings_map 1 more (the harness settings). The
+# plugin's 3 more: local_messaging._close, the review read as a grant, an unbacked one said why.
+# Ruling 2, a command outside the sandbox waits for the code of exactly it: guards.UNSANDBOXED 1, check_unsandboxed 17 and
+# its 5 comment lines, the shell's chain in _check 1 more, 4 blank lines.
+# Then each 126 more, all in synthesis/, for the rest of part 1 (design 2.3 and 4.5). The guard's settings:
+# cli.config_change 27 (what a settings file changes, key by key, and what the principal's code binds) and cmd_config 27
+# (`synthesis config apply`, on his code for exactly that content, outside the sandbox), the parser 4 more, 4 blank lines;
+# guards._config_apply 12 (the launcher's own settings line needs only the code of the change) and _launcher 12 with
+# _release_tool 7 fewer (the runtime's own launcher, read in one place for both). An MCP tool's writes: guards.MCP_WRITES 2,
+# MCP_PATH_KEYS 2 and check_mcp_write 13 with their 4 comment lines (judged by its path arguments, as the file tools are);
+# the dispatch's line in _check keeps its length. The installer: install._unwritable 12 and install 4 more (it refuses,
+# naming the folder, where it cannot write the sealed runtime, rather than install half). The new definitions' 8 blank
+# lines in guards.py and 2 in install.py.
+# Then each 3 more, in cli.config_change: the file an agent names is read as a regular file opened without waiting, and
+# one over a megabyte is refused (a FIFO there held the guard to its deadline).
+# Then each 4 more, all in install.py (design 4.1: install/ holds what only the installer writes): move_approvals 3 more
+# (install's own record of what it replaced moves there once) and uninstall 1 more (its report names the approvals it
+# keeps); the record read and written there keeps its lines, and so does install._unwritable, which now leaves no folder
+# it made (a refused install had left an empty bin/, which showed a runtime had been there).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23692
-PLUGIN_BUDGET = 50361
+CORE_BUDGET = 24076
+PLUGIN_BUDGET = 50748
 
 
 def _lines(files):

@@ -169,7 +169,7 @@ What it does, when the workspace's entry under `browser_routing.workspaces` has 
   only mention the address, so the hold says what a read showed and puts the rest as a condition: if the profile
   is signed in as that account, it is a misconfiguration to tell the principal about; if the page only mentions
   the address, read the page that shows the signed-in account.
-- **The doctor remembers it.** What the newest settling read showed is written to `state/browser-accounts.json`,
+- **The doctor remembers it.** What the newest settling read showed is written to `approvals/browser-accounts.json`,
   by profile and site, when a call that puts something is judged and when a turn ends, one writer at a time.
   `synthesis doctor` warns (`browser accounts`) while that sight of a named site is not the account the config
   names now, naming the profile by its `label`, or by its workspace where it has none. The line clears when a

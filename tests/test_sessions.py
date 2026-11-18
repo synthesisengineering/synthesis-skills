@@ -1907,6 +1907,8 @@ def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called
     assert "type approve" in str(refused.value) and _checked(tmp_path)[0] == "fail"
     principal(str(refused.value))
     assert sessions.lost("claude-code c1").startswith("cleared: claude-code c1") and _checked(tmp_path)[0] == "ok"   # by either name
+    from synthesis import approvals
+    assert approvals.grant("sessions-lost", "claude-code c1")  # read, never spent: a loss accepted twice is the same loss
 
 
 @closed_to_us

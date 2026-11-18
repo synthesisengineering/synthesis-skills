@@ -964,8 +964,11 @@ def lost(session: str) -> str:
         if shut:
             raise ValueError(f"{names[0]} is not known to be lost: {shut[0]} cannot be listed, and its transcript may be there")
         said = f"{names[0]}, whose copy last failed {entry['at'][:16]} ({entry['reason']})"
-        if not approvals.consume("sessions-lost", names[0], {"session_id": paths.session_id()}):
+        why = []  # read, never spent: a shell writes nothing sealed, and the same loss is the same whenever it is accepted
+        if not approvals.granted("sessions-lost", names[0], {"session_id": paths.session_id()}, why):
             code = approvals.request("sessions-lost", names[0], f"accept the transcript of {names[0]} as lost")
+            if why:
+                raise approvals.Unverified(approvals.unbacked(why[0], code))
             raise PermissionError(f"{said} was never copied, and its transcript is gone. Only the principal can accept that "
                                   f"what it held is lost. Show them this and ask them to type {approvals.how(code)}. Then run "
                                   "the identical command again.")

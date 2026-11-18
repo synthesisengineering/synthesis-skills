@@ -196,7 +196,7 @@ def _send(to, text: str, key: str, resolve, tool: str, subject, attachment: dict
         config = paths.config()
     except (OSError, ValueError) as exc:
         raise Refused(f"the synthesis config is unreadable ({exc}); sending is blocked until it is fixed")
-    record_path = paths.state() / "imessage-sends" / f"{key}.json"
+    record_path = paths.approvals() / "imessage-sends" / f"{key}.json"
     if record_path.exists():
         earlier = json.loads(record_path.read_text(encoding="utf-8"))
         if earlier.get("status") != "not-sent":

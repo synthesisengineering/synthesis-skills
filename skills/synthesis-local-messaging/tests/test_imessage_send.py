@@ -128,9 +128,8 @@ def approve(result: dict) -> None:
 
 
 def pending_requests() -> list:
-    _, paths = ms.core()
-    folder = paths.state() / "approval-requests"
-    return list(folder.glob("*.json")) if folder.is_dir() else []
+    _, paths = ms.core()  # the sender asks the guard in its own process: a shell's requests, beside the state
+    return [p for folder in (paths.approvals() / "requests", paths.requests()) for p in folder.glob("*.json")]
 
 
 def test_send_waits_for_exact_approval_then_sends_once(messages):
@@ -215,7 +214,7 @@ def test_e84_a_matching_outbound_row_does_not_turn_uncertain_into_sent(messages,
     with pytest.raises(ms.Refused, match="ended uncertain"):
         ms.send(DEST, TEXT)
     _, paths = ms.core()
-    record = json.loads(next((paths.state() / "imessage-sends").glob("*.json")).read_text())
+    record = json.loads(next((paths.approvals() / "imessage-sends").glob("*.json")).read_text())
     assert record["status"] == "uncertain" and TEXT not in json.dumps(record)
 
 

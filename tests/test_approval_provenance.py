@@ -280,7 +280,7 @@ OLD_NOTES = {"claude-code": ".claude/projects/-work/{sid}.jsonl",
 
 
 def _old_note(path) -> None:
-    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(path)})  # as 5.23's prompt hook wrote it
+    paths.write_json(paths.approvals() / "records" / f"{SID}.json", {"path": str(path)})  # as 5.23's prompt hook wrote it
 
 
 @pytest.mark.parametrize("harness", sorted(OLD_NOTES))
@@ -307,7 +307,7 @@ def test_a_note_5_23_wrote_counts_nowhere_else(account, tmp_path, monkeypatch):
     _old_note(linked)
     assert approvals.transcript(None) == ""
     real = _record(account / ".claude" / "projects" / "-work" / f"{SID}.jsonl", claude("hello", time.time()))
-    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(real), "folders": None})
+    paths.write_json(paths.approvals() / "records" / f"{SID}.json", {"path": str(real), "folders": None})
     assert approvals.transcript(None) == ""  # a note that names its folders, but not as the prompt hook does, is no harness's
 
 
@@ -975,9 +975,9 @@ def test_a_protected_path_spelled_in_another_case_is_the_same_path(roots, tmp_pa
     for path in (state.upper() + "/approvals/a.json", claude.upper() + "/-work/s.jsonl", state + "/APPROVALS/a.json"):
         assert guards.check("Write", {"file_path": path, "content": "x"}, {}, cwd=str(tmp_path)), path
         assert REFUSED in (guards.check("Bash", {"command": f"echo x > {path}"}, {}, cwd=str(tmp_path)) or ""), path
-    store = tmp_path / "policy" / "line-allowances.json"
+    store = paths.line_allowances()
     for path in (str(store), str(store.with_name("LINE-ALLOWANCES.JSON"))):
-        assert guards.check("Write", {"file_path": path, "content": "{}"}, {"line_allowances": str(store)}, cwd=str(tmp_path)), path
+        assert guards.check("Write", {"file_path": path, "content": "{}"}, {}, cwd=str(tmp_path)), path
 
 
 # --- a protected folder reached without naming it whole, or handed to a program the guard cannot read ------
@@ -1048,16 +1048,15 @@ def test_a_refusal_for_an_unknown_program_says_how_to_read_the_file_instead(spot
     assert "`sqlite3`" in reason and "cat" in reason and "pipe" in reason and "copy it out" in reason
 
 
-def test_the_approved_lines_file_can_be_staged_and_committed_but_not_rewritten(tmp_path):
-    store = tmp_path / "policy" / "line-allowances.json"
-    store.parent.mkdir()
+def test_the_approved_lines_file_is_read_and_never_rewritten(tmp_path):
+    """Sealed since the guard's sandbox: no repository holds it any more, so nothing stages or commits it either."""
+    store = paths.line_allowances()
+    store.parent.mkdir(parents=True)
     store.write_text("{}", encoding="utf-8")
-    config = {"line_allowances": str(store)}
-    assert guards.check("Bash", {"command": f"git diff {store}"}, config, cwd=str(tmp_path)) is None
-    for command in (f"git add {store}", f"cd {store.parent} && git commit -m lines line-allowances.json"):  # 5.22.1: they name it
-        assert "approve followed by the code" in guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)), command
+    for command in (f"cat {store}", f"jq -S . {store}"):
+        assert guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) is None, command
     for command in (f"echo '{{}}' > {store}", f"cd {store.parent} && echo '{{}}' > line-allowances.json", f"jq -S . {store} | sponge {store}"):
-        assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
+        assert REFUSED in (guards.check("Bash", {"command": command}, {}, cwd=str(tmp_path)) or ""), command
 
 
 # --- what ten days of recorded commands showed (2026-11-11) ------------------------------------------------
@@ -1844,10 +1843,10 @@ def test_a_command_a_program_starts_runs_where_the_program_has_gone(saved, progr
 
 def test_a_command_a_program_starts_is_judged_with_the_same_configuration(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    store = tmp_path / "policy" / "approved.json"
+    store = paths.line_allowances()
     store.parent.mkdir(parents=True)
     store.write_text("{}", encoding="utf-8")
-    config = {"line_allowances": str(store)}
+    config = {"commit_policy": str(tmp_path / "policy" / "policy.yaml")}
     for program in (f"import subprocess\nsubprocess.run(['cp', '/tmp/pad/x', '{store}'])", f"import os\nos.system('cp /tmp/pad/x {store}')"):
         command = "python3 -I - <<'EOF'\n" + program + "\nEOF"
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), program
@@ -2146,16 +2145,16 @@ def test_a_change_to_a_whole_folder_that_holds_a_protected_one_is_refused(above,
 @pytest.mark.parametrize("command", [
     "cp -a {above} /tmp/pad/backup",                                         # a copy out of it
     "rsync -a {above}/ /tmp/pad/backup/",
-    "cp /tmp/pad/settings.json {above}/",                                    # one file put into it
-    "mv /tmp/pad/settings.json {above}/settings.json",
+    "cp /tmp/pad/notes.md {above}/notes.md",                                 # one file put into it (its settings wait
+    "mv /tmp/pad/notes.md {above}/notes.md",                                 # for a code since the guard's sandbox)
     "rm -rf {above}/plugins/cache/x",                                        # a folder beside the protected one
     "find {above} -name '*.jsonl' -exec wc -l {{}} +",
     "find {above}/plugins -name '*.tmp' -delete",
     "du -sh {above}; ls -la {above}",
-    "tar -czf /tmp/pad/backup.tgz {above}/settings.json",
+    "tar -czf /tmp/pad/backup.tgz {above}/notes.md",
     "python3 -I - <<'EOF'\nimport shutil\nshutil.copytree('{above}', '/tmp/pad/backup')\nEOF",
     "python3 -I - <<'EOF'\nimport shutil\nshutil.rmtree('{above}/plugins/cache')\nEOF",
-    "python3 -I - <<'EOF'\nimport shutil\nshutil.move('/tmp/pad/settings.json', '{above}/settings.json')\nEOF",
+    "python3 -I - <<'EOF'\nimport shutil\nshutil.move('/tmp/pad/notes.md', '{above}/notes.md')\nEOF",
 ])
 def test_and_what_only_reads_it_or_changes_one_thing_beside_passes(above, command, tmp_path):
     assert _passes(guards.check("Bash", {"command": command.format(**above)}, {}, cwd=str(tmp_path)), command), command
@@ -2279,15 +2278,18 @@ def test_a_program_standing_in_a_transcript_folder_may_name_a_file_elsewhere_by_
 
 
 def test_the_folder_that_holds_the_approved_lines_is_not_removed_or_moved_whole(tmp_path, monkeypatch):
+    """The sealed approvals folder holds them since the guard's sandbox; a file the config once named, in a repository,
+    is no store any more and its folder is the repository's own."""
     monkeypatch.setenv("HOME", str(tmp_path))
-    store = tmp_path / "repo" / "policy" / "approved.json"
-    store.parent.mkdir(parents=True)
-    store.write_text("{}", encoding="utf-8")
-    config = {"line_allowances": str(store)}
-    for command in (f"rm -rf {store.parent}", f"mv {store.parent} /tmp/pad/policy", f"python3 -I - <<'EOF'\nimport shutil\nshutil.rmtree('{store.parent.parent}')\nEOF"):
+    store, old = paths.line_allowances(), tmp_path / "repo" / "policy" / "approved.json"
+    for file in (store, old):
+        file.parent.mkdir(parents=True)
+        file.write_text("{}", encoding="utf-8")
+    config = {"line_allowances": str(old)}
+    for command in (f"rm -rf {store.parent}", f"mv {store.parent} /tmp/pad/policy", f"python3 -I - <<'EOF'\nimport shutil\nshutil.rmtree('{store.parent}')\nEOF"):
         assert REFUSED in (guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) or ""), command
-    for command in (f"find {store.parent.parent} -name '*.pyc' -delete", f"chmod -R go-w {store.parent.parent}/docs", f"cp -R /tmp/pad/docs {store.parent.parent}/docs"):
-        assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command   # a search across it is judged by what it names
+    for command in (f"rm -rf {old.parent}", f"find {old.parent.parent} -name '*.pyc' -delete", f"cp -R /tmp/pad/docs {old.parent.parent}/docs"):
+        assert guards.check("Bash", {"command": command}, config, cwd=str(tmp_path)) is None, command
 
 
 # What the same probe as before showed of the eighth round's answer, before the ninth round saw it.

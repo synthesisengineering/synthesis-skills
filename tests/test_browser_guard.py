@@ -71,7 +71,7 @@ def test_a_selection_counts_once_the_transcript_shows_it_succeeded(setup, tmp_pa
     _transcript(tmp_path / "t1.jsonl", ("toolu_1", PERSONAL, "Browser not connected", True),
                 ("toolu_2", PERSONAL, 'Selected browser "Browser 1".', False))
     assert _call("navigate", {}, config, dirs["personal"], me) is None
-    assert paths.read_json(paths.state() / "browser.json")["confirmed"] is True
+    assert paths.read_json(paths.approvals() / "browser.json")["confirmed"] is True
     assert _call("computer", {"action": "screenshot"}, config, dirs["personal"], me) is None
 
 

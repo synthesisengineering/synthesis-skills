@@ -132,7 +132,7 @@ python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-local-messaging/scripts
 A matching outbound row in the Messages database never upgrades `uncertain`:
 the scripting interface returns no message identifier, and the principal may
 have sent the same words by hand. The attempt record keeps the recipient, a hash
-of the text and the outcome under `~/.synthesis/v5/state/imessage-sends/`, never
+of the text and the outcome under the sealed `~/.synthesis/v5/approvals/imessage-sends/`, never
 the text, and is dropped after 30 days.
 
 ## What the send never does
