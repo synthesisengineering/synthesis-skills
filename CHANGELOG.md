@@ -20,7 +20,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   (`synthesis-release --install-only --tag v5.24.1`) moves the hooks, with no code. The doctor's new `hook interpreter`
   line says which Python the hooks run and names a newer python.org version the installer had to pass over, with why
   and the steps that let it be pinned: python.org's 3.15 installs writable by the admin group, which a Mac's own user is
-  in, so it is passed over until `sudo chmod -R go-w` on its folder.
+  in, so it is passed over until `sudo chmod -R go-w` on its folder. The doctor never runs a Python this user can
+  change: the hooks' own is asked first, and each python.org version is read from its folder's name (review round 2).
 - **The checks test four interpreters:** Linux on 3.12 and 3.15, macOS on 3.15 and Apple's own 3.9, in 24 jobs, 12 of
   them on macOS, where GitHub's runners are scarcest (were 30, 18 on macOS, on 3.12 and 3.13).
 - **One command, one code.** The guard stopped at the first check that held a command, so a command two checks held
