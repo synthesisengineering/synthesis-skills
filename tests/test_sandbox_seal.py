@@ -12,6 +12,7 @@ seal the folders.
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -171,13 +172,36 @@ def test_the_first_hook_event_moves_the_old_layout(isolated_home, tmp_path, writ
     assert (isolated_home / "approvals" / "grants" / "aa.json").is_file() and paths.old_approvals() == []
 
 
-def test_an_install_moves_the_old_layout_before_anything_else(isolated_home, tmp_path, write_config):
-    _old_layout(isolated_home, tmp_path, write_config)
-    try:
-        install.install(ROOT)
-    except (install.Unapproved, install.Refused):
-        pass  # a home that shows a runtime waits for the principal's code; the move does not
-    assert (isolated_home / "approvals" / "records" / "S1.json").is_file() and paths.old_approvals() == []
+def test_an_install_that_waits_for_the_code_moves_nothing_and_an_approved_one_moves_the_records_at_the_switch(
+        compiled_runtime, principal, tmp_path, monkeypatch):
+    """Review round 1 of 5.25.0, finding 3: the install moved the records into approvals/ before it asked for the code, so
+    one that waited left the running release reading an emptied state/, and what that release wrote there meanwhile was
+    stranded. Until the switch they stay where the running release keeps them, and the code is read there."""
+    from synthesis import doctor
+    home, sid = paths.home(), SESSION["session_id"]
+    monkeypatch.setattr(approvals, "IN_HOOK", False)  # setup.py from the principal's terminal, a shell
+    record = paths.read_json(paths.approvals() / "records" / f"{sid}.json")
+    shutil.move(str(paths.approvals()), str(tmp_path / "set-aside"))  # the layout of a release before the sandbox
+    paths.write_json(home / "state" / "transcripts" / f"{sid}.json", record)
+    paths.write_json(home / "state" / "approval-requests" / "123abc.json", {"kind": "deploy", "digest": "d" * 64,
+                                                                             "summary": "a pending hold", "at": time.time()})
+    paths.write_json(home / "state" / "sends" / "window.json", {"opened": time.time(), "until": time.time() + 3600})
+    newer = tmp_path / "next-release"
+    shutil.copytree(os.path.realpath(home / "current"), newer, ignore=shutil.ignore_patterns("__pycache__", "HASH", "SOURCE"))
+    with open(newer / "synthesis" / "paths.py", "a", encoding="utf-8") as handle:
+        handle.write("\n# a release of its own\n")
+    before = install.current_hash()
+    with pytest.raises(install.Unapproved) as waiting:
+        install.install(newer, session=SESSION)
+    assert install.current_hash() == before and not paths.approvals().exists()
+    assert sorted(paths.old_approvals()) == ["approval-requests", "sends", "transcripts"]
+    assert doctor.check_approvals_layout(home).status == "warn"
+    principal(str(waiting.value), grant=False)  # the running release's prompt hook knows no request a shell files
+    assert install.install(newer, session=SESSION).startswith("synthesis runtime")
+    assert install.current_hash() != before and paths.old_approvals() == []
+    assert paths.read_json(paths.approvals() / "records" / f"{sid}.json") == record
+    assert (paths.approvals() / "sends" / "window.json").is_file() and (paths.approvals() / "requests" / "123abc.json").is_file()
+    assert doctor.check_approvals_layout(home).status == "ok"
 
 
 # --- requests a shell files, and what only the hook spends (design 2.3 and 4.5) --------------------------------------------
