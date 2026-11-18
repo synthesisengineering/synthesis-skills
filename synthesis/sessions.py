@@ -738,8 +738,8 @@ def _identity(harness: str, native: Path) -> str:
     that, so it is never taken for a CLI session that has the same file name (the review of 5.18.0)."""
     if harness == "codex":
         return native.stem[-36:]
-    if harness == "muse":
-        return native.parent.name
+    if harness == "muse":  # a sub-agent's record sits in a folder of its own under its session's subagent/
+        return f"{native.parents[2].name}-agent-{native.parent.name}" if native.parent.parent.name == "subagent" else native.parent.name
     parts = native.parts  # a subagent's record sits under its parent session's subagents/ folder
     own = f"{parts[parts.index('subagents') - 1]}-{native.stem}" if "subagents" in parts else native.stem
     local = next((part for part in parts if part.startswith("local_")), "") if "local-agent-mode-sessions" in parts else ""
@@ -769,6 +769,12 @@ def _place(harness: str, native: Path, session: str) -> tuple:
     if harness == "claude-code" and "projects" in native.parts:  # filed under the folder the session started in
         named = workspace_named(native.parts[native.parts.index("projects") + 1])
         workspace = named if named != "other" and ("subagents" in native.parts or workspace == "other") else workspace
+    elif harness == "muse" and native.parent.parent.name == "subagent":  # its own record seldom names one: its parent's does
+        try:
+            named = _place(harness, native.parents[2] / "session.jsonl", session)[0].parts[-3]
+        except OSError:  # the parent's record is gone or closed: the sub-agent's own decides
+            named = "other"
+        workspace = named if named != "other" else workspace
     elif harness == "codex" and workspace == "other" and parent:
         folder = paths.read_json(root() / ".state" / f"codex-{parent}.json").get("folder")
         workspace = Path(folder).parts[-3] if folder else workspace
@@ -796,6 +802,8 @@ def export_file(harness: str, native: Path, project: str = "", again: bool = Fal
         s.folder, s.meta["cwd"] = _place(harness, native, s.session)
         if harness == "claude-code" and "subagents" in native.parts:  # its prompts are the parent agent's briefs
             s.meta.update(role="subagent", parent=s.session[:-len(native.stem) - 1])  # the parent's own name
+        elif harness == "muse" and native.parent.parent.name == "subagent":  # Muse's names no parent: the folder it is in does
+            s.meta.update(role="subagent", parent=native.parents[2].name)
         s.seed()  # the numbers another Mac gave it, where a cloned sessions repo holds the session
     if s.again is None and s.held() + 1 > s.seq:  # the archive is ahead of the state: a write cut short after its lines, or a state lost
         s.read_again()
@@ -843,8 +851,15 @@ def natives(days: float = 0, unread: list | None = None) -> list:
                     dirs.clear()  # a Muse session's own folder is looked into, never listed
             try:
                 named = [p / "session.jsonl" if harness == "muse" else p for p in b.glob(pattern)]
+                agents = list(b.glob("*/*/*/*/subagent")) if harness == "muse" else []  # its sub-agents, a folder each
             except OSError:  # the folder above cannot be searched, and the walk has said so
-                named = []
+                named, agents = [], []
+            for folder in agents:  # listed as the walk lists a folder: one closed to it is named, never passed over
+                try:
+                    named += [p / "session.jsonl" for p in folder.iterdir()]
+                except OSError as exc:
+                    if unread is not None:
+                        shut(exc)
             for p in named:
                 try:  # journal.jsonl is a Claude Code workflow's run journal, not a conversation
                     seen = p.stat()  # is_file answers False where it cannot look (Python 3.14): the error is what names it

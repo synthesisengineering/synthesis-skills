@@ -2546,10 +2546,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # the move is named); guards.SYNTHESIS_WRITES 1 more (the seal check's probes, sandbox's writers, a line of their own).
 # The browser accounts read from approvals/, the codex board line judging the sealed folder, and sandbox._hook watching
 # grants/, effects/ and records/ (its docstring 1 more, the import it no longer needs 1 fewer) keep their lines.
+# Then each 15 more, all in sessions.py, for a Muse session's sub-agents, which the archive never held (B5's builder
+# found them): natives 7 (each session's subagent/ folders found 1, each listed with one closed to it named 6), _place 6
+# (a sub-agent filed where its parent ran, read from the parent's record), export_file 2 (its role and its parent);
+# _identity keeps its lines (named after its parent session, as Claude Code's are).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24826
-PLUGIN_BUDGET = 51555
+CORE_BUDGET = 24841
+PLUGIN_BUDGET = 51570
 
 
 def _lines(files):
