@@ -2628,8 +2628,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # behind them 1, since a header block counts only with a sender and a dated Date or Sent, under a mark, a rule or quote
 # marks (a block of its own with no mark, or a slot's From and To under a rule, still names its time); the section's
 # comment keeps its lines.
+# Then the plugin 15 more, for the inbox engine's TLS under `python3 -s` (an operations seat, 2026-11-18: every IMAP
+# connection failed CERTIFICATE_VERIFY_FAILED, certifi being in the user's own site folder). _lib.py 29 more:
+# SYSTEM_CA_FILES 1 and its 2 blank lines; _root_owned 15 (its line and docstring 3, the real path of a regular file 3,
+# each folder up to the root owned by root and unwritable 9) and 2 blank lines; _ca_file 12 (its line and docstring 5,
+# certifi's bundle where it is importable 6, the first of those and the system's that no agent can change 1) and 2 blank
+# lines; _ssl_context 6 fewer (its docstring 3 fewer, the choice moved to _ca_file 3 fewer); connect 1 more (its error
+# names the bundles it looked for and the one it found). icloud_census.py 14 fewer: its docstring 1 more (the connection
+# is _lib.connect's, which verifies), main 15 fewer (its own unverified connection and login loop go for connect).
 CORE_BUDGET = 25106
-PLUGIN_BUDGET = 51840
+PLUGIN_BUDGET = 51855
 
 
 def _lines(files):

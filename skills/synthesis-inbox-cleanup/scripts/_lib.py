@@ -154,18 +154,46 @@ def resolve(name, addr, domain, subject):
     return "keep", "unmatched"
 
 
-def _ssl_context():
-    """Verifying TLS context (certificate-chain + hostname).
+SYSTEM_CA_FILES = ("/etc/ssl/cert.pem", "/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt")
 
-    The python.org macOS Python ships without a usable system CA store, so
-    `ssl.create_default_context()` alone fails to verify. Prefer certifi's
-    bundle when it is installed; fall back to the system default otherwise.
-    """
+
+def _root_owned(path):
+    """The real path of a regular file that root owns, with every folder above it, and that neither this user nor its
+    groups can write: what the system installed, which no program of an agent's can change. '' for any other."""
+    real = spot = os.path.realpath(path)
+    if not os.path.isfile(real):
+        return ""
+    while True:
+        try:
+            if os.lstat(spot).st_uid or os.access(spot, os.W_OK):
+                return ""
+        except OSError:
+            return ""
+        if os.path.dirname(spot) == spot:
+            return real
+        spot = os.path.dirname(spot)
+
+
+def _ca_file():
+    """The CA bundle the engine verifies with: certifi's where it is importable, else the operating system's own
+    (macOS's /etc/ssl/cert.pem), whichever comes first of those that no agent can change; '' for none. `python3 -s`
+    leaves out the user's own site folder, where `pip3 install --user` puts certifi, and a bundle there is the user's
+    to rewrite (2026-11-18: under -s every connection fell back to a default store python.org's Python ships empty)."""
+    named = []
     try:
         import certifi
-        return ssl.create_default_context(cafile=certifi.where())
+        named.append(certifi.where())
     except ImportError:
-        return ssl.create_default_context()
+        pass
+    return next((real for real in map(_root_owned, named + list(SYSTEM_CA_FILES)) if real), "")
+
+
+def _ssl_context():
+    """Verifying TLS context (certificate chain and host name), never an unverified one. The python.org macOS Python
+    ships without a usable CA store, so `ssl.create_default_context()` alone fails to verify: the context loads the
+    bundle `_ca_file` names, and the interpreter's default store only where no such bundle is there."""
+    found = _ca_file()
+    return ssl.create_default_context(cafile=found) if found else ssl.create_default_context()
 
 
 def connect(readonly=True):
@@ -174,8 +202,9 @@ def connect(readonly=True):
         M = imaplib.IMAP4_SSL(HOST, ssl_context=_ssl_context())
     except ssl.SSLCertVerificationError as e:
         sys.exit(f"ERROR: TLS certificate verification failed for {HOST}: {e}\n"
-                 f"Install a CA bundle: pip3 install --user certifi (or run the "
-                 f"'Install Certificates.command' bundled with python.org Python).")
+                 f"The engine verifies against certifi's bundle where it is importable and root-owned, else the "
+                 f"system's root-owned bundle ({', '.join(SYSTEM_CA_FILES)}), else Python's default store; it found "
+                 f"{_ca_file() or 'none of those bundles'}. It never connects unverified.")
     last = None
     for u in USER_CANDIDATES:
         try:
