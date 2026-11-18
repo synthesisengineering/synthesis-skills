@@ -1698,19 +1698,29 @@ def check_interpreter(home: Path) -> Check:
     integration review of 5.24.1: python.org's 3.15 installed writable by the admin group, so the hooks stayed on 3.12
     and nothing said so)."""
     pinned = next((w for w in _text(home / "bin" / "synthesis-hook").split() if w.startswith("/") and "/python" in w), "")
-    have = install.final_version(pinned) if pinned else None
+    wrong = install.interpreter_problems(pinned) if pinned else ["the hook launcher names no Python"]
+    have = None if wrong else install.final_version(pinned)  # never run one this user can change (review round 2 of 5.24.1)
     if not have:
-        return Check("warn", "hook interpreter", "the hook launcher names no Python that answers; run the plugin's install again")
-    passed = [(v, real) for real in map(os.path.realpath, sorted(glob.glob(install.FRAMEWORKS)))
-              for v in [install.final_version(real)] if v and have < v <= install.TESTED and install.interpreter_problems(real)]
+        return Check("warn", "hook interpreter", f"{(wrong or ['the hook launcher' + chr(39) + 's Python does not answer'])[0]}; "
+                     "run the plugin's install again")
+    passed = []
+    for path in sorted(glob.glob(install.FRAMEWORKS)):  # each version read from its folder's name, never by running it
+        named = re.fullmatch(r"(\d+)\.(\d+)", Path(path).parents[1].name)
+        v, real = (int(named[1]), int(named[2])) if named else None, os.path.realpath(path)
+        passed += [(v, real)] if v and have < v <= install.TESTED and install.interpreter_problems(real) else []
     if not passed:
         return Check("ok", "hook interpreter", f"Python {have[0]}.{have[1]} ({_short(pinned)})")
-    v, real = max(passed)
-    folder = Path(real).parents[1]
+    (v, real), steps = max(passed), []
+    folder, problems = Path(real).parents[1], install.interpreter_problems(real)
+    for problem in problems:  # each faulty folder named: one above the version's own is fixed alone (review round 2)
+        spot = problem.split(" is ")[0]
+        verb = "chown root" if problem.endswith("not owned by root") else "chmod go-w" if problem.endswith("its groups") else ""
+        steps += [f"sudo {verb.replace(' ', ' -R ', 1)} {folder}" if paths.inside(spot, str(folder)) else f"sudo {verb} {spot}"] if verb else []
     from synthesis import __version__
     return Check("warn", "hook interpreter", f"the hooks run Python {have[0]}.{have[1]}; python.org's {v[0]}.{v[1]} is installed but "
-                 f"{install.interpreter_problems(real)[0]}, so the installer passed it over; to fix it, run `sudo chmod -R go-w "
-                 f"{folder}`, then `~/.synthesis/v5/bin/synthesis-release --install-only --tag v{__version__}`")
+                 f"{problems[0]}, so the installer passed it over; to fix it, run `"
+                 + " && ".join(dict.fromkeys(steps + [f"sudo chmod -R go-w {folder}"]))
+                 + f"`, then `~/.synthesis/v5/bin/synthesis-release --install-only --tag v{__version__}`")
 
 
 def check_git_hooks_path(value: str, expected: Path) -> Check:

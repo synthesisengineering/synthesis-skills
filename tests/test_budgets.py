@@ -2455,10 +2455,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # (an interpreter's version read in one place for both); approvals._account_folders 10 and transcript 3 fewer (the
 # account's home looked up only for a note that names no folders, none for an account the user database does not know);
 # guards._protected_roots 1 more (Codex's archived rollouts). The new definitions' 12 blank lines.
+# Then each 10 more, all in doctor.check_interpreter, for the review's round 2 (its last): the hooks' own Python asked of
+# interpreter_problems before it is run, each python.org version read from its folder's name and never by running it
+# (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
+# the version's own fixed alone, so the warning goes once the steps are run.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23682
-PLUGIN_BUDGET = 50351
+CORE_BUDGET = 23692
+PLUGIN_BUDGET = 50361
 
 
 def _lines(files):

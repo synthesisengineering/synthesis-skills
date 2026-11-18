@@ -169,7 +169,10 @@ def test_the_doctor_names_a_newer_python_the_installer_had_to_pass_over_and_how_
     assert check.status == "warn" and check.name == "hook interpreter"
     assert "3.12" in check.detail and "3.15" in check.detail and "writable by this user" in check.detail
     assert f"chmod -R go-w {versions / '3.15'}" in check.detail and "--install-only" in check.detail
-    _pinned(home, new)
+    _pinned(home, new)  # the hooks' own Python, once this user can change it, is named and never run (review round 2)
+    check = doctor.check_interpreter(home)
+    assert check.status == "warn" and "writable by this user" in check.detail and "install again" in check.detail
+    monkeypatch.setattr(install, "interpreter_problems", lambda p: [])
     assert doctor.check_interpreter(home).status == "ok"
 
 
