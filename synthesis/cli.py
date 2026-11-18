@@ -395,6 +395,42 @@ def cmd_sessions(args) -> int:
     return 0
 
 
+def cmd_searches(args) -> int:
+    """The web searches a session has made, its sub-agents' included, against the principal's budget a session (config
+    `search_budget`), with each of --agents N research agents' share of what is left, rounded down: run before a fan-out,
+    the share goes in each brief (BACKLOG B5; 2026-09-23: six research agents each took the session's budget for its
+    own). Exit 1 refuses the fan-out: a share under one search, or a budget against a count the records cannot tell."""
+    from synthesis import sessions
+    session, budget, config = args.session or paths.session_id(), paths.config().get("search_budget"), paths.config_file()
+    if not session or args.agents < 1 or not (budget is None or type(budget) is int and budget >= 0):
+        print("no session id: pass --session or run inside a harness session" if not session else
+              "--agents is how many research agents would be dispatched: 1 or more" if args.agents < 1 else
+              f"search_budget in {config} is {json.dumps(budget)}, not a whole number of web searches: the principal sets it",
+              file=sys.stderr)
+        return 2
+    found, n = sessions.searches(session), args.agents
+    used, named = found["count"], f"session {session}" + (f" ({found['harness']})" if found["harness"] else "")
+    print(f"{named}: cannot tell how many web searches it made: {found['why']}" if used is None else
+          f"{named}: {used} web search{'' if used == 1 else 'es'} made, read from its record and {found['agents']} of its sub-agents'")
+    if budget is None:
+        print(f"no search budget is set: the principal sets search_budget, the web searches a session may make, in {config}")
+        return 0
+    if used is None:
+        print(f"budget: {budget} web searches a session; how many are used cannot be told")
+        print(f"refused: the searches made cannot be told, so no share of the {budget} can be given: dispatch research agents "
+              "that make no web search, or ask the principal", file=sys.stderr)
+        return 1
+    left = max(0, budget - used)
+    print(f"budget: {budget} web searches a session; {used} used, {left} left")
+    print(f"share: {left // n} web search{'' if left // n == 1 else 'es'} for each of {n} agent{'' if n == 1 else 's'}")
+    if left // n:
+        return 0
+    print(f"refused: none of the session's {budget} web searches is left: ask the principal to raise search_budget before "
+          "dispatching research agents" if not left else f"refused: {left} web search{'' if left == 1 else 'es'} left, under one "
+          f"for each of {n} agents: dispatch at most {left} research agents, or ask the principal to raise search_budget", file=sys.stderr)
+    return 1
+
+
 def cmd_approvals(args) -> int:
     directory = paths.state() / "approval-requests"
     for f in sorted(directory.glob("*.json")) if directory.is_dir() else []:
@@ -547,6 +583,10 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--width", type=int, default=600, help="characters shown per record (0: all)")
     s.add_argument("--limit", type=int, default=20)
     s.set_defaults(fn=cmd_sessions)
+    s = sub.add_parser("searches", help="count a session's web searches against search_budget, and each agent's share of the rest")
+    s.add_argument("--agents", type=int, default=1, help="how many research agents a fan-out would dispatch (default 1)")
+    s.add_argument("--session", default=argparse.SUPPRESS, help="the session to count (default: this one)")  # after the command too
+    s.set_defaults(fn=cmd_searches)
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
     s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
     s.add_argument("plugin", nargs="?", default="")
