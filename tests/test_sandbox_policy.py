@@ -9,6 +9,7 @@ own folders, never /Library or /etc, and every probe runs in a temporary home.
 """
 
 import errno
+import hashlib
 import json
 import os
 import plistlib
@@ -72,7 +73,8 @@ DESIGN_RULES = {
 def test_claude_codes_managed_settings_are_the_design_notes_file(mac):
     assert sandbox.claude_managed() == {
         "sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": True,
-                    "filesystem": {"allowWrite": ["~/workspaces", "~/.Trash"],
+                    "filesystem": {"allowWrite": ["~/workspaces", "~/.Trash", "~/.synthesis/v5/board", "~/.synthesis/v5/outbox",
+                                                  "~/.synthesis/v5/state/requests"],  # named, as Codex's profile names them
                                    "denyWrite": ["~/.claude/projects", "~/Library/Application Support/Claude/local-agent-mode-sessions",
                                                  "~/Library/Application Support/Claude/claude-code"]}},
         "permissions": {"deny": DESIGN_DENY, "ask": ["Bash(dangerouslyDisableSandbox:true)"]}}
@@ -141,9 +143,23 @@ def test_each_file_installs_with_one_command_that_copies_the_staged_file_as_root
         words = shlex.split(sandbox.install_command(name))
         target, staged = sandbox.target(name), sandbox.staged(name)
         group = "wheel" if sys.platform == "darwin" else "root"  # root's own group on each system
-        assert words == ["sudo", "install", "-d", "-o", "root", "-g", group, "-m", "755", str(target.parent), "&&",
+        check = ["shasum", "-a", "256", "-c"] if sys.platform == "darwin" else ["sha256sum", "-c"]
+        digest = hashlib.sha256(sandbox.expected(name).encode("utf-8")).hexdigest()
+        assert words == ["echo", f"{digest}  {staged}", "|", *check, "&&",
+                         "sudo", "install", "-d", "-o", "root", "-g", group, "-m", "755", str(target.parent), "&&",
                          "sudo", "install", "-o", "root", "-g", group, "-m", "644", str(staged), str(target)], name
         assert staged.parent == paths.home() / sandbox.STAGED  # sealed: no session changes it before it is installed
+
+
+def test_the_command_installs_nothing_once_the_staged_file_differs_from_the_bytes_setup_staged(mac):
+    """Review round 1 of 5.25.0, a note: before the seal a shell can change the staged copy between setup printing the
+    command and the principal running it, and root would install what it then holds. The command checks it first."""
+    for name in ("claude", "codex"):
+        copy = _stage(name)
+        check = sandbox.install_command(name).split(" && sudo ")[0]
+        assert subprocess.run(["/bin/sh", "-c", check], capture_output=True).returncode == 0, name
+        copy.write_text(sandbox.expected(name) + "# changed\n", encoding="utf-8")
+        assert subprocess.run(["/bin/sh", "-c", check], capture_output=True).returncode != 0, name
 
 
 def _install(name, text=None):
