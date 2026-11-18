@@ -38,6 +38,9 @@ SEALED = (APPROVALS, "install", "releases", "current", "bin", "git-hooks", "conf
 WRITABLE = ("board", "outbox", "state/requests")  # what a sandboxed agent writes in the synthesis home
 STAGED = "install"  # where setup stages the two files: sealed, so no session changes one before it is installed
 WRITE_AREA = ("~/workspaces", "~/.Trash")  # Claude Code's beyond a session's own folders and temp (the ruling on D8)
+PROJECT = (".claude/settings.json", ".claude/settings.local.json", ".mcp.json")  # what any repository sets for Claude Code:
+# with unsandboxed commands allowed (D2) it honors a repository's settings that loosen the sandbox, and their hooks and
+# MCP servers run outside it, so no agent writes one anywhere
 ASK = "Bash(dangerouslyDisableSandbox:true)"  # the backstop to the guard's hold of an unsandboxed command (D2)
 HOOK = '"$HOME/.synthesis/v5/bin/synthesis-hook"'
 MATCHER = ("Bash|bash|exec_command|write_stdin|exec|shell|shell_command|local_shell|run_shell_command|Write|Edit|MultiEdit|"
@@ -84,8 +87,8 @@ def claude_managed() -> dict:
     records, which only the shell is denied."""
     return {"sandbox": {"enabled": True, "failIfUnavailable": True, "allowUnsandboxedCommands": True,
                         "filesystem": {"allowWrite": list(WRITE_AREA), "denyWrite": [tilde(p) for p, _, only in sealed() if only]}},
-            "permissions": {"deny": [f"Edit({_rule(p)}{'/**' if folder else ''})" for p, folder, only in sealed() if not only],
-                            "ask": [ASK]}}
+            "permissions": {"deny": [f"Edit({_rule(p)}{'/**' if folder else ''})" for p, folder, only in sealed() if not only]
+                            + [f"Edit(//**/{name})" for name in PROJECT], "ask": [ASK]}}
 
 
 def codex_rules() -> list:
@@ -510,34 +513,51 @@ def _remove(made: list, until: int = 0) -> list:
 
 # ---- outside a sandbox: the configuration that makes the seal (the note's 4.8) --------------------------------------
 
-PATHLIKE = re.compile(r"""(?<![^\s'"=:(])(\$\{?\w+\}?|~)?(/[^\s'"`;|&<>()]*)""")
+PATHLIKE = re.compile(r"""(?<![^\s'"=:(])(\$\{?\w+\}?"?|~)?(/[^\s'"`;|&<>()]*)""")
+
+
+def _repos() -> list:
+    """Each repository under the workspace folders, where a session's own settings may be."""
+    from synthesis import doctor
+    try:
+        config = paths.config()
+    except (OSError, ValueError):
+        config = {}
+    return [r for r in doctor.workspace_repos(config) if (r / ".git").exists()]
+
+
+def _claude_settings() -> list:
+    """(settings file, its repository or None) for each Claude Code settings file a session here may load."""
+    claude = paths.transcript_roots()["claude-code"].parent
+    return [(claude / "settings.json", None), (claude / "settings.local.json", None)] + [
+        (repo / name, repo) for repo in _repos() for name in PROJECT[:2]]
 
 
 def _commands() -> list:
-    """(where, command text, the plugin folder it names) for each hook, MCP server and launch agent: each runs with full
-    access, outside every sandbox."""
+    """(where, command text, {variable: folder}) for each hook, MCP server and launch agent, the user's and each
+    repository's: each runs with full access, outside every sandbox."""
     claude, codex, found = paths.transcript_roots()["claude-code"].parent, paths.codex_home(), []
 
-    def hooks(file: Path, root=None):
+    def hooks(file: Path, values: dict):
         events = paths.read_json(file).get("hooks")
         for event, groups in events.items() if isinstance(events, dict) else ():
             for group in groups if isinstance(groups, list) else ():
                 for hook in (group.get("hooks") or []) if isinstance(group, dict) else ():
                     if isinstance(hook, dict) and isinstance(hook.get("command"), str):
-                        found.append((f"{tilde(file)} {event}", hook["command"], root))
-    for file in (claude / "settings.json", claude / "settings.local.json", codex / "hooks.json"):
-        hooks(file)
+                        found.append((f"{tilde(file)} {event}", hook["command"], values))
+    for file, repo in _claude_settings() + [(codex / "hooks.json", None)]:
+        hooks(file, {"CLAUDE_PROJECT_DIR": str(repo)} if repo else {})
     for file in sorted((claude / "plugins" / "cache").glob("*/*/*/hooks/hooks.json")):
-        hooks(file, file.parent.parent)
-    for file in dict.fromkeys([Path.home() / ".claude.json", claude / ".claude.json"]):
+        hooks(file, {"CLAUDE_PLUGIN_ROOT": str(file.parent.parent)})
+    for file in dict.fromkeys([Path.home() / ".claude.json", claude / ".claude.json"] + [r / PROJECT[2] for r in _repos()]):
         data = paths.read_json(file)
         tables = [data.get("mcpServers")] + [p.get("mcpServers") for p in (data.get("projects") or {}).values() if isinstance(p, dict)]
-        found += [(f"{tilde(file)} mcpServers.{name}", " ".join(map(str, [spec["command"], *(spec.get("args") or [])])), None)
+        found += [(f"{tilde(file)} mcpServers.{name}", " ".join(map(str, [spec["command"], *(spec.get("args") or [])])), {})
                   for table in tables if isinstance(table, dict) for name, spec in table.items()
                   if isinstance(spec, dict) and isinstance(spec.get("command"), str)]
     from synthesis import doctor
     servers = codex_config().get("mcp_servers")
-    found += [(f"{tilde(codex / 'config.toml')} mcp_servers.{name}", " ".join([spec["command"], *doctor.toml_strings(spec.get("args"))]), None)
+    found += [(f"{tilde(codex / 'config.toml')} mcp_servers.{name}", " ".join([spec["command"], *doctor.toml_strings(spec.get("args"))]), {})
               for name, spec in (servers.items() if isinstance(servers, dict) else ()) if isinstance(spec, dict) and isinstance(spec.get("command"), str)]
     for plist in sorted((Path.home() / "Library" / "LaunchAgents").glob("*.plist")):
         try:
@@ -545,20 +565,20 @@ def _commands() -> list:
         except (OSError, ValueError):
             continue
         argv = spec.get("ProgramArguments") or [spec.get("Program") or ""] if isinstance(spec, dict) else []
-        found += [(tilde(plist), " ".join(map(str, argv)), None)] if isinstance(argv, list) else []
+        found += [(tilde(plist), " ".join(map(str, argv)), {})] if isinstance(argv, list) else []
     return found
 
 
-def _paths_in(text: str, root) -> list:
+def _paths_in(text: str, values: dict) -> list:
     """The files a command names: its program, found on PATH where it is a bare name, and each absolute path, with $HOME,
-    ~ and the plugin's own folder expanded."""
+    ~ and the folders the harness names for it (the plugin's, the project's) expanded."""
     words = text.split()
     first = words[0].strip("'\"") if words else ""
     found = [shutil.which(first) or ""] if first and "/" not in first and not first.startswith("$") else []
     for var, rest in PATHLIKE.findall(text):
-        name = var.strip("${}") if var.startswith("$") else var
-        base = {"": "", "~": str(Path.home()), "HOME": str(Path.home()), "CLAUDE_PLUGIN_ROOT": str(root or "")}.get(name)
-        found += [base + rest] if base is not None and (root or name != "CLAUDE_PLUGIN_ROOT") else []
+        name = var.strip("${}\"") if var.startswith(("$", '"$')) else var
+        base = {"": "", "~": str(Path.home()), "HOME": str(Path.home()), **values}.get(name)
+        found += [base + rest] if base is not None else []
     return [f for f in found if f]
 
 
@@ -578,7 +598,7 @@ def loose_commands() -> list:
     """(where, path) for each file a hook, MCP server or launch agent runs that a sandboxed shell may write (the note's
     4.7, item 9): a session could change it and have it run outside the sandbox later."""
     area, shut = _write_area(), [os.path.realpath(p) for p, _, _ in sealed()]
-    return [(where, path) for where, text, root in _commands() for path in dict.fromkeys(_paths_in(text, root))
+    return [(where, path) for where, text, values in _commands() for path in dict.fromkeys(_paths_in(text, values))
             if any(paths.inside(os.path.realpath(path), r) for r in area) and not any(paths.inside(os.path.realpath(path), s) for s in shut)]
 
 
@@ -603,6 +623,13 @@ def hooks_path_overrides(run=subprocess.run) -> list:
     return found
 
 
+def _excluded(file: Path) -> list:
+    """The command patterns a Claude Code settings file lets run outside the sandbox."""
+    box = paths.read_json(file).get("sandbox")
+    listed = box.get("excludedCommands") if isinstance(box, dict) else None
+    return [str(p) for p in listed] if isinstance(listed, list) else []
+
+
 def config_read(found, run=subprocess.run) -> list:
     """[(name, status, detail)] for `synthesis doctor --seal` outside a sandbox: each administrator file of a harness
     here, Codex's profile, Muse's state, every command that runs outside the sandbox from where a session writes, and
@@ -622,6 +649,10 @@ def config_read(found, run=subprocess.run) -> list:
                  "sandboxed shell, so a session could change one and have it run with full access later: " + "; ".join(
                      f"{where} runs {tilde(path)}" for where, path in loose[:6]) + ". Move each out of the write area, or "
                  "stop running it" if loose else "no hook, MCP server or launch agent runs a file a sandboxed shell can write"))
+    let = [(file, pattern) for file, _ in _claude_settings() for pattern in _excluded(file)]
+    rows.append(("excluded", "fail" if let else "ok", f"{len(let)} command pattern(s) run outside the sandbox with no hold of the "
+                 "guard (`excludedCommands`): " + "; ".join(f"{tilde(f)} lets `{p}`" for f, p in let[:6]) + ". Take each out"
+                 if let else "no Claude Code settings file here lets a command run outside the sandbox"))
     own = hooks_path_overrides(run)
     rows.append(("hooks path", "fail" if own else "ok", f"{len(own)} repositor{'y' if len(own) == 1 else 'ies'} set "
                  "core.hooksPath in their own config, so the commit check does not run there: " + "; ".join(

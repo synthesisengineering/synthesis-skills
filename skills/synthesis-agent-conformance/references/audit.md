@@ -265,8 +265,10 @@ there with no item here fails:
   first. Outside a sandbox the configuration is read: each file as the `sandbox` line judges
   it, Codex's profile, Muse's state (no approval until a probe shows its sandbox seals the
   set), every hook, MCP server and launch-agent command that runs a file a sandboxed shell may
-  write, and every workspace repository whose own config sets `core.hooksPath`. A session's
-  shell outside every sandbox is itself a failure.
+  write (the user's and each workspace repository's, its `.claude` settings and `.mcp.json`
+  included), every command pattern a Claude Code settings file lets run outside the sandbox
+  (`excludedCommands`, which no hold of the guard sees), and every workspace repository whose
+  own config sets `core.hooksPath`. A session's shell outside every sandbox is itself a failure.
 
 ## Live: proving the harness ran it
 

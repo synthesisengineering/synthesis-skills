@@ -2484,10 +2484,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # bytes staged, the command for each, what is installed verified), _seal 19 (the profile's seal rules, a rule of the
 # person's own named and kept), codex_overlay 3, main 4 (the `sandbox` command, the staging in every plugin run, no
 # restart line for it), the usage line 1, a section comment 1 and 5 blank lines.
+# Then each 31 more, all in sandbox.py, for a route the note's 4.6 left open: with unsandboxed commands allowed (D2), Claude
+# Code honors a repository's settings that loosen its sandbox (an `excludedCommands` entry, which no hold of the guard
+# sees), and a repository's hooks and MCP servers run outside it. PROJECT 1 with its comment 2 (every repository's
+# `.claude` settings and `.mcp.json` denied to an agent, through the managed deny rules, claude_managed's same lines),
+# _repos 8 (the workspace repositories), _claude_settings 5 (the user's and each repository's settings files), _excluded
+# 5 and config_read 4 more (the seal check's `excluded` row), _commands with each repository's hooks and .mcp.json in the
+# same lines, and 6 blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24388
-PLUGIN_BUDGET = 51114
+CORE_BUDGET = 24419
+PLUGIN_BUDGET = 51145
 
 
 def _lines(files):

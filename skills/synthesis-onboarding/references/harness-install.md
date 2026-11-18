@@ -191,9 +191,12 @@ sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wh
   deny rule for every sealed path (it binds the file tools in every mode and the shell's
   sandbox alike), Claude Code's own records denied to the shell alone (`denyWrite`, so the
   file tools keep the memory files the guard allows), and an ask rule for a command run
-  outside the sandbox, behind the guard's own hold. Managed values outrank every other
-  settings file, and once they configure the sandbox's folders only managed settings can turn
-  it off.
+  outside the sandbox, behind the guard's own hold. Every repository's `.claude` settings and
+  `.mcp.json` are denied too: with unsandboxed commands allowed, Claude Code honors a
+  repository's settings that loosen the sandbox (an `excludedCommands` entry runs a command
+  outside it, past the guard's hold), and their hooks and MCP servers run with full access, so
+  the principal edits those files himself. Managed values outrank every other settings file,
+  and once they configure the sandbox's folders only managed settings can turn it off.
 - Codex's requirements, `/etc/codex/requirements.toml` (Codex's own documentation names
   it for macOS and Linux): a profile of its own, `synthesis-sealed`, with the rules above,
   pinned as `default_permissions` and allowed with `:read-only` alone by the table form of
