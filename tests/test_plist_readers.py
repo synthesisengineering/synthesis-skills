@@ -131,7 +131,8 @@ def test_each_form_that_writes_still_waits_for_the_code(mac, case):
 
 UNPLACED = {
     "two command options": "plutil -p -convert json {agent}",
-    "an option plutil has that no read takes": "plutil -p -x {agent}",
+    "an option the guard does not know": "plutil -p -x {agent}",
+    "an option plutil has that no read takes": "plutil -p -append {agent}",
     "-o given twice": "plutil -extract Label raw -o - -o {agents}/label.txt {agent}",
     "-e beside -o -": "plutil -convert json -e json -o - {agent}",
     "a header beside the conversion": "plutil -convert objc -header -o - {agent}",
