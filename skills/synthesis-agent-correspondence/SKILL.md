@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "4.2.0"
+  version: "4.2.1"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -30,7 +30,7 @@ How an agent drafts and sends correspondence for a principal honestly: which lan
 8. **Channel disclosure is a fact, not a preference.** Verify each channel's current behavior; Slack stamps agent-performed sends whatever the signature says.
 9. **Signature links render natively per channel,** as the section below sets out.
 10. **Pass the three gates.** Read the whole thread and prior correspondence before composing; load the voice and anti-slop rules before drafting; re-read the live thread and re-verify every claim at send time. The verdict is send, revise or withdraw.
-11. **Get the exact call approved, then verify it.** Load `synthesis-message-guard` for construction and the principal's approval of the exact call, and read the draft or sent message back through the transport after an approved draft or send.
+11. **Get the exact call approved, then verify it.** Load `synthesis-message-guard` for construction and the principal's approval of the exact call (its code is the only approval: make the call when the text is final and show the text with the code, never after a separate go-ahead), and read the draft or sent message back through the transport after an approved draft or send.
 12. **Call people by the name they go by.** In prose and greetings, use a person's preferred name where one is known: from the principal's preferred-names map, then a chat display name that differs from their real name, then the name they sign or use in their own messages. With none known, use the name they use in their own messages. Mention syntax stays what the platform requires.
 
 ## Contents

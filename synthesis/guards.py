@@ -753,8 +753,9 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
                 "not added to today by an agent's choice, and a requester's timing is their preference: propose another day "
                 "unless the principal asked for today. If they did, show them the exact event and ask them to type "
                 f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
-    return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
+    return ("Sending needs the principal's approval of this exact message. Show them the exact text and recipient with this code, "
+            f"in one message, and ask them to type {approvals.how(code)}: it is their only approval, so ask them for no other "
+            "go-ahead (2026-11-17). Then make this identical call again." + reshape
             + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
                "principal too: one changed before the call needs a new code." if files else ""))
 
