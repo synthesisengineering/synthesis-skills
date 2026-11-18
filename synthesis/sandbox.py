@@ -245,7 +245,7 @@ def profile_problems(config: dict) -> list:
     """Why the profile Codex's config.toml selects does not keep the sealed set, with the one step: [] where it does."""
     if config.get("sandbox_mode") is not None:
         return ["Codex's config.toml sets sandbox_mode, so Codex reads its older sandbox settings, which cannot keep a "
-                "folder read-only: take sandbox_mode out, so Codex reads the profile setup writes"]
+                f"folder read-only: take sandbox_mode out of it, then run `{SETUP} plugin`, so Codex reads the profile setup writes"]
     rules, base = profile_rules(config)
     if base == ":danger-full-access":
         return ["Codex runs without a sandbox (:danger-full-access), so its shells write everything the guard trusts: "
@@ -450,10 +450,10 @@ def probes(home: Path, workspace: Path, run=subprocess.run, platform: str = sys.
         found.append(("overwrite in approvals", *(_append(files[0], made) if files else ("unknown", "no file in it to open"))))
         top = [p for p in entries if p.parent == approvals]
         found.append(("rename in approvals", *(skip if open_ else _rename(top[0]) if top else ("unknown", "nothing in it to move"))))
-        held = found[-1][1] == "held"
+        moved = found[-1][1]  # a delete is tried only where a move was refused, its file copied out first
         found.append(("delete in approvals", *(skip if open_ else ("skipped", "not tried: an entry of it moved, so the folder is "
-                      "open already, and nothing in it is deleted") if not held else _delete(files[0], workspace / f"{tag}-copy")
-                      if files else ("unknown", "no file in it to delete"))))
+                      "open already, and nothing in it is deleted") if moved == "wrote" else ("unknown", "not tried: no move in it "
+                      "was refused first") if moved != "held" or not files else _delete(files[0], workspace / f"{tag}-copy"))))
         found.append(("a shell's write", *_child(approvals / f"{tag}-sh", made, False)))
         found.append(("a background child's write", *_child(approvals / f"{tag}-bg", made, True)))
         link, mark = workspace / f"{tag}-link", len(made)
@@ -480,7 +480,8 @@ def probes(home: Path, workspace: Path, run=subprocess.run, platform: str = sys.
                  approvals / f"{tag}-launchd", 3.0),
                 ("open -a", ["open", "-g", "-j", "-a", "Terminal", str(script)], approvals / f"{tag}-open", 5.0)):
             if open_ or not brokers or platform != "darwin":
-                found.append((name, *(skip if open_ else ("skipped", "not asked: a broker outside the sandbox is macOS's"))))
+                found.append((name, *(skip if open_ else ("skipped", "not asked in this run" if not brokers else
+                                                          "not asked: these brokers are macOS's"))))
                 continue
             if name == "open -a":
                 script.write_text(f"#!/bin/sh\n: > {shlex.quote(str(marker))}\n", encoding="utf-8")

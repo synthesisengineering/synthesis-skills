@@ -2460,8 +2460,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
 # the version's own fixed alone, so the warning goes once the steps are run.
 # 22.9, part 2 (2026-11-18): the guard's sandbox, its two administrator files and their check (design note 22.9, 4.2,
-# 4.3, 4.6 and 4.8; the principal's rulings of 2026-11-15): core 695 more and plugin 752, all new behavior that nothing
-# existing carries. sandbox.py 629, one module so the folder move changes the sealed set there alone. The sealed set
+# 4.3, 4.6 and 4.8; the principal's rulings of 2026-11-15): core 696 more and plugin 753, all new behavior that nothing
+# existing carries. sandbox.py 630, one module so the folder move changes the sealed set there alone. The sealed set
 # and the two files: tilde 4, _harness 14 (each harness's records, settings and programs, the note's 2.1), sealed 3,
 # _rule 5 (a permission rule's // before an absolute path), claude_managed 8 (the note's 4.2), codex_rules 9 (the
 # profile's read-only folders, every ancestor of a sealed one included), managed_hooks 9 (the plugin's hooks as Codex
@@ -2474,7 +2474,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # probes of `doctor --seal`: _refused 2, _create 15, _append 9, _rename 14 and _delete 20 (each move or delete undone at
 # once, a deleted file copied out first), _child 15 (a shell and a background child), _files 2, _hook 30 (the hook run
 # with a made-up prompt, any grant or record it wrote put back), _landed 5 and _broker 16 (launchd and LaunchServices asked to write for
-# the shell), probes 61, _remove 10. The configuration read: _commands 34 (every hook, MCP server and launch agent),
+# the shell), probes 62, _remove 10. The configuration read: _commands 34 (every hook, MCP server and launch agent),
 # _paths_in 11, _write_area 10, loose_commands 6, hooks_path_overrides 19 (a repository's own core.hooksPath),
 # config_read 25. Beside them the constants 20 (HELD and PATHLIKE among them), imports 14, the docstring 5, the sealed
 # set's comment and two section comments 6, and 91 blank lines. doctor.py 66: check_sandbox 19 (the one line: off,
@@ -2486,8 +2486,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # restart line for it), the usage line 1, a section comment 1 and 5 blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24387
-PLUGIN_BUDGET = 51113
+CORE_BUDGET = 24388
+PLUGIN_BUDGET = 51114
 
 
 def _lines(files):
