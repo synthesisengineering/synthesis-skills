@@ -2655,8 +2655,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # wait); _one_code 5 more (its docstring 1; a check that recurses is said by that wait 4; a wait said twice is said
 # once, in the line that adds it); _too_deep 13 (its line and docstring 4; the line's grant spent, or its wait filed and
 # said, once a call, 8; the answer 1) and its 2 blank lines.
-CORE_BUDGET = 25137
-PLUGIN_BUDGET = 51889
+# 5.25.1, BACKLOG A11 (a mid-day sync could not be recorded: `record --direction` took day-start, day-end and
+# weekly-review, and the worker contract records each run by its run type, `midday` among them): the plugin 6 more,
+# all in the rituals' ritual_state.py. DIRECTIONS' comment 5 (a sync records as `midday`, a later one that day too;
+# the checks that hold its record and why, the prompts left to the close; no view counts a sync as opening or closing
+# a workday) and row 1 (`last_midday`, the newest sync, in the row `last` and `summary` list). The direction itself,
+# the docstring and the refusal that say what a record's day is keep their lines. The core none: its readers count
+# only a day-start as opening a workday and only a day-end as closing one; any record, a sync's too, ends a quiet.
+# Then each 1 more, in synthesis/rituals.py: last's docstring (of two records tied to the second, the one read later,
+# so a correction appended after a close wins, as day-end.md says; it reads the records in reverse in the same line).
+# Then the plugin 6 more, all in the rituals' ritual_workers.py, for the desk's coverage line, which read a day's first
+# mid-day run alone: the import of re 1, MIDDAY_RUN 1 and its comment 1 (decay_sweep's pattern for a later run that day,
+# copied, since the sweep imports synthesis.rituals, which the chief-of-staff collection does not carry; a test holds
+# the two equal), and coverage 3 more (each `midday-N` filed that day, folded after the first in the order of its N; the
+# worker's folder named once).
+CORE_BUDGET = 25138
+PLUGIN_BUDGET = 51902
 
 
 def _lines(files):

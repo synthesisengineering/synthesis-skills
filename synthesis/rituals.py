@@ -140,8 +140,9 @@ def expected(day: date, conf: dict) -> bool:
 
 
 def last(records: list[dict], workspace: str, direction: str = "day-end") -> dict | None:
+    """The newest record of that kind; of two tied to the second, the one read later, so a correction appended wins."""
     hits = [r for r in records if r.get("workspace") == workspace and r["direction"] == direction]
-    return max(hits, key=lambda r: (r["date"], _moment(r.get("ts")))) if hits else None
+    return max(reversed(hits), key=lambda r: (r["date"], _moment(r.get("ts")))) if hits else None
 
 
 def _moment(ts) -> float:

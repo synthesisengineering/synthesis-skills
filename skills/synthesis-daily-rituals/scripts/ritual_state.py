@@ -4,8 +4,8 @@
 There is no mutable state file. On 2026-09-02 one seat's close overwrote
 another's single `last_day_end` slot; a lock would not have helped, because the
 second writer still replaces the slot. So records are appended and every view
-is derived. Each record carries two clocks: `date`, the logical workday opened
-or closed (required, never inferred, never a day ahead: a close written at 01:30
+is derived. Each record carries two clocks: `date`, the logical workday opened,
+synced or closed (required, never inferred, never a day ahead: a close written at 01:30
 belongs to the day before), and `ts`, when it was written. On 2026-09-14 an unscoped weekly
 review query let one workspace's Friday review silence every other workspace,
 so every view answers for one workspace, and an empty `--workspace ""` (an
@@ -74,7 +74,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import decay_sweep  # noqa: E402
 
 MAX_RECORD_BYTES = 2048  # structured data only; the narrative belongs in the session log
-DIRECTIONS = ("day-start", "day-end", "weekly-review")
+# `midday` is a mid-day sync, every run its own record (a later run's artifact is `midday-N`; its record is `midday`).
+# A sync sounds the critical alert, runs the travel check and puts what it finds in the day's plan (mid-day-and-modes.md),
+# so its record is held to the deadlines, travel, choices and commitments, as a day-start's is. The prompts wait for the
+# close, which reconciles the whole day: at noon the morning's may still be work under way (2026-11-18). No view counts
+# a sync as opening or closing a workday.
+DIRECTIONS = ("day-start", "midday", "day-end", "weekly-review")
 OUTCOMES = ("clean", "complete", "completed", "success", "partial", "failed", "skipped", "blocked", "degraded")
 VIEWS = ("summary", "last", "open", "streak", "weekly-review")
 CLEAN = ("clean", "complete", "completed", "success")  # outcomes that claim nothing was left uncovered
@@ -495,7 +500,7 @@ def cmd_record(args) -> int:
     now, review = today(), args.direction == "weekly-review"
     early = rituals.friday(now + timedelta(days=6)).isoformat()  # the Friday a weekly review done before it satisfies
     if args.date > now.isoformat() and not (review and args.date == early):  # 2026-11-12: tomorrow closed clean, `prompts: none typed`
-        refuse(f"--date {args.date} has not come: today is {now}. A ritual is recorded for the workday it opened or closed, and "
+        refuse(f"--date {args.date} has not come: today is {now}. A ritual is recorded for the workday it opened, synced or closed, and "
                "nothing has been typed, planned or decided on a day ahead, so every check would pass over nothing. Record it on "
                "that day" + (f". A weekly review done early takes the Friday it satisfies, {early}, and no other day ahead" * review))
     if args.mode == "migration":
@@ -530,9 +535,10 @@ def cmd_record(args) -> int:
 
 def row(records: list[dict], cfg: dict, workspace: str, today: date) -> dict:
     end, start = rituals.last(records, workspace), rituals.last(records, workspace, "day-start")
-    review = rituals.last(records, workspace, "weekly-review")
+    review, sync = rituals.last(records, workspace, "weekly-review"), rituals.last(records, workspace, "midday")
     return {"last_day_end": {k: end[k] for k in ("date", "mode", "outcome") if k in end} if end else None,
             "last_day_start": {k: start[k] for k in ("date", "mode") if k in start} if start else None,
+            "last_midday": {k: sync[k] for k in ("date", "ts", "mode", "outcome") if k in sync} if sync else None,
             "streak": rituals.streak(records, cfg, workspace, today),
             "last_weekly_review": review["date"] if review else None,
             "weekly_review_owed": rituals.weekly_owed(records, cfg, workspace, today),

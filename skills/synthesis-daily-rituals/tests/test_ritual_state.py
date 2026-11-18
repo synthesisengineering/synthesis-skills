@@ -323,6 +323,32 @@ def test_a_close_written_after_midnight_counts_for_the_workday_it_names(tmp_path
     assert query_json(tmp_path, "open", "--workspace", "alpha", "--today", "2026-09-15")["open_workdays"] == []
 
 
+def test_a_close_corrected_within_the_same_second_reads_as_corrected(tmp_path: Path, monkeypatch, capsys) -> None:
+    """day-end.md: when a gate fails after a clean close, a corrected record for the same day is appended, and the
+    later record wins. A record's time is kept to the second, so a correction recorded within that second tied with
+    the close, and the close was read: clean (5.25.1). The record runs in this process, its clock held to one second."""
+    from datetime import datetime, timedelta, timezone
+    sys.path.insert(0, str(SCRIPT.parent))
+    import ritual_state
+
+    class OneSecond(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 9, 14, 18, 30, 5, tzinfo=timezone(timedelta(hours=-4)))
+    (tmp_path / "config.json").write_text(json.dumps({"defaults": {"plans_dirs": []}, "workspaces": {}}), encoding="utf-8")
+    monkeypatch.setenv("RITUAL_STATE_DIR", str(tmp_path))
+    monkeypatch.setattr(ritual_state, "datetime", OneSecond)
+    for outcome in ("clean", "blocked"):
+        assert ritual_state.main(["record", "--direction", "day-end", "--workspace", "alpha", "--date", "2026-09-14",
+                                  "--outcome", outcome]) == 0
+    capsys.readouterr()
+
+    close, correction = log_lines(tmp_path)
+    assert close["ts"] == correction["ts"] and (close["outcome"], correction["outcome"]) == ("clean", "blocked")
+    assert ritual_state.main(["query", "last", "--workspace", "alpha", "--today", "2026-09-14", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["workspaces"]["alpha"]["last_day_end"]["outcome"] == "blocked"
+
+
 def test_a_record_needs_its_logical_date(tmp_path: Path) -> None:
     done = run(tmp_path, "record", "--direction", "day-end", "--workspace", "alpha", "--date", "yesterday")
     assert done.returncode != 0 and "never inferred" in done.stderr
@@ -414,3 +440,116 @@ def test_no_test_reads_the_ritual_history_this_mac_has_synced() -> None:
     Mac's own state: every test's synthesis home is a folder of its own."""
     from synthesis import rituals
     assert rituals.hosts_folders() == []
+
+
+# --- a mid-day sync (5.25.1) -----------------------------------------------------------------
+# 2026-11-18: an operations seat could not record its mid-day sync. The worker contract names `midday` among the run
+# types and records a run with `--direction <run type>`, the skill says to record every ritual, and `record` took only
+# day-start, day-end and weekly-review. A sync opens no workday and closes none, so each view of starts, closes,
+# streaks and reviews reads as it did without one; the row of `last` lists the newest. Committed before the change to
+# the script. Each test reads a home of its own, so the summary's mail lines read no manifest of this Mac's.
+
+
+def midday(state: Path, workspace: str, day: str, *extra: str) -> str:
+    done = run(state, "record", "--direction", "midday", "--workspace", workspace, "--date", day, *extra)
+    assert done.returncode == 0, done.stderr
+    return done.stdout
+
+
+def log_lines(state: Path) -> list[dict]:
+    return [json.loads(line) for line in (state / "history.jsonl").read_text(encoding="utf-8").splitlines()]
+
+
+def test_a_midday_sync_is_recorded_and_listed(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    said = midday(tmp_path, "alpha", "2026-09-14", "--outcome", "partial", "--pointer", "/w/ritual-workers/2026-09-14-midday.md")
+
+    assert said.startswith("recorded midday alpha 2026-09-14 (partial)\n")
+    line = log_lines(tmp_path)[-1]
+    assert (line["direction"], line["date"], line["outcome"], line["pointer"]) == (
+        "midday", "2026-09-14", "partial", "/w/ritual-workers/2026-09-14-midday.md")
+    view = query_json(tmp_path, "last", "--workspace", "alpha", "--today", "2026-09-14")
+    alpha = view["workspaces"]["alpha"]
+    assert alpha["last_midday"] == {"date": "2026-09-14", "mode": "full", "outcome": "partial", "ts": line["ts"]}
+    assert alpha["last_day_start"] is None and alpha["last_day_end"] is None   # a sync opens and closes nothing
+    assert "malformed_lines" not in view
+    assert query_json(tmp_path, "open", "--workspace", "alpha", "--today", "2026-09-14")["open_workdays"] == []
+
+
+# A week of one workspace's rituals, and another's close, with a sync on a day left open, after a close, on a day with
+# no day-start, twice in one day and in the other workspace.
+WEEK = [("day-start", "alpha", "2026-09-08"), ("day-end", "alpha", "2026-09-08"),
+        ("day-start", "alpha", "2026-09-09"), ("midday", "alpha", "2026-09-09"),
+        ("day-start", "alpha", "2026-09-10"), ("day-end", "alpha", "2026-09-10"), ("midday", "alpha", "2026-09-10"),
+        ("midday", "alpha", "2026-09-11"), ("weekly-review", "alpha", "2026-09-11"), ("day-end", "beta", "2026-09-11"),
+        ("day-start", "alpha", "2026-09-14"), ("midday", "alpha", "2026-09-14"), ("midday", "alpha", "2026-09-14"),
+        ("midday", "beta", "2026-09-14")]
+
+
+def test_midday_syncs_change_no_view_of_starts_closes_streaks_or_reviews(tmp_path: Path, monkeypatch) -> None:
+    """The same week in two logs, the second with its syncs: the summary reads the same in words and in JSON, apart
+    from the newest sync each row lists."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    config = {"defaults": {"streak": "expected-days", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": [], "plans_dirs": []},
+              "workspaces": {"alpha": {}, "beta": {}}}
+    hours: dict = {}
+    lines = []
+    for direction, workspace, day in WEEK:  # each step as `record` appends it, an hour after the one before it that day
+        hours[day] = hours.get(day, 8) + 1
+        lines.append(json.dumps({"ts": f"{day}T{hours[day]:02d}:00:00-04:00", "date": day, "direction": direction,
+                                 "workspace": workspace, "mode": "full", "outcome": "clean"}, separators=(",", ":"), sort_keys=True))
+    for name, kept in (("plain", [line for line, step in zip(lines, WEEK) if step[0] != "midday"]), ("synced", lines)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "config.json").write_text(json.dumps(config), encoding="utf-8")
+        (tmp_path / name / "history.jsonl").write_text("".join(line + "\n" for line in kept), encoding="utf-8")
+
+    for today in ("2026-09-14", "2026-09-15"):
+        words = [run(tmp_path / name, "query", "summary", "--today", today) for name in ("plain", "synced")]
+        assert words[0].returncode == words[1].returncode == 0 and words[0].stdout == words[1].stdout, today
+        plain, synced = (query_json(tmp_path / name, "summary", "--today", today) for name in ("plain", "synced"))
+        assert [row.pop("last_midday") for row in plain["workspaces"].values()] == [None, None]
+        newest = {name: row.pop("last_midday")["date"] for name, row in synced["workspaces"].items()}
+        assert newest == {"alpha": "2026-09-14", "beta": "2026-09-14"} and synced == plain, today
+    assert synced["open_workdays"] == [{"workspace": "alpha", "date": "2026-09-09"}, {"workspace": "alpha", "date": "2026-09-14"}]
+    monday = query_json(tmp_path / "synced", "summary", "--today", "2026-09-14")["workspaces"]
+    assert (monday["alpha"]["streak"], monday["beta"]["streak"], monday["alpha"]["last_day_end"]["date"]) == (0, 1, "2026-09-10")
+    assert (monday["alpha"]["weekly_review_owed"], monday["beta"]["weekly_review_owed"]) == (False, True)
+
+
+def test_a_midday_sync_after_the_days_close_leaves_it_closed(tmp_path: Path, monkeypatch) -> None:
+    """A sync asked for after the close, partial, leaves the close clean and the streak as it was."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    (tmp_path / "config.json").write_text(json.dumps({
+        "defaults": {"weekdays": [0, 1, 2, 3, 4], "non_working_dates": [], "plans_dirs": []},
+        "workspaces": {"alpha": {"streak": "expected-days"}}}), encoding="utf-8")
+    record(tmp_path, "day-start", "alpha", "2026-09-14")
+    record(tmp_path, "day-end", "alpha", "2026-09-14")
+    before = query_json(tmp_path, "summary", "--today", "2026-09-14")
+
+    midday(tmp_path, "alpha", "2026-09-14", "--outcome", "partial")
+
+    after = query_json(tmp_path, "summary", "--today", "2026-09-14")
+    assert before["workspaces"]["alpha"].pop("last_midday") is None
+    synced = after["workspaces"]["alpha"].pop("last_midday")
+    assert (synced["date"], synced["outcome"]) == ("2026-09-14", "partial") and after == before
+    assert after["workspaces"]["alpha"]["last_day_end"] == {"date": "2026-09-14", "mode": "full", "outcome": "clean"}
+    assert (after["workspaces"]["alpha"]["streak"], after["open_workdays"]) == (1, [])
+
+
+def test_two_midday_syncs_in_one_day_each_keep_their_own_record(tmp_path: Path, monkeypatch) -> None:
+    """The contract writes a later mid-day run's artifact as `midday-N`. Its record is `midday` too, one per run, each
+    pointing at its own artifact: the N belongs to the artifact's name, and no direction carries it."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    record(tmp_path, "day-start", "alpha", "2026-09-14")
+    for name, outcome in (("midday", "clean"), ("midday-2", "partial")):
+        midday(tmp_path, "alpha", "2026-09-14", "--outcome", outcome, "--pointer", f"/w/ritual-workers/2026-09-14-{name}.md")
+    refused = run(tmp_path, "record", "--direction", "midday-2", "--workspace", "alpha", "--date", "2026-09-14")
+    assert refused.returncode == 2 and "midday-2" in refused.stderr
+
+    syncs = [line for line in log_lines(tmp_path) if line["direction"] == "midday"]
+    assert [(s["date"], s["outcome"], s["pointer"].rsplit("/", 1)[1]) for s in syncs] == [
+        ("2026-09-14", "clean", "2026-09-14-midday.md"), ("2026-09-14", "partial", "2026-09-14-midday-2.md")]
+    alpha = query_json(tmp_path, "last", "--workspace", "alpha", "--today", "2026-09-14")["workspaces"]["alpha"]
+    assert alpha["last_midday"]["ts"] == syncs[-1]["ts"] and alpha["last_day_end"] is None
+    assert query_json(tmp_path, "open", "--workspace", "alpha", "--today", "2026-09-15")["open_workdays"] == [
+        {"workspace": "alpha", "date": "2026-09-14"}]                         # two syncs, and the day is still open

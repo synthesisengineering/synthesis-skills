@@ -407,7 +407,7 @@ def test_a_weekly_review_done_early_takes_the_friday_it_satisfies_and_no_other_d
         code, _, refusal = record(state, direction="weekly-review", day=given, today=done)
         assert code != 0 and history(state) == "", name
         assert f"--date {given} has not come" in refusal and "the Friday it satisfies" in refusal, name
-    for direction in ("day-start", "day-end"):                                  # no other record takes that Friday early
+    for direction in (d for d in ritual_state.DIRECTIONS if d != "weekly-review"):  # no other record takes that Friday early
         code, _, refusal = record(state, direction=direction, day="2026-11-13", today="2026-11-12")
         assert code != 0 and "--date 2026-11-13 has not come" in refusal and history(state) == "", direction
     taken = {"on Wednesday, for its Friday": ("2026-11-11", "2026-11-13"), "on Thursday, for its Friday": ("2026-11-12", "2026-11-13"),
