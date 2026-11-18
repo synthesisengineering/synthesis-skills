@@ -173,6 +173,43 @@ def test_the_doctor_names_a_newer_python_the_installer_had_to_pass_over_and_how_
     assert doctor.check_interpreter(home).status == "ok"
 
 
+def test_the_doctor_never_runs_a_python_this_user_can_change(tmp_path, monkeypatch):
+    """Review round 2 of 5.24.1: the doctor ran each python.org interpreter to read its version before it asked whether
+    this user could rewrite it, so an agent's code planted in a group-writable 3.15 ran at the next day start, outside
+    any guarded call. Such a version is now read from its folder's name, and the interpreter is never run."""
+    from synthesis import install
+    versions = tmp_path / "Versions"
+    old = _python(versions / "3.12" / "bin", "python3", "3 12 final")
+    marker = tmp_path / "ran"
+    (versions / "3.15" / "bin").mkdir(parents=True)
+    planted = versions / "3.15" / "bin" / "python3"
+    planted.write_text(f"#!/bin/sh\ntouch {marker}\necho '3 15 final'\n", encoding="utf-8")
+    planted.chmod(0o755)
+    monkeypatch.setattr(install, "FRAMEWORKS", str(versions / "*" / "bin" / "python3"))
+    monkeypatch.setattr(install, "interpreter_problems",
+                        lambda p: [f"{p} is writable by this user or its groups"] if "3.15" in p else [])
+    home = tmp_path / "home"
+    _pinned(home, old)
+    check = doctor.check_interpreter(home)
+    assert check.status == "warn" and "3.15" in check.detail and not marker.exists()
+
+
+def test_a_folder_above_the_version_s_own_is_named_in_the_fix(tmp_path, monkeypatch):
+    """The same review: with the fault in Versions itself, the fix named only the version's folder, and the warning came
+    back after it was run."""
+    from synthesis import install
+    versions = tmp_path / "Versions"
+    old = _python(versions / "3.12" / "bin", "python3", "3 12 final")
+    _python(versions / "3.15" / "bin", "python3", "3 15 final")
+    monkeypatch.setattr(install, "FRAMEWORKS", str(versions / "*" / "bin" / "python3"))
+    monkeypatch.setattr(install, "interpreter_problems",
+                        lambda p: [f"{versions} is writable by this user or its groups"] if "3.15" in p else [])
+    home = tmp_path / "home"
+    _pinned(home, old)
+    detail = doctor.check_interpreter(home).detail
+    assert f"sudo chmod go-w {versions}" in detail and f"sudo chmod -R go-w {versions / '3.15'}" in detail
+
+
 def test_a_hook_launcher_that_names_no_python_that_answers_warns(tmp_path):
     home = tmp_path / "home"
     _pinned(home, str(tmp_path / "gone" / "python3"))
