@@ -2681,8 +2681,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # _unread_line 1 fewer than the _too_deep it replaces (its docstring 1 more; the wait's words, now the caller's reason
 # and hint, 2 fewer). _shell_writes, which names what a pattern target matches, and _self_grant, whose write targets
 # are read so, keep their lines.
-CORE_BUDGET = 25170
-PLUGIN_BUDGET = 51934
+# BACKLOG A13 (5.25.2; the installed 5.25.0 guard held `plutil -p` of a launch agent, piped to grep, as a change of a
+# harness's own settings, and `defaults read` of it the same way), each 39 more, all in guards.py: the section's comment
+# 4 (each form run on a copy and read in plutil's help and manual: what -type, -extract and -convert write) and its 2
+# blank lines; PLISTS, PLIST_TAKES and PLIST_WRITES 3 (the two programs, plutil's options that take words and how many,
+# what a pattern may become) and 2 blank lines; _plist_reads 28 (its line and docstring 6; the program's name 1; any
+# other program, or a word the shell may still make an option (a substitution, a pattern that may name one), 3;
+# defaults' read and read-type after its own options 6; plutil's options read in order up to `--`, each known with the
+# words it takes, its command options and -o's words kept, 11; the answer 1). _trusted, _named, _unread, _self_grant
+# (fills and stood) and _settings_hold keep their lines (a script under either name judged as the script; a form that
+# only prints handed nothing, named by no reading, filling no folder and standing anywhere a reader does; the hold names
+# plutil -p), and so do the docstrings of _named and _unread.
+CORE_BUDGET = 25209
+PLUGIN_BUDGET = 51973
 
 
 def _lines(files):

@@ -467,8 +467,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `sort -o`), git with a read subcommand and none of its options that write or run
      (`--output`, `--work-tree`, `-c`, `--config-env`, a pager, `--ext-diff`, `--textconv`),
      `find` and `eval` (what each runs is judged as a command of its own), a hex dump with one
-     file, an awk program read with certainty that has no output redirect, pipe or `system`, a
-     sed program read with certainty (bracket expressions as BSD sed reads them) with no `w`,
+     file, plutil and defaults in a form that only prints (A13: plutil's `-p`, `-lint` and
+     `-help`, `-type` and `-extract … raw` with no `-o`, `-extract` and `-convert` with `-o -`;
+     defaults' `read` and `read-type`; a word the shell may still make an option, such as a
+     substitution or a pattern, keeps any form held), an awk program read with certainty that
+     has no output redirect, pipe or `system`, a sed program read with certainty (bracket
+     expressions as BSD sed reads them) with no `w`,
      `W` or `e`, a shell whose script is on the line, on its input or in a file `cat` pipes to
      it (each of its commands is judged; a script on its input that cannot be read waits),
      Python its reader proves, and the plugin's own scripts: inside the release the guard runs
