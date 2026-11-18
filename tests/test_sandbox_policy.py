@@ -53,7 +53,10 @@ DESIGN_DENY = [
     "Edit(~/.codex/sessions/**)", "Edit(~/.codex/archived_sessions/**)", "Edit(~/.codex/config.toml)",
     "Edit(~/.codex/hooks.json)", "Edit(~/.codex/plugins/**)",
     "Edit(~/.local/share/muse/sessions/**)", "Edit(~/.config/muse/**)",
-    "Edit(~/Library/LaunchAgents/**)", "Edit(~/.local/share/claude/**)", "Edit(~/.local/bin/**)"]
+    "Edit(~/Library/LaunchAgents/**)", "Edit(~/.local/share/claude/**)", "Edit(~/.local/bin/**)",
+    # and what a repository sets for Claude Code: with unsandboxed commands allowed (D2), Claude Code honors a repository's
+    # settings that loosen the sandbox, and its hooks and MCP servers run outside it (the note's 4.6 left these open)
+    "Edit(//**/.claude/settings.json)", "Edit(//**/.claude/settings.local.json)", "Edit(//**/.mcp.json)"]
 DESIGN_RULES = {
     "~/.synthesis": "read", "~/.synthesis/v5/board": "write", "~/.synthesis/v5/outbox": "write",
     "~/.synthesis/v5/state/requests": "write", "~/.synthesis/v5/approvals": "read", "~/.claude": "read", "~/.codex": "read",
@@ -556,6 +559,28 @@ def test_a_command_run_outside_the_sandbox_from_the_write_area_fails_the_read(ma
     for named in ("com.example.agent.plist", "settings.json PreToolUse", ".claude.json mcpServers.tool", "config.toml mcp_servers.tool"):
         assert named in detail, named
     assert "com.example.fine" not in detail and "mcp_servers.fine" not in detail
+
+
+def test_a_repositorys_own_claude_settings_and_mcp_servers_are_read_and_an_excluded_command_fails(mac, monkeypatch):
+    """A session can no longer write a repository's Claude Code settings or .mcp.json (the managed deny rules above), and
+    the read finds what one already holds: a hook or MCP server that runs a file a sandboxed shell may write, and any
+    command a settings file lets run outside the sandbox, which no hold of the guard then sees."""
+    monkeypatch.setattr(sandbox, "admin_problems", lambda path: [])
+    repo = mac / "workspaces" / "space" / "repo"
+    (repo / ".claude").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+        {"type": "command", "command": '"$CLAUDE_PROJECT_DIR"/scripts/stop.sh'}]}]}}))
+    (repo / ".mcp.json").write_text(json.dumps({"mcpServers": {"local": {"command": "python3", "args": [str(repo / "server.py")]}}}))
+    found = {name: (status, detail) for name, status, detail in sandbox.config_read(("claude",))}
+    assert found["commands"][0] == "fail" and found["excluded"] == ("ok", found["excluded"][1])
+    assert ".claude/settings.json Stop" in found["commands"][1] and ".mcp.json mcpServers.local" in found["commands"][1]
+    assert sandbox.tilde(repo / "scripts" / "stop.sh") in found["commands"][1]
+    (mac / ".claude").mkdir()
+    (mac / ".claude" / "settings.json").write_text(json.dumps({"sandbox": {"excludedCommands": ["docker *"]}}))
+    (repo / ".claude" / "settings.local.json").write_text(json.dumps({"sandbox": {"excludedCommands": ["bash *"]}}))
+    status, detail = {n: (s, d) for n, s, d in sandbox.config_read(("claude",))}["excluded"]
+    assert status == "fail" and "docker *" in detail and "bash *" in detail and "settings.local.json" in detail
 
 
 def test_a_repository_that_runs_hooks_of_its_own_fails_the_read(mac, monkeypatch):

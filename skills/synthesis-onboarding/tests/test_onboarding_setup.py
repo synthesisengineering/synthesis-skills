@@ -475,7 +475,8 @@ def test_the_install_reference_says_how_the_two_files_are_installed_and_what_the
     reference = " ".join((Path(setup.__file__).resolve().parents[1] / "references" / "harness-install.md")
                          .read_text(encoding="utf-8").split())
     for said in ("setup.py sandbox", "/Library/Application Support/ClaudeCode/managed-settings.json",
-                 "/etc/codex/requirements.toml", "sudo", "synthesis doctor --seal", "allow_managed_hooks_only"):
+                 "/etc/codex/requirements.toml", "sudo", "synthesis doctor --seal", "allow_managed_hooks_only",
+                 "`.mcp.json`", "`excludedCommands`"):
         assert said in reference, said
 
 
