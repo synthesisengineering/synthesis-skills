@@ -6215,12 +6215,13 @@ def _follows(code: str, where: str, args: list, env: dict, raw: list, linked: li
     return ""
 
 
-def _plainly(words: list, where: str, text: str, found: list, given: list) -> str:
+def _plainly(words: list, where: str, text: str, found: list, given: list, asks: bool = False) -> str:
     """'' when a script runs as the plain word of its interpreter runs it: that word with no path, no wrapper or
     assignment in front of it, handed on by no other program, with no option but Python's that only take away what it
     loads; on a line that defines no function or alias, reads no file into the shell, exports nothing and gives no value
     to a variable in the environment or one that moves where a program loads from. Else what the line does instead,
-    which may run or load something other than the release's own code (the review of 5.23.1, finding 4)."""
+    which may run or load something other than the release's own code (the review of 5.23.1, finding 4). A help request
+    (`asks`) may load the user's own site folder (A10)."""
     head = os.path.basename(words[0])
     interpreter = bool(SCRIPT.match(head) or UNREAD.match(head)) or head in SHELLS
     kind, at, _ = _program(words) if interpreter else ("file", 0, "")
@@ -6228,7 +6229,7 @@ def _plainly(words: list, where: str, text: str, found: list, given: list) -> st
     if getattr(words, "wrapped", True) or isinstance(where, Quoted) or (interpreter and "/" in words[0]) or kind != "file" or words[at:at + 1] == ["-m"] or (
             words[1:at] and not (python and all(PLAIN_OPTIONS.fullmatch(w) for w in words[1:at]))):
         return "runs it through more than its interpreter's plain word (a path to it, a wrapper, an option or another program)"
-    if python and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
+    if python and not asks and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
         return "runs Python without -s, -S or -I, so a usercustomize.py or a .pth file in the user's own site folder loads into it"
     upper = {name.upper() for name in os.environ}
     if DEFINES.search(text) or any(n.upper() in upper or STARTUP.fullmatch(n.upper()) or STARTUP.fullmatch(n.lower()) for n in (
@@ -6247,6 +6248,26 @@ def _runtime_copy(path: str) -> str:
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
     stable, release = str(paths.home() / "current"), _release()
     return os.path.join(stable if _real(stable) == release else release, rel) if rel and os.path.isfile(os.path.join(release, rel)) else ""
+
+
+# A help request (A10, 2026-11-18: Codex's `python3 <its plugin copy>/.../context_doctor.py --help` was held as a change of
+# every setting the guard has). A script the runtime carries, asked by the interpreter's plain word for `--help` or `-h`
+# alone, prints its usage and makes none of its decisions, so it needs no -s: what the user's own site folder loads into
+# it loads into every Python run the guard lets through. A test runs each such script both ways in a home of its own and
+# holds it to its usage, writing and starting nothing. These answer none: they read a config or their input first, or
+# are no script.
+NO_HELP = frozenset(f"skills/{name}.py" for name in (
+    *(f"synthesis-inbox-cleanup/scripts/{n}" for n in ("_lib", "icloud_apply", "icloud_archive_senders", "icloud_catchall_google_purge",
+                                                         "icloud_census", "icloud_inspect_senders", "icloud_plan", "icloud_tail", "sanitize")),
+    "synthesis-local-messaging/scripts/os_sandbox", "synthesis-bitbucket/scripts/pr_queue"))
+
+
+def _answers_help(path: str) -> bool:
+    """Whether the runtime's own copy of a script (itself, or the one `_runtime_copy` names) answers a help request: a
+    Python script of a skill the runtime carries, never the release kit's, and none of NO_HELP."""
+    mine = _real(path if _shipped(path) else _runtime_copy(path) or os.devnull)
+    rel = os.path.relpath(paths.spelled(mine), paths.spelled(_release())).replace(os.sep, "/")
+    return _shipped(mine) and rel.startswith("skills/") and rel.endswith(".py") and rel not in NO_HELP
 
 
 def _unread(words: list, where: str, written: set, line: str, bodies: dict | None = None) -> tuple:
@@ -7003,7 +7024,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
-    touched, inside = False, _CALL.get("settings") is not None  # inside: a command a program starts, judged in its pass
+    touched, inside, naming = False, _CALL.get("settings") is not None, []  # inside: a command a program starts, judged in its pass
     still, was = _CALL.get("still", frozenset()), _CALL.get("clean")  # readings whose functions move a folder only in a subshell (`_cd_sources`)
     _CALL["clean"] = hold or clean  # nothing ran before the line itself; before a command a program starts, anything may have
     if FUNCTION.search(command) and FOLDER_MOVE.search(command) and not _moves_by_function(command):
@@ -7017,6 +7038,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
                     return base  # refused whatever the settings: the folders every approval rests on take no code
                 if time.monotonic() <= _CALL["until"]:  # judged in its time; else the wait found with the settings protected stands
                     alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only", depth)
+                    naming += [str(r) for r in (reason, alone) if isinstance(r, Unproven)]  # the settings its readings name (A10)
                     touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
             if reason and not isinstance(reason, Unproven):
                 return reason
@@ -7027,7 +7049,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
                                   "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
     if touched:
-        return _settings_hold(command, cwd, waits, session, hold)
+        return _settings_hold(command, cwd, waits, session, hold, "\n".join(naming))
     if not waits:
         return None
     if not hold:
@@ -7060,10 +7082,11 @@ def _judged(command: str, text: str, cwd: str, config: dict | None, settings, de
         _CALL["settings"] = before
 
 
-def _reached(command: str, cwd: str) -> list:
+def _reached(command: str, cwd: str, said: str = "") -> list:
     """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, or in a folder
-    they change whole; else the ones in or above a path it names, else those whose names it spells; all of them, where
-    it shows none of those (a pattern, a path a program builds)."""
+    they change whole; else the ones in or above a path it names, else those the readings that held it name (`said`: a
+    program's own text, A10), else those whose names it spells; all of them, where it shows none of those (a pattern, a
+    path a program builds)."""
     try:
         landed = [_real(re.sub(r"/\*\*(?:/\*)?$", "", t)) for t in _shell_writes(command, cwd)]
     except RecursionError:
@@ -7075,6 +7098,9 @@ def _reached(command: str, cwd: str) -> list:
         found = [s for s in _settings() if any(paths.inside(t, _real(s)) or paths.inside(_real(s), t) for t in group)]
         if found:
             return found
+    found = [s for s in _settings() if any(re.search(re.escape(p) + r"(?![\w.-])", said) for p in {s, _real(s)})] if said else []
+    if found:
+        return found
     try:
         installed = {_installs(words) for words, _ in _parse(command, cwd)[0]} - {""}
     except (Unreadable, StopIteration, IndexError, RecursionError):
@@ -7101,11 +7127,11 @@ def _named_files(command: str, cwd: str) -> list:
     return sorted(marks.items())
 
 
-def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool) -> str | None:
+def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool, named: str = "") -> str | None:
     """A shell command that may change the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a
     harness program waits for the principal's code for that command, the folder it runs in, each script it runs and each
     file it names, as they stand (22.20, 22.26)."""
-    said, does = _settings_said(_reached(command, cwd))
+    said, does = _settings_said(_reached(command, cwd, named))
     if not hold:
         return Unproven(f"may change {said}")
     subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items()),
@@ -7211,8 +7237,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
             said = "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
             why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
-        unplain = _plainly(words, where, command + "\n" + text, found, given) if ran and (mine_run or python) else "is not run"  # finding 4
         args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
+        asks = python and bool(ran) and args in (["--help"], ["-h"]) and _answers_help(ran)  # its usage alone (A10)
+        unplain = _plainly(words, where, command + "\n" + text, found, given, asks) if ran and (mine_run or python) else "is not run"  # finding 4
         values = [v for v in (m[3].strip("'\"") for m in given) if not paths.inside(ran, _real(os.path.join(where, os.path.expanduser(v))))]
         heard = (_spells([fed, *args, *values], [head, *args], where, env, raw, linked) or (where if within else "") or (  # what its line names,
             "the files xargs hands it" if HANDED in words and names else "")) if ran and not unplain else ""  # past where the script lies

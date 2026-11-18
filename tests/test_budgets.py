@@ -2605,8 +2605,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # names them), install_command 4 (the staged file's SHA-256 checked before root copies it). doctor.py none (its layout
 # check reads the same mark). And the plugin 2 more, in setup.py's stage_sandbox (finding 1: every plugin or full run
 # sealed Codex's profile): `seal` its own parameter, passed only by the `sandbox` command, and its docstring.
-CORE_BUDGET = 25041
-PLUGIN_BUDGET = 51775
+# BACKLOG A10 (5.25.1; three false holds a Codex session met on 2026-11-18), each 27 more for its help requests, all in
+# guards.py: NO_HELP 4 and its comment 6 (a script the runtime carries, asked by the plain interpreter for --help or -h
+# alone, needs no -s; the carried scripts that answer none), _answers_help 6 (its line and docstring 3; the runtime's
+# copy of a script, a carried skill's Python, never the kit's or one of NO_HELP, 3), _plainly 1 more (its docstring: a
+# help request may load the user's own site folder), _self_grant 1 more (`asks`; args moved above `unplain` keeps its
+# line), check_self_grant 1 more (what the readings that held a command name, kept for its hold), _reached 4 more (its
+# docstring 1; the settings those readings name, before every setting is named, 3), _settings_hold none (the parameter
+# that hands them on), and 4 blank lines.
+CORE_BUDGET = 25068
+PLUGIN_BUDGET = 51802
 
 
 def _lines(files):
