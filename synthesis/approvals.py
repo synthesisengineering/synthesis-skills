@@ -88,10 +88,12 @@ def hooks(code: str) -> bool:
 
 
 def _request_file(code: str) -> Path:
-    """The pending request of this code, in the folder its shape names. A shell can read the hook's codes and write its own
-    folder, so a file there under a code of the hook's is never read, even once the hook's request has expired (review
-    round 1 of 5.25.0, finding 2: a request planted under one then was granted by the code the hook had shown)."""
-    return (_dir("requests") if hooks(code) else paths.requests()) / f"{code}.json"
+    """The pending request of this code: the hook's sealed one wherever one is filed under it, else, for a code of a
+    shell's shape alone, the one beside the state. A shell can read the hook's codes and write its own folder, so a file
+    there under a code of the hook's is never read, even once the hook's request has expired (review round 1 of 5.25.0,
+    finding 2); a release before this one drew a hook code's first digit from 0 to 9."""
+    sealed = _dir("requests") / f"{code}.json"
+    return sealed if hooks(code) or sealed.exists() else paths.requests() / f"{code}.json"
 
 
 def how(code: str) -> str:
@@ -224,7 +226,7 @@ def grant_from_prompt(prompt: str, transcript_path: str = "", session_id: str = 
         ended = {}
     for code in typed_codes(prompt):
         pending_file = _request_file(code)
-        data, shell = paths.read_json(pending_file), not hooks(code)
+        data, shell = paths.read_json(pending_file), pending_file.parent == paths.requests()
         for entry in _entries(data) if data.get("digest") else []:  # every request the code carries (A5)
             effect = entry["kind"] in EFFECTS and digest(entry["kind"], entry.get("subject")) == entry["digest"]
             paths.write_json(_dir("effects" if effect else "grants") / f"{entry['digest']}.json", {

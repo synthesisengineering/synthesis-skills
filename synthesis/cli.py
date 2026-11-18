@@ -473,8 +473,9 @@ def cmd_searches(args) -> int:
 def cmd_approvals(args) -> int:
     """The requests waiting for the principal's code: the hook's, then those a shell filed, named as a shell's."""
     from synthesis import approvals
-    for code in sorted(approvals.pending(), key=lambda c: (not approvals.hooks(c), c)):  # a file under another's code is none
-        data, shell = paths.read_json(approvals._request_file(code)), "" if approvals.hooks(code) else approvals.SHELL
+    for code in sorted(approvals.pending(), key=lambda c: (approvals._request_file(c).parent == paths.requests(), c)):
+        file = approvals._request_file(code)  # a file under another's code is none
+        data, shell = paths.read_json(file), approvals.SHELL if file.parent == paths.requests() else ""
         print(f"{code}  {time.strftime('%H:%M', time.localtime(float(data.get('at') or 0)))}  {data.get('summary', '')}{shell}")
     return 0
 

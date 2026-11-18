@@ -2587,9 +2587,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # is what that step tests first, so no release's install seals Codex before it). Then the plugin 2 more, in setup.py's
 # _seal: its write rules (the requests folder a Codex shell files into) are written at every install and its read-only
 # rules only by the sandbox step, and the note for writes alone says so.
-# Then each 32 more, for review round 1 of 5.25.0, in synthesis/. approvals.py 12 (finding 2, a shell's request planted
+# Then each 35 more, for review round 1 of 5.25.0, in synthesis/. approvals.py 14 (finding 2, a shell's request planted
 # under a code the hook had shown, once the hook's request expired, granted by that code): hooks 3 (a code's first digit
-# says who filed it), _new_code 1 (its docstring; the digit by who files), _file 1 fewer (a retry keeps only a code of
+# says who filed it), _request_file 2 (the hook's sealed request read first under any code, as a release before drew
+# the hook's first digit from 0 to 9, and a shell's only under a shell's code: its docstring 1, the sealed path 1),
+# _new_code 1 (its docstring; the digit by who files), _file 1 fewer (a retry keeps only a code of
 # its own shape, never one typed already; the loop that drew a new code over the hook's goes), grant_from_prompt 1 (it
 # marks each code it grants answered, and removes that code's one request), answered 5 (a typed code answers each request
 # it carried when first answered, once, in a sealed mark: its docstring 2, the mark's check 1, the mark written 2; the
@@ -2598,13 +2600,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # _move_records 9 (the two moves, just before the switch), _install_locked 3 (called there, and where no switch is
 # needed), install 5 fewer (the moves at its start go), and 2 blank lines. paths.py 6: moved 5 (the move's own last
 # write says it is made, so a code answered before the switch never stops it), old_approvals 1 fewer, and 2 blank
-# lines. cli.py 2 fewer: cmd_approvals lists the codes `pending` names. sandbox.py 7 (the round's notes): the import 1,
+# lines. cli.py 1 fewer: cmd_approvals lists the codes `pending` names, a shell's named by its folder. sandbox.py 7 (the round's notes): the import 1,
 # claude_managed 2 (the three synthesis folders a session writes named in Claude Code's write area, as Codex's profile
 # names them), install_command 4 (the staged file's SHA-256 checked before root copies it). doctor.py none (its layout
 # check reads the same mark). And the plugin 2 more, in setup.py's stage_sandbox (finding 1: every plugin or full run
 # sealed Codex's profile): `seal` its own parameter, passed only by the `sandbox` command, and its docstring.
-CORE_BUDGET = 25038
-PLUGIN_BUDGET = 51772
+CORE_BUDGET = 25041
+PLUGIN_BUDGET = 51775
 
 
 def _lines(files):
