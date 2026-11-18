@@ -477,3 +477,79 @@ def test_two_identical_calls_at_once_cannot_each_go_on_one_of_the_two_codes(monk
     assert ask() is None
     slow.worker.join(5)
     assert len(second) == 1 and second[0] is not None                    # one message, one release
+
+
+# --- A10: a quoted header (2026-11-18) ---------------------------------------------------------------------------------
+# A Codex session forwarded a message and the guard held it for `2:33 PM`, the time in the quoted header's Date line:
+# when the forwarded message was sent. The header a mail client writes over a forwarded or replied-to message is that
+# message's own, and a time there proposes no meeting. The new words of the message, and the quoted message's own words,
+# still name what they name.
+
+QUOTED = ("<p>---------- Forwarded message ---------</p><p>From: A Sender &lt;a@example.com&gt;</p>"
+          "<p>Date: Tue, Nov 17, 2026 at 2:33 PM EST</p><p>Subject: Notes from the review</p><p>To: B Reader &lt;b@example.com&gt;</p>")
+COVER = "<p>Hi Pat,</p><p>Here is the note from yesterday, as background for your conversation.</p>"
+
+
+def forward(cover=COVER, quoted_words="<p>Thanks for the notes. Could you share a few days that suit you?</p>"):
+    return {"to": "c@example.com", "subject": "Fwd: Notes from the review", "body_format": "html", "user_google_email": "me@example.com",
+            "body": f"{cover}<div>{QUOTED}<blockquote>{quoted_words}</blockquote></div>"}
+
+
+def test_a_forward_whose_only_time_is_in_its_quoted_header_waits_only_for_the_ordinary_approval():
+    reason = ask(given=forward())
+    assert ordinary(reason), reason
+    _approve(reason)
+    assert ask(given=forward()) is None                                  # no calendar read asked for
+
+
+def test_a_forward_whose_own_new_words_propose_a_time_is_still_held_for_that_time():
+    held = ask(given=forward(cover="<p>Hi Pat,</p><p>Could we talk it over on Thursday at 4 pm?</p>"))
+    assert stale(held) and "`4 pm`" in held and "2:33" not in held, held
+
+
+def test_the_quoted_messages_own_words_still_name_their_time():
+    held = ask(given=forward(quoted_words="<p>Would Friday at 3 pm suit you?</p>"))
+    assert stale(held) and "`3 pm`" in held and "2:33" not in held, held
+
+
+HEADERS = {  # each mail client's header over a quoted message, with the earlier message's time in it
+    "Gmail's forward": ("Please see below.\n\n---------- Forwarded message ---------\nFrom: A Sender <a@example.com>\n"
+                        "Date: Tue, Nov 17, 2026 at 2:33 PM\nSubject: Notes\nTo: B Reader <b@example.com>\n\nThe notes."),
+    "Outlook's original message": ("See below.\n\n-----Original Message-----\nFrom: A Sender <a@example.com>\n"
+                                   "Sent: Tuesday, November 17, 2026 2:33 PM\nTo: B Reader\nSubject: Notes\n\nThe notes."),
+    "Outlook's rule": ("<p>See below.</p><hr><p>From: A Sender</p><p>Sent: Tuesday, November 17, 2026 2:33 PM</p><p>To: B Reader</p>"
+                       "<p>Subject: Notes</p><p>The notes.</p>"),
+    "Apple Mail's forward": ("FYI.\n\nBegin forwarded message:\n\nFrom: A Sender <a@example.com>\nSubject: Notes\n"
+                             "Date: November 17, 2026 at 2:33 PM EST\nTo: B Reader <b@example.com>\n\nThe notes."),
+    "Thunderbird's forward": ("FYI.\n\n-------- Forwarded Message --------\nSubject: Notes\nDate: Tue, 17 Nov 2026 14:33:05 -0500\n"
+                              "From: A Sender <a@example.com>\nTo: B Reader <b@example.com>\n\nThe notes."),
+    "a dated header with no marker": "FYI.\n\nFrom: A Sender <a@example.com>\nSent: Tuesday, November 17, 2026 2:33 PM\nTo: B Reader\n\nThe notes.",
+    "a header quoted in a reply": ("Thanks.\n\n> From: A Sender <a@example.com>\n> Sent: Tuesday, November 17, 2026 2:33 PM\n> To: B Reader\n"
+                                   "> The notes."),
+    "a reply's attribution": "Thanks, that works.\n\nOn Tue, Nov 17, 2026 at 2:33 PM A Sender <a@example.com> wrote:\n> The notes.",
+    "an attribution a client wrapped": "Thanks.\n\nOn Tue, Nov 17, 2026 at 2:33 PM A Sender <\na@example.com> wrote:\n> The notes.",
+    "an attribution in HTML": ("<p>Thanks.</p><div><p>On Tue, Nov 17, 2026 at 2:33 PM A Sender &lt;a@example.com&gt; wrote:</p>"
+                               "<blockquote><p>The notes.</p></blockquote></div>"),
+}
+
+
+@pytest.mark.parametrize("name", list(HEADERS))
+def test_a_time_in_a_quoted_header_is_the_earlier_messages_in_each_clients_shape(name):
+    assert guards._time_without_calendar([HEADERS[name]], CONFIG, SESSION) is None, name
+    assert stale(guards._time_without_calendar([HEADERS[name] + "\n\nCould we talk at 4 pm?"], CONFIG, SESSION)), name
+
+
+PROPOSALS = {  # a new message's words, shaped like a header or not: each proposes the time it names
+    "an offer": "Could we meet Thursday at 2:30 PM?",
+    "a memo's date line": "Date: Thursday, November 19 at 2:30 PM\nPlace: the small room",
+    "a from, a date and a subject with no year": "From: me\nDate: Thursday at 2:30 PM\nSubject: our meeting",
+    "a dated line with no sender": "Date: Thursday, November 19, 2026 at 2:30 PM\nSubject: our meeting\nTo: you",
+    "an attribution with no date": "On Thursday at 2:30 PM, Dana wrote:\n> the room is free",
+    "a marker in the middle of a line": "As the forwarded message said, could we meet at 2:30 PM?",
+}
+
+
+@pytest.mark.parametrize("name", list(PROPOSALS))
+def test_a_new_message_that_proposes_a_time_is_still_held(name):
+    held = guards._time_without_calendar([PROPOSALS[name]], CONFIG, SESSION)
+    assert stale(held) and "2:30" in held, (name, held)
