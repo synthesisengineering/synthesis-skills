@@ -165,10 +165,12 @@ when this session last read a calendar. With `fresh_calendar` in the config:
   afternoon`, `19.30`), which is not held. Not one either: a time in the header a mail client writes over a
   forwarded or replied-to message, which is when that message was sent (2026-11-18: a forward was held for the
   time in its quoted `Date:` line). That header is the run of `From:`, `Sent:`, `Date:`, `To:`, `Cc:` and
-  `Subject:` lines under a forward's or an original message's marker or a rule, or carrying a sender and a dated
-  `Date:` or `Sent:` of its own, and a reply's `On <date>, <sender> wrote:`, in plain text or HTML. A time in the
-  quoted message's own words, or in the message's new words, is held like any other. A number that only looks
-  like a time (`John 3:16`, `line 12:30`) is held like one.
+  `Subject:` lines that carries a sender and a `Date:` or `Sent:` with its year, under a forward's or an original
+  message's marker (`---------- Forwarded message ---------`, `-----Original Message-----`, `Begin forwarded
+  message:`), a rule (a line of underscores, `<hr>`) or quote marks (`>`), and a reply's dated `On <date>, <sender>
+  wrote:`, in plain text or HTML. A time in the quoted message's own words, in the message's new words, or in a
+  header-like block with no such mark is held like any other. A number that only looks like a time (`John 3:16`,
+  `line 12:30`) is held like one.
 - **When it asks:** at the first call, before any approval code is asked, so the principal is not shown a text
   the check may still change; and again at the approved call, since the approval may have taken longer than the
   read stays fresh. That second question is the moment the incident missed. An approval already typed stands: the

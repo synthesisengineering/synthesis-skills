@@ -855,10 +855,10 @@ def _calendar_read(transcript: str, reads: list) -> float | None:
 
 
 # A forwarded or replied-to message's quoted header (A10, 2026-11-18: a forward was held for the time in its quoted Date
-# line). The From, Sent, Date, To, Cc and Subject lines a mail client writes over a quoted message, under a forward's or
-# an original message's marker or a rule, or with a sender and a dated Date or Sent of their own, and a reply's "On
-# <date>, <sender> wrote:", are the earlier message's: a time there is when it was sent. They are read as the text shows
-# them, in plain text or in HTML. The quoted message's own words, and the new ones, still name what they name.
+# line). The From, Sent, Date, To, Cc and Subject lines a mail client writes over a quoted message, with a sender and a
+# dated Date or Sent, under a forward's or an original message's marker or a rule or behind quote marks, and a reply's
+# "On <date>, <sender> wrote:", are the earlier message's: a time there is when it was sent. They are read as the text
+# shows them, in plain text or HTML. The quoted message's own words, the new ones and a header with no mark still count.
 QUOTE_MARK = _Pattern(r"(?i)-{2,}\s*(?:forwarded|original)\s+message\s*-{2,}|begin forwarded message:?|_{8,}")
 HEADER_LINE = _Pattern(r"(?i)(from|sent|date|to|cc|bcc|subject|reply-to)\s*:\s*\S")
 WROTE = _Pattern(r"(?is)on\s.{0,200}?\b(?:19|20)\d\d\b.{0,200}?\swrote:")  # a reply's attribution, dated
@@ -870,7 +870,8 @@ def _quoted_headers_out(text: str) -> str:
     import html
     breaks = list(LINE_END.finditer(text))
     spans = list(zip([0] + [m.end() for m in breaks], [m.start() for m in breaks] + [len(text)]))
-    shown = [re.sub(r"^[>\s]+", "", html.unescape(re.sub(r"<[^>]*>", "", text[a:b]))).strip() for a, b in spans]
+    seen = [html.unescape(re.sub(r"<[^>]*>", "", text[a:b])) for a, b in spans]  # each line as the text shows it
+    shown = [re.sub(r"^[>\s]+", "", line).strip() for line in seen]  # past its quote marks
     runs, cut = [[]], set()
     for k, line in enumerate(shown):  # each run of header lines, blank lines between them read past
         runs[-1] += [k] if HEADER_LINE.match(line) else []
@@ -879,8 +880,9 @@ def _quoted_headers_out(text: str) -> str:
         above = next((k for k in range(run[0] - 1, -1, -1) if shown[k]), -1)  # the nearest line with words above it
         fields = {HEADER_LINE.match(shown[k])[1].lower(): shown[k] for k in run}
         marked = (above >= 0 and QUOTE_MARK.fullmatch(shown[above])) or any(m[0][:3].lower() == "<hr" for m in breaks[max(above, 0):run[0]])
+        quoted = all(seen[k].lstrip().startswith(">") for k in run)
         dated = "from" in fields and bool(re.search(r"\b(?:19|20)\d\d\b", fields.get("date", "") + " " + fields.get("sent", "")))
-        cut |= set(run) if marked or dated else set()
+        cut |= set(run) if dated and (marked or quoted) else set()
     for at in range(len(shown)):
         cut |= next((set(range(at, at + n)) for n in (1, 2, 3) if WROTE.fullmatch(" ".join(shown[at:at + n]))), set())  # wrapped too
     return "".join(text[a:b] * (k not in cut) + (breaks[k][0] if k < len(breaks) else "") for k, (a, b) in enumerate(spans))

@@ -2624,8 +2624,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # a rule, or with a sender and a dated Date or Sent, cut, 6; a dated attribution, wrapped or not, cut, 2; the words
 # without them, 1), and 4 blank lines; _time_without_calendar keeps its line (a time is looked for there only in a text
 # that names one).
-CORE_BUDGET = 25104
-PLUGIN_BUDGET = 51838
+# Then each 2 more, in guards._quoted_headers_out: each line kept with its quote marks 1, and a run whose every line is
+# behind them 1, since a header block counts only with a sender and a dated Date or Sent, under a mark, a rule or quote
+# marks (a block of its own with no mark, or a slot's From and To under a rule, still names its time); the section's
+# comment keeps its lines.
+CORE_BUDGET = 25106
+PLUGIN_BUDGET = 51840
 
 
 def _lines(files):
