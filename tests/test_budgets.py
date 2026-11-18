@@ -2422,10 +2422,47 @@ ROOT = Path(__file__).resolve().parents[1]
 # body), _aliased 1 (`${X}alias` is `alias` where X is empty), _claude_parts 1 (its folders kept for the variables that
 # place them rather than for a call, since a check run outside a call's own start would keep another call's); an echo's
 # arithmetic still gives HOME a value (no line).
+# 5.24.1 (2026-11-17), each 139 more, all in synthesis/, for BACKLOG A5, A7, A8 and A9:
+# A9, the upgrade from 5.23: paths.account_home 4 and its 2 blank lines (the account's home as the user database names
+# it, never HOME); approvals.transcript 4 more (a note 5.23's prompt hook wrote, naming no folders, read against each
+# harness's folders under that home) and _kept_by_a_harness 1 more (its docstring says so).
+# A5, the hooks follow the Mac's newest Python: install.py 8 (`import glob` 1; FRAMEWORKS and TESTED 2, each python.org
+# version a candidate and none newer than the checks test; pinned_python 5 more, the newest final release of those
+# accepted, read from each, its docstring 2 of them). One command, one code: approvals.request 6 more (the call's code
+# taken first, its first request listing afresh what the call asks, a later one listed beside the first), CALL 1 and
+# one_code 12 (every request filed while one call is judged takes one code; a call inside another files under the
+# outer's), _entries 5 and _keys 2 (the requests a code carries), their 7 blank lines, grant_from_prompt 1 fewer (each
+# request the code carries granted, in a loop that replaced the single write), answered 4 more (a program's own check
+# finds its request among the code's others and leaves those for their own checks); guards.ASKS_CODE 1 and _one_code
+# 15 with its 4 blank lines (every check of the call judged, a refusal what it gets, the waits said together), the
+# file tools' chain 1 more (judged the same way; the shell's chain is the same length as a tuple of checks).
+# A7, one approval per send: guards._judged_send 1 more (the hold says the code is the principal's only approval).
+# A8, the Mac's security: doctor.PROTECTIONS 9 (FileVault, the firewall, System Integrity Protection and Gatekeeper,
+# each with what says it is off or on and the one step that turns it on), SSH_SHARED 1, check_security 45 (the home
+# folder and ~/.ssh open to no other user, no private key readable by one, the four asked at once, a warning per thing
+# naming its fix), their 4 blank lines, and run_checks 3 more (the check started beside the rest, its lines added).
+# Then each 66 more, all in synthesis/, for the integration review of 5.24.1 (its one round): finding 1, a code names
+# exactly what it grants: approvals.request 9 fewer (a request inside a call joins the call's and returns the code the
+# call said, made on its first request), _new_code 3 and _file 10 (the call's requests filed together, under a pending
+# code only when that code carries exactly them), one_code 3 more (the code said and the code filed kept apart), void 1
+# more (its docstring: a code carrying the voided request beside others goes with it; the match itself stays a line),
+# guards._one_code 5 more (an approval a later check cannot verify said with the call's other waits; the code filed put
+# in place of the code said, only by the call that files); finding 2, the doctor's false warnings: _private_group 10 (a
+# group of the user's own lets no one else in) and check_security 1 more (a folder judged where a link leads, the files
+# of ~/.ssh only when the folder is open), SSH_SHARED's comment 1 (public and Finder files); the notes:
+# check_interpreter 19 (the Python the hooks run, and a newer python.org version the installer passed over, with why
+# and the steps that let it be pinned) and doctor's `import glob` 1; install.final_version 9 and pinned_python 8 fewer
+# (an interpreter's version read in one place for both); approvals._account_folders 10 and transcript 3 fewer (the
+# account's home looked up only for a note that names no folders, none for an account the user database does not know);
+# guards._protected_roots 1 more (Codex's archived rollouts). The new definitions' 12 blank lines.
+# Then each 10 more, all in doctor.check_interpreter, for the review's round 2 (its last): the hooks' own Python asked of
+# interpreter_problems before it is run, each python.org version read from its folder's name and never by running it
+# (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
+# the version's own fixed alone, so the warning goes once the steps are run.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23477
-PLUGIN_BUDGET = 50146
+CORE_BUDGET = 23692
+PLUGIN_BUDGET = 50361
 
 
 def _lines(files):

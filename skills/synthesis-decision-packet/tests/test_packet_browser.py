@@ -1,7 +1,7 @@
 """The generated page driven in a real headless Chromium: E42, E45, E47 and E48 as behaviour.
 
 Set SYNTHESIS_TEST_CHROMIUM to a chrome-headless-shell executable, or put one on PATH (else
-chromium, chromium-browser or google-chrome). Full Chrome's headless mode never finished
+chromium, chromium-browser or google-chrome), or install it where AGENTS.md says, where they look too. Full Chrome's headless mode never finished
 --dump-dom on this page in testing (2026-10-06, Chrome on macOS and Linux CI), while the
 headless shell, Chrome's build for automation, returns in a fraction of a second, so CI
 installs the shell. Without a browser these tests skip, except where CI requires one;
@@ -33,14 +33,18 @@ def find_chromium():
     configured = os.environ.get("SYNTHESIS_TEST_CHROMIUM")
     if configured:
         return configured if Path(configured).is_file() else None
-    return next(filter(None, (shutil.which(n) for n in
-                              ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"))), None)
+    on_path = next(filter(None, (shutil.which(n) for n in
+                                 ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"))), None)
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "synthesis" / "browsers"  # where AGENTS.md installs it
+    found = sorted(cache.glob("chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell"),
+                   key=lambda p: [int(n) for n in re.findall(r"\d+", p.parent.parent.name)])
+    return on_path or (str(found[-1]) if found else None)
 
 
 CHROMIUM = find_chromium()
 if CHROMIUM is None and os.environ.get("SYNTHESIS_REQUIRE_CHROMIUM") == "1":  # CI: a missing browser fails
     raise RuntimeError("SYNTHESIS_REQUIRE_CHROMIUM=1 but no Chromium was found")
-pytestmark = pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM or put one on PATH")
+pytestmark = pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM, put one on PATH, or install it as AGENTS.md says")
 
 PRELUDE = """<script>
 window.packetErrors = [];

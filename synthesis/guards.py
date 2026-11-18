@@ -753,8 +753,9 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
                 "not added to today by an agent's choice, and a requester's timing is their preference: propose another day "
                 "unless the principal asked for today. If they did, show them the exact event and ask them to type "
                 f"{approvals.how(code)} for this same-day meeting. Then make this identical call again." + reshape)
-    return ("Sending needs the principal's approval of this exact message. Show them the exact text and "
-            f"recipient and ask them to type {approvals.how(code)}. Then make this identical call again." + reshape
+    return ("Sending needs the principal's approval of this exact message. Show them the exact text and recipient with this code, "
+            f"in one message, and ask them to type {approvals.how(code)}: it is their only approval, so ask them for no other "
+            "go-ahead (2026-11-17). Then make this identical call again." + reshape
             + (" The approval covers each file the call has the connector read as it is now, so name those files to the "
                "principal too: one changed before the call needs a new code." if files else ""))
 
@@ -3853,6 +3854,7 @@ def _protected_roots(config: dict | None) -> list[str]:
     if key not in ROOTS_MEMO:
         ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
                                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
+                                            paths.codex_home() / "archived_sessions",  # Codex's archived rollouts, where a note may point (5.24.1)
                                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                                             *([store] if store else [])]] + (_settings() if mode else [])
     return list(ROOTS_MEMO[key])
@@ -5656,7 +5658,7 @@ IMPORTS_IT = _Pattern(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[
                         r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
 SAYS_SYNTHESIS = _Pattern(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone answered consume grant_from_prompt put_back remember request void"),
+    ("approvals", "_expire _file _spend alone answered consume grant_from_prompt one_code put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
@@ -10796,24 +10798,25 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
     if tool in STDIN_TOOLS:
         return check_typed(tool_input, config, cwd, session)
     if shell_tool(tool):
-        command = shell_command(tool_input)
-        verdict = (check_destructive(command, config, cwd) or check_runtime(command, cwd, session)  # a recursive delete is named as one
-                   or check_self_grant(command, cwd, config, session)
-                   or check_pr_gate(command, config, cwd, session)
-                   or check_deploy(command, config, cwd, session) or check_tunnel(command, config, cwd, session)
-                   or check_outgoing(command, config, cwd, session)
-                   or check_claimed(_shell_writes(command, cwd), cwd, session)
-                   or check_hook_writes(tool, tool_input, cwd, session))
-        senders = list(_CALL.get("senders") or [])  # before the check below judges each git program as a call of its own
-        verdict = verdict or check_git_programs(command, config, cwd, session)  # last: it judges each program as a call of its own
+        command, senders = shell_command(tool_input), []
+        verdict = _one_code((lambda: check_destructive(command, config, cwd), lambda: check_runtime(command, cwd, session),  # a
+                             lambda: check_self_grant(command, cwd, config, session),  # recursive delete is named as one
+                             lambda: check_pr_gate(command, config, cwd, session),
+                             lambda: check_deploy(command, config, cwd, session), lambda: check_tunnel(command, config, cwd, session),
+                             lambda: check_outgoing(command, config, cwd, session),
+                             lambda: check_claimed(_shell_writes(command, cwd), cwd, session),
+                             lambda: check_hook_writes(tool, tool_input, cwd, session),
+                             lambda: senders.extend(_CALL.get("senders") or []),  # before the check below judges each git program
+                             lambda: check_git_programs(command, config, cwd, session)))  # last: each program as a call of its own
         if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
             from synthesis import sends
             for run in senders:
                 sends.sender_ticket(paths.session_id(session), run)
         return verdict
     if tool in FILE_TOOLS:
-        return (check_file_write(tool, tool_input, cwd, config, session) or check_claimed(_file_targets(tool, tool_input), cwd, session)
-                or check_hook_writes(tool, tool_input, cwd, session) or check_settings_write(tool, tool_input, cwd, session))
+        return _one_code((lambda: check_file_write(tool, tool_input, cwd, config, session),
+                          lambda: check_claimed(_file_targets(tool, tool_input), cwd, session),
+                          lambda: check_hook_writes(tool, tool_input, cwd, session), lambda: check_settings_write(tool, tool_input, cwd, session)))
     if tool.startswith(BROWSER):
         return check_browser(tool, tool_input, config, cwd, session) or (
             check_desktop(desktop_tool(tool), tool, tool_input, config, session) if desktop_tool(tool) else None)
@@ -10822,6 +10825,31 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
     reason = check_driven(kind, tool, tool_input, config, session) if kind else None
     return reason or _connector(tool, tool_input, config, cwd, session)
+
+
+ASKS_CODE = _Pattern(r"\bapprove followed by the code [0-9][0-9a-f]{5}\b")  # what every wait says (approvals.how)
+
+
+def _one_code(checks) -> str | None:
+    """Judge every check of one call: the first refusal is what it gets, and nothing after it is judged; the checks that
+    wait are said together, every request they file under one code (A5, 2026-11-17: one command the runtime check, then
+    the writers check, held asked the principal for two codes, minutes apart)."""
+    waits = []
+    with approvals.one_code() as call:
+        for judge in checks:
+            try:
+                reason = judge()
+            except approvals.Unverified as held:  # a grant its record did not back, asked again: said with the rest (review
+                reason = str(held)                 # of 5.24.1: the waits before it were dropped, though the code carried them)
+            if reason and not ASKS_CODE.search(reason):
+                return reason
+            waits += [reason] if reason else []
+    if call["code"]:  # the code they share, known once the call's requests are filed (an outer call files them itself)
+        waits = [w.replace(call["shown"], call["code"]) for w in waits]
+    if len(waits) > 1:
+        return f"This waits on {len(waits)} of the guard's checks. Each names the same code, so it is typed once:\n" + "\n".join(
+            f"{n}. {w}" for n, w in enumerate(waits, 1))
+    return waits[0] if waits else None
 
 
 def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:

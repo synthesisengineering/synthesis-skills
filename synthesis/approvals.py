@@ -64,17 +64,61 @@ def pending() -> list[str]:
 
 
 def request(kind: str, subject, summary: str) -> str:
-    """File (or refresh) a pending request; returns the code the principal types. A retry keeps the
-    code the principal was already shown."""
-    key = digest(kind, subject)
+    """File (or refresh) a pending request; returns the code the principal types. A retry keeps the code the principal
+    was already shown. Inside `one_code` the request joins the call's, filed together under one code when it ends."""
+    entry = {"kind": kind, "digest": digest(kind, subject), "summary": summary}
+    if CALL:
+        CALL[0]["entries"] += [] if any(e["digest"] == entry["digest"] for e in CALL[0]["entries"]) else [entry]
+        CALL[0]["shown"] = CALL[0]["shown"] or _new_code()  # made on the first request: a call that asks none pays nothing
+        return CALL[0]["shown"]
+    return _file([entry], _new_code())
+
+
+def _new_code() -> str:
+    import secrets
+    return str(secrets.randbelow(10)) + secrets.token_hex(3)[:5]  # a leading digit keeps every code apart from English words
+
+
+def _file(entries: list, code: str) -> str:
+    """File these requests under the code a pending request of exactly these already has (a retry), else under `code`.
+    Never a code that carries anything else: a code the principal was shown names exactly what it grants (the
+    integration review of 5.24.1, finding 1: a later call's requests joined a code shown for fewer)."""
     _expire()
-    code = next((c for c in pending() if paths.read_json(_dir("approval-requests") / f"{c}.json").get("digest") == key), "")
-    if not code:  # a leading digit keeps every code apart from English words
-        import secrets
-        code = str(secrets.randbelow(10)) + secrets.token_hex(3)[:5]
-    paths.write_json(_dir("approval-requests") / f"{code}.json",
-                     {"kind": kind, "digest": key, "summary": summary, "at": time.time()})
+    keys = sorted(e["digest"] for e in entries)
+    code = next((c for c in pending() if sorted(_keys(_dir("approval-requests") / f"{c}.json")) == keys), code)
+    paths.write_json(_dir("approval-requests") / f"{code}.json", {**entries[0], "at": time.time(),
+                                                                    **({"also": entries[1:]} if entries[1:] else {})})
     return code
+
+
+CALL: list = []  # while one call is judged (`one_code`): {"shown": the code its requests said, "entries": them, "code"}
+
+
+@contextlib.contextmanager
+def one_code():
+    """Every request filed inside joins the call's, so a call several checks hold asks the principal once (A5,
+    2026-11-17). They are filed when it ends, and `code` is then the one they share, which replaces the `shown` one in
+    what the call says; a call judged inside another joins the outer one's."""
+    if CALL:
+        yield CALL[0]
+        return
+    call = {"shown": "", "entries": [], "code": ""}
+    CALL.append(call)
+    try:
+        yield call
+    finally:
+        CALL.clear()
+        call["code"] = _file(call["entries"], call["shown"]) if call["entries"] else ""
+
+
+def _entries(data: dict) -> list:
+    """The requests one code carries: the first, then those listed beside it."""
+    also = data.get("also") if isinstance(data.get("also"), list) else []
+    return [e for e in [data, *also] if isinstance(e, dict) and isinstance(e.get("digest"), str) and e.get("kind")]
+
+
+def _keys(path: Path) -> list:
+    return [e["digest"] for e in _entries(paths.read_json(path))]
 
 
 def _expire() -> None:
@@ -133,12 +177,11 @@ def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
     for code in typed_codes(prompt):
         pending_file = _dir("approval-requests") / f"{code}.json"
         data = paths.read_json(pending_file)
-        if not data.get("digest"):
-            continue
-        paths.write_json(_dir("approvals") / f"{data['digest']}.json",
-                         {**data, "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
+        for entry in _entries(data) if data.get("digest") else []:  # every request the code carries (A5)
+            paths.write_json(_dir("approvals") / f"{entry['digest']}.json", {"kind": entry["kind"], "digest": entry["digest"],
+                             "summary": entry.get("summary", ""), "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
+            granted.append(entry.get("summary", ""))
         pending_file.unlink(missing_ok=True)
-        granted.append(data["summary"])
     return granted
 
 
@@ -154,7 +197,20 @@ def transcript(session: dict | None) -> str:
         return given
     record = paths.read_json(_dir("transcripts") / f"{sid}.json")
     recorded = str(record.get("path") or "")
-    return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, record.get("folders")) else ""
+    folders = record["folders"] if "folders" in record else _account_folders()  # a note 5.23's prompt hook wrote names none
+    return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, folders) else ""
+
+
+def _account_folders() -> dict:
+    """Each harness's folders under the account's own home, where a note 5.23's prompt hook wrote may lie (A9); none for an
+    account the user database does not know (the integration review of 5.24.1)."""
+    try:
+        home = paths.account_home()
+    except KeyError:
+        return {}
+    return {"claude-code": home / ".claude" / "projects", "codex": home / ".codex" / "sessions", "codex-archived": home /
+            ".codex" / "archived_sessions", "muse": home / ".local" / "share" / "muse" / "sessions",
+            "desktop": home / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions"}
 
 
 def remember(session_id: str, transcript_path: str) -> None:
@@ -174,7 +230,8 @@ def remember(session_id: str, transcript_path: str) -> None:
 def _kept_by_a_harness(path: str, folders) -> bool:
     """Whether a path, where it really leads, lies inside one of the folders the prompt hook recorded: a harness's own,
     or, under the desktop app's, an agent-mode session's records (`<account>/<org>/local_<session>/.claude/projects`),
-    never another file of that session. A record that names none (written before 5.24.0, or by hand) is no harness's."""
+    never another file of that session. A note 5.23's prompt hook wrote names none: `transcript` reads it against each
+    harness's folders under the account's own home, which no variable a command sets can move (A9)."""
     real = os.path.realpath(path)
     for name, root in folders.items() if isinstance(folders, dict) else ():
         base = os.path.realpath(str(root))
@@ -336,11 +393,15 @@ def answered(kind: str, subject, session: dict | None = None) -> bool:
     key, record = digest(kind, subject), transcript(session)
     for code in pending() if record else []:
         data = paths.read_json(_dir("approval-requests") / f"{code}.json")
-        if data.get("digest") != key or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+        if key not in [e["digest"] for e in _entries(data)] or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
             continue
         try:
             if typed(record, code, float(data.get("at", 0)), paths.session_id(session)):
-                (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+                rest = [e for e in _entries(data) if e["digest"] != key]  # the code's other requests stay for their own checks
+                if rest:
+                    paths.write_json(_dir("approval-requests") / f"{code}.json", {**rest[0], "at": data.get("at", 0), "also": rest[1:]})
+                else:
+                    (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
                 return True
         except OSError:
             return False
@@ -351,10 +412,11 @@ def void(kind: str, subject) -> list:
     """Spend a grant of exactly this subject, and drop a request for one that still waits, using neither: the same
     thing went out on another code, so a second copy has to be shown again (2026-11-13: a message released by the
     code for a time in its words left the ordinary grant live, and an identical call went a second time on it).
-    Returns what it removed, (file, bytes) each, for a call that is then held to put back."""
+    Returns what it removed, (file, bytes) each, for a call that is then held to put back. A request carried beside
+    others takes its code with it: that code was shown granting it (the integration review of 5.24.1)."""
     key = digest(kind, subject)
     files = [_dir("approvals") / f"{key}.json"] + [_dir("approval-requests") / f"{code}.json" for code in pending()
-                                                   if paths.read_json(_dir("approval-requests") / f"{code}.json").get("digest") == key]
+                                                   if key in _keys(_dir("approval-requests") / f"{code}.json")]
     removed = []
     for path in files:
         try:

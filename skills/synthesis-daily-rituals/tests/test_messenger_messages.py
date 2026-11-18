@@ -380,8 +380,12 @@ def find_chromium():
     configured = os.environ.get("SYNTHESIS_TEST_CHROMIUM")
     if configured:
         return configured if Path(configured).is_file() else None
-    return next(filter(None, (shutil.which(n) for n in
-                              ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"))), None)
+    on_path = next(filter(None, (shutil.which(n) for n in
+                                 ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"))), None)
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "synthesis" / "browsers"  # where AGENTS.md installs it
+    found = sorted(cache.glob("chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell"),
+                   key=lambda p: [int(n) for n in re.findall(r"\d+", p.parent.parent.name)])
+    return on_path or (str(found[-1]) if found else None)
 
 
 CHROMIUM = find_chromium()
@@ -430,7 +434,7 @@ def in_chromium(script: str, rows: list, hidden: list, scroller: str = "") -> di
     return json.loads(html.unescape(found.group(1)))
 
 
-@pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM or put one on PATH")
+@pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM, put one on PATH, or install it as AGENTS.md says")
 def test_the_extractor_on_a_page_shaped_like_the_list_saves_what_parse_reads(tmp_path, mm):
     read = in_chromium(extractor("chats"), CHATS, [row("Zed Zane", "You: ok", "3w", "9001")])
     assert read["found"] is True and read["grid"] == "Chats" and len(read["rows"]) == 6
@@ -442,7 +446,7 @@ def test_the_extractor_on_a_page_shaped_like_the_list_saves_what_parse_reads(tmp
     assert late["threads"] == [] and late["coverage"]["unreadable"] == 1
 
 
-@pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM or put one on PATH")
+@pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM, put one on PATH, or install it as AGENTS.md says")
 @pytest.mark.parametrize("scroller, bottom", [("top", False), ("bottom", True), ("", False)],
                          ids=["scroller-in-the-grid-not-at-its-end", "scroller-in-the-grid-at-its-end", "no-scroller"])
 def test_end_is_granted_only_where_the_extractor_sees_the_lists_scroll_container_at_its_end(mm, scroller, bottom):

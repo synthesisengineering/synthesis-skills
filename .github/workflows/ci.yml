@@ -6,21 +6,47 @@ name: CI
 # runs in six jobs for each system and Python, tests/ in four parts and skills/ in two, so no
 # job nears the limit even on a slow runner.
 # tests/test_source_lint.py fails if any test_*.py under skills/ would not be collected.
+#
+# Where the macOS jobs run. When the repository variable SELF_HOSTED_MAC_ACTORS (a JSON list of GitHub logins) names
+# both the person who started the run and the person who started this attempt of it, and the code is the repository's
+# own (a push, or a pull request from one of its branches), the macOS jobs run on a self-hosted Mac. Every other job,
+# every fork's and every other collaborator's included, runs on GitHub's machines. That is routing, not a control: a
+# pull request can rewrite this file. What keeps other people's code off a self-hosted machine holds whatever the file
+# says: the repository's setting that every outside contributor's run waits for a maintainer, who approves it only
+# after reading what the pull request changes under .github/, and a check on the machine itself before each job.
 
 on:
   pull_request:
   push:
     branches: [main, v5]
 
+permissions:
+  contents: read  # every job's token reads the repository and nothing more; no job here uses a secret
+
+concurrency:
+  # A new push to a pull request cancels the run still going for the old one, so a self-hosted Mac never works through
+  # superseded runs first. A push to main or v5 is a group of its own and always runs whole.
+  group: ${{ github.event_name == 'pull_request' && format('{0}-pr-{1}', github.workflow, github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: >-
+      ${{ matrix.os == 'macos-latest'
+      && contains(fromJSON(vars.SELF_HOSTED_MAC_ACTORS || '[]'), github.actor)
+      && contains(fromJSON(vars.SELF_HOSTED_MAC_ACTORS || '[]'), github.triggering_actor)
+      && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+      && fromJSON('["self-hosted", "macOS", "ARM64"]')
+      || matrix.os }}
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.12", "3.13"]
+        # The newest Python on both systems; Linux keeps 3.12 and macOS Apple's own /usr/bin/python3 (3.9), the oldest the
+        # plugin runs on: four interpreters, 24 jobs, 12 of them on macOS, where GitHub's runners are scarcest (A5,
+        # 2026-11-17). The installer pins nothing newer than the newest here (install.TESTED, which a test reads here).
+        python: ["3.12", "3.15", "apple"]
         # What `python3 -m pytest -q tests/ skills/` runs, in six jobs: the core's tests in four parts by file name,
         # and the skills' in two by the skill's name. On 2026-11-12 the whole suite took 526 seconds on a macOS runner
         # and one job was cancelled at the ten-minute limit with no test failing; as two jobs, the core's tests took 6
@@ -29,33 +55,23 @@ jobs:
         # and the skills' (203 seconds there) on Apple's Python once; macOS runners take about twice a Mac's time. Each
         # part here is at most 169 seconds on that Mac. A lint test holds that each test file runs in exactly one job.
         part: ["tests/test_[a-g]*.py", "tests/test_[h-p]*.py", "tests/test_[q-r]*.py", "tests/test_[s-z]*.py", "skills/synthesis-[a-l]*", "skills/synthesis-[m-z]*"]
-        include:
-          # Apple's own /usr/bin/python3 (3.9), the oldest Python the plugin runs on. Until 2026-11-11 a Linux job on
-          # setup-python's 3.9 stood in for it. That day apt on the two images that still have a 3.9 build
-          # (ubuntu-22.04 and ubuntu-24.04) could resolve no mirror, so the job died installing bubblewrap before any
-          # test, and the newest image has no 3.9 build at all. macOS needs no apt and has the interpreter itself.
-          - os: macos-latest
+        exclude:
+          # Apple's own /usr/bin/python3 (3.9). Until 2026-11-11 a Linux job on setup-python's 3.9 stood in for it. That day
+          # apt on the two images that still have a 3.9 build (ubuntu-22.04 and ubuntu-24.04) could resolve no mirror, so
+          # the job died installing bubblewrap before any test, and the newest image has no 3.9 build at all. macOS needs
+          # no apt and has the interpreter itself.
+          - os: ubuntu-latest
             python: apple
-            part: "tests/test_[a-g]*.py"
           - os: macos-latest
-            python: apple
-            part: "tests/test_[h-p]*.py"
-          - os: macos-latest
-            python: apple
-            part: "tests/test_[q-r]*.py"
-          - os: macos-latest
-            python: apple
-            part: "tests/test_[s-z]*.py"
-          - os: macos-latest
-            python: apple
-            part: "skills/synthesis-[a-l]*"
-          - os: macos-latest
-            python: apple
-            part: "skills/synthesis-[m-z]*"
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false  # no token left in .git/config for a test, or a self-hosted runner's next job, to read
       - uses: actions/setup-python@v5
-        if: matrix.python != 'apple'
+        # Not on a self-hosted Mac: setup-python's macOS builds install with `sudo installer` into /Library/Frameworks,
+        # and the runner there is no administrator.
+        if: matrix.python != 'apple' && runner.environment == 'github-hosted'
         with:
           python-version: ${{ matrix.python }}
       - name: Apple's /usr/bin/python3 as `python`
@@ -66,6 +82,28 @@ jobs:
           printf '#!/bin/sh\nexec /usr/bin/python3 "$@"\n' > "$RUNNER_TEMP/apple-python/python"  # a link would break Xcode's shim
           chmod +x "$RUNNER_TEMP/apple-python/python"
           echo "$RUNNER_TEMP/apple-python" >> "$GITHUB_PATH"
+      - name: On a self-hosted Mac, its own Python in a virtual environment, home and PATH of this job's own
+        # The Mac provides python.org's framework build of each Python the matrix names (what setup-python installs on
+        # GitHub's macOS machines) and Apple's /usr/bin/python3. Never Homebrew's: the local-messaging sandbox may read
+        # only under sys.base_prefix, a link there, and cannot start it. What the job installs goes into a virtual
+        # environment in RUNNER_TEMP, which the runner empties after the job, and HOME is a folder there too, so no job
+        # sees another's packages or files. Stand-ins for osascript, say, afplay and open come first on PATH: no test
+        # speaks, posts a notification or opens an app on the Mac.
+        if: runner.environment == 'self-hosted'
+        env:
+          PYTHON_VERSION: ${{ matrix.python }}
+        run: |
+          if [ "$PYTHON_VERSION" = apple ]; then base=/usr/bin/python3
+          else base="/Library/Frameworks/Python.framework/Versions/$PYTHON_VERSION/bin/python$PYTHON_VERSION"; fi
+          if [ ! -x "$base" ]; then echo "::error::This runner has no Python $PYTHON_VERSION at $base: install python.org's $PYTHON_VERSION on it"; exit 1; fi
+          "$base" -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -VV
+          mkdir -p "$RUNNER_TEMP/home" "$RUNNER_TEMP/stand-ins"
+          for name in osascript say afplay open; do printf '#!/bin/sh\nexit 1\n' > "$RUNNER_TEMP/stand-ins/$name"; chmod +x "$RUNNER_TEMP/stand-ins/$name"; done
+          echo "PIP_CACHE_DIR=$HOME/Library/Caches/pip" >> "$GITHUB_ENV"
+          echo "HOME=$RUNNER_TEMP/home" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/stand-ins" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
       - name: The test runner, with a floor
         # pip goes back to an older release when it cannot resolve the newest one's dependencies. On 2026-11-11 one
         # job got pytest 8.3.5 that way, and a test that needs 9 failed on main. With a floor the install fails here.
@@ -77,10 +115,13 @@ jobs:
           # Ubuntu 24.04 blocks the unprivileged user namespace bwrap needs; an image without the switch needs nothing.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           bwrap --die-with-parent --unshare-all --ro-bind / / true
-      - name: Chrome's headless shell for the decision-packet browser tests
-        # Full Chrome's headless mode hangs on --dump-dom of the packet page; the shell does not.
+      - name: Chrome's headless shell for the browser tests, which only the skills' parts hold
+        # Full Chrome's headless mode hangs on --dump-dom of the packet page; the shell does not. A self-hosted runner
+        # that provides one (SYNTHESIS_TEST_CHROMIUM in its own environment) is not made to fetch another each job.
+        if: startsWith(matrix.part, 'skills/')
         shell: bash
         run: |
+          if [ -x "${SYNTHESIS_TEST_CHROMIUM:-}" ]; then echo "This runner provides $SYNTHESIS_TEST_CHROMIUM"; exit 0; fi
           browser=$(npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path "$RUNNER_TEMP/browsers" | tail -n 1 | awk '{print $NF}')
           test -x "$browser"
           echo "SYNTHESIS_TEST_CHROMIUM=$browser" >> "$GITHUB_ENV"
