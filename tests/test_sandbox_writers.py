@@ -128,3 +128,29 @@ def test_a_settings_path_that_is_no_regular_file_never_holds_the_guard_or_the_co
     refused = subprocess.run([sys.executable, "-m", "synthesis.cli", "config", "apply", str(fifo)], capture_output=True, text=True,
                              cwd=ROOT, stdin=subprocess.DEVNULL, timeout=20)
     assert refused.returncode == 2 and "JSON object" in refused.stderr
+
+
+# --- the installer's own record (design 4.1: install/ holds what only the installer writes) -------------------------------
+
+def test_the_installers_record_of_what_it_replaced_is_sealed_with_it(isolated_home):
+    """What install records of what it replaced (the global hooks path to restore, the hashes of the copies it wrote) is
+    the installer's alone: it lives in install/, and a home's older record moves there once, with the approvals."""
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    record = {"git_hooks_path": {"before": ["/elsewhere/hooks"], "installed": str(isolated_home / "git-hooks")}}
+    (isolated_home / "registrations.json").write_text(json.dumps(record), encoding="utf-8")
+    assert "registrations.json" in paths.old_approvals()
+    install.move_approvals(isolated_home)
+    assert install._registrations(isolated_home) == record and not (isolated_home / "registrations.json").exists()
+    assert json.loads((isolated_home / "install" / "registrations.json").read_text(encoding="utf-8")) == record
+
+
+def test_an_install_writes_its_record_in_the_sealed_install_folder(compiled_runtime, isolated_home):
+    assert (isolated_home / "install" / "registrations.json").is_file() and not (isolated_home / "registrations.json").exists()
+
+
+def test_a_home_whose_records_lie_only_in_the_sealed_folders_shows_a_runtime_was_there(isolated_home):
+    """A session start installs from the harness's own plugin folder only into a home no runtime has been in: the sealed
+    folders show one was, as state/ and the board do."""
+    for folder in ("approvals", "install"):
+        (isolated_home / folder).mkdir(parents=True, exist_ok=True)
+        assert folder in install.traces(isolated_home)
