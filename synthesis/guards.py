@@ -4174,7 +4174,7 @@ def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[st
             targets += [at(where, w) for w in _landing(words)]
             if os.path.basename(words[0]) == "apply_patch":
                 targets += [at(where, a or b) for a, b in PATCH_PATHS.findall(text)]
-    return targets
+    return [m for t in targets for m in _globbed(t, True)]  # a target written as a pattern: what it names, through any link
 
 
 def check_claimed(targets: list[str], cwd: str, session: dict | None) -> str | None:
@@ -6194,19 +6194,47 @@ SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-work
 SUBSCRIPTED = _Pattern(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
 
 
-GLOB_PARTS = 64  # past this many parts a pattern is read as written: no protected folder lies that deep
+GLOB_NAMES, GLOB_FOLDERS = 1024, 256  # what one pattern may name, and the folders read to match it: past either, its line waits
 
 
-def _globbed(path: str) -> list:
-    """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
-    copy and redirect checks read one, else the path as written (review round 2, R2-3). A pattern of more than GLOB_PARTS
-    parts is read as written too, its written prefix judged as any path's: glob recurses once a part (A12, 2026-11-18: a
-    JSON argument of 3,000 slashes went past Python's recursion limit)."""
-    import glob
+def _globbed(path: str, hidden: bool = False) -> list:
+    """A path after the shell's own pattern expansion (`*`, `?`, `[...]`, and `**` as zsh reads it, every folder below):
+    what it matches on the file system, as the copy and redirect checks read one, else the path as written (review round
+    2, R2-3). Matched part by part with no recursion (A12: glob recursed past Python's limit on a JSON argument of 3,000
+    slashes), each folder read through any link it is, as the shell follows one (review round 1 of 5.25.1: a pattern
+    through a link the agent made wrote into approvals/); a leading dot only to a part that starts with one, unless
+    `hidden`. One that names more than GLOB_NAMES paths, reads more than GLOB_FOLDERS folders or runs past the call's
+    deadline is not matched: it is kept in `_CALL["unmatched"]`, and its line waits."""
+    found, read = [os.sep if path.startswith(os.sep) else ""], 0
+    parts = [part for part in path.split(os.sep) if part not in ("", ".")] if re.search(r"[*?\[]", path) else []
     try:
-        return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) and path.count("/") <= GLOB_PARTS else [path]
+        for at, part in enumerate(parts):
+            last, grown, queue = at == len(parts) - 1, [], list(found) if re.search(r"[*?\[]", part) else []
+            if not queue:  # a literal part: the name, where it is there
+                grown = [p for p in (os.path.join(f, part) for f in found) if (os.path.lexists(p) if last else os.path.isdir(p))]
+            while queue:
+                folder, read = queue.pop(0), read + 1
+                if read > GLOB_FOLDERS or len(grown) > GLOB_NAMES or time.monotonic() > _CALL["until"]:
+                    _CALL["unmatched"] = path
+                    return [path]
+                grown += [folder] if part == "**" and not last else []  # zero folders or more
+                try:
+                    names = sorted(os.listdir(folder or "."))
+                except OSError:
+                    continue
+                for name in (n for n in names if (hidden or n[:1] != "." or part[:1] == ".") and fnmatch.fnmatchcase(n, part.replace("**", "*"))):
+                    spot = os.path.join(folder, name)
+                    queue += [spot] if part == "**" and os.path.isdir(spot) else []
+                    grown += [spot] if (last or os.path.isdir(spot)) and not (part == "**" and not last) else []
+            if len(grown) > GLOB_NAMES:
+                _CALL["unmatched"] = path
+                return [path]
+            found = list(dict.fromkeys(grown))
+            if not found:
+                return [path]
     except re.error:  # a range Python 3.9 cannot compile (`[t-f]`), which matches nothing in the shell either
         return [path]
+    return found if parts else [path]
 
 
 def _shared(path: str, roots: list) -> str:
@@ -7408,7 +7436,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
-    real = [_real(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
+    real = [_real(m) for t in targets for w in wheres for m in _globbed(os.path.join(w, os.path.expanduser(t)), True)]  # as the shell expands a pattern
     real += [aim + t[len(link):] for t in real for link, aim in linked if t not in links and paths.inside(t, link)]  # through a link made here
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
@@ -10917,7 +10945,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False,
-                 deep=[])  # and every script it runs
+                 deep=[], unmatched="")  # and every script it runs
     if code_mode_script(tool, tool_input, session):
         return None  # it acts only through its nested calls, each judged here as a call of its own
     if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
@@ -10944,8 +10972,13 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                              lambda: check_claimed(_shell_writes(command, cwd), cwd, session),
                              lambda: check_hook_writes(tool, tool_input, cwd, session),
                              lambda: senders.extend(_CALL.get("senders") or []),  # before the check below judges each git program
+                             lambda: _CALL["unmatched"] and _unread_line(command, cwd, session, (  # a pattern past the matcher's cap
+                                 f"names a file pattern this guard cannot match within its limit ({GLOB_NAMES} names, {GLOB_FOLDERS} "
+                                 f"folders read): `{_CALL['unmatched'][:120]}`"), "Name the files it writes instead."),
                              lambda: check_git_programs(command, config, cwd, session)),  # last: each program as a call of its own
-                            deep=lambda: _too_deep(command, cwd, session))  # a line nested past what the readers follow (A12)
+                            deep=lambda: _unread_line(command, cwd, session, "nests or repeats deeper than this guard can read (past "
+                                                      "Python's recursion limit)", "To hand a program a large value, write it to a "
+                                                      "file with the file tool and give the command that file's path."))  # A12
         if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
             from synthesis import sends
             for run in senders:
@@ -10995,18 +11028,17 @@ def _one_code(checks, deep=None) -> str | None:
     return waits[0] if waits else None
 
 
-def _too_deep(command: str, cwd: str, session: dict | None) -> str | None:
-    """A shell line the guard's readers would follow past Python's recursion limit (A12, 2026-11-18) waits for the
-    principal's code of exactly that line, where it runs: never let through unread, never an exception. Judged once a
-    call, so each check that meets it says it once and its code is spent once."""
+def _unread_line(command: str, cwd: str, session: dict | None, why: str, hint: str) -> str | None:
+    """A shell line the guard cannot read in full (A12: its readers would recurse past Python's limit; review round 1 of
+    5.25.1: a pattern past the matcher's cap) waits for the principal's code of exactly that line, where it runs, saying
+    why: never let through unread, never an exception. Judged once a call, so each check that meets it says it once and
+    its code is spent once."""
     if not _CALL["deep"]:
         subject = {"command": command, "runs_in": os.path.realpath(cwd)}
         _CALL["deep"].append(None if approvals.consume("protected-read", subject, session) else (
-            "This command nests or repeats deeper than this guard can read (past Python's recursion limit), so what it runs "
-            "and writes is not known. If it only reads, show the principal this exact command and ask them to type "
-            f"{approvals.how(approvals.request('protected-read', subject, f'a line too deep to read: {command[:120]}'))}; "
-            f"then run the identical command again from {cwd}. To hand a program a large value, write it to a file with the "
-            "file tool and give the command that file's path."))
+            f"This command {why}, so what it runs and writes is not known. If it only reads, show the principal this exact "
+            f"command and ask them to type {approvals.how(approvals.request('protected-read', subject, f'a line not read in full: {command[:120]}'))}; "
+            f"then run the identical command again from {cwd}. {hint}"))
     return _CALL["deep"][0]
 
 
