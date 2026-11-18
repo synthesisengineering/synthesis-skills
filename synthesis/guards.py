@@ -5658,7 +5658,7 @@ IMPORTS_IT = _Pattern(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[
                         r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
 SAYS_SYNTHESIS = _Pattern(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _spend alone answered consume grant_from_prompt put_back remember request void"),
+    ("approvals", "_expire _file _spend alone answered consume grant_from_prompt one_code put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
