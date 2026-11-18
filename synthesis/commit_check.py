@@ -556,25 +556,20 @@ def read_allowances(store) -> dict:
 
 
 def unapproved(hits: list, repo: str, store, approved: dict) -> list[str]:
-    """Disclosure hits the principal has not approved for this repository, file (or commit message) and exact line.
-    A grant counts once the harness's transcript shows the principal typing its code; it is then kept in the store
-    as a hash and a date, so that line passes from then on, while an edit or a new place asks again."""
-    found, granted = [], {}
+    """Disclosure hits the principal has not approved for this repository, file (or commit message) and exact line,
+    each with the code of a request this check files beside its state: it runs in the agent's shell, which neither
+    spends an approval nor writes the sealed store (the guard's sandbox). The hook keeps the line in the store, as a
+    hash and a date, once the session's record shows the principal typing that code, so it passes from then on, while
+    an edit or a new place asks again."""
+    found = []
     for path, number, line in hits:
         key = approvals.digest("disclosure-line", [repo, *(b.decode("utf-8", "surrogateescape") for b in (path, line))])
-        if key in approved or key in granted:
+        if key in approved:
             continue
-        try:
-            if approvals.consume("disclosure-line", {"fp": key}):
-                granted[key] = time.strftime("%Y-%m-%d")
-                continue
-            code = approvals.request("disclosure-line", {"fp": key}, f"line {number} of {os.fsdecode(path)} in {repo}")
-            why = f"unapproved disclosure for this repository's audience; if it belongs, ask the principal to type {approvals.how(code)}"
-        except approvals.Unverified as exc:
-            why = str(exc)
-        found.append(f"{_show(path, number, line)}  <- {why}")
-    if granted:
-        paths.write_json(store, {"lines": {**approved, **granted}})
+        code = approvals.request("disclosure-line", {"fp": key}, f"line {number} of {os.fsdecode(path)} in {repo}")
+        found.append(f"{_show(path, number, line)}  <- unapproved disclosure for this repository's audience; if it belongs, ask "
+                     f"the principal to type {approvals.how(code)}, then commit again: the hook keeps the line once this session's "
+                     "record shows the code typed")
     return found
 
 
@@ -901,7 +896,7 @@ def status_evidence(lines: list, settings, read) -> tuple:
 
 def problems(config: dict, session_id: str, repo_root: str, message: str | None = None, now: datetime | None = None) -> tuple[list[str], list[str], str]:
     """(problems, notes, repository class) for the commit being made, or for its message."""
-    deadline, policy, store = time.monotonic() + SECONDS, load_policy(config), paths.line_allowances(config)
+    deadline, policy, store = time.monotonic() + SECONDS, load_policy(config), paths.line_allowances()
     if policy:  # the configured policy, ledger and approved lines, when they live in this repository, are catalogs
         own = []
         for path in (config.get("commit_policy"), policy.get("disclosure_ledger"), store):

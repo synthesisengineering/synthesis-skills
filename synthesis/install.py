@@ -276,7 +276,7 @@ RELEASE_URL = "https://github.com/synthesisengineering/synthesis-skills.git"  # 
 
 def _grant_file(home: Path, version: str) -> Path:
     key = hashlib.sha256((os.path.realpath(home) + "\0" + version).encode("utf-8")).hexdigest()[:32]
-    return paths.state() / "release-grants" / f"{key}.json"
+    return paths.approvals() / "release-grants" / f"{key}.json"
 
 
 def grant_release(version: str, line: str = "") -> Path:
@@ -335,13 +335,15 @@ def approval(wanted: dict, said: str, session: dict | None) -> None:
     try:
         if approvals.consume("runtime", wanted, session) or approvals.answered("runtime", wanted, session):
             return
-    except approvals.Unverified as exc:
+    except (approvals.Unverified, approvals.Sealed) as exc:  # sealed: a shell the sandbox confines installs nothing
         raise Unapproved(str(exc)) from None
     code = approvals.request("runtime", wanted, f"the synthesis runtime: {said[:150]}")
     raise Unapproved(f"This {said}. That runtime is what the guard runs, so it changes only on the principal's word: show "
                      f"them this exact install and ask them to type {approvals.how(code)}; then run the identical command "
                      "again, with the folder it installs from left as it is now." + ("" if paths.session_id(session) else
-                     " This shell names no session: pass --session with the one the principal types it in."))
+                     " This shell names no session: pass --session with the one the principal types it in.") + ("" if paths.moved() else
+                     " The release running now answers \"Not granted\" when the code is typed, as it reads no request a shell files; "
+                     "that is expected, and the identical command run again reads the code."))
 
 
 # What install and uninstall call, bound when this module loads: a program in the same process that puts a function of
@@ -539,10 +541,6 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
         return f"not a synthesis plugin: {plugin_root}"
     home = _home()
     found = traces(home)
-    try:
-        move_board(home)  # before any switch, so the new release's first read finds the board in place
-    except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
-        print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
     if first_only and found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
         _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
         return f"synthesis runtime kept at {current_hash()}: a session start installs only into a home no runtime has been in"
@@ -550,6 +548,10 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
         raise RuntimeError(f"{home} holds {', '.join(found)}, left by a runtime installed there, so a session start does not "
                            f"install one from {plugin_root}, the harness's own folder. Install it from your own terminal: "
                            "setup.py, or `synthesis install` with no folder where the runtime is still there")
+    shut = _unwritable(home)
+    if shut:  # a shell a harness's sandbox confines: install nothing rather than half (the guard's sandbox, design 4.5)
+        raise Refused(f"this process cannot write {shut}, part of the sealed runtime, which a harness's sandbox keeps every "
+                      "shell out of, so nothing was installed: install from outside the sandbox, as the release launcher does")
     python = pinned_python()
     if not python:  # nothing could run the guard: install nothing (review round 3 of 5.23.1, M3)
         raise Refused(NO_PYTHON)
@@ -565,11 +567,25 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
     record = _registrations(home)
     if copies and record.get("copies") != {n: _sha(v) for n, v in copies.items()}:  # so uninstall can tell edits
         record["copies"] = {n: _sha(v) for n, v in copies.items()}
-        (home / "registrations.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        paths.write_json(home / "install" / "registrations.json", record)
     config = home / "config.json"
     if not config.exists():
         config.write_text("{}\n", encoding="utf-8")
     return f"synthesis runtime {wanted} at {home / 'current'}"
+
+
+def _unwritable(home: Path) -> str:
+    """The first folder of the sealed runtime an install writes that this process cannot, with why; '' for none. Each is
+    tried by making a file in it and removing it, or the folder itself where it is not there yet, since a sandbox's rules
+    show only when a write is made; nothing is left, so a refused install leaves no trace of a runtime (`traces`)."""
+    for folder in (home / "releases", home / "bin", home / "approvals"):
+        probe, made = folder / f".probe.{os.getpid()}", not folder.is_dir()
+        try:
+            folder.mkdir(parents=True) if made else probe.touch()
+            folder.rmdir() if made else probe.unlink()
+        except OSError as exc:
+            return f"{folder} ({exc.strerror or exc})"
+    return ""
 
 
 def _install_locked(plugin_root: Path, home: Path, python: str, found: list, git_hooks: bool, session, expected) -> str:
@@ -598,12 +614,26 @@ def _install_locked(plugin_root: Path, home: Path, python: str, found: list, git
                               "so current did not move")
             link = home / f".current.{os.getpid()}"
             link.symlink_to(release)
+            _move_records(home)
             os.replace(link, home / "current")  # atomic switch: a running hook sees old or new, never neither
+        else:
+            _move_records(home)  # this release runs already: they belong where it reads them
     finally:
         shutil.rmtree(staging, ignore_errors=True)
     for name in (*ENTRY_POINTS, *GIT_HOOKS):  # before compiling: the compile runs the interpreter the hook launcher names
         _write_exec(home / ("git-hooks" if name in GIT_HOOKS else "bin") / name, launcher(home, python, name))
     return wanted
+
+
+def _move_records(home: Path) -> None:
+    """The board and the sealed records into the places this release reads, just before its switch and never sooner:
+    until then the release running reads them where it keeps them, and an install that waits for the principal's code
+    moves nothing (review round 1 of 5.25.0, finding 3). Never blocks an install; the doctor names what is left."""
+    try:
+        move_board(home)
+        move_approvals(home)
+    except OSError as exc:
+        print(f"synthesis: the board or the approvals could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
 
 
 def move_board(home: Path) -> list:
@@ -620,6 +650,31 @@ def move_board(home: Path) -> list:
             _merge(old, home / "board" / name, home / "archive" / f"board-{stamp}" / name)
             moved.append(name)
     return moved
+
+
+def move_approvals(home: Path) -> list:
+    """The sealed records live in approvals/ and install/ since the guard's sandbox (the principal's rulings of
+    2026-11-15), where only the hook and the installer write. What a release before kept in state/, and the approved
+    commit lines the config placed beside the commit policy, move there once (`paths.moved`): by the first install to switch
+    or hook to find them. After that a file in an old place is a shell's and stays where it is. Nothing is deleted: a
+    name already taken in the new place keeps it, and the old copy goes to the archive. Returns what moved."""
+    home = Path(home)
+    if paths.moved(home):
+        return []
+    try:
+        old = paths.old_line_allowances(paths.config())
+    except (OSError, ValueError):
+        old = None
+    lines, stamp, moved = paths.read_json(old).get("lines") if old else None, time.strftime("%Y%m%dT%H%M%S"), []
+    for name in [n for n in (*paths.MOVED, "codex-user-hooks.json") if os.path.lexists(home / "state" / n)]:
+        new = home / "install" / name if name == "codex-user-hooks.json" else home / "approvals" / paths.MOVED[name]
+        _merge(home / "state" / name, new, home / "archive" / f"approvals-{stamp}" / name)
+        moved.append(name)
+    if os.path.lexists(home / "registrations.json"):  # install's own record, kept in the home's root before
+        _merge(home / "registrations.json", home / "install" / "registrations.json", home / "archive" / f"approvals-{stamp}" / "registrations.json")
+        moved.append("registrations.json")
+    paths.write_json(home / "approvals" / "line-allowances.json", {"lines": lines if isinstance(lines, dict) else {}})
+    return moved + ["line-allowances.json"] * bool(lines)
 
 
 def _merge(old: Path, new: Path, archive: Path) -> None:
@@ -710,7 +765,7 @@ def _sha(text: str) -> str:
 
 
 def _registrations(home: Path) -> dict:
-    return paths.read_json(home / "registrations.json")
+    return paths.read_json(home / "install" / "registrations.json")  # the installer's own record, sealed with it
 
 
 def register_git_hooks(home: Path = None) -> str:
@@ -723,7 +778,7 @@ def register_git_hooks(home: Path = None) -> str:
     record = _registrations(home)
     if "git_hooks_path" not in record:  # the value from before our first install is the one to restore
         record["git_hooks_path"] = {"before": before, "installed": target}
-        (home / "registrations.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        paths.write_json(home / "install" / "registrations.json", record)
     _set_hooks_path([target])
     note = f" (was {', '.join(before)}: git no longer runs hooks from there)" if before else ""
     return f"core.hooksPath -> {target}{note}"
@@ -791,9 +846,10 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
         report.append(f"{verb} {release}")
     if (home / "releases" / ".install.lock").exists() and not dry_run:  # install's own lock (round 3, M2)
         (home / "releases" / ".install.lock").unlink()
-    if (home / "registrations.json").exists() and not dry_run:
-        (home / "registrations.json").unlink()
-    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board); "
+    if (home / "install" / "registrations.json").exists() and not dry_run:
+        (home / "install" / "registrations.json").unlink()
+    report.append(f"{kept} {home / 'config.json'}, {home / 'state'}, {home / 'approvals'} and {home / 'board'} (your settings, state, "
+                  "approvals and board); "
                   "with them there no session start installs a runtime here again, so a harness that still has the plugin "
                   "holds every guarded call until setup.py installs one")
     return report

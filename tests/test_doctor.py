@@ -749,10 +749,13 @@ def test_codex_instruction_byte_limit():
     assert doctor.check_codex_doc_bytes({"project_doc_max_bytes": 98304}).status == "ok"
 
 
-def test_codex_must_write_the_board_and_the_outbox_and_never_the_state_folder(tmp_path):
+def test_codex_must_write_the_board_and_the_outbox_and_never_the_approval_records(tmp_path):
     """2026-10-30: Codex sessions could not claim or post, because the sandbox could not write the board. The outbox
-    is the other folder a sandboxed session writes: without it a Codex session cannot stage a file it attaches."""
-    board, state, outbox = tmp_path / "v5" / "board", tmp_path / "v5" / "state", tmp_path / "v5" / "outbox"
+    is the other folder a sandboxed session writes: without it a Codex session cannot stage a file it attaches. The
+    approval records are in the sealed approvals/ since the guard's sandbox, so a grant over it fails, and one over the
+    folder of a shell's requests, which the profile setup writes grants, does not."""
+    board, state, outbox = tmp_path / "v5" / "board", tmp_path / "v5" / "approvals", tmp_path / "v5" / "outbox"
+    requests = tmp_path / "v5" / "state" / "requests"
     older = lambda *r: {"sandbox_mode": "workspace-write",  # noqa: E731
                         "sandbox_workspace_write": {"writable_roots": "[" + ", ".join(f'"{x}"' for x in r) + "]"}}
     profile = lambda *r: {"default_permissions": "mine", "permissions": {  # noqa: E731  (granted by the profile it extends)
@@ -765,9 +768,11 @@ def test_codex_must_write_the_board_and_the_outbox_and_never_the_state_folder(tm
         alone = doctor.check_codex_board(config(str(board), str(outbox) + "-old"), board, state, outbox)  # as an earlier setup left it
         assert alone.status == "fail" and doctor._short(outbox) in alone.detail and "cannot stage a file" in alone.detail
         assert "setup for codex again" in alone.detail and "neither claim" not in alone.detail
-        exposed = doctor.check_codex_board(config(str(tmp_path / "v5")), board, state, outbox)
-        assert exposed.status == "fail" and "approvals and send windows" in exposed.detail
-        assert doctor._short(board) in exposed.detail and doctor._short(outbox) in exposed.detail  # what to grant instead
+        for over in (tmp_path / "v5", state):
+            exposed = doctor.check_codex_board(config(str(over)), board, state, outbox)
+            assert exposed.status == "fail" and "approvals and send windows" in exposed.detail
+            assert doctor._short(board) in exposed.detail and doctor._short(outbox) in exposed.detail  # what to grant instead
+        assert doctor.check_codex_board(config(str(board), str(outbox), str(requests)), board, state, outbox).status == "ok"
     assert doctor.check_codex_board({}, board, state, outbox).status == "fail"  # the built-in :workspace
     ignored = {"sandbox_workspace_write": older(str(board), str(outbox))["sandbox_workspace_write"]}  # read only with sandbox_mode
     assert doctor.check_codex_board(ignored, board, state, outbox).status == "fail"
@@ -792,6 +797,33 @@ def test_board_entries_left_in_the_state_folder_are_named(tmp_path):
     (tmp_path / "state" / "sessions").mkdir(parents=True)
     left = doctor.check_board(tmp_path)
     assert left.status == "warn" and left.detail.startswith("sessions still in")
+
+
+def test_a_layout_that_has_both_the_old_approval_records_and_the_sealed_folder_fails(tmp_path):
+    """Design 4.1 of the guard's sandbox: the first hook, or install at its switch, moves the sealed records once, and the
+    doctor fails a layout that has both, since nothing reads a record left in an old place and only a shell could have
+    put one there after the move. Before the move, what waits for it is named, even beside a code an install answered
+    while it waited (review round 1 of 5.25.0, finding 3): the move's last write, the store of lines, says it is done."""
+    assert doctor.check_approvals_layout(tmp_path).status == "ok"
+    (tmp_path / "state" / "approvals").mkdir(parents=True)  # grants, where releases before the sandbox kept them
+    (tmp_path / "state" / "codex-user-hooks.json").write_text("{}")
+    (tmp_path / "registrations.json").write_text("{}")
+    waiting = doctor.check_approvals_layout(tmp_path)
+    assert waiting.status == "warn" and "approvals, codex-user-hooks.json, registrations.json" in waiting.detail
+    assert "moves them" in waiting.detail
+    (tmp_path / "approvals" / "answered").mkdir(parents=True)
+    assert doctor.check_approvals_layout(tmp_path).status == "warn"
+    (tmp_path / "approvals" / "line-allowances.json").write_text('{"lines": {}}')
+    both = doctor.check_approvals_layout(tmp_path)
+    assert both.status == "fail" and doctor._short(tmp_path / "approvals") in both.detail and "your own terminal" in both.detail
+    shutil.rmtree(tmp_path / "state" / "approvals")
+    (tmp_path / "state" / "codex-user-hooks.json").unlink()
+    (tmp_path / "registrations.json").unlink()
+    for name in paths.MOVED:  # each sealed record's old name, one at a time
+        (tmp_path / "state" / name).write_text("")
+        assert doctor.check_approvals_layout(tmp_path).status == "fail", name
+        (tmp_path / "state" / name).unlink()
+    assert doctor.check_approvals_layout(tmp_path).status == "ok"
 
 
 CODEX_CONFIG = '''\
@@ -1623,6 +1655,34 @@ def test_a_codex_config_that_grants_the_board_alone_is_a_problem_and_the_doctor_
     assert doctor.main([]) == 1
     line = next(row for row in capsys.readouterr().out.splitlines() if "codex board access" in row)
     assert "fail" in line and "~/.synthesis/v5/outbox" in line and "cannot stage a file" in line
+
+
+def test_a_codex_config_that_grants_the_sealed_approval_records_fails_the_board_line(machine, capsys):
+    """The approval records are in the sealed approvals/ since the guard's sandbox, so a grant over that folder lets a
+    sandboxed Codex agent write them; the doctor judged the state folder, where they lay before, and passed it."""
+    config, v5 = machine[0] / ".codex" / "config.toml", machine[0] / ".synthesis" / "v5"
+    granted = f"\"{v5 / 'outbox'}\" = \"write\"\n"
+    config.write_text(config.read_text().replace(granted, granted + f"\"{v5 / 'approvals'}\" = \"write\"\n"))
+    assert doctor.main([]) == 1
+    line = next(row for row in capsys.readouterr().out.splitlines() if "codex board access" in row)
+    assert "fail" in line and "~/.synthesis/v5/approvals" in line and "approvals and send windows" in line
+
+
+def test_the_doctor_reads_the_browser_accounts_the_guard_wrote_in_the_sealed_folder(machine):
+    """The guard writes what each session's reads of a named site showed in approvals/ since the guard's sandbox; the
+    doctor read the old place in state/, so its warning never came. A file left there is a shell's, and is not read."""
+    site, mine, other = "assistant.example", "me@work.example", "me@home.example"
+    paths.config_file().write_text(json.dumps({"browser_routing": {"workspaces": {str(machine[0] / "work"): {
+        "device": "DEV", "label": "WorkCo", "accounts": {site: mine}}}}}), encoding="utf-8")
+    seen = {f"DEV {site}": {"seen": other, "at": time.time(), "session": "S1"}}
+
+    def line():
+        return [(c.status, c.detail) for c in doctor.run_checks(find=lambda name: None) if c.name == "browser accounts"]
+    paths.write_json(paths.state() / "browser-accounts.json", seen)
+    assert [status for status, _ in line()] == ["ok"]
+    paths.write_json(paths.approvals() / "browser-accounts.json", seen)
+    found = line()
+    assert [status for status, _ in found] == ["warn"] and other in found[0][1] and "WorkCo" in found[0][1]
 
 
 def test_doctor_skips_absent_harnesses(machine, capsys):
@@ -2628,10 +2688,14 @@ def test_a_check_added_to_the_doctor_without_its_line_fails_the_audit_test():
 
 def test_the_audit_reference_says_what_the_newer_checks_look_at():
     lines = audit_lines()
-    assert "outbox" in lines["codex board access"] and "state folder" in lines["codex board access"]
+    assert "outbox" in lines["codex board access"] and "sealed approvals folder" in lines["codex board access"]
+    assert "`approvals/`" in lines["approvals"] and "fails" in lines["approvals"]
     assert "`ALLOWED_FILE_DIRS`" in lines["outbox"] and "auto-start" in lines["outbox"]
     assert "`--latest`" in lines["latest release"] and "`pr_gated`" in lines["pr gate"]
     assert "`cleanupPeriodDays`" in lines["claude transcripts"] and "`config.json`" in lines["config"]
+    assert "managed settings" in lines["sandbox"] and "requirements" in lines["sandbox"] and "staged" in lines["sandbox"]
+    assert "`--seal`" in lines["seal <name>"] and "EPERM" in lines["seal <name>"] and "core.hooksPath" in lines["seal <name>"]
+    assert "`excludedCommands`" in lines["seal <name>"] and "`.mcp.json`" in lines["seal <name>"]
 
 
 def test_the_doctor_warns_while_something_a_test_set_up_is_still_in_place(tmp_path):

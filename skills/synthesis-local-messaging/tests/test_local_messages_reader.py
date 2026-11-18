@@ -377,6 +377,8 @@ def test_a_principal_approved_review_closes_the_gaps_it_names_and_is_recorded(tm
     assert page["coverage"]["complete"] and len(page["notes"]) == 1
     assert json.loads(next(state.glob("page-*.json")).read_text())["coverage"]["reviewed"] == review["rows"]
     assert json.loads((state / "cursor.json").read_text())["complete"]
+    from synthesis import paths
+    assert list((paths.approvals() / "grants").glob("*.json"))  # read, never spent: the same review closes the same gaps
 
 
 def test_a_review_names_exactly_the_pages_gaps_and_a_grant_alone_closes_nothing(tmp_path, need_sandbox, principal):

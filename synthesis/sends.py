@@ -150,40 +150,19 @@ def command_send(words: list, cwd: str, config: dict) -> str | None:
     return found
 
 
-def cli_calls(words: list) -> list:
-    """(its arguments, or None where they cannot be read as the CLI reads them; its words) for each `synthesis sends` a
-    command's words run, read with the CLI's own parser (cli.parsed), so the guard and the CLI never read one command two
-    ways (the review of 5.23.0). Every CLI word counts, wherever it stands (`synthesis --session S sends open` opened a
-    window with no code on 2026-10-13; `synthesis wait -- synthesis sends ...` runs one later). Help does nothing."""
-    found = []
-    for i, w in enumerate(words):
-        argv = words[i + 1:]
-        if "sends" not in argv or not (os.path.basename(w) == "synthesis" or w in ("synthesis.cli", "synthesis/cli.py")
-                                       or w.endswith("synthesis/cli.py")):
-            continue
-        import contextlib  # only for a line that runs the CLI: every other command pays nothing for its parser
-        import io
-        from synthesis import cli
-        try:
-            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-                args = cli.parsed(argv)
-        except SystemExit as done:
-            if done.code in (0, None):  # help, which prints and does nothing
-                continue
-            args = "unread"
-        if args is not None and (args == "unread" or args.command == "sends"):
-            readable = args != "unread" and not any(re.search(r"[$`*?]", a) for a in argv)  # a word the shell changes first
-            found.append((args if readable else None, argv))
-    return found
+APPLIED = ("the hook opens it once the session's own record shows the code typed (at its next tool call or the turn's end), "
+           "so no command runs again")  # what a request the hook applies says (design 2.3)
 
 
-def window_refusal(window: dict) -> str:
+def window_request(window: dict) -> str:
+    """File the request for a window (a shell may: it grants nothing until the principal types its code, and the hook
+    opens the window then) and say what to show the principal."""
     from synthesis import approvals
     scope = f"{window['sends']} sends in {window['hours']:g} h, {', '.join(window['channels']) or 'no channels'}" + (
         f", project {window['project']}" if window["project"] else "")
     code = approvals.request("send-window", window, f"open a send window: {scope}")
     return (f"Opening a send window ({scope}) lets signed Ragbot sends go without a per-message code until it ends. "
-            f"Show the principal that scope and ask them to type {approvals.how(code)}. Then run the identical command again.")
+            f"Show the principal that scope and ask them to type {approvals.how(code)}; {APPLIED}.")
 
 
 def asked(hours, channels: str, project: str, count=0) -> dict:
@@ -281,13 +260,31 @@ def message_text(words: list, cwd: str, written: set = frozenset()) -> tuple[str
 
 
 def _window_file():
-    return paths.state() / "sends" / "window.json"
+    return paths.approvals() / "sends" / "window.json"
+
+
+def _closed_file():
+    return paths.requests() / "sends-closed.mark"  # where every harness lets a shell write, and never taken for a request
+
+
+def _closed() -> float:
+    """When `synthesis sends close` last ended the window and the batches: a mark a shell writes beside its state, which
+    only ends what opened before it (a mark dated ahead is no mark), so a shell can end a window early and never extend one."""
+    try:
+        at = float(paths.read_json(_closed_file()).get("at") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    return at if at <= time.time() else 0.0
+
+
+def close_mark() -> None:
+    paths.write_json(_closed_file(), {"at": time.time()})
 
 
 def window() -> dict:
-    """The open window, or {}: one that has run out is closed."""
+    """The open window, or {}: one that has run out, or that a close mark ended, is closed."""
     data = paths.read_json(_window_file())
-    return data if data and float(data.get("until", 0)) > time.time() else {}
+    return data if data and float(data.get("until", 0)) > time.time() and float(data.get("opened", 0)) > _closed() else {}
 
 
 def check_window(hours: float, channels: list, count: int) -> None:
@@ -566,18 +563,17 @@ def batch_digest(batch: dict) -> str:
     return hashlib.sha256(json.dumps(batch, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-def batch_refusal(batch: dict, file: str) -> str:
+def batch_request(batch: dict, file: str) -> str:
+    """File the request for a batch, carrying the batch itself (the hook opens it from the request, so the file no longer
+    matters), and say what to show the principal."""
     from synthesis import approvals
     digest, count = batch_digest(batch), len(batch["entries"])
     code = approvals.request("send-batch", digest, f"open batch {_shown(batch['batch'])}: {count} sends, digest {digest[:12]}, "
-                             f"project {_shown(batch['project'])}")
-    _requests_file().parent.mkdir(parents=True, exist_ok=True)
-    with _requests_file().open("a", encoding="utf-8") as handle:  # what ties this code to this digest at each spend
-        handle.write(json.dumps({"digest": digest, "code": code, "at": time.time()}) + "\n")
+                             f"project {_shown(batch['project'])}", carry={"batch": batch})
     return (f"Opening batch {digest[:12]} ({count} send{'s' if count != 1 else ''} from {_shown(file)}) lets each entry below go once, "
-            f"exactly as written, within {MAX_HOURS} hours, from this session alone. Show the principal this whole list as it "
-            f"stands (each text quoted, every hidden character as its code) and ask them to type {approvals.how(code)} to open "
-            f"exactly it. Then run the identical command again." + (
+            f"exactly as written, within {MAX_HOURS} hours, from the session the principal types the code in. Show the principal "
+            f"this whole list as it stands (each text quoted, every hidden character as its code) and ask them to type "
+            f"{approvals.how(code)} to open exactly it; {APPLIED}." + (
                 " Each Messenger entry then goes as one browser_batch on a tab this session made with tabs_create and navigated "
                 "to its conversation: a navigate to that address on the tab, its words typed there (shift+Return for a line "
                 "break), and last the page script `synthesis sends script --entry <digest prefix>:<its number>` prints, which "
@@ -603,7 +599,7 @@ def batch_listing(batch: dict, show: bool = False) -> str:
 
 
 def _batch_file(digest: str):
-    return paths.state() / "sends" / "batches" / f"{digest}.json"
+    return paths.approvals() / "sends" / "batches" / f"{digest}.json"
 
 
 def _whole(data: dict, file) -> bool:
@@ -621,20 +617,20 @@ def _whole(data: dict, file) -> bool:
 
 
 def batches() -> list:
-    """The open batches: whole, granted, and neither past their 12 hours nor closed."""
-    found = []
+    """The open batches: whole, granted, and neither past their 12 hours nor ended by a close mark."""
+    found, closed = [], _closed()
     for file in sorted(_batch_file("").parent.glob("*.json")):
         data = paths.read_json(file)
-        if _whole(data, file) and float(data["granted"]) <= time.time() < float(data["until"]):
+        if _whole(data, file) and closed < float(data["granted"]) <= time.time() < float(data["until"]):
             found.append(data)
     return found
 
 
 def open_batch(batch: dict, grant: dict, session_id: str) -> dict:
-    """Copy a batch the principal granted into the synthesis state, so its file no longer matters: its entries, digest
-    and project, the grant's time, the session that ran the granted command and the code the principal typed in it
-    (each spend finds them in that session's record again), and each entry's spent mark. A batch granted again keeps
-    what it already sent; one whose earlier state cannot be read is refused, since which of its entries went cannot be told."""
+    """Copy a batch the principal granted into the sealed records, as the hook applies his code: its entries, digest and
+    project, the grant's time, the session he typed the code in and the code (each spend finds them in that session's
+    record again), and each entry's spent mark. A batch granted again keeps what it already sent; one whose earlier state
+    cannot be read is refused, since which of its entries went cannot be told."""
     from synthesis import approvals
     digest, now = batch_digest(checked(batch)), time.time()
     file = _batch_file(digest)
@@ -651,16 +647,6 @@ def open_batch(batch: dict, grant: dict, session_id: str) -> dict:
             if old != file and now - old.stat().st_mtime > 30 * 86400:
                 old.unlink()
     return data
-
-
-def close_batches() -> int:
-    """End every open batch now: the principal's stop. What each sent stays recorded, for a grant of it again."""
-    from synthesis import approvals
-    with approvals.alone():
-        ended = batches()
-        for data in ended:
-            paths.write_json(_batch_file(data["digest"]), {**data, "until": time.time()})
-    return len(ended)
 
 
 def describe_batch(data: dict) -> str:
@@ -709,7 +695,7 @@ def batch_unspend(digest: str, entry: int, mark: str) -> None:
 
 
 def _spends_file():
-    return paths.state() / "sends" / "batch-spends.jsonl"
+    return paths.approvals() / "sends" / "batch-spends.jsonl"
 
 
 def _spends(net: bool = False) -> set:
@@ -733,7 +719,15 @@ def _spends(net: bool = False) -> set:
 
 
 def _requests_file():
-    return paths.state() / "sends" / "batch-requests.jsonl"
+    return paths.approvals() / "sends" / "batch-requests.jsonl"
+
+
+def filed(digest: str, code: str, at: float) -> None:
+    """The hook's record that this code was filed for this batch's digest at `at`, written as it applies the code: what
+    ties them at each spend, which batch state alone never does."""
+    _requests_file().parent.mkdir(parents=True, exist_ok=True)
+    with _requests_file().open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps({"digest": digest, "code": code, "at": at}) + "\n")
 
 
 # The messages sender's session (the third round, #5): it named its own (`--session`), and a link or runpy kept another
@@ -746,7 +740,7 @@ TICKET_SECONDS = 60
 
 
 def _ticket_file(name: str):
-    return paths.state() / "sends" / "sender" / f"{name}.json"
+    return paths.approvals() / "sends" / "sender" / f"{name}.json"
 
 
 def _run_key(run) -> str:
@@ -838,8 +832,8 @@ def ticket(run: dict | None) -> dict | None:
 
 
 def _backed(data: dict, session: dict | None) -> bool:
-    """Whether the principal typed this batch's code in the granting session's own record, after the guard first filed
-    that code for this batch's digest (the request it recorded), within its last 12 hours. A code typed for anything else
+    """Whether the principal typed this batch's code in the granting session's own record, after that code was first
+    filed for this batch's digest (the request the hook recorded when it opened the batch), within its last 12 hours. A code typed for anything else
     backs nothing (the review of 5.24.0), and no line of the record stands in for the request: the agent writes those
     (its third round: its own sentence naming the digest and a code tied them; repeating both held a granted batch)."""
     from synthesis import approvals
@@ -901,7 +895,7 @@ def log(chan: str, tool: str, summary: str, how: str, session: dict | None = Non
     day = time.strftime("%Y-%m-%d")
     entry = {"id": uuid.uuid4().hex, "at": time.time(), "channel": chan, "tool": tool, "summary": summary[:200], "how": how,
              "session": paths.session_id(session) if session else os.environ.get("SYNTHESIS_SESSION", ""), **({"check": check} if check else {})}
-    target = paths.state() / "sends" / f"{day}.jsonl"
+    target = paths.approvals() / "sends" / f"{day}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -917,14 +911,14 @@ def undo(mark: str) -> None:
 def _note(mark: str, how: str) -> None:
     """A line about the send `mark` names: "undone" (its call was held) or "settled" (its call was let through)."""
     day, _, ident = mark.partition("/")
-    target = paths.state() / "sends" / f"{day}.jsonl"
+    target = paths.approvals() / "sends" / f"{day}.jsonl"
     target.parent.mkdir(parents=True, exist_ok=True)
     with target.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"at": time.time(), "how": how, "of": ident}) + "\n")
 
 
 def _rows(day: str) -> list:
-    target = paths.state() / "sends" / f"{day}.jsonl"
+    target = paths.approvals() / "sends" / f"{day}.jsonl"
     return [json.loads(line) for line in target.read_text(encoding="utf-8").splitlines() if line] if target.is_file() else []
 
 

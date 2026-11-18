@@ -22,7 +22,7 @@ personal-remote patterns, client names and internal URLs. The shipped template i
 |---|---|
 | `commit_policy` | Path to the policy YAML (`~` allowed). Absent: only credentials, private keys, credential file names and claims are checked. Present but missing, unreadable or invalid: every commit blocks until it is fixed. |
 | `disclosure_ledger` | Optional. Path to the disclosure ledger; overrides the policy's own `disclosure_ledger`. |
-| `line_allowances` | Optional. Path to the lines the principal approved ([scanning.md](scanning.md#approved-lines)); default `line-allowances.json` beside the policy. Missing: no line is approved yet. Present but unreadable: every commit where exposure patterns apply blocks until it is repaired. Keep it where the policy lives, so it travels to every Mac with the policy. |
+| `line_allowances` | Read once: where an older release kept the lines the principal approved, merged into the sealed `~/.synthesis/v5/approvals/line-allowances.json` by the first install or hook after the change ([scanning.md](scanning.md#approved-lines)). The sealed store is then the only one, kept on each Mac: an unreadable one blocks every commit where exposure patterns apply until it is repaired. |
 
 A 2.x policy and ledger carry over unchanged: point these keys at the files where they
 already are. The v5 reader parses them exactly as the 2.x loader did.

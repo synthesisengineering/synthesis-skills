@@ -92,7 +92,7 @@ def misrouted(reason) -> bool:
 
 
 def seen():
-    return paths.read_json(paths.state() / "browser-accounts.json").get(f"{WORK} {SITE}")
+    return paths.read_json(paths.approvals() / "browser-accounts.json").get(f"{WORK} {SITE}")
 
 
 def test_a_workspace_that_names_no_site_is_asked_nothing():
@@ -301,7 +301,7 @@ def test_what_was_seen_is_written_once_and_not_again_for_the_same_read():
     ran("navigate")
     shows(OTHER)
     assert misrouted(call(*TYPE))
-    listed = paths.state() / "browser-accounts.json"
+    listed = paths.approvals() / "browser-accounts.json"
     first, written = seen(), listed.stat().st_mtime_ns
     assert first["session"] == "S1" and first["at"]
     assert misrouted(call(*TYPE)) and listed.stat().st_mtime_ns == written and seen() == first
@@ -312,13 +312,13 @@ def test_the_doctor_warns_while_a_named_site_last_showed_another_account():
     ran("navigate")
     shows(OTHER)
     assert misrouted(call(*TYPE))
-    check = doctor.check_browser_accounts(CONFIG, paths.read_json(paths.state() / "browser-accounts.json"))
+    check = doctor.check_browser_accounts(CONFIG, paths.read_json(paths.approvals() / "browser-accounts.json"))
     assert check.status == "warn" and check.name == "browser accounts"
     assert SITE in check.detail and "WorkCo" in check.detail and OTHER in check.detail and MINE in check.detail
     assert "misconfiguration" in check.detail
     shows(MINE)
     assert call(*TYPE) is None
-    assert doctor.check_browser_accounts(CONFIG, paths.read_json(paths.state() / "browser-accounts.json")).status == "ok"
+    assert doctor.check_browser_accounts(CONFIG, paths.read_json(paths.approvals() / "browser-accounts.json")).status == "ok"
 
 
 def test_the_doctor_reads_only_what_the_config_still_names_and_whatever_the_file_holds():
@@ -556,7 +556,7 @@ def test_a_sub_agents_put_is_told_whose_read_the_guard_sees():
 def test_two_sessions_that_write_what_they_saw_at_once_lose_neither(tmp_path):
     """The file was read, changed and written with no lock, so one of two writers could drop the other's site."""
     import threading
-    listed = paths.state() / "browser-accounts.json"
+    listed = paths.approvals() / "browser-accounts.json"
     sites = [f"site{n}.example" for n in range(24)]
     workers = [threading.Thread(target=guards._note_account, args=("DEV", site, (MINE, f"toolu_{n}"), f"S{n}")) for n, site in enumerate(sites)]
     for worker in workers:

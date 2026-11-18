@@ -109,21 +109,18 @@ def test_a_window_closes_after_its_planned_sends_and_one_without_them_covers_non
     sends._window_file().write_text(json.dumps({k: v for k, v in data.items() if k != "sends"}), encoding="utf-8")
     assert sends.window() and "approval" in guards.check(*jira, CONFIG)  # opened before planned sends existed
     sends.close_window()
-    assert "can't open" in guards.check("Bash", {"command": "synthesis sends open --hours 2 --channels jira"},
-                                        CONFIG, cwd=str(tmp_path))
+    refused = _cli("sends", "open", "--hours", "2", "--channels", "jira")  # with no planned sends, nothing is put to the principal
+    assert refused.returncode == 2 and "name the sends" in refused.stderr
 
 
 def test_only_the_principal_opens_a_window(tmp_path, principal):
+    """The command only asks: the window opens when the hook reads the principal's code in the session's record, so the
+    guard lets every spelling of it run (a project session, 2026-10-13: a global option before `sends` once opened a
+    window with no code, when the command itself opened it)."""
     for command in ("synthesis sends open --hours 6 --sends 4 --channels jira", "python3 -m synthesis.cli sends open --hours 6 --sends 4 --channels jira",
-                    # A project session, 2026-10-13: a global option before `sends` opened a window with no code
                     "synthesis --session S-principal sends open --hours 6 --sends 4 --channels jira",
-                    "synthesis sends open --hours=6 --sends=4 --channels=jira"):
-        assert "type approve" in guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)), command
-    for command in ("synthesis sends --help", "synthesis sends open --help", "synthesis --session S1 sends open -h"):
+                    "synthesis sends open --hours=6 --sends=4 --channels=jira", "synthesis sends --help", "synthesis sends open --help"):
         assert guards.check("Bash", {"command": command}, CONFIG, cwd=str(tmp_path)) is None, command
-    reason = guards.check("Bash", {"command": "synthesis sends open --hours 6 --sends 4 --channels jira"}, CONFIG, cwd=str(tmp_path))
-    principal(reason)
-    assert guards.check("Bash", {"command": "synthesis sends open --hours 6 --sends 4 --channels jira"}, CONFIG, cwd=str(tmp_path)) is None
     sneaky = "python3 -I -c 'from synthesis import sends; sends.open_window(12, [\"all\"])'"
     assert "send-window code" in guards.check("Bash", {"command": sneaky}, CONFIG, cwd=str(tmp_path))
     grant = "python3 -I -c 'from synthesis import approvals; approvals.grant_from_prompt(\"approve abc123\")'"
@@ -151,16 +148,19 @@ def _cli(*args):
     return subprocess.run([sys.executable, "-m", "synthesis.cli", *args], capture_output=True, text=True, cwd=ROOT)
 
 
-def test_the_command_refuses_to_open_a_window_from_an_agent_without_the_principals_code(principal):
-    """The gate rests on the command, not on the guard matching its spelling (a project session, 2026-10-13)."""
+def test_the_command_opens_no_window_and_the_hook_opens_exactly_the_one_approved(principal):
+    """The gate rests on the principal's code, read by the hook in the session's own record (a project session,
+    2026-10-13; the guard's sandbox, 2026-11-15): the command files the request and opens nothing."""
+    from synthesis import hook
     ask = ("--session", "S-principal", "sends", "open", "--hours", "3", "--sends", "4", "--channels", "jira,bitbucket")
-    refused = _cli(*ask)
-    assert refused.returncode == 2 and "type approve" in refused.stderr and sends.window() == {}
-    principal(refused.stderr)
-    assert _cli("sends", "open", "--hours", "3", "--sends", "4", "--channels", "jira").returncode == 2  # another scope: no grant
-    opened = _cli(*ask)
-    assert opened.returncode == 0 and "(bitbucket, jira)" in opened.stdout and sends.window()
-    assert _cli(*ask).returncode == 2  # the grant was spent
+    asked = _cli(*ask)
+    assert asked.returncode == 0 and "type approve" in asked.stdout and sends.window() == {}
+    other = _cli("sends", "open", "--hours", "3", "--sends", "4", "--channels", "jira")
+    principal(asked.stdout)
+    assert sends.window() == {}
+    hook.apply_effects({"session_id": "S-principal", "transcript_path": str(principal.transcript)})
+    assert sends.window()["channels"] == ["bitbucket", "jira"]  # exactly that scope; the other request still waits
+    assert other.stdout.split("the code ")[1][:6] in __import__("synthesis").approvals.pending()
     assert _cli("sends", "open", "--help").returncode == 0
 
 
@@ -269,7 +269,7 @@ def test_an_escaped_emoji_in_json_is_the_emoji_and_a_body_rewritten_in_the_same_
 
 def test_file_tools_cannot_write_approvals_or_a_send_window(tmp_path, isolated_home):
     from synthesis import paths
-    window = paths.state() / "sends" / "window.json"
+    window = paths.approvals() / "sends" / "window.json"
     assert "would write" in guards.check("Write", {"file_path": str(window), "content": "{}"}, CONFIG, cwd=str(tmp_path))
     assert "would write" in guards.check("Edit", {"file_path": str(window), "old_string": "a", "new_string": "b"}, CONFIG)
     patch = f"*** Begin Patch\n*** Add File: {window}\n+{{}}\n*** End Patch"

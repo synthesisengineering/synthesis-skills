@@ -6,6 +6,8 @@ guard. Now a disclosure hit blocks with a code; the principal types approve and 
 approval is kept for that repository, file (or the commit message) and the line's exact text,
 as a hash and a date. That line passes from then on; an edit or a new place asks again.
 Credentials are never approvable; vendors' published example keys pass by exact value.
+Since the guard's sandbox (2026-11-15) the store is sealed: the commit check, in the agent's shell, only files the
+request, and the hook keeps the line once the session's record shows the principal typing its code.
 "Bluebird" stands for a private client name.
 """
 
@@ -21,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from synthesis import approvals, guards
+from synthesis import approvals, guards, hook, paths
 
 CHECK = Path(__file__).resolve().parents[1] / "synthesis" / "commit_check.py"
 STRICT, OTHER = "git@github.com:other-org/project.git", "git@github.com:other-org/second.git"
@@ -53,7 +55,7 @@ def synthetic_key(header="-----BEGIN PRIVATE KEY-----"):
 def store(tmp_path, write_config):
     (tmp_path / "policy.yaml").write_text(POLICY, encoding="utf-8")
     write_config({"commit_policy": str(tmp_path / "policy.yaml")})
-    return tmp_path / "line-allowances.json"  # the default: beside the policy
+    return paths.line_allowances()  # sealed, whatever the config names
 
 
 def make_repo(tmp_path, remote=STRICT, name="repo"):
@@ -86,10 +88,12 @@ def entries(store):
 
 
 def approved_commit(repo, files, principal, message="Update notes"):
-    """Commit, see the block and its code, have the principal type it, commit again."""
+    """Commit, see the block and its code, have the principal type it, let the session's next hook event keep the
+    line, commit again."""
     blocked = commit(repo, files, message)
     assert blocked.returncode != 0 and "approve followed by the code" in blocked.stderr, blocked.stderr
     assert principal(blocked.stderr)
+    assert hook.apply_effects({"session_id": "S-principal", "transcript_path": str(principal.transcript)})
     return commit(repo, {}, message)
 
 
@@ -140,9 +144,9 @@ def test_a_grant_without_the_principals_prompt_in_the_transcript_does_not_count(
     blocked = commit(repo, {"a.md": LINE + "\n"})
     code = re.search(r"the code (\w{6})", blocked.stderr).group(1)
     assert approvals.grant_from_prompt(f"approve {code}")  # the prompt hook ran, by whoever's hand; no session record
+    assert hook.apply_effects({"session_id": ""}) == []  # no record shows the principal typing it: the hook keeps nothing
     result = commit(repo, {})
-    assert result.returncode != 0 and "only from the principal's own prompt" in result.stderr
-    assert "gave no transcript" in result.stderr and not store.exists()
+    assert result.returncode != 0 and "approve followed by the code" in result.stderr and entries(store) == {}
 
 
 def test_the_store_holds_only_hashes_and_dates(tmp_path, store, principal):
@@ -163,29 +167,24 @@ def test_a_commit_message_hit_is_approved_the_same_way(tmp_path, store, principa
     assert commit(repo, {"c.md": "More\n"}, message + " today").returncode != 0
 
 
-def test_the_store_may_be_named_in_the_config(tmp_path, write_config, principal):
+def test_a_store_the_config_names_is_no_store_since_the_seal(tmp_path, write_config, principal):
+    """Before the guard's sandbox the config could name the store, in a folder a shell writes; now the sealed one is the
+    only store, and a file the config names was read once, by the move into the sealed folder."""
     (tmp_path / "policy.yaml").write_text(POLICY, encoding="utf-8")
     named = tmp_path / "private" / "approved-lines.json"
     write_config({"commit_policy": str(tmp_path / "policy.yaml"), "line_allowances": str(named)})
     assert approved_commit(make_repo(tmp_path), {"a.md": LINE + "\n"}, principal).returncode == 0
-    assert len(entries(named)) == 1 and not (tmp_path / "line-allowances.json").exists()
+    assert len(entries(paths.line_allowances())) == 1 and not named.exists()
 
 
 @pytest.mark.parametrize("damage", ["not json", "[]", '{"lines": []}', "{}"])
 def test_a_store_that_cannot_be_read_blocks(tmp_path, store, damage):
+    store.parent.mkdir(parents=True, exist_ok=True)
     store.write_text(damage, encoding="utf-8")
     for files in ({"a.md": LINE + "\n"}, {"b.md": "Nothing flagged\n"}):  # read whenever it could decide a line
         result = commit(make_repo(tmp_path, name=f"repo-{len(files)}-{list(files)[0]}"), files)
         assert result.returncode != 0 and "cannot read the approved lines" in result.stderr
     assert store.read_text(encoding="utf-8") == damage
-
-
-def test_the_store_in_the_repository_is_a_catalog(tmp_path, write_config, principal):
-    repo = make_repo(tmp_path)
-    (tmp_path / "policy.yaml").write_text(POLICY, encoding="utf-8")
-    write_config({"commit_policy": str(tmp_path / "policy.yaml"), "line_allowances": str(repo / "approved.json")})
-    (repo / "approved.json").write_text('{"lines": {"Bluebird": "2026-10-06"}}', encoding="utf-8")
-    assert commit(repo, {"approved.json": '{"lines": {"Bluebird": "2026-10-06"}}'}).returncode == 0
 
 
 # --- credentials are never approvable; the key rule is structural ----------------------------------
@@ -228,7 +227,7 @@ def test_a_shell_command_writing_the_store_is_refused(tmp_path, store, command):
     config = {"commit_policy": str(tmp_path / "policy.yaml")}
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    reason = guards.check("Bash", {"command": command.format(store=store, folder=tmp_path)}, config, cwd=str(elsewhere))
+    reason = guards.check("Bash", {"command": command.format(store=store, folder=store.parent)}, config, cwd=str(elsewhere))
     assert reason and ("approved commit lines" in reason or "writes where" in reason), reason
 
 

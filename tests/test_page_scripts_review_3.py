@@ -125,6 +125,22 @@ def test_each_tab_is_read_at_the_newest_list_across_a_session_and_its_sub_agents
     assert _check(CHROME + "computer", RETURN, sub) is None and _check(CHROME + "computer", RETURN, session) is None
 
 
+def test_a_workflow_agents_newer_list_one_folder_deeper_is_read_too(tmp_path):
+    """A workflow's agents keep their records below the session's subagents/ (subagents/workflows/<run>/agent-*.jsonl),
+    where `synthesis searches` reads them as subagents/**/*.jsonl: the newest list that names a tab is read there as in a
+    sub-agent's own record, for the session and for the workflow agent itself."""
+    main = tmp_path / "S-principal.jsonl"
+    deep = tmp_path / "S-principal" / "subagents" / "workflows" / "wf_1" / "agent-w1.jsonl"
+    deep.parent.mkdir(parents=True)
+    session = {"session_id": "S-principal", "transcript_path": str(main)}
+    agent = {**session, "agent_id": "w1"}
+    _at(main, CHROME + "computer", {"action": "screenshot", "tabId": 5}, _listing({5: "https://www.example.com/"}, 5), 400)
+    assert _check(CHROME + "computer", RETURN, session) is None
+    _at(deep, CHROME + "navigate", {"url": SITES["slack"], "tabId": 5}, f"Navigated to {SITES['slack']}\n" + _listing({5: SITES["slack"]}, 5), 200)
+    assert _held(_check(CHROME + "computer", RETURN, session)), "the workflow agent moved the tab to the chat"
+    assert _held(_check(CHROME + "computer", RETURN, agent)), "and the agent's own Return there"
+
+
 def test_a_sub_agent_whose_session_shows_the_tab_reads_it_there_and_one_no_record_shows_is_unknown(tmp_path):
     main = tmp_path / "S-principal.jsonl"
     sub = {"session_id": "S-principal", "transcript_path": str(main), "agent_id": "a1b2c3"}

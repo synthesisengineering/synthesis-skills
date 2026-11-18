@@ -180,8 +180,9 @@ def cmd_inbox(args) -> int:
 
 def cmd_sends(args) -> int:
     """The send window, batches and the day's send ledger. A window or a batch opens only on the principal's code for
-    exactly it, read from the session's own transcript, whoever runs the command and from any terminal."""
-    from synthesis import approvals, sends
+    exactly it: this command files the request, which grants nothing, and the hook opens it once the session's own
+    record shows him typing the code (the guard's sandbox: a shell writes nothing sealed). `close` ends both early."""
+    from synthesis import sends
     if args.file and args.action != "batch":  # the review of 5.23.0: `sends open -- -h` took -h as a file and opened
         print("a file goes only with `synthesis sends batch`", file=sys.stderr)
         return 2
@@ -207,21 +208,11 @@ def cmd_sends(args) -> int:
         except ValueError as exc:
             print(exc, file=sys.stderr)
             return 2
-        # A window is the principal's setting, never the agent's: it opens only on their granted code for exactly
-        # this window, whatever the guard matched (2026-10-13: `--session` before `sends` slipped past the guard),
-        # from any terminal (5.22.1: a harness-free environment and a terminal on the input are an agent's to fake).
-        try:  # a shell acts only as its own session, so its own transcript must show the code
-            granted = approvals.consume("send-window", window, {"session_id": _session(args)})
-        except approvals.Unverified as exc:
-            print(exc, file=sys.stderr)
-            return 2
-        if not granted:
-            print(sends.window_refusal(window), file=sys.stderr)
-            return 2
-        print(sends.describe(sends.open_window(window["hours"], window["channels"], window["project"], window["sends"])))
-    elif args.action == "close":  # the principal's stop: the window and every open batch
-        print("send window closed" if sends.close_window() else "no send window was open")
-        ended = sends.close_batches()
+        print(sends.window_request(window))  # a window is the principal's setting: only his code, read by the hook, opens it
+    elif args.action == "close":  # the principal's stop: the window and every open batch, by a mark beside the state
+        was, ended = sends.window(), len(sends.batches())
+        sends.close_mark()
+        print("send window closed" if was else "no send window was open")
         print(f"{ended} batch{'es' if ended != 1 else ''} ended" if ended else "no batch was open")
     elif args.action == "status":
         print(sends.describe(sends.window()) if sends.window() else "no send window is open")
@@ -235,29 +226,16 @@ def cmd_sends(args) -> int:
 
 
 def _batch(args) -> int:
-    """`synthesis sends batch <file>` prints what the principal approves (with --show every text too, and nothing
-    opens). It opens only on their code for exactly the digest of the file as it reads it, typed in this session, from
-    any terminal (the review of 5.23.0: a terminal of the principal's own was one an agent could fake), and spends that
-    code itself; the entries are copied into the state with this session and the code, so the file no longer matters."""
-    from synthesis import approvals, sends
+    """`synthesis sends batch <file>` prints what the principal approves (with --show every text too, asking nothing)
+    and files the request for exactly the digest of the file as it reads it, carrying the batch: the hook opens it on his
+    code, typed in the session's own record, so the file no longer matters once it is read (the guard's sandbox)."""
+    from synthesis import sends
     try:
         batch = sends.read_batch(args.file)
     except (OSError, ValueError) as exc:
         print(f"This batch can't open: {exc}", file=sys.stderr)
         return 2
-    print(sends.batch_listing(batch, show=args.show))
-    if args.show:
-        return 0
-    me, digest = _session(args), sends.batch_digest(batch)
-    grant = approvals.grant("send-batch", digest)
-    try:  # a shell acts only as its own session, so its own transcript must show the code
-        if not approvals.consume("send-batch", digest, {"session_id": me}):
-            print(sends.batch_refusal(batch, args.file), file=sys.stderr)
-            return 2
-        print(sends.describe_batch(sends.open_batch(batch, grant, me)))
-    except (approvals.Unverified, ValueError) as exc:  # no prompt of theirs backs it, or an earlier grant's state is unreadable
-        print(exc, file=sys.stderr)
-        return 2
+    print(sends.batch_listing(batch, show=True) if args.show else sends.batch_request(batch, args.file))
     return 0
 
 
@@ -395,11 +373,110 @@ def cmd_sessions(args) -> int:
     return 0
 
 
+def config_change(file: str) -> dict:
+    """What applying a settings file changes in the guard's own settings: {"subject": what the principal's code binds
+    (the file, every byte it holds and the settings it replaces), "data": its settings, "said": each key that changes,
+    old and new}. ValueError for a file that holds no JSON object. The guard asks it of the same line (the sandbox)."""
+    import hashlib
+    from synthesis import install
+    real = os.path.realpath(os.path.expanduser(file))
+    try:
+        if os.stat(real).st_size > 1 << 20:
+            raise ValueError("it is larger than a megabyte")
+        raw = install._read(Path(real))  # a regular file, opened without waiting: the guard asks this of an agent's path
+        data = json.loads(raw)
+    except (OSError, ValueError) as exc:
+        data, why = None, f" ({exc})"
+    else:
+        why = ""
+    if not isinstance(data, dict):
+        raise ValueError(f"{file} holds no JSON object of settings{why}")
+    try:
+        now = paths.config_file().read_bytes()
+    except FileNotFoundError:
+        now = b""
+    try:
+        old = paths.config()
+    except paths.Unreadable:  # a file of settings is how an unreadable one is mended
+        old = {}
+    said = [f"  {key}: {json.dumps(old[key])[:200] if key in old else '(not set)'} -> "
+            f"{json.dumps(data[key])[:200] if key in data else '(removed)'}" for key in sorted(set(old) | set(data)) if old.get(key, KeyError) != data.get(key, KeyError)]
+    return {"subject": {"file": real, "to": hashlib.sha256(raw).hexdigest(), "from": hashlib.sha256(now).hexdigest()},
+            "data": data, "said": "\n".join(said)}
+
+
+def cmd_config(args) -> int:
+    """`synthesis config apply <file>`: the guard's own settings change only on the principal's code for exactly that
+    file's content, and only outside the sandbox, since config.json is sealed (the guard's sandbox, design 2.3). The
+    change is shown key by key; a file changed after his code is another change."""
+    from synthesis import approvals
+    try:
+        change = config_change(args.file)
+    except ValueError as exc:
+        print(f"This settings file can't be applied: {exc}", file=sys.stderr)
+        return 2
+    if not change["said"]:
+        print(f"{paths.config_file()} already holds these settings")
+        return 0
+    session = _shell(args)
+    try:
+        if approvals.consume("config", change["subject"], session) or approvals.answered("config", change["subject"], session):
+            paths.write_json(paths.config_file(), change["data"])
+            print(f"{paths.config_file()} changed:\n{change['said']}")
+            return 0
+    except (approvals.Unverified, approvals.Sealed) as exc:
+        print(exc)
+        return 2
+    code = approvals.request("config", change["subject"], f"change the guard's settings from {change['subject']['file']}"[:160])
+    print(f"This changes {paths.config_file()}, the guard's own settings, which changes what every approval means:\n"
+          f"{change['said']}\nShow the principal this change and ask them to type {approvals.how(code)}; then run the identical "
+          "command again outside the sandbox (config.json is sealed), with the file as it is now.")
+    return 2
+
+
+def cmd_searches(args) -> int:
+    """The web searches a session has made, its sub-agents' included, against the principal's budget a session (config
+    `search_budget`), with each of --agents N research agents' share of what is left, rounded down: run before a fan-out,
+    the share goes in each brief (BACKLOG B5; 2026-09-23: six research agents each took the session's budget for its
+    own). Exit 1 refuses the fan-out: a share under one search, or a budget against a count the records cannot tell."""
+    from synthesis import sessions
+    session, budget, config = args.session or paths.session_id(), paths.config().get("search_budget"), paths.config_file()
+    if not session or args.agents < 1 or not (budget is None or type(budget) is int and budget >= 0):
+        print("no session id: pass --session or run inside a harness session" if not session else
+              "--agents is how many research agents would be dispatched: 1 or more" if args.agents < 1 else
+              f"search_budget in {config} is {json.dumps(budget)}, not a whole number of web searches: the principal sets it",
+              file=sys.stderr)
+        return 2
+    found, n = sessions.searches(session), args.agents
+    used, named = found["count"], f"session {session}" + (f" ({found['harness']})" if found["harness"] else "")
+    print(f"{named}: cannot tell how many web searches it made: {found['why']}" if used is None else
+          f"{named}: {used} web search{'' if used == 1 else 'es'} made, read from its record and {found['agents']} of its sub-agents'")
+    if budget is None:
+        print(f"no search budget is set: the principal sets search_budget, the web searches a session may make, in {config}")
+        return 0
+    if used is None:
+        print(f"budget: {budget} web searches a session; how many are used cannot be told")
+        print(f"refused: the searches made cannot be told, so no share of the {budget} can be given: dispatch research agents "
+              "that make no web search, or ask the principal", file=sys.stderr)
+        return 1
+    left = max(0, budget - used)
+    print(f"budget: {budget} web searches a session; {used} used, {left} left")
+    print(f"share: {left // n} web search{'' if left // n == 1 else 'es'} for each of {n} agent{'' if n == 1 else 's'}")
+    if left // n:
+        return 0
+    print(f"refused: none of the session's {budget} web searches is left: ask the principal to raise search_budget before "
+          "dispatching research agents" if not left else f"refused: {left} web search{'' if left == 1 else 'es'} left, under one "
+          f"for each of {n} agents: dispatch at most {left} research agents, or ask the principal to raise search_budget", file=sys.stderr)
+    return 1
+
+
 def cmd_approvals(args) -> int:
-    directory = paths.state() / "approval-requests"
-    for f in sorted(directory.glob("*.json")) if directory.is_dir() else []:
-        data = json.loads(f.read_text(encoding="utf-8"))
-        print(f"{f.stem}  {time.strftime('%H:%M', time.localtime(data['at']))}  {data['summary']}")
+    """The requests waiting for the principal's code: the hook's, then those a shell filed, named as a shell's."""
+    from synthesis import approvals
+    for code in sorted(approvals.pending(), key=lambda c: (approvals._request_file(c).parent == paths.requests(), c)):
+        file = approvals._request_file(code)  # a file under another's code is none
+        data, shell = paths.read_json(file), approvals.SHELL if file.parent == paths.requests() else ""
+        print(f"{code}  {time.strftime('%H:%M', time.localtime(float(data.get('at') or 0)))}  {data.get('summary', '')}{shell}")
     return 0
 
 
@@ -547,7 +624,15 @@ def parser() -> argparse.ArgumentParser:
     s.add_argument("--width", type=int, default=600, help="characters shown per record (0: all)")
     s.add_argument("--limit", type=int, default=20)
     s.set_defaults(fn=cmd_sessions)
+    s = sub.add_parser("searches", help="count a session's web searches against search_budget, and each agent's share of the rest")
+    s.add_argument("--agents", type=int, default=1, help="how many research agents a fan-out would dispatch (default 1)")
+    s.add_argument("--session", default=argparse.SUPPRESS, help="the session to count (default: this one)")  # after the command too
+    s.set_defaults(fn=cmd_searches)
     sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
+    s = sub.add_parser("config", help="apply a settings file to the guard's own settings, on the principal's code")
+    s.add_argument("action", choices=["apply"])
+    s.add_argument("file", help="a JSON file holding the whole of the new settings")
+    s.set_defaults(fn=cmd_config)
     s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
     s.add_argument("plugin", nargs="?", default="")
     s.set_defaults(late="plugin")

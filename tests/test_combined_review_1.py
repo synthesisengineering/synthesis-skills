@@ -62,7 +62,7 @@ def _line(world) -> str:
 
 
 def _grants(world) -> list:
-    folder = world["v5"] / "state" / "release-grants"
+    folder = world["v5"] / "approvals" / "release-grants"
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 

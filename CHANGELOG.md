@@ -4,6 +4,119 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.25.0] - 2026-11-18
+
+The guard's sandbox (BACKLOG C1; design note 22.9, sections 2 and 4, and the principal's eight rulings of 2026-11-15,
+each the recommendation). Every record an approval rests on moves into a folder only the hook writes, and each harness's
+own operating-system sandbox is set to keep every agent's shell out of it and out of the rest of what the guard trusts:
+the runtime, its settings, the git hooks, the transcript archive, and each harness's records, settings and programs.
+This release ships the code and stages the two policy files; the seal holds once the principal installs them. It also
+adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
+
+- **The sealed folders.** `~/.synthesis/v5/approvals/` holds what an approval rests on: `grants/`, the hook's
+  `requests/`, `effects/` (grants the hook applies itself), `granted.jsonl` (each spent code, with the record and line
+  that showed it), `records/` (each session's record), `sends/`, `deploys/`, `desktop/`, `typed/`, `imessage-sends/`,
+  `stop/`, `release-grants/`, the browser files, the lock and the approved commit lines. `~/.synthesis/v5/install/`
+  holds what only the installer writes: setup's record of the Codex hooks it declared, install's own record, and the
+  staged policy files. The installer moves the old layout at its switch, never before, so an install that waits for
+  the principal's code leaves the running release's records where it reads them and reads his code there; the first
+  hook of this release to find the old layout moves it too. The move is made once, merging a line store the config
+  placed elsewhere, and nothing is deleted. A shell files its requests in `state/requests/`, which with the board and
+  the outbox is all of the synthesis home a sandboxed agent writes.
+- **The hook is the only writer of approvals.** It grants a shell's request only on the principal's typed code, names
+  it as a shell's, and never grants one planted under a code the hook filed: a code's first digit says who filed it (0
+  to 4 the hook, 5 to 9 a shell), so no file a shell writes stands for a code the hook showed, even once that code's
+  request has expired. A typed code answers each request it carried once, and is never shown again. What a typed code approves whose effect is
+  a sealed record (a commit line, a send window, a batch) the hook applies at the prompt, the turn's next tool call or
+  its end, once the session's record shows the code. The commit check, `synthesis sends open` and `sends batch` only
+  ask; `sends close` writes a mark that only ends a window. The lost-session and gap-review commands read a live, typed
+  grant and spend nothing, and a process that cannot write the sealed folder spends nothing and says why.
+- **A command outside the sandbox waits for the code of exactly that command** (ruling 2): Claude Code's
+  `dangerouslyDisableSandbox`, Codex's escalated run and the desktop app's terminal panel. The release launcher's own
+  line needs none (ruling 3: installs come from the protected release tool without a code).
+- **No approval in a Muse session** until a probe shows Muse's sandbox seals the folders (ruling 6): its prompt hook
+  grants nothing, and a held call says to make it in Claude Code or Codex.
+- **The guard's settings change only through `synthesis config apply <file>`**, which shows the change key by key and
+  writes `config.json` on the principal's code for exactly that file's content. A file tool's write of a harness's hook
+  or sandbox settings, or of a launch agent, waits for the code of that call; an MCP tool that writes is judged by its
+  path arguments, as the file tools are, since an MCP server runs outside every sandbox; and the installer refuses,
+  naming the folder, where it cannot write the sealed runtime, rather than install half of it.
+- **The two administrator files.** Every `plugin` or full run of setup stages Claude Code's managed settings and Codex's
+  requirements in `install/`; only `setup.py sandbox`, the rollout's step after its pilot, prints the one `sudo` command
+  that installs each, and the doctor and an ordinary run point to the rollout instead. Setup installs neither. Both are built from one sealed set (`synthesis/sandbox.py`): the sandbox on and never off for want of one,
+  the write area of ruling 8 (a session's folders and temp, plus `~/workspaces` and `~/.Trash`) with the board, the
+  outbox and `state/requests` named, as Codex's profile names them, an `Edit` deny rule
+  for every sealed path, Claude Code's own records denied to the shell alone, and an ask rule behind the guard's hold;
+  for Codex, a profile of its own pinned with no full access, and the guard's four hooks as managed hooks (ruling 7),
+  the only hooks Codex runs. The Codex profile in `config.toml` keeps the same set read-only, every ancestor of a sealed
+  folder included, once `setup.py sandbox` writes it: that is the rollout's Codex step, which first tests whether Codex
+  runs its hooks inside its sandbox (the note's section 5), so no release's install, and no `plugin` or full run of
+  setup, seals Codex before then. Each printed command checks the staged file's SHA-256 first, so a copy changed after
+  setup staged it installs nothing. A typed code that matched no request is marked too, so nothing filed under it later
+  is answered by that prompt; and an install that waits while a release before 5.25 runs says why that release answers
+  "Not granted" to its code.
+- **The doctor** reports the sandbox in one `sandbox` line (off, staged, or installed and holding the keys: root's with
+  every folder above it, this release's bytes, nothing outranking it), counts Codex's hook trust as policy once the
+  requirements hold, and fails, in a new `approvals` line, a layout that has both the old records and `approvals/`.
+  `synthesis doctor --seal`, run from a session's shell, tries each write the seal must refuse and fails loudly on any
+  that goes through, removing or putting back what it made; run outside a sandbox, it reads the configuration instead.
+- **What stays the principal's to install.** Nothing in this release installs either policy file. After the pilot of
+  design 4.8 step 3 (one Claude Code CLI session started with the managed content as its `--settings`, running the probe
+  set and a day's work, then a session in the desktop app's Code tab), the principal installs both once per Mac with
+  his password, by the two commands setup prints (`skills/synthesis-onboarding/references/harness-install.md`), and
+  again when a release changes either; `synthesis doctor --seal` green on every harness comes before the cutover is
+  announced on the board.
+- **Where part 1 went past the note.** The close mark of `sends close` lives in `state/requests/`, the one folder of
+  the state that Codex's profile lets a shell write. The hook also applies an effect at the prompt itself, where the
+  harness recorded the prompt before the hook ran. Codex's escalated run (`sandbox_permissions: "require_escalated"`,
+  `with_escalated_permissions`) is held as Claude Code's flag is; the note named only Claude Code's. `config apply`
+  asks one code, for the content, where the note's unsandboxed run would have asked a second for leaving the sandbox.
+  The guard holds a file tool's write of the harnesses' settings and launch agents itself, which holds before the
+  managed file is installed; the note left that to the managed deny rules.
+- **Where part 2 went past the note.** Codex's requirements pin a profile of their own, `synthesis-sealed`, allowed by
+  the table form of `[allowed_permission_profiles]`, where the note pinned `synthesis` by an array: Codex 0.169 ignores
+  an array there, and a profile the requirements define may not share a name with one in `config.toml`. The managed
+  settings also deny `~/.claude.json` and every repository's `.claude` settings and `.mcp.json`, a route the note's 4.6
+  left open: with unsandboxed commands allowed (ruling 2), Claude Code honors a repository's settings that loosen its
+  sandbox (an `excludedCommands` entry, which no hold of the guard sees), and the hooks and MCP servers they name run
+  with full access; the seal check reads each such file and fails on a command pattern one lets out. The files are
+  staged in the sealed `install/`, so no session changes one before it is installed. The seal check deletes only where
+  a move was refused, its file copied out first, and moves no live folder and asks no broker once its first write in
+  the approval records goes through, so a Mac whose seal is open keeps its folders where they are.
+- **Joined in the integration.** The doctor read the browser accounts from the old place and judged a Codex grant
+  against the state folder, which no longer holds approvals; the seal check's hook probe watched two folders the move
+  left empty, so a hook that wrote a grant was reported held; and no doctor line failed a layout that has both, as the
+  note's 4.1 asks. Each now reads the sealed layout (`grants/`, `effects/` and `records/` for the hook probe), and
+  `guards.SYNTHESIS_WRITES` lists the seal check's own writers.
+- **`synthesis searches --agents N`** (BACKLOG B5) counts a session's web searches, its sub-agents' included, from
+  each harness's own records (Claude Code's `WebSearch` calls, Codex's uses of its hosted search tool, Muse's
+  `web_search` calls in its client mode), each call once by its id. With the principal's `search_budget` set, it prints
+  what is left and each of N agents' share, rounded down, and exits 1 when that share is under one search or the count
+  cannot be told; a count the records cannot tell is said, with why, never counted as zero. The autopilot's fan-out rule
+  runs it before a research fan-out and puts each agent's share in its brief.
+- **A Muse session's sub-agents are in the session archive.** Muse keeps each sub-agent's record in a folder of its
+  own under its session's `subagent/` (281 on the principal's Mac), and the export never listed one. Each is now listed
+  beside its session and named after it as Claude Code's sub-agents are (`<parent>-agent-<id>`), its prompts kept as
+  its parent agent's briefs, and filed in the workspace its parent ran in, read from the parent's record, since its own
+  seldom names one; a `subagent/` folder the export cannot list is named, not passed over.
+- **The browser rules read a workflow's agents' records**, which lie below a session's `subagents/` folder
+  (`subagents/workflows/<run>/`), as they read a sub-agent's: the newest list that names a tab, a page script run on a
+  tab the session made, and a workflow agent's own record of a tab it made all count, within the same read budget (a
+  record last written before the tab was made is not read).
+- **Residual.** As part 1 lists them: a shell-filed request can misdescribe what its code approves (it deceives the
+  principal and forges nothing); a Codex `write_stdin` into a session an escalated command started types into that
+  unsandboxed shell under the one code; and the plugin caches are sealed by the sandbox alone, since the skills'
+  scripts run from there. As part 2 leaves them: the seal check asks two brokers, launchd and LaunchServices, of the
+  note's list (Apple Events, a running tmux or screen server, ssh to localhost and the harnesses' own prompt routes are
+  for the pilot's probe set), and Muse documents no folder rules, so nothing shows its sandbox seals the set. Not yet
+  confirmed on a Mac (the note's section 5): whether Codex runs its hooks outside its sandbox, which the sealed profile
+  `setup.py sandbox` writes makes decisive for approvals in Codex; whether Codex refuses the rename of a sealed folder's ancestor; the
+  place of Codex's requirements, taken from Codex's documentation; and whether Claude Code's sandbox holds in the
+  desktop app's Code tab and agent mode. As the review leaves them: a code a release before this one showed, whose first
+  digit is 5 to 9, is open to a request planted under it once its own has expired (around the upgrade only, before the
+  seal is installed); and a staged file changed while sudo asks for the password is installed, which the doctor names
+  afterwards.
+
 ## [5.24.1] - 2026-11-17
 
 - **A Mac on 5.23 upgrades directly.** 5.24.0's installer refused the principal's code on a Mac moving from 5.23,

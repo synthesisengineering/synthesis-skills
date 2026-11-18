@@ -39,7 +39,7 @@ def script(command: str) -> str:
 
 def protected() -> str:
     """A file in this test's synthesis state folder, where the guard refuses every write."""
-    return str(paths.state() / "approvals" / "x")
+    return str(paths.approvals() / "grants" / "x")
 
 
 def row(kind: str, payload: dict, at: str = "2026-11-15T10:00:01Z") -> dict:

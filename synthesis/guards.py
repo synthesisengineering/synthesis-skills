@@ -294,7 +294,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     held = temporary_addresses(texts, config)
     if isinstance(held, str):
         return [held]
-    if held and not approvals.backed("temporary-address", held, session):
+    if held and not approvals.granted("temporary-address", held, session):
         code = approvals.request("temporary-address", held, "an address that can change, in a message: " + ", ".join(held)[:140])
         return [f"it holds an address that can change or that only this machine answers ({', '.join(held)}). Such an address "
                 "is never given to anyone: what another person uses runs at a permanent address, on infrastructure that outlives "
@@ -1251,9 +1251,9 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
         if wanted != device:
             return (f"This session's browser is {label} ({device}), set for the workspace it started in; selecting "
                     f"{wanted or 'nothing'} would act as another profile. Select {device} instead.")
-        paths.write_json(paths.state() / "browser.json", {"device": device, "session": me, "at": time.time(), "confirmed": False})
+        paths.write_json(paths.approvals() / "browser.json", {"device": device, "session": me, "at": time.time(), "confirmed": False})
         return None
-    current = paths.read_json(paths.state() / "browser.json")
+    current = paths.read_json(paths.approvals() / "browser.json")
     if current.get("session") != me or current.get("device") != device or not me:
         since = (f"The latest browser selection was made by session {current.get('session')}, at "
                  f"{time.strftime('%H:%M', time.localtime(float(current.get('at') or 0)))}, not by this one"
@@ -1264,7 +1264,7 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
         if _last_selection(str((session or {}).get("transcript_path") or "")) != (device, True):
             return (f"This session's last select_browser for {device} has not reported success ('Selected browser ...'), "
                     "so actions could reach another profile. Call select_browser again and wait for its result.")
-        paths.write_json(paths.state() / "browser.json", {**current, "confirmed": True})
+        paths.write_json(paths.approvals() / "browser.json", {**current, "confirmed": True})
     return _account_hold(name, tool_input, named, config, device, label, session) if named else None
 
 
@@ -1377,7 +1377,7 @@ def _note_account(device: str, site: str, shown: tuple, me: str) -> None:
     """Writes down what a settling read showed, by profile and site, for the doctor, unless that read is what the
     file already holds. One writer at a time, so that two sessions lose neither's site."""
     import fcntl
-    listed, sight = paths.state() / "browser-accounts.json", {"seen": shown[0], "read": shown[1], "session": me}
+    listed, sight = paths.approvals() / "browser-accounts.json", {"seen": shown[0], "read": shown[1], "session": me}
     listed.parent.mkdir(parents=True, exist_ok=True)
     with open(listed.with_suffix(".lock"), "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -2991,7 +2991,7 @@ def _targets(command: str, config: dict, cwd: str) -> list[tuple[str, str | None
 
 def _last_deploy(identity: str):
     import hashlib
-    return paths.state() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
+    return paths.approvals() / "deploys" / (hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16] + ".json")
 
 
 def _published_head(identity: str) -> str | None:
@@ -3844,15 +3844,17 @@ def _reaches(target: str, root: str, whole: bool = False, hidden: bool = False) 
 
 def _protected_roots(config: dict | None) -> list[str]:
     """Where only the guard, the harness and the synthesis CLI write: synthesis state, the board, the transcript
-    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), harness transcripts, approved commit lines.
+    archive, the installed runtime (its releases, `current`, `bin` and `git-hooks`), the sealed approvals and install
+    folders, harness transcripts, approved commit lines.
     While a shell command is judged for the guard's own settings (`_CALL["settings"]`, set by check_self_grant), those
     are among them too, or alone ("only")."""
-    store, mode = paths.line_allowances(config or {}), _CALL.get("settings")
+    store, mode = paths.line_allowances(), _CALL.get("settings")
     if mode == "only":
         return _settings()
     key = (_env_key(), str(store), bool(mode))  # read once for the environment: they are paths, not the files at them
     if key not in ROOTS_MEMO:
         ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
+                                            paths.approvals(), paths.install_dir(),  # the sealed folders (the guard's sandbox, 2026-11-15)
                                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
                                             paths.codex_home() / "archived_sessions",  # Codex's archived rollouts, where a note may point (5.24.1)
                                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
@@ -3887,6 +3889,8 @@ SETTINGS_SAID = {  # what each kind is, what it holds or does, and what a change
                   "runs before every command, where this guard never sees it"),
     "program": ("a harness program", "what the harnesses, synthesis doctor and the release tool run as `{}`",
                 "runs with no code whenever one of them starts it"),
+    "harness": ("a harness's own settings", "the hooks it runs, what it lets out of its sandbox and the jobs launchd starts with "
+                "full access", "changes what every approval means"),
 }
 STARTUP_FILES = (".zshenv", ".zprofile", ".zshrc", ".zlogin", ".zlogout", ".bash_profile", ".bash_login", ".profile", ".bashrc")
 HARNESS = ("claude", "codex", "muse", "gh")
@@ -3923,7 +3927,8 @@ def _settings_map() -> dict:
     if key in SETTINGS_MAPS:
         return SETTINGS_MAPS[key]
     home = os.path.expanduser("~")
-    found = {str(paths.config_file()): ("config.json", ""), str(paths.home() / "git-hooks"): ("git-hooks", "")}
+    found = {str(paths.config_file()): ("config.json", ""), str(paths.home() / "git-hooks"): ("git-hooks", ""),
+             **{str(p): ("harness", "") for p in paths.harness_settings()}}  # sealed with the trust base (the guard's sandbox)
     read = _regular(os.path.join(home, ".zshenv"), 1 << 16)
     zdots = [env.get("ZDOTDIR") or home] + [_expanded(dot) for _, dot in ZDOTDIR_SET.findall(read[0].decode("utf-8", "replace") if read else "")]
     for folder, name in [(z, n) for z in [home] + zdots for n in STARTUP_FILES[:5]] + [(home, n) for n in STARTUP_FILES[5:]]:
@@ -4398,7 +4403,7 @@ def _python_writes(source: str, names: list, roots: list | tuple = (), where: st
         return isinstance(node, ast.Call) and getattr(node.func, "attr", getattr(node.func, "id", "")) == "open" and any(
             map(named, [*node.args, *(k.value for k in node.keywords), *([node.func.value] if isinstance(node.func, ast.Attribute) else [])]))
 
-    store = paths.line_allowances(config or {})
+    store = paths.line_allowances()
     folders_held = [r for r in roots if not store or r != _real(str(store))]  # the approved lines are one file: nothing holds a folder of them
 
     def over(n) -> bool:  # a walk or a pattern that may find what lies in a protected folder, from a folder that holds it
@@ -5658,28 +5663,33 @@ IMPORTS_IT = _Pattern(r"(?:^|[;\n])[ \t]*(?:from[ \t]+synthesis(?:\.[\w.]+)?(?:[
                         r"|import[ \t]+synthesis(?:\.[\w.]+)?(?:[ \t]+as[ \t]+\w+)?[ \t]*(?:$|[;,\n)]))")
 SAYS_SYNTHESIS = _Pattern(r"^synthesis(?:\.[\w.:]*)?$|(?i:(?:^|[/\\])synthesis(?:[/\\](?:[\w.-]+\.py)?)?$)")
 SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthesis's own functions that write a file (a test reads them from the source)
-    ("approvals", "_expire _file _spend alone answered consume grant_from_prompt one_code put_back remember request void"),
+    ("approvals", "_expire _file _ledger _spend alone answered apply consume grant_from_prompt one_code put_back remember request void"),
     ("guards", "_record_deploys _swap _void answered settle"), ("autopilot", "_evaluate _write_pointer evaluate"),
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
-    ("cli", "_batch _main cmd_claim cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
-            "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
-    ("doctor", "_note_waits check_wait_check main run_checks"),
-    ("hook", "_carried_since _newer_plugin_note _ran _upgrade_note main pre_tool_use session_start stop user_prompt_submit"),
-    ("install", "_install_lock _install_locked _merge _spend_release _stage _write_exec approval grant_release install move_board "
-                "refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("cli", "_batch _main cmd_claim cmd_config cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
+            "cmd_searches cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
+    ("doctor", "_note_waits check_seal check_wait_check main run_checks"),
+    ("hook", "_batch _carried_since _line _newer_plugin_note _ran _upgrade_note _window apply_effects main pre_tool_use session_start stop "
+             "user_prompt_submit"),
+    ("install", "_install_lock _install_locked _merge _move_records _spend_release _stage _unwritable _write_exec approval grant_release install "
+                "move_approvals move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
-    ("sends", "_note batch_refusal batch_spend batch_unspend close_batches close_window log open_batch open_window sender_ticket settle ticket undo window_refusal"),
-    ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
+    ("sandbox", "_append _broker _create _delete _hook _remove _rename probes"),  # the seal check's probes (doctor --seal)
+    ("sends", "_note batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window sender_ticket settle ticket undo "
+              "window_request"),
+    ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent searches sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
                                                                     "paths"))  # the writers approvals rest on; the board's grant nothing
 SYNTHESIS_DEFS: dict = {}  # a module of synthesis: the names it imports
 SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths.sessions", "paths.old_board", "paths.codex_home", "paths.desktop_dir", "paths.config_file",
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
-                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file"})
+                              "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file",
+                              "paths.approvals", "paths.install_dir", "paths.requests", "paths.old_approvals", "paths.old_line_allowances",
+                              "paths.harness_settings", "sends._closed_file"})  # the sealed set's (the guard's sandbox)
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -5950,6 +5960,20 @@ def release_checkout(repo: str) -> list:
         [f"its own git config sets {', '.join(odd[:6])}, which may run a program or send git elsewhere"] if odd else [])
 
 
+def _launcher(word: str, name: str) -> bool:
+    """Whether a command's first word is the runtime's own launcher `name` in its protected bin/, by an absolute path the
+    shell hands on as written (`~/` only at its start), as install wrote it for an interpreter it would still pin."""
+    from synthesis import install
+    target, python = paths.home() / "bin" / name, install.pinned(paths.home())
+    word = os.path.expanduser("~") + word[1:] if word.startswith("~/") else word
+    try:
+        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, name)
+    except OSError:
+        written = False
+    return (written and bool(python) and not install.interpreter_problems(python) and word[:1] == "/" and "~" not in word
+            and os.path.realpath(word) == os.path.realpath(target))
+
+
 def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
     """The options of a command line that is exactly the release launcher install wrote, on the canonical checkout or
     naming a tag to install (above); {} for any other. Its paths are absolute, so no folder the command runs from moves
@@ -5971,14 +5995,7 @@ def _release_tool(command: str, cwd: str, session: dict | None = None) -> dict:
     def place(word: str, shell: bool) -> str:  # an absolute path as the shell hands it on: `~/` leads home only at a word's start
         word = home + word[1:] if shell and word.startswith("~/") else word
         return word if word[:1] == "/" and "~" not in word else ""
-    from synthesis import install
-    target, python = paths.home() / "bin" / "synthesis-release", install.pinned(paths.home())
-    try:
-        written = target.read_text(encoding="utf-8") == install.launcher(paths.home(), python, "synthesis-release")
-    except OSError:
-        written = False
-    if not written or not python or install.interpreter_problems(python) or os.path.realpath(place(words[0], True) or "/") != (
-            os.path.realpath(target)):
+    if not _launcher(words[0], "synthesis-release"):
         return False  # not the launcher install wrote, for an interpreter it would still pin
     given, at = {}, 1
     while at < len(words):
@@ -6519,7 +6536,7 @@ def _synthesis_reach(text: str) -> tuple:
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
             spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
                 "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
-                "_requests_file", "_ticket_file")
+                "_requests_file", "_ticket_file", "old_approvals", "old_line_allowances", "harness_settings", "_closed_file")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
@@ -6550,7 +6567,7 @@ def _synthesis_reach(text: str) -> tuple:
     for line in data.splitlines(keepends=True):
         starts.append(starts[-1] + len(line))
     for call, module, name in sorted(spots, key=lambda spot: (spot[0].lineno, spot[0].col_offset), reverse=True):  # each spelled out, as the reader reads one
-        root = paths.sessions() if (module, name) == ("sessions", "root") else paths.state() if name == "_dir" else getattr(paths, name)()
+        root = paths.sessions() if (module, name) == ("sessions", "root") else paths.approvals() if name == "_dir" else getattr(paths, name)()
         arg = ast.get_source_segment(text, call.args[0]) if call.args else ""
         put = (f"({str(root)!r} + '/' + ({arg}))" if arg else repr(str(root))).encode("utf-8")
         start, end = starts[call.lineno - 1] + call.col_offset, starts[call.end_lineno - 1] + call.end_col_offset
@@ -7106,7 +7123,7 @@ def _settings_hold(command: str, cwd: str, also: str | None, session: dict | Non
 def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: int = 0) -> str | None:
     """One reading of a command: the reason it is refused, or None. A shell script it runs, by a shell, by its path or
     sourced, is read as the command lines it holds, three scripts deep (22.21)."""
-    codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances(config or {})
+    codes, home, store = approvals.pending(), os.path.expanduser("~"), paths.line_allowances()
     raw = _protected_roots(config)
     inherited = [r for r in raw if _settings_map().get(r, ("",))[0] not in ("startup", "snapshots", "program")]  # a harness's own variables name these (22.26)
 
@@ -7187,7 +7204,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         kept = [r for r in raw if _settings_map().get(r, ("",))[0] != "program"] if ran and "program" in _kinds_at(ran) else raw  # a launcher names where its program is (22.26)
         named = ("input that this guard could not read" if UNREAD_INPUT in head + fed else _spells(  # each word, and each program text, apart
             [fed, *([t for _, t in files] or [code])] + words[1:] if program else said, words, where, env, kept, linked)
-                 or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions())) else "")
+                 or (where if any(paths.inside(_real(where), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions(), paths.approvals(), paths.install_dir())) else "")
                  or ("the files xargs hands it" if HANDED in words and names else "")) if label else ""  # standing where no session works, or what xargs hands it
         if SCRIPT.match(head) and re.search(r"\bsynthesis\b", script + code) and (SELF_GRANT_CALLS.search(_granting_text(script, head)) or (
                 RUNS_STRINGS.search(script) and WINDOW_CLI.search(script))):  # a program that starts `synthesis sends open`
@@ -7279,7 +7296,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         sub, acts = _git(words, where)  # git acts where -C sends it; sent somewhere this cannot read, it is not shown to act here
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
-        stood = any(paths.inside(_real(acts), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions()))
+        stood = any(paths.inside(_real(acts), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions(), paths.approvals(), paths.install_dir()))
         if stood and readable and not quoted and not ((head in READERS and reads) or head in WRITERS or head in OWN_RULES or (
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
@@ -7752,10 +7769,25 @@ def _browser_call(lines: list, i: int, ident: str) -> dict | None:
 
 def _record(session: dict | None) -> str:
     """The record that shows this call's own earlier calls: a sub-agent's own when the hook names one (its reads and
-    pages are kept out of its session's record), else the session's (review round 1 of 5.23.1, #3)."""
+    pages are kept out of its session's record), else the session's (review round 1 of 5.23.1, #3). A workflow's agent
+    keeps its own below the session's subagents/ folder."""
     main, agent = str((session or {}).get("transcript_path") or ""), str((session or {}).get("agent_id") or "")
-    name = agent if agent.startswith("agent-") else f"agent-{agent}"
-    return os.path.join(os.path.splitext(main)[0], "subagents", f"{name}.jsonl") if main and agent else main
+    name = f"{agent if agent.startswith('agent-') else 'agent-' + agent}.jsonl"
+    own = os.path.join(os.path.splitext(main)[0], "subagents", name) if main and agent else main
+    return own if own == main or os.path.exists(own) else next((r for r in _agents(main) if os.path.basename(r) == name), own)
+
+
+def _agents(main: str, since: float = 0.0) -> list:
+    """The records of a session's sub-agents written since `since`: those in its subagents/ folder, and a workflow's
+    agents' below it (subagents/workflows/<run>/), where `synthesis searches` reads them as subagents/**/*.jsonl too."""
+    found = []
+    for top, _, names in os.walk(os.path.join(os.path.splitext(main)[0], "subagents")):  # a folder it cannot list holds none
+        for name in (n for n in names if n.startswith("agent-") and n.endswith(".jsonl")):
+            try:
+                found += [os.path.join(top, name)] if os.path.getmtime(os.path.join(top, name)) >= since else []
+            except OSError:  # removed since its folder was listed
+                continue
+    return found
 
 
 def _tabs(transcript: str, server: str = "") -> tuple:
@@ -7831,12 +7863,8 @@ def _shared_tabs(session: dict | None, server: str) -> tuple:
     tabs, front, when = _listed(own, server)
     if "claude-in-chrome" not in server or not main:
         return tabs, front
-    folder, newest = os.path.join(os.path.splitext(main)[0], "subagents"), {tab: (when, address) for tab, address in tabs.items()}
-    try:
-        others = [os.path.join(folder, n) for n in os.listdir(folder) if n.startswith("agent-") and n.endswith(".jsonl")]
-    except OSError:
-        others = []
-    for record in dict.fromkeys([main] + others):
+    newest = {tab: (when, address) for tab, address in tabs.items()}
+    for record in dict.fromkeys([main] + _agents(main)):  # a workflow's agents' too, one folder deeper
         try:
             if record == own or os.path.getmtime(record) < max(when, time.time() - 12 * 3600):
                 continue  # nothing in it is newer than this call's own list
@@ -7910,7 +7938,7 @@ def _bundle(app, apps: dict) -> str:
 
 def _grants(session: dict | None, folder: str = "desktop"):
     me = "".join(c if c.isalnum() or c in "-_." else "_" for c in paths.session_id(session))
-    return paths.state() / folder / f"{me}.json" if me else None
+    return paths.approvals() / folder / f"{me}.json" if me else None
 
 
 def _sends_key(chords: str, apps: dict) -> bool:
@@ -8038,7 +8066,6 @@ def _made_here(tab: str, session: dict | None, server: str) -> str:
     in the built-in pane voided the step). Else why the send step may not run there (the coordinator's ruling on the
     opener, 2026-11-15: a page holds a handle to another window only by opening it, and none opened a tab the browser
     tool made)."""
-    from pathlib import Path
     record, made, readers = str((session or {}).get("transcript_path") or ""), 0.0, _read_only_scripts()
     for i, line, lines in ((i, line, lines) for path in dict.fromkeys([_record(session), record]) if path  # a sub-agent's own
                            for lines in [_tail(path)] for i, line in enumerate(lines)):  # tabs_create too (round 5, #5)
@@ -8051,8 +8078,8 @@ def _made_here(tab: str, session: dict | None, server: str) -> str:
     if not made:
         return ("This send step's tab was not made by this session's tabs_create, so a page may hold a handle to it: open a "
                 "fresh tab with tabs_create, navigate it to the conversation, then run the send step there.")
-    others = [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
-    mine = [record, *map(str, Path(os.path.splitext(record)[0], "subagents").glob("*.jsonl"))]
+    others = [str(paths.read_json(kept).get("path") or "") for kept in (paths.approvals() / "records").glob("*.json")]
+    mine = [record, *_agents(record, made)]  # a sub-agent's or a workflow agent's record last written before the tab was made shows nothing since
     for path in mine + [p for p in others if p and os.path.isfile(p) and not os.path.samefile(p, record)
                         and time.time() - os.path.getmtime(p) <= 12 * 3600]:
         tail = [line for line in _tail(path) if _when(line) >= made]
@@ -8085,7 +8112,7 @@ def _listed_on_messenger(tab: str, server: str, session: dict | None) -> str:
     its tab ids, so the newest list decides (round 4, #13: an older list of another session's refused a script on the
     document this session's newer list showed); '' for any other (each record is where 5.22.1's prompt hook recorded it)."""
     mine = str((session or {}).get("transcript_path") or "")
-    records = [mine] + [str(paths.read_json(kept).get("path") or "") for kept in (paths.state() / "transcripts").glob("*.json")]
+    records = [mine] + [str(paths.read_json(kept).get("path") or "") for kept in (paths.approvals() / "records").glob("*.json")]
     newest, shown, whose = -1.0, "", ""
     for record in dict.fromkeys(r for r in records if r):
         try:
@@ -9134,7 +9161,7 @@ def check_runtime(command: str, cwd: str, session: dict | None = None) -> str | 
             for words, where in _parse(text, cwd)[0]:
                 said = "" if isinstance(where, Quoted) else _runtime_change(words, where, subjects)
                 found += [said] if said and said not in found else []
-    waiting = [s for i, s in enumerate(subjects) if s not in subjects[:i] and not approvals.backed("runtime", s, session)]
+    waiting = [s for i, s in enumerate(subjects) if s not in subjects[:i] and not approvals.granted("runtime", s, session)]
     if not found or not waiting:  # the hook checks the code and spends nothing: the CLI spends it (review round 1 of 22.18)
         return None
     code = approvals.request("runtime", waiting[0], f"the synthesis runtime: {command[:150]}")
@@ -10326,13 +10353,14 @@ def _sender_runs(words: list, where: str) -> list:
 
 @_entry
 def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = None) -> str | None:
-    """A shell command that posts words to people waits for the principal's code, as a connector send does, and
-    opening a send window needs it too. The register scan reads the message the command sends (its text words and
-    any body file), not file names or URLs (2026-10-13: a scratch file's name tripped a rule). Opening a batch needs the
-    principal's code for its digest; no shell post is a batch's entry (the local messages sender asks check_send itself)."""
+    """A shell command that posts words to people waits for the principal's code, as a connector send does. The
+    register scan reads the message the command sends (its text words and any body file), not file names or URLs
+    (2026-10-13: a scratch file's name tripped a rule). `synthesis sends open` and `batch` only file a request, which the
+    hook grants and applies on the principal's code (the guard's sandbox, design 2.3), so they run with no hold; no shell
+    post is a batch's entry (the local messages sender asks check_send itself)."""
     import hashlib
     from synthesis import sends
-    posts, calls, writes = [], [], []
+    posts, writes = [], []
     try:  # files this command writes, so a body file it rewrites before posting is not read stale (2026-10-13)
         _commands(command, cwd, writes=writes)
     except (Unreadable, StopIteration, IndexError):
@@ -10346,7 +10374,6 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     acts = [a[1] for _, _, a in found]
     posts += [(a[0], a[2], where) for _, where, a in found]
     for words, where in commands:
-        calls += [(args, argv, where) for args, argv in sends.cli_calls(words)]
         _CALL.setdefault("senders", []).extend(_sender_runs(words, where))  # check() files a ticket for each
         if any(words == w and where == h for w, h, _ in found):
             continue
@@ -10360,34 +10387,6 @@ def check_outgoing(command: str, config: dict, cwd: str, session: dict | None = 
     reason = _check_mcp(found_calls, command, config, session)  # 5.24.0
     if reason:
         return reason
-    waiting = []  # every request of the line, read as the CLI reads it (the review of 5.23.0), each with its own code (5.22.1)
-    for args, argv, where in calls:
-        if args is None:
-            if not approvals.held("sends-command", argv):
-                code = approvals.request("sends-command", argv, "a sends command the guard cannot read: " + " ".join(argv)[:120])
-                waiting.append(f"This command runs `synthesis {' '.join(argv)}`, which the guard cannot read as the CLI reads it (a "
-                               "word the shell changes first, or one the CLI refuses). Write it out in full, or show the principal "
-                               f"the exact command and ask them to type {approvals.how(code)}; then run the identical command again.")
-        elif args.file and args.action != "batch":
-            return "This command can't run as written: a file goes only with `synthesis sends batch`."
-        elif args.action == "open":  # each command spends its own grant (`synthesis sends open` refuses without one)
-            window = sends.asked(args.hours, args.channels, args.project, args.sends)
-            try:  # never ask the principal to approve a window the command would refuse
-                sends.check_window(window["hours"], window["channels"], window["sends"])
-            except ValueError as exc:
-                return f"This send window can't open: {exc}."
-            if not approvals.held("send-window", window):  # held, the rest of the line is still judged below
-                waiting.append(sends.window_refusal(window))
-        elif args.action == "batch" and not args.show:  # so does `sends batch`, for exactly the digest of the file it reads
-            file = os.path.join(where, os.path.expanduser(args.file))
-            try:
-                asked = sends.read_batch(file)
-            except (OSError, ValueError) as exc:
-                return f"This batch can't open: {exc}."
-            if not approvals.held("send-batch", sends.batch_digest(asked)):
-                waiting.append(sends.batch_refusal(asked, file))
-    if waiting:
-        return " ".join(dict.fromkeys(waiting))  # one request asked twice in the line is one code
     if not posts:
         return None
     text, chans = "\n\n".join(t for _, t, _ in posts), sorted({c for c, _, _ in posts})
@@ -10765,6 +10764,72 @@ def check_hook_writes(tool: str, tool_input: dict, cwd: str, session: dict | Non
             f"{approvals.how(code)}; then {'run the identical command' if shell_tool(tool) else 'make this identical call'} again.")
 
 
+# --- a command outside the harness's sandbox (the principal's ruling 2 of 2026-11-15) ---------------------------------------
+# Each harness confines its shell in an operating-system sandbox that keeps every command out of the sealed folders. One it
+# runs outside it (Claude Code's `dangerouslyDisableSandbox`, Codex's escalated run, the desktop app's terminal panel, which
+# no sandbox confines) can write them, so it waits for the principal's code of exactly that command, where it runs. The
+# release launcher's line leaves it with no code: releases install from the protected release tool (ruling 3).
+UNSANDBOXED = (("dangerouslyDisableSandbox", True), ("sandbox_permissions", "require_escalated"), ("with_escalated_permissions", True))
+
+
+def check_unsandboxed(tool: str, tool_input: dict, cwd: str, session: dict | None = None) -> str | None:
+    """A command a harness would run outside its sandbox waits for the principal's code of exactly it, run where it was
+    asked; one run per code."""
+    asked = [key for key, value in UNSANDBOXED if type(tool_input.get(key)) is type(value) and tool_input.get(key) == value]
+    panel = tool.endswith("__run_in_terminal")
+    command = shell_command(tool_input)
+    if not (asked or panel) or _release_tool(command, cwd, session) or _config_apply(command, cwd, session):
+        return None
+    subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+    if approvals.consume("unsandboxed", subject, session):
+        return None
+    code = approvals.request("unsandboxed", subject, f"run outside the sandbox, in {subject['runs_in']}: {command[:140]}")
+    how = "in the desktop app's terminal panel, which no sandbox confines" if panel else f"outside the harness's sandbox ({asked[0]})"
+    return (f"This command runs {how}: `{command[:300]}`. There nothing keeps it out of the sealed approvals, the runtime the "
+            "guard runs or the harnesses' settings, so it waits for the principal's code of exactly this command. Show them the "
+            f"command and ask them to type {approvals.how(code)}; then run the identical command again the same way. A command "
+            "the sandbox allows needs no code: run it inside the sandbox where it can.")
+
+
+def _config_apply(command: str, cwd: str, session: dict | None) -> bool:
+    """Whether a line is exactly the runtime's own launcher applying a settings file whose change the principal's code
+    grants: its run outside the sandbox waits for no second code, since the command itself spends that one (design 2.3)."""
+    words = command.split()
+    if len(words) != 4 or words[1:3] != ["config", "apply"] or not PLAIN_LINE.fullmatch(command.strip()) or not _launcher(words[0], "synthesis"):
+        return False
+    from synthesis import cli
+    try:
+        change = cli.config_change(os.path.join(cwd, os.path.expanduser(words[3])))
+    except ValueError:
+        return False
+    return bool(change["said"]) and approvals.granted("config", change["subject"], session)
+
+
+# --- an MCP tool that writes a file (design 4.5) --------------------------------------------------------------------------
+# An MCP server runs outside every sandbox, as the harness's own process, so a tool of one that writes a file reaches the
+# sealed folders where no shell can: such a tool is judged by its path arguments against the protected folders, as the
+# file tools are (`check_file_write`), the agent's memory notes beside its transcripts excepted.
+MCP_WRITES = frozenset("write create edit replace insert delete remove move rename save append update put patch copy mkdir touch "
+                       "download export extract unzip".split())
+MCP_PATH_KEYS = frozenset({"file", "filename", "dest", "dst", "destination", "target", "output", "out", "save_to", "directory",
+                           "dir", "folder"})
+
+
+def check_mcp_write(tool: str, tool_input, cwd: str, config: dict) -> str | None:
+    name = re.sub(r"([a-z])([A-Z])", r"\1 \2", tool.rpartition("__")[2]).lower()
+    if not tool.startswith("mcp__") or not isinstance(tool_input, dict) or not set(re.findall(r"[a-z]+", name)) & MCP_WRITES:
+        return None
+    roots = [os.path.realpath(r) for r in _protected_roots(config)]
+    for key, value in tool_input.items():
+        if isinstance(value, str) and value and "\0" not in value and ("path" in key.lower() or key.lower() in MCP_PATH_KEYS):
+            real = os.path.realpath(os.path.join(cwd, os.path.expanduser(value)))
+            if any(paths.inside(real, r) for r in roots) and not _own(real):
+                return (f"Refused: {tool} would write {value}, inside a folder only the hook, the installer or a harness writes "
+                        "(the sealed approvals, the runtime, the board, the archive or a harness's records). An MCP server runs "
+                        "outside every sandbox, so the guard judges where its tools write; approvals come only from the principal.")
+    return None
+
+
 def guarded(tool: str, tool_input: dict | None = None) -> bool:
     """Calls whose guard must fail closed when the config can't be read (R3.5)."""
     return (shell_tool(tool) or tool in STDIN_TOOLS or tool.startswith(BROWSER) or bool(desktop_tool(tool)) or bool(driven_tool(tool))
@@ -10799,7 +10864,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
         return check_typed(tool_input, config, cwd, session)
     if shell_tool(tool):
         command, senders = shell_command(tool_input), []
-        verdict = _one_code((lambda: check_destructive(command, config, cwd), lambda: check_runtime(command, cwd, session),  # a
+        verdict = _one_code((lambda: check_unsandboxed(tool, tool_input, cwd, session),  # ruling 2: outside the sandbox
+                             lambda: check_destructive(command, config, cwd), lambda: check_runtime(command, cwd, session),  # a
                              lambda: check_self_grant(command, cwd, config, session),  # recursive delete is named as one
                              lambda: check_pr_gate(command, config, cwd, session),
                              lambda: check_deploy(command, config, cwd, session), lambda: check_tunnel(command, config, cwd, session),
@@ -10823,7 +10889,7 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
     if desktop_tool(tool):
         return check_desktop(desktop_tool(tool), tool, tool_input, config, session)
     kind = driven_tool(tool)  # a browser tool from any other server, by the steps it performs (round 3, finding 8)
-    reason = check_driven(kind, tool, tool_input, config, session) if kind else None
+    reason = check_mcp_write(tool, tool_input, cwd, config) or (check_driven(kind, tool, tool_input, config, session) if kind else None)
     return reason or _connector(tool, tool_input, config, cwd, session)
 
 

@@ -273,7 +273,7 @@ def test_a5_codex_commands_are_judged_where_codex_runs_them(world):
     for folder in (session, workdir):
         folder.mkdir(parents=True)
     (workdir / "f.json").write_text("{}\n")
-    line = "cp f.json ../.synthesis/v5/state/approvals/a.json"  # from workdir it lands in the approvals
+    line = "cp f.json ../.synthesis/v5/approvals/grants/a.json"  # from workdir it lands in the sealed approvals
     said = guards.check("exec_command", {"cmd": line, "workdir": str(workdir)}, {}, cwd=str(session),
                         session={"session_id": "S-principal"})
     assert said and said.startswith("Refused"), said

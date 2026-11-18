@@ -2459,10 +2459,161 @@ ROOT = Path(__file__).resolve().parents[1]
 # interpreter_problems before it is run, each python.org version read from its folder's name and never by running it
 # (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
 # the version's own fixed alone, so the warning goes once the steps are run.
+# C1, the guard's sandbox, part 1 (2026-11-18; the principal's eight rulings of 2026-11-15 on that day's design note):
+# the core 251 more, the plugin 254. The layout (design 4.1): paths.approvals 5, install_dir 3 and requests 3 (the sealed
+# approvals and install folders, and a shell's requests beside its state), MOVED 4 (each sealed record's name in state/
+# and in approvals/), old_approvals 12 (the old layout, a line store the config placed elsewhere among it, found while
+# approvals/ is not there), line_allowances 1 fewer and old_line_allowances 5 (the store sealed; where an older release
+# kept it, read once), harness_settings 8 (each harness's hook and sandbox settings and the launch agents, whose writes wait
+# for the code), their 2 comment lines and 14 blank lines; install.move_approvals 20 (the move, once, nothing deleted) and
+# install 1 more (it runs beside move_board), 2 blank lines; hook.main 7 more (the hook names itself the requests' filer,
+# and its first event moves the old layout).
+# The hook as the only writer (design 2.3 and 4.5): approvals.Sealed 3 and _sealed 4 (a process that cannot write the
+# folder spends nothing, and says why), IN_HOOK, SHELL and EFFECTS 3, _folders 3 and _request_file 5 (two folders of
+# requests, the hook's taking a code a shell planted beside it), request 2 more (an effect's request carries its subject),
+# _file 3 more (filed where its filer may, never under a code the hook holds), _expire 1 more, grant_from_prompt 4 more (a
+# shell's named as one, effects kept apart, the session typed in), showing 26 for typed 22 fewer (the record's read also
+# says where it found the prompt), held 4 and backed 12 gone for granted 12 and _muse 4 (ruling 6: no approval in a Muse
+# session), _backing 11 and unbacked 3 with consume 4 fewer (one reading of the record and one wording of an unbacked
+# grant, for the spend and the read-only check), answered 3, void 2, alone 4 and _spend 2 more (each sealed write named),
+# _ledger 7, ready 18 and apply 13 (granted.jsonl; the effect grants a session's record backs, applied once and given back
+# if they fail), 7 comment lines and 23 blank lines; hook.apply_effects 14, _line 5, _window 5, _batch 7 and EFFECT 1 (what
+# each code applies), MUSE 3, user_prompt_submit 6 more, pre_tool_use 6 more and stop 4 more (effects at the prompt, the
+# next tool call and the turn's end; Muse's notes), 12 blank lines; commit_check.unapproved 5 fewer (it files the request
+# and writes nothing); cli.cmd_sends 9 fewer, _batch 13 fewer and cmd_approvals 3 more (the commands ask, close by a mark,
+# and the listing reads both folders); sends.window_request 9 and batch_request 16 for window_refusal 7 and batch_refusal
+# 17, APPLIED 2, _closed_file 2, _closed 8 and close_mark 2 (a close mark that only ends), filed 6 (the hook's record of a
+# batch's code), cli_calls 25 and close_batches 8 gone, 6 blank lines; sessions.lost 3 more (the loss read as a grant, an
+# unbacked one said why); guards.check_outgoing 28 fewer (no hold of the sends commands), SYNTHESIS_WRITES 2 and
+# SYNTHESIS_PLACES 2 more, _protected_roots 2 more, SETTINGS_SAID 2 and _settings_map 1 more (the harness settings). The
+# plugin's 3 more: local_messaging._close, the review read as a grant, an unbacked one said why.
+# Ruling 2, a command outside the sandbox waits for the code of exactly it: guards.UNSANDBOXED 1, check_unsandboxed 17 and
+# its 5 comment lines, the shell's chain in _check 1 more, 4 blank lines.
+# Then each 126 more, all in synthesis/, for the rest of part 1 (design 2.3 and 4.5). The guard's settings:
+# cli.config_change 27 (what a settings file changes, key by key, and what the principal's code binds) and cmd_config 27
+# (`synthesis config apply`, on his code for exactly that content, outside the sandbox), the parser 4 more, 4 blank lines;
+# guards._config_apply 12 (the launcher's own settings line needs only the code of the change) and _launcher 12 with
+# _release_tool 7 fewer (the runtime's own launcher, read in one place for both). An MCP tool's writes: guards.MCP_WRITES 2,
+# MCP_PATH_KEYS 2 and check_mcp_write 13 with their 4 comment lines (judged by its path arguments, as the file tools are);
+# the dispatch's line in _check keeps its length. The installer: install._unwritable 12 and install 4 more (it refuses,
+# naming the folder, where it cannot write the sealed runtime, rather than install half). The new definitions' 8 blank
+# lines in guards.py and 2 in install.py.
+# Then each 3 more, in cli.config_change: the file an agent names is read as a regular file opened without waiting, and
+# one over a megabyte is refused (a FIFO there held the guard to its deadline).
+# Then each 4 more, all in install.py (design 4.1: install/ holds what only the installer writes): move_approvals 3 more
+# (install's own record of what it replaced moves there once) and uninstall 1 more (its report names the approvals it
+# keeps); the record read and written there keeps its lines, and so does install._unwritable, which now leaves no folder
+# it made (a refused install had left an empty bin/, which showed a runtime had been there).
+# 22.9, part 2 (2026-11-18): the guard's sandbox, its two administrator files and their check (design note 22.9, 4.2,
+# 4.3, 4.6 and 4.8; the principal's rulings of 2026-11-15): core 696 more and plugin 753, all new behavior that nothing
+# existing carries. sandbox.py 630, one module so the folder move changes the sealed set there alone. The sealed set
+# and the two files: tilde 4, _harness 14 (each harness's records, settings and programs, the note's 2.1), sealed 3,
+# _rule 5 (a permission rule's // before an absolute path), claude_managed 8 (the note's 4.2), codex_rules 9 (the
+# profile's read-only folders, every ancestor of a sealed one included), managed_hooks 9 (the plugin's hooks as Codex
+# runs them, held to hooks/hooks.json by a test, since the runtime carries no hooks.json), codex_requirements 16 (a
+# profile of its own in the table form Codex 0.169 reads, no full access, the guard's hooks managed), expected, target
+# and staged 6, install_command 5 (the one sudo command). Judging them: admin_problems 16 (root's, with every folder
+# above it), _same 7, _outranked 19 (an MDM profile above a file, a Claude Code drop-in merged over it), judge 19 (off,
+# staged or installed, each problem with its one step), managed_hooks_hold 3, profile_rules 13, holds 3 and
+# profile_problems 12 (the Codex profile setup writes), codex_config 6, in_sandbox 12 (macOS's sandbox_check). The
+# probes of `doctor --seal`: _refused 2, _create 15, _append 9, _rename 14 and _delete 20 (each move or delete undone at
+# once, a deleted file copied out first), _child 15 (a shell and a background child), _files 2, _hook 30 (the hook run
+# with a made-up prompt, any grant or record it wrote put back), _landed 5 and _broker 16 (launchd and LaunchServices asked to write for
+# the shell), probes 62, _remove 10. The configuration read: _commands 34 (every hook, MCP server and launch agent),
+# _paths_in 11, _write_area 10, loose_commands 6, hooks_path_overrides 19 (a repository's own core.hooksPath),
+# config_read 25. Beside them the constants 20 (HELD and PATHLIKE among them), imports 14, the docstring 5, the sealed
+# set's comment and two section comments 6, and 91 blank lines. doctor.py 66: check_sandbox 19 (the one line: off,
+# staged, or installed and holding the keys), check_codex_managed_hooks 7 (no approval waits on hooks Codex runs by
+# policy), check_seal 17 (the probes inside a sandbox, the configuration outside one), _TELL 1, harness_checks 2, main 10
+# (`--seal`), a section comment 1 and 9 blank lines. The plugin's 57 more, in setup.py: stage_sandbox 24 (each file's
+# bytes staged, the command for each, what is installed verified), _seal 19 (the profile's seal rules, a rule of the
+# person's own named and kept), codex_overlay 3, main 4 (the `sandbox` command, the staging in every plugin run, no
+# restart line for it), the usage line 1, a section comment 1 and 5 blank lines.
+# Then each 31 more, all in sandbox.py, for a route the note's 4.6 left open: with unsandboxed commands allowed (D2), Claude
+# Code honors a repository's settings that loosen its sandbox (an `excludedCommands` entry, which no hold of the guard
+# sees), and a repository's hooks and MCP servers run outside it. PROJECT 1 with its comment 2 (every repository's
+# `.claude` settings and `.mcp.json` denied to an agent, through the managed deny rules, claude_managed's same lines),
+# _repos 8 (the workspace repositories), _claude_settings 5 (the user's and each repository's settings files), _excluded
+# 5 and config_read 4 more (the seal check's `excluded` row), _commands with each repository's hooks and .mcp.json in the
+# same lines, and 6 blank lines.
+# Then each 7 more, all in sandbox.py, for the same route one level up: claude_json 5 with 2 blank lines (Claude Code's own
+# ~/.claude.json, which holds the user's and each project's MCP servers, denied to the file tools and read-only to Codex's
+# shells, in the lists that already name each harness's settings, and tried by the probe set).
+# 5.25.0 merges part 1 (feature/sandbox-seal) and then part 2 (feature/sandbox-policy), each itemized above from
+# 5.24.1's ceilings (core 23692, plugin 50361); the merges themselves add no line: core 24810, plugin 51539.
+# Then each 16 more, for what part 2 and the doctor still read from the layout before part 1: doctor.check_approvals_layout
+# 13 and its 2 blank lines (design 4.1: a layout that has both the old records and approvals/ fails, and what waits for
+# the move is named); guards.SYNTHESIS_WRITES 1 more (the seal check's probes, sandbox's writers, a line of their own).
+# The browser accounts read from approvals/, the codex board line judging the sealed folder, and sandbox._hook watching
+# grants/, effects/ and records/ (its docstring 1 more, the import it no longer needs 1 fewer) keep their lines.
+# Then each 15 more, all in sessions.py, for a Muse session's sub-agents, which the archive never held (B5's builder
+# found them): natives 7 (each session's subagent/ folders found 1, each listed with one closed to it named 6), _place 6
+# (a sub-agent filed where its parent ran, read from the parent's record), export_file 2 (its role and its parent);
+# _identity keeps its lines (named after its parent session, as Claude Code's are).
+# Then each 10 more, all in guards.py, for a workflow's agents' records, one folder below subagents/, which the browser
+# rules never read (B5's builder found them): _agents 11 and its 2 blank lines (each sub-agent record, a workflow
+# agent's included, written since a time), _record 2 more (its docstring 1; a workflow agent's own record looked for
+# below 1), _shared_tabs 4 fewer (the folder's listing is _agents'), _made_here 1 fewer (the import it no longer needs;
+# a record last written before the tab was made is not read, which keeps the read within its budget).
+# BACKLOG B5 (the principal's ruling of 2026-09-23: check the search budget before a research fan-out, after six research
+# agents used up one session-wide web-search budget, each taking it for its own), each 155 more, all in synthesis/.
+# sessions.py 115: the section's heading 1 and its comment 7 (one budget for a session's searches, and what names a search
+# in each harness's records, as measured on this Mac); SEARCH_TOOLS, SEARCH_ITEM, SEARCH_MARKS and CLIENT_ONLY 4 (each
+# harness's search tool, a Codex item's type or kind, the bytes a row must hold to be parsed, Muse's mode said once);
+# _below 7 (the files under a sub-agents' folder: its line and docstring 3, a folder in it that cannot be listed named and
+# one not there holding none 3, the files 1); _threads 23 (a Codex thread's sub-agents' rollouts and theirs: its line and
+# docstring 3, the map 1, only rollouts named since the thread began 3, each first line read 3, one that cannot be opened
+# named, as it may be one of them, 3, a first line still being written passed 2, each filed under its parent 2, the walk
+# down from the thread 5, the rollouts 1); searches 65 (its line and docstring 8; the session's own record where the
+# prompt hook recorded it, else where a harness keeps it, 6; none said, with a folder it may be in that cannot be listed,
+# 3; the sub-agents' records by harness, a Codex session's looked for in every folder of Codex's, 6; a folder or rollout
+# that cannot be read said 4; each record read through its harness's adapter, a row that names no search left unparsed,
+# each call counted once by its id, Codex's item events beside the adapter's records, and Muse's mode, 24; the reading's
+# folder, where it would file an image a row holds and, dry, writes none, 1; a row no adapter can read, and a record that
+# cannot be opened, said 5; Muse outside its client mode or naming none, and Codex with no item event, said rather than
+# counted 0, 7; the count 1); and the 8 blank lines (2 before the heading and 2 before each definition). cli.py 40: cmd_searches 34 (its line and docstring 5, the import 1, the session, the budget
+# and the config file read once 1, no session, no agents and a budget that is no whole number said as errors 6, the count
+# or why it cannot be told 4, no budget said 3, a budget against a count not told refused 5, what is left and each
+# agent's share, rounded down, 3, a share of one or more passing 2, a share under one refused, with the next step for
+# none left and for some, 4), its 2 blank lines, and the parser 4 (the command, --agents, --session after it as before
+# it, its function). guards.py none: SYNTHESIS_WRITES names cli.cmd_searches and sessions.searches in its two lines (a
+# test reads synthesis's writers from the source).
+# 5.25.0 merges BACKLOG B5 (feature/search-budget) last, itemized just above from 5.24.1's ceilings (core 23692, plugin
+# 50361); the merge itself adds no line: core 25006, plugin 51735.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23692
-PLUGIN_BUDGET = 50361
+# Then the plugin 1 more, in setup.py: codex_overlay's docstring says the Codex profile's read-only rules come only
+# with `seal`, which `setup.py sandbox` passes (5.25.0's integration: whether Codex runs its hooks inside its sandbox
+# is what that step tests first, so no release's install seals Codex before it). Then the plugin 2 more, in setup.py's
+# _seal: its write rules (the requests folder a Codex shell files into) are written at every install and its read-only
+# rules only by the sandbox step, and the note for writes alone says so.
+# Then each 35 more, for review round 1 of 5.25.0, in synthesis/. approvals.py 14 (finding 2, a shell's request planted
+# under a code the hook had shown, once the hook's request expired, granted by that code): hooks 3 (a code's first digit
+# says who filed it), _request_file 2 (the hook's sealed request read first under any code, as a release before drew
+# the hook's first digit from 0 to 9, and a shell's only under a shell's code: its docstring 1, the sealed path 1),
+# _new_code 1 (its docstring; the digit by who files), _file 1 fewer (a retry keeps only a code of
+# its own shape, never one typed already; the loop that drew a new code over the hook's goes), grant_from_prompt 1 (it
+# marks each code it grants answered, and removes that code's one request), answered 5 (a typed code answers each request
+# it carried when first answered, once, in a sealed mark: its docstring 2, the mark's check 1, the mark written 2; the
+# mark is read in the line that names the request's file), transcript 1 (finding 3: before the move, the record where the running release keeps
+# it), and 2 blank lines. install.py 9 (finding 3, an install that waited for the code had moved the records already):
+# _move_records 9 (the two moves, just before the switch), _install_locked 3 (called there, and where no switch is
+# needed), install 5 fewer (the moves at its start go), and 2 blank lines. paths.py 6: moved 5 (the move's own last
+# write says it is made, so a code answered before the switch never stops it), old_approvals 1 fewer, and 2 blank
+# lines. cli.py 1 fewer: cmd_approvals lists the codes `pending` names, a shell's named by its folder. sandbox.py 7 (the round's notes): the import 1,
+# claude_managed 2 (the three synthesis folders a session writes named in Claude Code's write area, as Codex's profile
+# names them), install_command 4 (the staged file's SHA-256 checked before root copies it). doctor.py none (its layout
+# check reads the same mark). And the plugin 2 more, in setup.py's stage_sandbox (finding 1: every plugin or full run
+# sealed Codex's profile): `seal` its own parameter, passed only by the `sandbox` command, and its docstring.
+# Then each 3 more, for review round 2 of 5.25.0, in synthesis/: approvals.py 1 fewer (grant_from_prompt marks every typed
+# code, one that matched no request included, in the two lines that marked a granted one), sandbox.py 2 (ROLLOUT, where
+# the doctor and an ordinary setup run point instead of printing the install commands, which only `setup.py sandbox`
+# prints after the pilot), install.py 2 (approval: while a release before 5.25 runs, why its prompt answers "Not granted"
+# to the code); guards.py none (SYNTHESIS_WRITES names install._move_records in its two lines) and doctor.py none (its off
+# line reads ROLLOUT). And the plugin 2 more, in setup.py's stage_sandbox (an ordinary run's staged and dry-run lines
+# point to the rollout, without the commands).
+CORE_BUDGET = 25044
+PLUGIN_BUDGET = 51780
 
 
 def _lines(files):

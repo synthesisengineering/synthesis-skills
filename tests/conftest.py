@@ -24,6 +24,8 @@ def isolated_home(tmp_path, monkeypatch):
     for key, folder in (("CLAUDE_CONFIG_DIR", "claude"), ("CODEX_HOME", "codex"), ("XDG_DATA_HOME", "xdg"),
                         ("SYNTHESIS_CLAUDE_DESKTOP_DIR", "claude-desktop")):
         monkeypatch.setenv(key, str(tmp_path / "harness" / folder))  # never this Mac's own session transcripts
+    from synthesis import approvals
+    monkeypatch.setattr(approvals, "IN_HOOK", True)  # a test judges where the hook does; one that stands for a shell says so
     return home
 
 

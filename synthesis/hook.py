@@ -243,17 +243,23 @@ def user_prompt_submit(payload):
 
     prompt = str(payload.get("prompt") or payload.get("user_prompt") or "")
     approvals.remember(paths.session_id(payload), str(payload.get("transcript_path") or ""))  # where the CLI finds it later
-    waiting = set(approvals.pending())
-    notes = [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(prompt, approvals.transcript(payload))]
+    waiting, muse = set(approvals.pending()), paths.harness(payload) == "muse"
+    notes = [] if muse else [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(
+        prompt, approvals.transcript(payload), paths.session_id(payload))]
+    notes += [f"Not granted: {MUSE}"] if muse and approvals.typed_codes(prompt) else []
+    try:  # where the harness recorded the prompt before this hook ran; else at the turn's next tool call or its end
+        notes += [f"Took effect: {s}" for s in apply_effects(payload)]
+    except Exception:
+        pass
     # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
-    typed = approvals.typed_codes(prompt)
+    typed = [] if muse else approvals.typed_codes(prompt)
     notes += [f"Not granted: no pending request has the code {c}; it may have expired (15 minutes), been used, or "
               "been mistyped. Run the call again for a new code." for c in typed if c not in waiting]
     # So is a pending code that is in the message and was not approved (2026-11-11: eight of nine were passed over)
     notes += [f"Not granted: the pending code {c} is in the message, but not in a list right after the word approve on "
               "its line in the principal's own words (a new line, another word, a negation or a tagged block came "
               "between). If the principal meant it, ask them to type the word and the code together."
-              for c in approvals.mentioned(prompt) if c in waiting and c not in typed]
+              for c in ([] if muse else approvals.mentioned(prompt)) if c in waiting and c not in typed]
     session_id = paths.session_id(payload)
     if session_id:
         me = board.load(session_id)
@@ -303,6 +309,10 @@ def pre_tool_use(payload, began=None):
             from synthesis import approvals, guards, paths  # the guard's own module loads inside its deadline too
 
             guards.hook_answers()  # this call's records wait for this answer
+            try:
+                apply_effects(payload)  # what a code typed this turn approved, before the call it was typed for is judged
+            except Exception:
+                pass  # tried again at the next hook event; the call is judged all the same
             tool = str(payload.get("tool_name", ""))
             tool_input = payload.get("tool_input") or {}
             try:
@@ -319,6 +329,8 @@ def pre_tool_use(payload, began=None):
                     reason = str(exc)
                 except Exception as exc:  # a guard that can't decide must not wave the call through
                     reason = f"synthesis guard failed ({type(exc).__name__}: {exc}); blocked rather than allowed"
+                if reason and guards.ASKS_CODE.search(reason) and paths.harness(payload) == "muse":
+                    reason += f"\n\nThis is a Muse session: {MUSE}"
         except _Late:
             reason = late
         finally:
@@ -347,8 +359,12 @@ def _answer(allowed):
 
 
 def stop(payload):
-    """Revise the reply once if it defers work or quotes words with no source (S15), then
-    let an autopilot run that owns a plan continue to its next item (R6)."""
+    """Apply what a code typed this turn approved, revise the reply once if it defers work or quotes words with no
+    source (S15), then let an autopilot run that owns a plan continue to its next item (R6)."""
+    try:
+        apply_effects(payload)
+    except Exception:
+        pass  # a sealed record that cannot be written now is tried again at the next hook event, until its code expires
     try:  # the turn's end, for the next prompt's time-away note; a turn sent back ends later and records again
         from synthesis import board, paths
         if paths.session_id(payload):
@@ -359,7 +375,7 @@ def stop(payload):
         from synthesis import autopilot, paths, reply_check
         config = paths.config()
         safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in paths.session_id(payload))
-        marker = paths.state() / "stop" / f"{safe}.json" if safe else None
+        marker = paths.approvals() / "stop" / f"{safe}.json" if safe else None
         last = paths.read_json(marker).get("by", "") if marker is not None and payload.get("stop_hook_active") else ""
         reason, note, by = None, None, ""
         if last != "reply":  # the reply this check already sent back is never sent back twice
@@ -380,6 +396,53 @@ def stop(payload):
     return 0
 
 
+MUSE = ("Muse sessions get no approval until Muse's sandbox is shown to keep its shells out of the sealed approvals folder "
+        "(the principal's ruling of 2026-11-15), so a code typed here grants nothing. Make this call in a Claude Code or "
+        "Codex session instead, where the principal can approve it.")
+
+
+def apply_effects(payload) -> list:
+    """What a typed code approved whose effect is a sealed record (a commit line, a send window, a batch: approvals.EFFECTS),
+    applied by the hook once the session's own record shows the principal typing it, since a shell can no longer write
+    the record itself (the guard's sandbox, design 2.3): at the prompt where the harness recorded it before this hook,
+    else at the turn's next tool call or its end. Returns what took effect; one that fails is tried again later."""
+    from synthesis import approvals
+    done = []
+    for path, data, shown in approvals.ready(payload):
+        try:
+            said = approvals.apply(path, data, shown, approvals.transcript(payload), EFFECT[data["kind"]])
+        except Exception:
+            continue
+        done += [said] if said else []
+    return done
+
+
+def _line(grant: dict) -> str:
+    from synthesis import commit_check, paths
+    store = paths.line_allowances()
+    paths.write_json(store, {"lines": {**commit_check.read_allowances(store), grant["subject"]["fp"]: time.strftime("%Y-%m-%d")}})
+    return f"the commit line is approved ({grant['summary']}); commit again"
+
+
+def _window(grant: dict) -> str:
+    from synthesis import sends
+    asked = grant["subject"]
+    return "the send window it approved is open. " + sends.describe(sends.open_window(asked["hours"], asked["channels"],
+                                                                                         asked["project"], asked["sends"]))
+
+
+def _batch(grant: dict) -> str:
+    from synthesis import sends
+    batch = sends.checked(grant["batch"])
+    if sends.batch_digest(batch) != grant["subject"]:
+        raise ValueError("the batch the request carries is not the one its code was filed for")
+    sends.filed(grant["subject"], grant["code"], float(grant["asked"]))
+    return "the batch it approved is open. " + sends.describe_batch(sends.open_batch(batch, grant, grant["session"]))
+
+
+EFFECT = {"disclosure-line": _line, "send-window": _window, "send-batch": _batch}
+
+
 def main(argv):
     event = argv[1] if len(argv) > 1 else ""
     if os.environ.get("SYNTHESIS_JUDGE_RUN") and event in ("session-start", "user-prompt-submit", "stop"):
@@ -397,11 +460,18 @@ def main(argv):
                 install.refresh_launchers(install._home())
         except Exception:
             pass  # a failed first install must never block a session; doctor reports it
-    from synthesis import paths
+    from synthesis import approvals, paths
+    approvals.IN_HOOK = True  # a request this process files is sealed, and named as the hook's
     if paths.old_board():  # seven lstat calls; true only after an older release wrote the board where it used to be
         try:
             from synthesis import install
             install.move_board(paths.home())
+        except Exception:
+            pass  # never blocks a call; doctor names what is left
+    if paths.old_approvals():  # one lstat once approvals/ is there; true only on the first event after the sandbox's release
+        try:
+            from synthesis import install
+            install.move_approvals(paths.home())
         except Exception:
             pass  # never blocks a call; doctor names what is left
     handler = {"session-start": session_start, "user-prompt-submit": user_prompt_submit,

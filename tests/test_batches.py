@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from synthesis import approvals, board, cli, guards, paths, sends
+from synthesis import approvals, board, cli, guards, hook, paths, sends
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = "inbox-backlog"
@@ -62,12 +62,17 @@ def batch_file(entries, name="replies-1", project=PROJECT, folder=None) -> Path:
 
 
 def granted(entries, name="replies-1") -> dict:
-    """A batch the principal opened: the guard's hold in this session's record, their code typed after it, the command
-    run here."""
+    """A batch the principal opened: the request `synthesis sends batch` files and prints, in this session's record, his
+    code typed after it, and the hook applying it at the session's next event (the guard's sandbox, 2026-11-15)."""
     file = batch_file(entries, name)
-    APPROVE(held_in_record(guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER))))
-    assert cli.main(["--session", "S-principal", "sends", "batch", str(file)]) == 0
+    APPROVE(held_in_record(sends.batch_request(sends.read_batch(str(file)), str(file))))
+    applied()
     return next(b for b in sends.batches() if b["batch"] == name)
+
+
+def applied() -> list:
+    """The session's next hook event, which applies what a code typed in it approved."""
+    return hook.apply_effects({"session_id": "S-principal", "transcript_path": str(RECORD)})
 
 
 def held_in_record(reason: str) -> str:
@@ -234,96 +239,54 @@ def test_a_page_address_is_read_as_its_site_and_path(address, place):
 # --- asking: `synthesis sends batch <file>` ----------------------------------------------------------------------
 
 
-def test_only_the_principals_code_for_that_digest_opens_a_batch_and_the_hold_shows_every_entry():
-    """Review #12: the hold itself carries every recipient and text, escaped, which the code is typed against."""
+def test_only_the_principals_code_for_that_digest_opens_a_batch_and_the_request_shows_every_entry():
+    """Review #12: what the principal types his code against carries every recipient and text, escaped. Since the guard's
+    sandbox the command only files that request, which grants nothing, and the hook opens the batch on his code."""
     file = batch_file([CALL, CHAT])
     digest = sends.batch_digest(sends.read_batch(str(file)))
-    command = f"synthesis sends batch {file}"
-    reason = guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER))
-    assert held(reason) and digest in reason and "2 sends" in reason and str(file) in reason
-    assert "D0123" in reason and json.dumps(REPLY) in reason and "facebook.com/messages/e2ee/t/1000000001" in reason
-    for free in (f"synthesis sends batch {file} --show", "synthesis sends batch --help", "synthesis sends status",
-                 "synthesis sends close", "synthesis sends log", "synthesis sends composer-check"):
+    for free in (f"synthesis sends batch {file}", f"synthesis sends batch {file} --show", "synthesis sends batch --help",
+                 "synthesis sends status", "synthesis sends close", "synthesis sends log", "synthesis sends composer-check",
+                 f"python3 -m synthesis.cli sends batch {file}", f"cd {FOLDER} && synthesis sends batch {file.name}"):
         assert guards.check("Bash", {"command": free}, CONFIG, cwd=str(FOLDER)) is None, free
-    for spelled in (f"python3 -m synthesis.cli sends batch {file}", f"synthesis --session S-principal sends batch {file}",
-                    f"cd {FOLDER} && synthesis sends batch {file.name}"):
-        assert held(guards.check("Bash", {"command": spelled}, CONFIG, cwd=str(ROOT))), spelled
     shown = _cli("sends", "batch", str(file), "--show")
-    assert shown.returncode == 0 and json.dumps(REPLY) in shown.stdout and digest in shown.stdout and sends.batches() == []
-    listed = _cli("--session", "S-principal", "sends", "batch", str(file))
-    assert listed.returncode == 2 and "type approve" in listed.stderr and sends.batches() == []
-    APPROVE(reason)
-    assert guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER)) is None
-    done = _cli("--session", "S-principal", "sends", "batch", str(file))
-    assert done.returncode == 0 and digest[:12] in done.stdout and "2 of 2 entries left" in done.stdout
-    assert [b["digest"] for b in sends.batches()] == [digest]
-    assert _cli("--session", "S-principal", "sends", "batch", str(file)).returncode == 2  # the grant was spent
+    assert shown.returncode == 0 and json.dumps(REPLY) in shown.stdout and digest in shown.stdout and approvals.pending() == []
+    asked = _cli("--session", "S-principal", "sends", "batch", str(file))
+    assert asked.returncode == 0 and held(asked.stdout) and digest in asked.stdout and "2 sends" in asked.stdout
+    assert str(file) in asked.stdout and "D0123" in asked.stdout and json.dumps(REPLY) in asked.stdout
+    assert "facebook.com/messages/e2ee/t/1000000001" in asked.stdout and sends.batches() == []
+    APPROVE(held_in_record(asked.stdout))
+    assert sends.batches() == [] and "2 of 2 entries left" in applied()[0]
+    assert [b["digest"] for b in sends.batches()] == [digest] and applied() == []  # the code opened it once
 
 
 def test_no_terminal_opens_a_batch_without_the_code(monkeypatch, capsys):
     """Review #7: the own-terminal shortcut opened a batch when `env -i` and `script` made a terminal."""
     file = batch_file([CALL])
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    assert cli.main(["--session", "S-principal", "sends", "batch", str(file)]) == 2 and sends.batches() == []
-    assert "type approve" in capsys.readouterr().err
+    assert cli.main(["--session", "S-principal", "sends", "batch", str(file)]) == 0 and sends.batches() == []
+    assert "type approve" in capsys.readouterr().out and applied() == [] and sends.batches() == []
 
 
-def test_a_file_changed_after_the_hold_does_not_get_the_grant():
+def test_a_file_changed_after_the_request_opens_the_batch_as_it_was_shown():
     file = batch_file([CALL])
-    APPROVE(guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER)))
+    reason = sends.batch_request(sends.read_batch(str(file)), str(file))
     batch_file([{"tool": SLACK, "input": {**SAID, "message": REPLY + " Bring the keys too."}}])
-    assert held(guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER)))
-    assert _cli("--session", "S-principal", "sends", "batch", str(file)).returncode == 2 and sends.batches() == []
+    APPROVE(held_in_record(reason))
+    applied()
+    assert [b["entries"] for b in sends.batches()] == [[CALL]]
 
 
 def test_a_batch_the_command_would_refuse_is_never_put_to_the_principal():
-    reason = guards.check("Bash", {"command": f"synthesis sends batch {FOLDER / 'absent.json'}"}, CONFIG, cwd=str(FOLDER))
-    assert reason and "can't open" in reason and not held(reason)
-    bad = batch_file([], name="empty")
-    assert "1 to 50" in guards.check("Bash", {"command": f"synthesis sends batch {bad}"}, CONFIG, cwd=str(FOLDER))
-
-
-def test_every_sends_command_in_a_line_is_judged():
-    """Review #7: only the first `sends batch` of a line was judged, and so was only the first `sends open`."""
-    first, second = batch_file([CALL], name="approved"), batch_file([TEXT], name="never-shown")
-    APPROVE(guards.check("Bash", {"command": f"synthesis sends batch {first}"}, CONFIG, cwd=str(FOLDER)))
-    line = f"synthesis sends batch {first} ; env -i PATH=/usr/bin script -q /dev/null synthesis sends batch {second}"
-    reason = guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER))
-    assert held(reason) and sends.batch_digest(sends.read_batch(str(second)))[:12] in reason
-    window = "synthesis sends open --hours 2 --sends 3 --channels jira"
-    APPROVE(guards.check("Bash", {"command": window}, CONFIG, cwd=str(FOLDER)))
-    later = f"{window} && synthesis sends open --hours 12 --sends 50 --channels all"
-    assert held(guards.check("Bash", {"command": later}, CONFIG, cwd=str(FOLDER)))
-    waits = f"synthesis wait --for 1 -- synthesis sends batch {second}"  # a CLI word anywhere in the words
-    assert held(guards.check("Bash", {"command": waits}, CONFIG, cwd=str(FOLDER)))
-
-
-@pytest.mark.parametrize("tail, name", [(["--proj", "approved.json", "never-shown.json"], "never-shown.json"),
-                                        (["--", "--show"], "--show"), (["--", "-h"], "-h")])
-def test_the_guard_reads_a_sends_command_as_the_cli_does(tail, name):
-    """Review #8: the guard checked A and the CLI opened B; `-- --show` and `-- -h` were read as options by the guard
-    and as files by the CLI."""
-    batch_file([CALL], name="approved")
-    (FOLDER / name).write_text(json.dumps({"batch": "x", "project": PROJECT, "entries": [TEXT]}), encoding="utf-8")
-    APPROVE(guards.check("Bash", {"command": f"synthesis sends batch {FOLDER / 'approved.json'}"}, CONFIG, cwd=str(FOLDER)))
-    import shlex
-    reason = guards.check("Bash", {"command": shlex.join(["synthesis", "sends", "batch", *tail])}, CONFIG, cwd=str(FOLDER))
-    assert held(reason) and sends.batch_digest(sends.read_batch(str(FOLDER / name)))[:12] in reason
-
-
-def test_a_sends_command_the_guard_cannot_read_as_the_cli_would_waits_for_a_code():
-    for line in ("synthesis sends batch $BATCH_FILE", "synthesis sends batch `ls *.json`", "synthesis sends batch --bogus x"):
-        reason = guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER))
-        assert held(reason) and "as the CLI reads it" in reason, line
+    absent = _cli("--session", "S-principal", "sends", "batch", str(FOLDER / "absent.json"))
+    assert absent.returncode == 2 and "can't open" in absent.stderr and not held(absent.stderr)
+    bad = _cli("--session", "S-principal", "sends", "batch", str(batch_file([], name="empty")))
+    assert bad.returncode == 2 and "1 to 50" in bad.stderr and approvals.pending() == []
 
 
 def test_a_file_goes_only_with_sends_batch():
     """Review #14: `sends open ... -- -h` opened a window, since the new file positional took `-h`."""
-    line = "synthesis sends --hours 12 --sends 50 --channels slack open -- -h"
-    reason = guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER))
-    assert reason and "only with" in reason
     done = _cli("--session", "S-principal", "sends", "--hours", "12", "--sends", "50", "--channels", "slack", "open", "--", "-h")
-    assert done.returncode == 2 and "only with" in done.stderr and sends.window() == {}
+    assert done.returncode == 2 and "only with" in done.stderr and sends.window() == {} and approvals.pending() == []
 
 
 def test_editing_the_file_after_the_grant_changes_nothing():
@@ -334,12 +297,9 @@ def test_editing_the_file_after_the_grant_changes_nothing():
     assert guards.check(SLACK, SAID, CONFIG, session=SESSION) is None
 
 
-def test_a_post_beside_an_approved_window_or_batch_command_is_still_judged():
-    window = "synthesis sends open --hours 2 --sends 3 --channels jira"
-    APPROVE(guards.check("Bash", {"command": window}, CONFIG, cwd=str(FOLDER)))
+def test_a_post_beside_a_sends_command_is_still_judged():
     file = batch_file([CALL])
-    APPROVE(guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER)))
-    for command in (window, f"synthesis sends batch {file}"):
+    for command in ("synthesis sends open --hours 2 --sends 3 --channels jira", f"synthesis sends batch {file}"):
         assert guards.check("Bash", {"command": command}, CONFIG, cwd=str(FOLDER)) is None
         reason = guards.check("Bash", {"command": f'{command} && bkt pr comment 5 -m "Approved from my side."'},
                               CONFIG, cwd=str(FOLDER))
@@ -394,7 +354,7 @@ def test_batch_state_alone_is_never_a_grant():
     other.write_text(json.dumps({"type": "user", "timestamp": datetime.now(timezone.utc).isoformat(), "origin": {"kind": "human"},
                                  "message": {"role": "user", "content": "approve 7abcde"}}) + "\n", encoding="utf-8")
     assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))  # typed, but in another session's record
-    sends.close_batches()
+    sends.close_mark()
     data = granted([CALL])
     assert data["session"] == "S-principal" and data["code"] and guards.check(SLACK, SAID, CONFIG, session=SESSION) is None
 
@@ -645,7 +605,7 @@ def test_the_send_step_runs_only_on_a_tab_this_session_made_with_tabs_create():
 def _other_record():
     other = RECORD.parent / "S-other.jsonl"
     other.touch()
-    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    paths.write_json(paths.approvals() / "records" / "S-other.json", {"path": str(other)})
     return other
 
 
@@ -870,13 +830,12 @@ def test_the_composer_check_matches_nothing_with_two_boxes_or_no_composer_around
         assert named["box"] == "found", label
 
 
-def test_the_hold_says_how_a_messenger_entry_is_sent():
+def test_the_request_says_how_a_messenger_entry_is_sent():
     file = batch_file([CALL, CHAT])
-    reason = guards.check("Bash", {"command": f"synthesis sends batch {file}"}, CONFIG, cwd=str(FOLDER))
+    reason = sends.batch_request(sends.read_batch(str(file)), str(file))
     assert "synthesis sends script" in reason and "browser_batch" in reason and "Return" in reason
-    alone = guards.check("Bash", {"command": f"synthesis sends batch {batch_file([CALL], name='mail-only')}"}, CONFIG,
-                         cwd=str(FOLDER))
-    assert "synthesis sends script" not in alone
+    alone = batch_file([CALL], name="mail-only")
+    assert "synthesis sends script" not in sends.batch_request(sends.read_batch(str(alone)), str(alone))
 
 
 def test_a_return_or_a_click_on_a_messenger_tab_spends_no_entry():
@@ -981,7 +940,7 @@ def test_tampered_or_unreadable_batch_state_falls_back_to_the_code(damage):
     data = granted([CALL, {"tool": SLACK, "input": {**SAID, "channel_id": "D0999"}}])
     if damage == "unspent":
         assert guards.check(SLACK, SAID, CONFIG, session=SESSION) is None
-    file = paths.state() / "sends" / "batches" / f"{data['digest']}.json"
+    file = paths.approvals() / "sends" / "batches" / f"{data['digest']}.json"
     state = json.loads(file.read_text(encoding="utf-8"))
     if damage == "text":
         state["entries"][0]["input"]["message"] = "Edited after the grant."
@@ -1024,7 +983,7 @@ def test_a_batch_granted_again_keeps_what_already_went():
     other = {**SAID, "channel_id": "D0999"}
     granted([CALL, {"tool": SLACK, "input": other}])
     assert guards.check(SLACK, SAID, CONFIG, session=SESSION) is None
-    sends.close_batches()
+    sends.close_mark()
     granted([CALL, {"tool": SLACK, "input": other}])
     assert held(guards.check(SLACK, SAID, CONFIG, session=SESSION))
     assert guards.check(SLACK, other, CONFIG, session=SESSION) is None
@@ -1038,14 +997,14 @@ def test_a_batch_granted_again_keeps_what_already_went():
     ("MultiEdit", {"edits": []}), ("write_file", {"content": "{}"}), ("edit_file", {"edits": []}),
 ])
 def test_the_file_tools_cannot_write_the_batch_state_or_the_spends_ledger(tool, given):
-    for state in (paths.state() / "sends" / "batches" / ("a" * 64 + ".json"), paths.state() / "sends" / "batch-spends.jsonl"):
+    for state in (paths.approvals() / "sends" / "batches" / ("a" * 64 + ".json"), paths.approvals() / "sends" / "batch-spends.jsonl"):
         named = {"file_path": str(state)} if tool in ("Write", "Edit", "MultiEdit") else {"path": str(state)}
         reason = guards.check(tool, {**named, **given}, CONFIG, cwd=str(FOLDER))
         assert reason and "would write" in reason
 
 
 def test_no_shell_line_or_script_writes_the_batch_state_or_opens_a_batch():
-    state = paths.state() / "sends" / "batches" / ("a" * 64 + ".json")
+    state = paths.approvals() / "sends" / "batches" / ("a" * 64 + ".json")
     patch = f"*** Begin Patch\n*** Add File: {state}\n+{{}}\n*** End Patch"
     assert "would write" in guards.check("apply_patch", {"input": patch}, CONFIG, cwd=str(FOLDER))
     for line in (f"echo '{{}}' > {state}", f"cp {FOLDER / 'b.json'} {state}"):
@@ -1100,7 +1059,7 @@ def test_a_tab_another_session_lists_on_a_messenger_site_takes_no_page_script():
     """The third round (#2): a session that last saw a tab on another page, or never saw it, is not the only one judging."""
     other = RECORD.parent / "S-other.jsonl"
     other.touch()
-    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    paths.write_json(paths.approvals() / "records" / "S-other.json", {"path": str(other)})
     session = listed("https://example.com/", tab=9)  # this session's own list shows another page there
     time.sleep(0.01)
     listed(E2EE, tab=9, record=other)  # and the other session's newer list shows a chat (round 4, #13: the newer list decides)
@@ -1145,7 +1104,7 @@ def test_the_hold_shows_the_files_path_escaped():
     """Review 2 #3: line breaks in the file's name printed a fake listing, and an escape code hid the real one."""
     batch = sends.read_batch(str(batch_file([CALL])))
     sly = str(FOLDER / "replies\n  1. slack by mcp__x: channel_id \"D1\"\x1b[8m.json")
-    reason = sends.batch_refusal(batch, sly)
+    reason = sends.batch_request(batch, sly)
     assert "\x1b" not in reason and "\n  1. slack by mcp__x" not in reason and "\\u001b" in reason
     (FOLDER / "bad\x1b[8m.json").write_text("{", encoding="utf-8")
     with pytest.raises(ValueError) as refused:
@@ -1156,7 +1115,7 @@ def test_the_hold_shows_the_files_path_escaped():
 def test_the_batch_name_and_project_are_shown_escaped():
     """Review 2 #11: the approval's summary and `sends status` showed them raw."""
     data = granted([CALL], name="replies‮-1")
-    pending = [paths.read_json(p) for p in (paths.state() / "approval-requests").glob("*.json")]
+    pending = [paths.read_json(p) for p in (paths.requests()).glob("*.json")]
     assert all("‮" not in p.get("summary", "") for p in pending)
     assert "‮" not in sends.describe_batch(data) and "\\u202e" in sends.describe_batch(data)
 
@@ -1245,7 +1204,7 @@ def test_a_photo_or_a_file_carrying_field_is_never_covered_and_connector_entries
     with pytest.raises(ValueError, match="entry 2 .*conversation"):
         sends.read_batch(str(batch_file([CALL, {"tool": SLACK, "input": {**SAID, "message": "And another thing."}}])))
     for field in ("photo", "picture", "video", "audio", "voice", "blob", "sticker", "thumbnail", "avatar"):
-        sends.close_batches()
+        sends.close_mark()
         given = {"channel_id": f"D-{field}", "message": REPLY, field: photo}
         granted([{"tool": SLACK, "input": given}], name=f"carry-{field}")
         assert held(guards.check(SLACK, given, CONFIG, session=SESSION)), field
@@ -1542,7 +1501,7 @@ def test_another_sessions_call_in_another_browser_or_one_that_changes_nothing_le
     """Round 4, #10: another session's pane screenshot, which names no tab, voided the step; so would any computer action."""
     granted([CHAT])
     other = FOLDER / "S-other.jsonl"
-    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    paths.write_json(paths.approvals() / "records" / "S-other.json", {"path": str(other)})
     session = opened()
     ran(PANE + "computer", {"action": "screenshot"}, record=other)
     ran(KEYS, {"action": "screenshot", "tabId": 7}, record=other)
@@ -1557,7 +1516,7 @@ def granted_digest() -> str:
 def test_another_sessions_action_on_the_tab_in_the_same_browser_voids_the_send_step():
     granted([CHAT])
     other = FOLDER / "S-other.jsonl"
-    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    paths.write_json(paths.approvals() / "records" / "S-other.json", {"path": str(other)})
     session = opened()
     ran(KEYS, {"action": "left_click", "coordinate": [5, 5], "tabId": 7, "action_summary": "Clicks the chat"}, record=other)
     assert session and "Another session's record" in (sent(step()) or "")
@@ -1581,7 +1540,7 @@ def test_a_call_codexs_hook_refused_does_not_void_the_send_step_and_one_it_ran_d
     (the coordinator, 2026-11-16); the same call, run, voids the step."""
     granted([CHAT])
     other = FOLDER / "S-other.jsonl"
-    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    paths.write_json(paths.approvals() / "records" / "S-other.json", {"path": str(other)})
     opened()
     at = datetime.now(timezone.utc).isoformat()
     given = {"action": "left_click", "coordinate": [5, 5], "tabId": 7, "action_summary": "Clicks the chat"}
@@ -1608,7 +1567,7 @@ def test_the_newest_list_of_tabs_across_sessions_decides_a_tabs_page():
     """Round 4, #13: another session's older list showing tab 7 on a chat refused a script on the document this session's
     newer list shows there."""
     other = FOLDER / "S-other.jsonl"
-    paths.write_json(paths.state() / "transcripts" / "S-other.json", {"path": str(other)})
+    paths.write_json(paths.approvals() / "records" / "S-other.json", {"path": str(other)})
     listed(E2EE, tab=7, record=other)
     time.sleep(0.01)
     session = listed("https://docs.google.com/document/d/1abc/edit", tab=7)
@@ -1640,7 +1599,7 @@ def test_a_command_that_only_names_the_senders_file_files_no_ticket(command):
     granted([TEXT])
     me = {**SESSION, "transcript_path": str(RECORD)}
     assert guards.check("Bash", {"command": command.format(s=SENDER)}, CONFIG, cwd=str(FOLDER), session=me) is None
-    assert not list((paths.state() / "sends" / "sender").glob("*.json")) if (paths.state() / "sends" / "sender").is_dir() else True
+    assert not list((paths.approvals() / "sends" / "sender").glob("*.json")) if (paths.approvals() / "sends" / "sender").is_dir() else True
     assert held(guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)))
 
 
@@ -1873,6 +1832,33 @@ def test_a_sub_agents_send_step_on_a_tab_it_made_reads_its_own_record():
     listed(E2EE, 7, own)
     sub = {**SESSION, "transcript_path": str(RECORD), "agent_id": "a1"}
     assert guards.check(CHROME, step(), CONFIG, session=sub) is None
+    assert [e["session"] for e in today()] == ["S-principal"]
+
+
+WORKFLOW_AGENT = ("workflows", "wf_1", "agent-w1.jsonl")  # a workflow's agents keep their records below subagents/
+
+
+def test_a_page_script_a_workflow_agent_ran_on_the_tab_since_this_session_made_it_voids_it():
+    """The records `synthesis searches` reads as subagents/**/*.jsonl: a page script one of a workflow's agents ran on
+    the tab is seen as one a sub-agent ran, and a window it opened keeps a handle to the tab."""
+    granted([CHAT])
+    opened("https://example.com/")
+    deep = RECORD.parent.joinpath(RECORD.stem, "subagents", *WORKFLOW_AGENT)
+    deep.parent.mkdir(parents=True, exist_ok=True)
+    ran(SCRIPT, {"action": "javascript_exec", "text": "window.name = 'x'; open('https://example.com/b')", "tabId": 7}, deep)
+    listed()  # navigated to the conversation since
+    reason = sent(step())
+    assert reason and "page script" in reason, reason
+
+
+def test_a_workflow_agents_send_step_on_a_tab_it_made_reads_its_own_record():
+    granted([CHAT])
+    own = RECORD.parent.joinpath(RECORD.stem, "subagents", *WORKFLOW_AGENT)
+    own.parent.mkdir(parents=True, exist_ok=True)
+    made(7, own)
+    listed(E2EE, 7, own)
+    agent = {**SESSION, "transcript_path": str(RECORD), "agent_id": "w1"}
+    assert guards.check(CHROME, step(), CONFIG, session=agent) is None
     assert [e["session"] for e in today()] == ["S-principal"]
 
 

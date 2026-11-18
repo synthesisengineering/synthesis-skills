@@ -118,7 +118,7 @@ def test_a_wrong_account_send_is_refused_before_any_approval_is_filed(ws):
     dirs, config = ws
     reason = _check("mcp__0a1b2c3d__send_message", {"to": ["a@clientco.example"], "body": "hi"}, config, dirs["clientco"])
     assert CLIENT in reason
-    assert not (paths.state() / "approval-requests").exists()
+    assert not (paths.approvals() / "requests").exists()
 
 
 @pytest.mark.parametrize("tool,tool_input", [

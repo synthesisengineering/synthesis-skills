@@ -1907,6 +1907,8 @@ def test_a_loss_is_cleared_on_the_principals_code_however_the_clearing_is_called
     assert "type approve" in str(refused.value) and _checked(tmp_path)[0] == "fail"
     principal(str(refused.value))
     assert sessions.lost("claude-code c1").startswith("cleared: claude-code c1") and _checked(tmp_path)[0] == "ok"   # by either name
+    from synthesis import approvals
+    assert approvals.grant("sessions-lost", "claude-code c1")  # read, never spent: a loss accepted twice is the same loss
 
 
 @closed_to_us
@@ -2109,6 +2111,51 @@ def test_transcripts_the_search_can_name_and_not_look_at_are_each_named(harness,
         assert "folder" not in stamp["uncopied"][name] and "gone" not in stamp["uncopied"][name]
     assert stamp["uncopied"][f"claude-code {at['sub'].parents[1]}"]["folder"] is True               # and the folder below as one not listed
     assert _copied(sessions.export(0)) == {"claude-code c1", "claude-code c1-agent-a1", "muse 01a1-muse"} and _checked(tmp_path)[0] == "ok"
+
+
+MUSE_DAY = ("muse", "sessions", "2026", "10", "30")
+
+
+def _muse_agent(harness, own_root: bool = False) -> tuple:
+    """A Muse session whose record names its workspace, and one sub-agent of it in a folder of its own under the
+    session's subagent/, whose record names a workspace only where `own_root` says so; (parent, sub-agent)."""
+    day = Path(os.environ["XDG_DATA_HOME"]).joinpath(*MUSE_DAY)
+    meta = {"payload_type": "runtime.session.metadata", "recorded_at": 1793350000000000,
+            "payload": {"kind": "metadata", "record": {"workspace_root": harness["work"], "model_id": "muse-spark"}}}
+    parent, elsewhere = _jsonl(day / "01a1-muse" / "session.jsonl", [meta]), Path(harness["work"]).parents[1] / "beta" / "repo"
+    elsewhere.mkdir(parents=True, exist_ok=True)  # another workspace, where the sub-agent then worked
+    own = {**meta, "payload": {"kind": "metadata", "record": {"model_id": "muse-spark", **(
+        {"workspace_root": str(elsewhere)} if own_root else {})}}}
+    sub = _jsonl(day / "01a1-muse" / "subagent" / "01a2-sub" / "session.jsonl", [own, {
+        "payload_type": "runtime.user_intent.accepted", "recorded_at": 1793350002000000,
+        "payload": {"surface": "main", "model_messages": [{"content": [{"kind": "text", "text": "Check the links."}]}]}}])
+    return parent, sub
+
+
+@pytest.mark.parametrize("own_root", [False, True])
+def test_a_muse_sub_agents_record_is_listed_and_exported_as_its_parent_sessions_agent(harness, own_root):
+    """Muse keeps each sub-agent's record in a folder of its own under its session's subagent/ (281 on the principal's
+    Mac on 2026-11-18), and natives() never listed one, so the archive held none. Each is listed as Claude Code's are:
+    named after its parent session, a sub-agent whose prompts are its parent agent's briefs, and filed in the workspace
+    its parent ran in, read from the parent's record, since a sub-agent's own record seldom names one (24 of 272)."""
+    parent, sub = _muse_agent(harness, own_root)
+    assert ("muse", sub) in sessions.natives()
+    sessions.export(0)
+    agent, main = _meta(sub), _meta(parent)
+    assert agent["session"] == "01a1-muse-agent-01a2-sub" and agent["role"] == "subagent" and agent["parent"] == "01a1-muse"
+    assert Path(agent["folder"]).parts[-3] == Path(main["folder"]).parts[-3] == "acme"
+    assert [r["kind"] for r in sessions.records(agent["folder"]) if r["kind"] in ("user", "brief")] == ["brief"]
+    assert [m["session"] for m in sessions.find("01a1-muse")] == ["01a1-muse"]
+
+
+@closed_to_us
+def test_a_muse_sessions_sub_agent_folder_that_cannot_be_listed_is_named_not_passed_over(harness):
+    _, sub = _muse_agent(harness)
+    unread = []
+    with _closed(sub.parents[1]):
+        found = sessions.natives(0, unread)
+    assert ("muse", str(sub.parents[1])) in [(h, folder) for h, folder, _ in unread]
+    assert [h for h, native in found if "subagent" in native.parts] == []
 
 
 @closed_to_us

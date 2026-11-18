@@ -77,7 +77,7 @@ def test_a_reply_is_sent_back_once_but_a_reply_after_an_autopilot_continuation_i
     lazy = {"session_id": "s1", "last_assistant_message": "Leaving that for now."}
     assert json.loads(run(lazy).stdout)["decision"] == "block"
     assert run({**lazy, "stop_hook_active": True}).stdout.strip() == ""  # revised once; never a loop
-    marker = isolated_home / "state" / "stop" / "s1.json"
+    marker = isolated_home / "approvals" / "stop" / "s1.json"
     marker.write_text(json.dumps({"by": "autopilot"}))
     assert json.loads(run({**lazy, "stop_hook_active": True}).stdout)["decision"] == "block"
 

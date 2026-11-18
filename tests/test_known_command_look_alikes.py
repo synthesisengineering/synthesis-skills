@@ -44,7 +44,7 @@ def world(tmp_path, monkeypatch):
     record = home / ".claude" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
-    (paths.state() / "approvals").mkdir(parents=True)
+    (paths.approvals() / "grants").mkdir(parents=True)
     work = tmp_path / "work"
     tools = work / "tools"
     tools.mkdir(parents=True)

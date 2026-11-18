@@ -72,7 +72,7 @@ def test_c8_a_releases_install_step_spends_the_grant_once_github_serves_its_tag(
     # judged as the hook judges it, in the harness's own environment, which leads the canonical URL nowhere else
     said = subprocess.run([sys.executable, "-I", "-S", "-c", JUDGE, str(paths.home() / "current"), line, str(repo.parent)],
                           capture_output=True, text=True, timeout=300, env=dict(os.environ))
-    grants, requests = paths.home() / "state" / "release-grants", paths.home() / "state" / "approval-requests"
+    grants, requests = paths.home() / "approvals" / "release-grants", (paths.home() / "approvals" / "requests", paths.requests())
     assert json.loads(said.stdout) is None and len(list(grants.glob("*.json"))) == 1, said.stdout + said.stderr
     _github_at(monkeypatch, bare)  # from here the canonical URL leads to the stand-in, for the tool and the install
     before = install.current_hash()
@@ -89,7 +89,7 @@ def test_c8_a_releases_install_step_spends_the_grant_once_github_serves_its_tag(
         release.remove_clone(clone)
     if pushed:
         assert install.version(paths.home() / "current") == (99, 0, 0) and not list(grants.glob("*.json"))
-        assert not (requests.is_dir() and list(requests.glob("*.json")))  # no code asked for
+        assert not [p for folder in requests for p in folder.glob("*.json")]  # no code asked for, by the hook or a shell
     else:
         assert install.current_hash() == before and len(list(grants.glob("*.json"))) == 1  # waits, and the grant is kept
 

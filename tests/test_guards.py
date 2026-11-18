@@ -163,7 +163,7 @@ def test_the_desktop_apps_terminal_tab_is_guarded_like_bash(tmp_path):
     assert "production" in guards.check(tab, {"command": "npx wrangler pages deploy dist"}, {})
     (tmp_path / "publish.sh").write_text("#!/bin/sh\nnpm publish --access public\n")
     assert "production" in guards.check(tab, {"command": "sh publish.sh", "cwd": str(tmp_path)}, {}, cwd="/")
-    assert guards.check(tab, {"command": "ls -la"}, {}) is None
+    assert "no sandbox confines" in guards.check(tab, {"command": "ls -la"}, {})  # it runs outside every sandbox (ruling 2)
     assert guards.guarded(tab, {"command": "ls"})
 
 
@@ -277,15 +277,15 @@ def test_a_spent_or_expired_approval_leaves_no_file_behind(isolated_home, monkey
     reason = guards.check(SLACK, MESSAGE, {})
     principal(reason)
     assert guards.check(SLACK, MESSAGE, {}) is None
-    assert list((isolated_home / "state" / "approvals").iterdir()) == []
+    assert list((isolated_home / "approvals" / "grants").iterdir()) == []
     guards.check(SLACK, {**MESSAGE, "message": "another"}, {})
     import os
     import time
     old = time.time() - approvals.TTL_SECONDS - 60
-    for f in (isolated_home / "state" / "approval-requests").iterdir():
+    for f in (isolated_home / "approvals" / "requests").iterdir():
         os.utime(f, (old, old))
     code = approvals.request("send", "fresh", "fresh")
-    assert [f.stem for f in (isolated_home / "state" / "approval-requests").iterdir()] == [code]
+    assert [f.stem for f in (isolated_home / "approvals" / "requests").iterdir()] == [code]
 
 
 # --- a protected root named another way (2026-11-11) -------------------------------------------------------
