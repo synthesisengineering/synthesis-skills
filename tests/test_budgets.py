@@ -2619,8 +2619,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # a workday) and row 1 (`last_midday`, the newest sync, in the row `last` and `summary` list). The direction itself,
 # the docstring and the refusal that say what a record's day is keep their lines. The core none: its readers count
 # only a day-start as opening a workday and only a day-end as closing one; any record, a sync's too, ends a quiet.
-CORE_BUDGET = 25044
-PLUGIN_BUDGET = 51786
+# Then each 1 more, in synthesis/rituals.py: last's docstring (of two records tied to the second, the one read later,
+# so a correction appended after a close wins, as day-end.md says; it reads the records in reverse in the same line).
+CORE_BUDGET = 25045
+PLUGIN_BUDGET = 51787
 
 
 def _lines(files):
