@@ -2500,10 +2500,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # lines in guards.py and 2 in install.py.
 # Then each 3 more, in cli.config_change: the file an agent names is read as a regular file opened without waiting, and
 # one over a megabyte is refused (a FIFO there held the guard to its deadline).
+# Then each 4 more, all in install.py (design 4.1: install/ holds what only the installer writes): move_approvals 3 more
+# (install's own record of what it replaced moves there once) and uninstall 1 more (its report names the approvals it
+# keeps); TRACES counting the sealed folders as a runtime's traces, and the record read and written there, keep their lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24072
-PLUGIN_BUDGET = 50744
+CORE_BUDGET = 24076
+PLUGIN_BUDGET = 50748
 
 
 def _lines(files):

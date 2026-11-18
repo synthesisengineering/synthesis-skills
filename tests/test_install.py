@@ -165,7 +165,7 @@ def test_git_hooks_option_records_the_previous_path_and_uninstall_restores_it(tm
 def test_git_hooks_are_not_touched_without_the_option(tmp_path, isolated_home):
     install.install(_plugin_copy(tmp_path))
     assert _hooks_path() == []
-    assert not (isolated_home / "registrations.json").exists()
+    assert not (isolated_home / "install" / "registrations.json").exists()
 
 
 def test_uninstall_keeps_a_hooks_path_the_user_changed_since(tmp_path, isolated_home):

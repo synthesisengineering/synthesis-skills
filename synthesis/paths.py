@@ -64,7 +64,7 @@ def old_approvals() -> list[str]:
     except (OSError, ValueError):
         lines = None
     return [name for name in (*MOVED, "codex-user-hooks.json") if os.path.lexists(state() / name)] + [
-        "line-allowances.json"] * bool(lines and lines.is_file())
+        "line-allowances.json"] * bool(lines and lines.is_file()) + ["registrations.json"] * os.path.lexists(home() / "registrations.json")
 
 
 def sessions() -> Path:

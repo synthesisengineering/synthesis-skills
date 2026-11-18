@@ -483,7 +483,7 @@ def _install_lock(home: Path):
         os.close(fd)
 
 
-TRACES = ("releases", "current", "bin", "git-hooks", "state", "board", "sessions")
+TRACES = ("releases", "current", "bin", "git-hooks", "state", "board", "sessions", "approvals", "install")
 
 
 def traces(home: Path) -> list:
@@ -570,7 +570,7 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
     record = _registrations(home)
     if copies and record.get("copies") != {n: _sha(v) for n, v in copies.items()}:  # so uninstall can tell edits
         record["copies"] = {n: _sha(v) for n, v in copies.items()}
-        (home / "registrations.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        paths.write_json(home / "install" / "registrations.json", record)
     config = home / "config.json"
     if not config.exists():
         config.write_text("{}\n", encoding="utf-8")
@@ -659,6 +659,9 @@ def move_approvals(home: Path) -> list:
         new = home / "install" / name if name == "codex-user-hooks.json" else home / "approvals" / paths.MOVED[name]
         _merge(home / "state" / name, new, home / "archive" / f"approvals-{stamp}" / name)
         moved.append(name)
+    if os.path.lexists(home / "registrations.json"):  # install's own record, kept in the home's root before
+        _merge(home / "registrations.json", home / "install" / "registrations.json", home / "archive" / f"approvals-{stamp}" / "registrations.json")
+        moved.append("registrations.json")
     paths.write_json(home / "approvals" / "line-allowances.json", {"lines": lines if isinstance(lines, dict) else {}})
     return moved + ["line-allowances.json"] * bool(lines)
 
@@ -751,7 +754,7 @@ def _sha(text: str) -> str:
 
 
 def _registrations(home: Path) -> dict:
-    return paths.read_json(home / "registrations.json")
+    return paths.read_json(home / "install" / "registrations.json")  # the installer's own record, sealed with it
 
 
 def register_git_hooks(home: Path = None) -> str:
@@ -764,7 +767,7 @@ def register_git_hooks(home: Path = None) -> str:
     record = _registrations(home)
     if "git_hooks_path" not in record:  # the value from before our first install is the one to restore
         record["git_hooks_path"] = {"before": before, "installed": target}
-        (home / "registrations.json").write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
+        paths.write_json(home / "install" / "registrations.json", record)
     _set_hooks_path([target])
     note = f" (was {', '.join(before)}: git no longer runs hooks from there)" if before else ""
     return f"core.hooksPath -> {target}{note}"
@@ -832,9 +835,10 @@ def uninstall(home: Path = None, dry_run: bool = False, codex_cleared: bool = Fa
         report.append(f"{verb} {release}")
     if (home / "releases" / ".install.lock").exists() and not dry_run:  # install's own lock (round 3, M2)
         (home / "releases" / ".install.lock").unlink()
-    if (home / "registrations.json").exists() and not dry_run:
-        (home / "registrations.json").unlink()
-    report.append(f"{kept} {home / 'config.json'}, {home / 'state'} and {home / 'board'} (your settings, approvals and board); "
+    if (home / "install" / "registrations.json").exists() and not dry_run:
+        (home / "install" / "registrations.json").unlink()
+    report.append(f"{kept} {home / 'config.json'}, {home / 'state'}, {home / 'approvals'} and {home / 'board'} (your settings, state, "
+                  "approvals and board); "
                   "with them there no session start installs a runtime here again, so a harness that still has the plugin "
                   "holds every guarded call until setup.py installs one")
     return report
