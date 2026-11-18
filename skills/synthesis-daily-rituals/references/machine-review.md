@@ -43,9 +43,9 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   `com.synthesis.*` launch agent: loaded, and running programs that are there. macOS only.
 - **Workspaces:** every folder `workspace_roots` names (default `~/workspaces/*`), its `.agents/repos.yaml`, the
   workspaces the rituals' config lists, instruction adapters and work under temporary folders.
-- **Repositories:** every clone one or two folders inside a workspace folder, each read by the strand scan's own check
-  on its checked-out branch (as `--discover` reads it), and every repository a workspace declares, not dormant, that has
-  no clone here.
+- **Repositories:** every clone one or two folders inside a workspace folder, and every clone a workspace declares
+  wherever it lies, each read by the strand scan's own check on its checked-out branch (as `--discover` reads it); and
+  every repository a workspace declares, not dormant, that has no clone here.
 - **Claims:** each session quiet past eight hours that still holds claims and holds no live wait (a seat inside a
   wait is quiet, not gone), and each live seat whose claim covers a repository's uncommitted files, or, where it has
   none, the repository: in a repository many seats share, the seat whose work it is is the one whose claim covers it.
@@ -80,10 +80,10 @@ Each finding has an id (`F1`, `F2`, ...), a severity, an area, a subject (a path
 is wrong. Findings print grouped by severity, worst first, then by area in the order above:
 
 - **fail:** broken now, or work that can be lost: a part of the guard's install that is down, a branch with no
-  upstream or a detached HEAD, a declared repository missing here, a record defect.
+  upstream or a detached HEAD, a repository the rituals sync (`ritual_sync: yes`) with no clone here, a record defect.
 - **unknown:** a piece that could not run or could not tell, never read as fine.
-- **warn:** drifting: uncommitted or unpushed work, a branch behind its upstream, a stale claim, a doctor warning, a
-  root's record warnings.
+- **warn:** drifting: uncommitted or unpushed work, a branch behind its upstream, another declared repository with no
+  clone here, a stale claim, a doctor warning, a root's record warnings.
 
 The plan numbers each step in the order it runs: the steps for failures first, a stale claim taken over before the
 work under it is committed, a commit before its push. Each step names:
