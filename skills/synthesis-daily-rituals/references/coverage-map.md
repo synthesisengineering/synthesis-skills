@@ -85,7 +85,7 @@ publishes with `synthesis handoff`; version 3.0.0; `format: v5`.
 | Daily Plan Structure (digest and revert protection) | [plan-format.md](plan-format.md) | Verbatim there |
 | Mid-Day Sync Protocol | [mid-day-and-modes.md](mid-day-and-modes.md) | Verbatim; "Record after every sync" reworded for R1.3 |
 | Vacation / Observer Mode Ritual | [mid-day-and-modes.md](mid-day-and-modes.md) | Verbatim except persistence lines (R1.3) and the private path generalized |
-| Concurrent-Seats Mode Ritual (six rules, keeps) | [mid-day-and-modes.md](mid-day-and-modes.md); Binding rule 10 | Verbatim; rules 2, 3, 6 name v5 commands |
+| Concurrent-Seats Mode Ritual (six rules, keeps) | [mid-day-and-modes.md](mid-day-and-modes.md); Binding rule 10 | Verbatim; rules 2, 3, 6 name v5 commands; rule 4 and the keeps carry a note (2026-11-18): a ritual's own watermark advances, the Slack gate and the decay sweep run with seats live |
 | Day-End modes (table, Quick Close moments, weekly attachment) | [day-end.md](day-end.md) | Verbatim |
 | Day-End 1 Transcript Sync | [day-end.md](day-end.md) Step 1 | Verbatim with v5 commands |
 | Day-End 2 Source-Code Sync | [day-end.md](day-end.md) Step 2 | Verbatim; manifest bullet reworded to claims |
