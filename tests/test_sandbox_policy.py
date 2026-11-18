@@ -143,9 +143,9 @@ def test_each_file_installs_with_one_command_that_copies_the_staged_file_as_root
         words = shlex.split(sandbox.install_command(name))
         target, staged = sandbox.target(name), sandbox.staged(name)
         group = "wheel" if sys.platform == "darwin" else "root"  # root's own group on each system
-        check = ["shasum", "-a", "256", "-c"] if sys.platform == "darwin" else ["sha256sum", "-c"]
-        digest = hashlib.sha256(sandbox.expected(name).encode("utf-8")).hexdigest()
-        assert words == ["printf", "%s\\n", f"{digest}  {staged}", "|", *check, "&&",
+        check = ["shasum", "-a", "256"] if sys.platform == "darwin" else ["sha256sum"]
+        digest = hashlib.sha256(sandbox.expected(name).encode("utf-8")).hexdigest()  # the file read by the shell, never a name
+        assert words == [*check, "<", str(staged), "|", "grep", "-qxF", f"{digest}  -", "&&",  # parsed (CI's GNU sha256sum)
                          "sudo", "install", "-d", "-o", "root", "-g", group, "-m", "755", str(target.parent), "&&",
                          "sudo", "install", "-o", "root", "-g", group, "-m", "644", str(staged), str(target)], name
         assert staged.parent == paths.home() / sandbox.STAGED  # sealed: no session changes it before it is installed
@@ -164,7 +164,7 @@ def test_the_command_installs_nothing_once_the_staged_file_differs_from_the_byte
 
 def test_the_digest_check_reads_a_home_whose_path_holds_a_backslash_a_quote_and_a_space(mac, tmp_path, monkeypatch):
     """Review round 2 of 5.25.0: `echo` turned a backslash in the path into an escape in sh and zsh, so the check failed for
-    the right file."""
+    the right file; and GNU sha256sum, reading the name from a check line, failed on it too (CI on Linux)."""
     monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "odd \\new it's $HOME" / ".synthesis" / "v5"))
     shells = [s for s in ("/bin/sh", "/bin/bash", "/bin/zsh") if os.path.exists(s)]
     for name in ("claude", "codex"):
