@@ -1351,7 +1351,7 @@ def test_working_from_inside_a_transcript_folder_is_not_refused(saved, command, 
 
 @pytest.mark.parametrize("command", [
     "cd {state} && python3 -I -B /tmp/pad/build.py",
-    "cd {state} && plutil -p /tmp/a.plist",
+    "cd {state} && plutil -convert xml1 /tmp/a.plist",  # plutil writing; its forms that only print read there (A13)
     "cd {work}/abc/tool-results && python3 -I -B - <<'PY'\nopen('events.txt', 'w').write('x')\nPY",
     "for d in $(ls -d {state}/*); do rm -rf \"$d\"; done",
 ])
