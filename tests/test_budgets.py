@@ -2584,9 +2584,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # than consolidate first).
 # Then the plugin 1 more, in setup.py: codex_overlay's docstring says the Codex profile's read-only rules come only
 # with `seal`, which `setup.py sandbox` passes (5.25.0's integration: whether Codex runs its hooks inside its sandbox
-# is what that step tests first, so no release's install seals Codex before it).
+# is what that step tests first, so no release's install seals Codex before it). Then the plugin 2 more, in setup.py's
+# _seal: its write rules (the requests folder a Codex shell files into) are written at every install and its read-only
+# rules only by the sandbox step, and the note for writes alone says so.
 CORE_BUDGET = 25006
-PLUGIN_BUDGET = 51736
+PLUGIN_BUDGET = 51738
 
 
 def _lines(files):

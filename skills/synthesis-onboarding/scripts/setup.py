@@ -323,16 +323,16 @@ def codex_overlay(text: str, seal: bool = False) -> tuple:
             notes.append(f"let Codex's sandbox write the synthesis {what} ({folder}), so its sessions can {so}"
                          if edited else f"Codex's sandbox settings are written in a form setup does not edit: grant {folder}")
             config = doctor.read_toml("\n".join(lines))  # the next folder joins what this one wrote
-    if seal and config.get("sandbox_mode") is None and not doctor.codex_write_roots(config)[1]:  # older settings: no read
-        notes += _seal(lines, config)                                                     # rule: the doctor names them
+    if config.get("sandbox_mode") is None and not doctor.codex_write_roots(config)[1]:  # the older settings have no read
+        notes += _seal(lines, config, seal)                                              # rule: the doctor names them
     return "\n".join(lines).strip("\n") + "\n", notes
 
 
-def _seal(lines: list, config: dict) -> list:
-    """The guard's sandbox in the profile Codex reads: each folder of sandbox.codex_rules with its access. A rule of the
-    person's own for one of them is named and left as written."""
+def _seal(lines: list, config: dict, reads: bool = True) -> list:
+    """The guard's sandbox in the profile Codex reads: each folder of sandbox.codex_rules with its access, the read-only
+    ones only with `reads` (setup.py sandbox's step). A rule of the person's own for one of them is named and left."""
     have, added, theirs = sandbox.profile_rules(config)[0], [], []
-    for folder, access in sandbox.codex_rules():
+    for folder, access in [(f, a) for f, a in sandbox.codex_rules() if reads or a == "write"]:
         found = have.get(os.path.realpath(folder))
         if found is None:
             if not _profile_grant(lines, config, str(folder), access):
@@ -346,7 +346,9 @@ def _seal(lines: list, config: dict) -> list:
     said = [f"made {', '.join(sandbox.tilde(f) for f, a in added if a == 'read')} read-only to Codex's sandbox"] * any(
         a == "read" for _, a in added) + [f"let it write {', '.join(sandbox.tilde(f) for f, a in added if a == 'write')}"] * any(
         a == "write" for _, a in added)
-    return ([" and ".join(said) + ", so no Codex shell changes what the guard trusts"] if said else []) + theirs
+    sealing = any(a == "read" for _, a in added)
+    return ([" and ".join(said) + (", so no Codex shell changes what the guard trusts" if sealing else
+                                   ", where a Codex shell files the requests the principal answers")] if said else []) + theirs
 
 
 def _profile_grant(lines: list, config: dict, folder: str, access: str = "write") -> bool:

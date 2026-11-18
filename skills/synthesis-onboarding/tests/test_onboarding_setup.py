@@ -265,7 +265,7 @@ def test_overlay_sets_only_the_owned_keys():
     assert config["features"] == {"js_repl": True, "hooks": True}
     assert config["project_doc_max_bytes"] == 98304 and config["project_doc_fallback_filenames"].startswith("[")
     assert config["model"] == "gpt-6" and config["mcp_servers"]["x"]["command"] == "y"
-    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 5  # the seal is setup.py sandbox's
+    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 6 and "state/requests" in notes[5]
     assert config["default_permissions"] == "synthesis" and config["permissions"]["synthesis"] == {
         "extends": ":workspace", "filesystem": {str(folder): access for folder, access in setup.sandbox.codex_rules()
                                                 if access == "write"}}  # the read-only rules are the sandbox step's
@@ -277,7 +277,7 @@ def test_overlay_keeps_an_explicit_hooks_false_and_says_guards_will_not_run():
                                      "[features]\nhooks = false\n")
     assert "hooks = false" in new and "hooks = true" not in new
     assert notes[0] == "kept [features] hooks = false, so no synthesis guard runs in Codex"
-    assert len(notes) == 3 and "synthesis board" in notes[1] and "synthesis outbox" in notes[2]  # no seal: setup.py sandbox's
+    assert len(notes) == 4 and "synthesis board" in notes[1] and "synthesis outbox" in notes[2] and "state/requests" in notes[3]
 
 
 def test_overlay_raises_a_low_instruction_limit_and_adds_a_features_table():
@@ -354,7 +354,7 @@ def test_an_install_that_granted_the_board_alone_gains_the_outbox_and_writes_the
         lacking = setup.doctor.check_codex_board(setup.doctor.read_toml(earlier), board, sealed, outbox)
         assert lacking.status == "fail" and setup.doctor._short(outbox) in lacking.detail, earlier
         new, notes = setup.codex_overlay(earlier)
-        assert len(notes) == 1 and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes  # the seal is the sandbox step's
+        assert len(notes) == (2 if earlier is profile else 1) and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, new
         assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, sealed, outbox).status == "ok", new
         assert setup.codex_overlay(new) == (new, [])
@@ -366,7 +366,7 @@ def test_a_folder_the_person_granted_themselves_is_not_granted_again():
             '[features]\nhooks = true\n[permissions.mine]\nextends = ":workspace"\n[permissions.mine.filesystem]\n'
             f'{json.dumps(str(outbox))} = "write"\n')
     new, notes = setup.codex_overlay(mine)
-    assert len(notes) == 1 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1  # no seal here
+    assert len(notes) == 2 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1
     assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, sealed, outbox).status == "ok"
     assert setup.codex_overlay(new) == (new, [])
 
