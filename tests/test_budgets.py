@@ -2621,8 +2621,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # only a day-start as opening a workday and only a day-end as closing one; any record, a sync's too, ends a quiet.
 # Then each 1 more, in synthesis/rituals.py: last's docstring (of two records tied to the second, the one read later,
 # so a correction appended after a close wins, as day-end.md says; it reads the records in reverse in the same line).
+# Then the plugin 6 more, all in the rituals' ritual_workers.py, for the desk's coverage line, which read a day's first
+# mid-day run alone: the import of re 1, MIDDAY_RUN 1 and its comment 1 (decay_sweep's pattern for a later run that day,
+# copied, since the sweep imports synthesis.rituals, which the chief-of-staff collection does not carry; a test holds
+# the two equal), and coverage 3 more (each `midday-N` filed that day, folded after the first in the order of its N; the
+# worker's folder named once).
 CORE_BUDGET = 25045
-PLUGIN_BUDGET = 51787
+PLUGIN_BUDGET = 51793
 
 
 def _lines(files):
