@@ -357,8 +357,8 @@ def test_a_piece_that_cannot_run_is_unknown_and_never_fine(machine, monkeypatch,
     assert ("unknown", "repositories", "strand scan") in unknown and ("unknown", "projects", "context doctor") in unknown
     assert not [r for r in _rows(report) if r[1] in ("repositories", "projects") and r[0] != "unknown"]
     assert report["exit"] == 2 and report["healthy"] is False
-    fix = {s["fixes"][0]: s for s in report["plan"]}
-    assert all(f["id"] in fix for f in report["findings"] if f["severity"] == "unknown")
+    fixed = {found for step in report["plan"] for found in step["fixes"]}  # one step may fix several: one command, said once
+    assert all(f["id"] in fixed for f in report["findings"] if f["severity"] == "unknown")
 
 
 def test_every_doctor_check_is_run_here_or_named_as_not_run():
