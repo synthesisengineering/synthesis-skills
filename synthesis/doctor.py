@@ -1618,6 +1618,65 @@ def check_plan_judge(config: dict, probe=None, status=None) -> list:
 
 # ---- git ----------------------------------------------------------------------
 
+PROTECTIONS = (  # macOS's own: (name, what asks, what says it is off, what says it is on, the one step that turns it on)
+    ("FileVault", ["fdesetup", "status"], r"FileVault is Off", r"FileVault is On|Encryption in progress",
+     "turn it on in System Settings > Privacy & Security > FileVault"),
+    ("firewall", ["/usr/libexec/ApplicationFirewall/socketfilterfw", "--getglobalstate"], r"disabled|State = 0",
+     r"enabled|State = [12]", "turn it on in System Settings > Network > Firewall"),
+    ("System Integrity Protection", ["csrutil", "status"], r"status: disabled|Custom Configuration", r"status: enabled\.",
+     "start the Mac in Recovery, run `csrutil enable` in its Terminal, and restart"),
+    ("Gatekeeper", ["spctl", "--status"], r"assessments disabled", r"assessments enabled",
+     "allow apps from the App Store and identified developers only, in System Settings > Privacy & Security"))
+SSH_SHARED = ("known_hosts", "known_hosts.old", "config", "authorized_keys")  # files in ~/.ssh others may read; and *.pub
+
+
+def check_security(home: Path, run=subprocess.run, platform: str = sys.platform) -> list:
+    """Every Mac keeps its files to its own user (A8, the principal, 2026-11-17): the home folder and ~/.ssh open to no
+    other local user, no private key in ~/.ssh readable by one, and on macOS FileVault, the firewall, System Integrity
+    Protection and Gatekeeper on. Each problem is a warning naming the one step that fixes it; all well is one line."""
+    problems, ssh = [], home / ".ssh"
+    for folder, name in ((home, "home folder"), (ssh, "~/.ssh")):
+        try:
+            mode = folder.lstat().st_mode
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            problems.append((name, f"{_short(folder)} cannot be read ({exc.strerror})", f"check {_short(folder)}'s owner"))
+            continue
+        if mode & 0o077:
+            problems.append((name, f"{_short(folder)} is {stat.filemode(mode)}: other local users can open it",
+                             f"run `chmod 700 {_short(folder)}`"))
+    try:
+        keys = [p for p in sorted(ssh.iterdir()) if not p.name.endswith(".pub") and p.name not in SSH_SHARED
+                and stat.S_ISREG(p.lstat().st_mode) and p.lstat().st_mode & 0o044]
+    except OSError:  # no ~/.ssh, or one that cannot be read, which the folder's line above names
+        keys = []
+    if keys:
+        problems.append(("~/.ssh", ", ".join(_short(p) for p in keys[:4]) + " can be read by other local users",
+                         "run `chmod 600` on each file named"))
+    if platform == "darwin":
+        def ask(argv):
+            try:
+                done = run(argv, capture_output=True, text=True, timeout=10, stdin=subprocess.DEVNULL)
+                return (done.stdout or "") + (done.stderr or "")
+            except (OSError, subprocess.SubprocessError) as exc:
+                return f"{type(exc).__name__}"
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=len(PROTECTIONS)) as pool:
+            said = list(pool.map(ask, [p[1] for p in PROTECTIONS]))
+        for (name, _, off, on, fix), out in zip(PROTECTIONS, said):
+            if re.search(off, out) or not re.search(on, out):
+                problems.append((name, "is off" if re.search(off, out) else f"cannot be told ({' '.join(out.split())[:80]})", fix))
+    if not problems:
+        return [Check("ok", "machine security", "the home folder and ~/.ssh are private" + (
+            "; FileVault, the firewall, System Integrity Protection and Gatekeeper are on" if platform == "darwin" else ""))]
+    merged = {}
+    for name, what, fix in problems:  # one line for each thing, its findings together
+        merged.setdefault(name, []).append((what, fix))
+    return [Check("warn", f"security {name}", "; ".join(w for w, _ in found) + "; to fix it, " + ", and ".join(
+        dict.fromkeys(f for _, f in found))) for name, found in merged.items()]
+
+
 def check_git_hooks_path(value: str, expected: Path) -> Check:
     """Report only: v5 commit checks run when core.hooksPath points at the v5 hooks folder."""
     if value and os.path.realpath(os.path.expanduser(value)) == os.path.realpath(expected):
@@ -2005,6 +2064,7 @@ def _background(fn, *args):
 
 def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
     home, cwd, began = home or paths.home(), cwd or Path.cwd(), time.time()
+    security = _background(lambda: check_security(paths.account_home()))  # beside the rest: four short questions of macOS
     checks = [check_runtime(home), check_config(home), check_board(home)]
     from synthesis import sessions
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
@@ -2062,6 +2122,8 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
     except (OSError, subprocess.SubprocessError):
         value = ""
     checks.append(check_git_hooks_path(value, home / "git-hooks"))
+    found, error = security()
+    checks += found if found is not None else [Check("warn", "machine security", f"cannot tell ({error})")]
     if planned:
         lines, error = planned()
         checks += lines if lines is not None else [Check("warn", "judge", f"cannot tell whether the plan judge answers ({error})")]

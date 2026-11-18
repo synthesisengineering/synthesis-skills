@@ -227,7 +227,14 @@ there with no item here fails:
   one `judge` warn;
 - `latest release`: only with `--latest`, whether an installed harness is behind the
   published release;
-- `git hooks`: the global `core.hooksPath` (report only).
+- `git hooks`: the global `core.hooksPath` (report only);
+- `machine security`, `security <name>`: the Mac keeps its files to its own user: the home
+  folder and `~/.ssh` open to no other local user, no private key in `~/.ssh` readable by
+  one, and on macOS FileVault, the firewall, System Integrity Protection and Gatekeeper on
+  (`fdesetup`, `socketfilterfw`, `csrutil` and `spctl`, asked at once). All well is one
+  line; each problem is a warning, never a failure, that names the one step that fixes it.
+  The doctor runs at each day's start and after every install, so a new Mac's first setup
+  runs it too (5.24.1).
 
 ## Live: proving the harness ran it
 

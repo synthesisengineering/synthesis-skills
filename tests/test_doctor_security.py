@@ -49,14 +49,14 @@ def test_a_mac_that_keeps_its_files_to_its_user_says_so_in_one_line(tmp_path):
 
 def test_a_home_folder_other_users_can_open_warns_and_names_the_fix(tmp_path):
     checks = doctor.check_security(_home(tmp_path, home_mode=0o755), run=_mac(), platform="darwin")
-    assert [(c.status, c.name) for c in checks] == [("warn", "security: home folder")]
+    assert [(c.status, c.name) for c in checks] == [("warn", "security home folder")]
     assert "drwxr-xr-x" in checks[0].detail and "chmod 700" in checks[0].detail
 
 
 def test_ssh_and_its_private_keys_read_by_no_one_else_and_public_files_left_alone(tmp_path):
     files = {"id_ed25519": 0o644, "id_ed25519.pub": 0o644, "known_hosts": 0o644, "config": 0o644, "deploy_key": 0o640}
     checks = doctor.check_security(_home(tmp_path, ssh_mode=0o755, files=files), run=_mac(), platform="darwin")
-    assert [(c.status, c.name) for c in checks] == [("warn", "security: ~/.ssh")]
+    assert [(c.status, c.name) for c in checks] == [("warn", "security ~/.ssh")]
     detail = checks[0].detail
     assert ".ssh/id_ed25519 " in detail + " " and "deploy_key" in detail and "chmod 600" in detail
     assert "id_ed25519.pub" not in detail and "known_hosts" not in detail and "config" not in detail
@@ -71,8 +71,8 @@ def test_a_mac_with_no_ssh_folder_is_fine(tmp_path):
 def test_each_macos_protection_that_is_off_warns_with_the_one_step_that_turns_it_on(tmp_path):
     off = ("fdesetup", "/usr/libexec/ApplicationFirewall/socketfilterfw", "csrutil", "spctl")
     checks = doctor.check_security(_home(tmp_path), run=_mac(off=off), platform="darwin")
-    assert [c.name for c in checks] == ["security: FileVault", "security: firewall", "security: System Integrity Protection",
-                                        "security: Gatekeeper"]
+    assert [c.name for c in checks] == ["security FileVault", "security firewall", "security System Integrity Protection",
+                                        "security Gatekeeper"]
     assert all(c.status == "warn" and "is off" in c.detail and "to fix it" in c.detail for c in checks)
     assert "System Settings" in checks[0].detail and "Recovery" in checks[2].detail
 
@@ -83,7 +83,7 @@ def test_an_answer_that_cannot_be_read_warns_rather_than_passing(tmp_path):
             raise FileNotFoundError(argv[0])
         return _mac()(argv, **kwargs)
     checks = doctor.check_security(_home(tmp_path), run=run, platform="darwin")
-    assert [(c.status, c.name) for c in checks] == [("warn", "security: Gatekeeper")]
+    assert [(c.status, c.name) for c in checks] == [("warn", "security Gatekeeper")]
     assert "cannot be told" in checks[0].detail
 
 
