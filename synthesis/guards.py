@@ -854,6 +854,38 @@ def _calendar_read(transcript: str, reads: list) -> float | None:
     return newest
 
 
+# A forwarded or replied-to message's quoted header (A10, 2026-11-18: a forward was held for the time in its quoted Date
+# line). The From, Sent, Date, To, Cc and Subject lines a mail client writes over a quoted message, under a forward's or
+# an original message's marker or a rule, or with a sender and a dated Date or Sent of their own, and a reply's "On
+# <date>, <sender> wrote:", are the earlier message's: a time there is when it was sent. They are read as the text shows
+# them, in plain text or in HTML. The quoted message's own words, and the new ones, still name what they name.
+QUOTE_MARK = _Pattern(r"(?i)-{2,}\s*(?:forwarded|original)\s+message\s*-{2,}|begin forwarded message:?|_{8,}")
+HEADER_LINE = _Pattern(r"(?i)(from|sent|date|to|cc|bcc|subject|reply-to)\s*:\s*\S")
+WROTE = _Pattern(r"(?is)on\s.{0,200}?\b(?:19|20)\d\d\b.{0,200}?\swrote:")  # a reply's attribution, dated
+LINE_END = _Pattern(r"(?i)\n|<br\s*/?>|</?(?:p|div|li|tr|td|table|blockquote|hr)\b[^>]*>")  # where a line ends, in text or HTML
+
+
+def _quoted_headers_out(text: str) -> str:
+    """A message's words with the quoted header of each forwarded or replied-to message it carries left out."""
+    import html
+    breaks = list(LINE_END.finditer(text))
+    spans = list(zip([0] + [m.end() for m in breaks], [m.start() for m in breaks] + [len(text)]))
+    shown = [re.sub(r"^[>\s]+", "", html.unescape(re.sub(r"<[^>]*>", "", text[a:b]))).strip() for a, b in spans]
+    runs, cut = [[]], set()
+    for k, line in enumerate(shown):  # each run of header lines, blank lines between them read past
+        runs[-1] += [k] if HEADER_LINE.match(line) else []
+        runs += [[]] if line and runs[-1] and runs[-1][-1] != k else []
+    for run in filter(None, runs):
+        above = next((k for k in range(run[0] - 1, -1, -1) if shown[k]), -1)  # the nearest line with words above it
+        fields = {HEADER_LINE.match(shown[k])[1].lower(): shown[k] for k in run}
+        marked = (above >= 0 and QUOTE_MARK.fullmatch(shown[above])) or any(m[0][:3].lower() == "<hr" for m in breaks[max(above, 0):run[0]])
+        dated = "from" in fields and bool(re.search(r"\b(?:19|20)\d\d\b", fields.get("date", "") + " " + fields.get("sent", "")))
+        cut |= set(run) if marked or dated else set()
+    for at in range(len(shown)):
+        cut |= next((set(range(at, at + n)) for n in (1, 2, 3) if WROTE.fullmatch(" ".join(shown[at:at + n]))), set())  # wrapped too
+    return "".join(text[a:b] * (k not in cut) + (breaks[k][0] if k < len(breaks) else "") for k, (a, b) in enumerate(spans))
+
+
 def _time_without_calendar(texts: list, config: dict, session: dict | None) -> str | None:
     """Config: {"fresh_calendar": {"minutes": 10, "reads": ["<a tool's whole name, a pattern over it, or its end>", ...]}};
     off when the key is absent or false, and `{}` is ten minutes with the tools the guard knows. For the words of a
@@ -868,7 +900,7 @@ def _time_without_calendar(texts: list, config: dict, session: dict | None) -> s
     if not (type(minutes) is int and 1 <= minutes <= 60 and isinstance(reads, list) and all(isinstance(name, str) and name for name in reads)):
         return ('fresh_calendar in the synthesis config needs "minutes" as a whole number from 1 to 60 and "reads" as a list of '
                 "tool names, each where it has one; messages are blocked until it is fixed")
-    times = list(dict.fromkeys(found.group(0).strip() for text in texts for found in CLOCK.finditer(text)))
+    times = list(dict.fromkeys(found.group(0).strip() for text in texts if CLOCK.search(text) for found in CLOCK.finditer(_quoted_headers_out(text))))
     if not times:
         return None
     named = f"This message names a time ({', '.join(f'`{t}`' for t in times[:3])})"

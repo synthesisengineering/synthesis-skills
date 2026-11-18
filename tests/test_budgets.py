@@ -2616,8 +2616,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # Then each 4 more, in guards._self_grant, for a record of a hold: the refusal of a line that carries a pending code says
 # why the line may not (it may hand the code to a program that types into a session or writes its record) and how to
 # record a hold, with the code left out or through the harness's file tool, which writes only the file it names.
-CORE_BUDGET = 25072
-PLUGIN_BUDGET = 51806
+# Then each 32 more, all in guards.py, for a forward's quoted header: the section's comment 5 (the header a mail client
+# writes over a forwarded or replied-to message is that message's, and a time there proposes none), QUOTE_MARK,
+# HEADER_LINE, WROTE and LINE_END 4 (a forward's or an original message's marker, a header line, a reply's dated
+# attribution, where a line ends in text or HTML), _quoted_headers_out 19 (its line and docstring 2; the lines as the
+# text shows them, in plain text or HTML, 4; each run of header lines, blank lines read past, 4; a run under a marker or
+# a rule, or with a sender and a dated Date or Sent, cut, 6; a dated attribution, wrapped or not, cut, 2; the words
+# without them, 1), and 4 blank lines; _time_without_calendar keeps its line (a time is looked for there only in a text
+# that names one).
+CORE_BUDGET = 25104
+PLUGIN_BUDGET = 51838
 
 
 def _lines(files):
