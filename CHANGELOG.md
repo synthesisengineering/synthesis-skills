@@ -109,10 +109,13 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
   scripts run from there. As part 2 leaves them: the seal check asks two brokers, launchd and LaunchServices, of the
   note's list (Apple Events, a running tmux or screen server, ssh to localhost and the harnesses' own prompt routes are
   for the pilot's probe set), and Muse documents no folder rules, so nothing shows its sandbox seals the set. Not yet
-  confirmed on a Mac (the note's section 5): whether Codex runs its hooks outside its sandbox, which the profile setup
-  now writes makes decisive for approvals in Codex; whether Codex refuses the rename of a sealed folder's ancestor; the
+  confirmed on a Mac (the note's section 5): whether Codex runs its hooks outside its sandbox, which the sealed profile
+  `setup.py sandbox` writes makes decisive for approvals in Codex; whether Codex refuses the rename of a sealed folder's ancestor; the
   place of Codex's requirements, taken from Codex's documentation; and whether Claude Code's sandbox holds in the
-  desktop app's Code tab and agent mode.
+  desktop app's Code tab and agent mode. As the review leaves them: a code a release before this one showed, whose first
+  digit is 5 to 9, is open to a request planted under it once its own has expired (around the upgrade only, before the
+  seal is installed); and a staged file changed while sudo asks for the password is installed, which the doctor names
+  afterwards.
 
 ## [5.24.1] - 2026-11-17
 
