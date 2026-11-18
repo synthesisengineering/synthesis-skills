@@ -41,6 +41,19 @@ first, and a TLS gap found while fixing one of them.
 - **A long argument no longer stops the guard (BACKLOG A12).** A pattern of more than 64 parts is read as written, so a
   JSON argument full of addresses no longer recurses through glob, and a line nested past what the guard reads waits for
   the principal's code with a plain reason instead of failing on RecursionError.
+- **A mid-day sync is recorded** (BACKLOG A11). `ritual_state.py record --direction midday` now works; before, the
+  recorder took only day-start, day-end and weekly-review, though the worker contract records every run by its run type.
+  Each sync appends its own record, a later one that day too (its artifact is `midday-N`). It is held to the critical
+  deadlines, travel, choices and commitments as a day-start is, and leaves the prompts to the day's close. No view counts
+  a sync as opening or closing a workday, so streaks, the last close, workdays never closed, the weekly review, the
+  session line and the nudge read as before. The row of `query last` and `summary` lists the newest sync (`last_midday`),
+  and a sync ends the quiet of a workspace worked occasionally.
+- **A correction recorded in the same second as the close wins.** `rituals.last` kept the first of two records tied to
+  the second, so a corrected day-end appended within the second of a clean close read clean, against day-end.md's rule
+  that the later record wins. The later one is now read, by every view that reads through it.
+- **The desk's coverage line folds the newest mid-day run.** `ritual_workers.py coverage` looked for a day's `midday`
+  artifact alone, so after a second sync, filed as `midday-N`, the line gave the first one's time and outcome. It now
+  reads later runs by the deadline sweep's own pattern, after the first in the order of N and before the day-end.
 - **Not synthesis's:** the refusal of a push "after the preceding commit failed" came from Codex's own approval reviewer
   (`auto_review`), which read the previous cell's hold as a failed commit. No change.
 
