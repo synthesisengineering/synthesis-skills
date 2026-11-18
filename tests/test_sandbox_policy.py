@@ -397,16 +397,18 @@ def test_the_hook_run_with_a_made_up_prompt_writes_no_record_or_is_reported(mac,
     from synthesis import approvals
     v5 = sealed_tree(mac)
     monkeypatch.setattr(sandbox, "_create", _refused_in(v5 / "approvals", sandbox._create))
-    records = approvals._dir("transcripts")
+    records, grants = approvals._dir("transcripts"), approvals._dir("approvals")
     hook = v5 / "bin" / "synthesis-hook"
     hook.write_text(f"#!{sys.executable}\nimport json, os, sys\npayload = json.load(sys.stdin)\n"
-                    f"os.makedirs({str(records)!r}, exist_ok=True)\n"
-                    f"open(os.path.join({str(records)!r}, payload['session_id'] + '.json'), 'w').write('{{}}')\n")
+                    f"os.makedirs({str(records)!r}, exist_ok=True)\nos.makedirs({str(grants)!r}, exist_ok=True)\n"
+                    f"open(os.path.join({str(records)!r}, payload['session_id'] + '.json'), 'w').write('{{}}')\n"
+                    f"open(os.path.join({str(grants)!r}, '000000.json'), 'w').write('{{}}')\n")  # a grant, and its record
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     before = tree(mac)
     found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, no_broker, "linux")}
-    assert found["the hook with a made-up prompt"][0] == "wrote" and sandbox.tilde(records) in found["the hook with a made-up prompt"][1]
+    assert found["the hook with a made-up prompt"][0] == "wrote" and "2 file(s)" in found["the hook with a made-up prompt"][1]
+    assert sandbox.tilde(records) in found["the hook with a made-up prompt"][1]
     assert tree(mac) == before
     hook.write_text("#!/bin/sh\nexit 1\n")
     found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, no_broker, "linux")}

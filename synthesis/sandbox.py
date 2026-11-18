@@ -377,19 +377,20 @@ def _files(folder: Path) -> dict:
 
 def _hook(home: Path, workspace: Path) -> tuple:
     """The hook run as a shell runs it, with a made-up prompt: one started from a sandboxed shell runs inside the sandbox,
-    so it writes no record (the note's M5 route). Whatever it wrote is put back."""
+    so it writes no grant and no record of the session (the note's M5 route). Whatever it wrote is put back."""
     from synthesis import approvals
-    hook, records = home / "bin" / "synthesis-hook", approvals._dir("transcripts")
+    hook, folders = home / "bin" / "synthesis-hook", [approvals._dir("approvals"), approvals._dir("transcripts")]
     if not os.access(hook, os.X_OK):
         return "unknown", f"{tilde(hook)} is not there to run"
-    had, before, session = records.is_dir(), _files(records), f"seal-probe-{os.getpid()}"
+    had, session = [f for f in folders if f.is_dir()], f"seal-probe-{os.getpid()}"
+    before = {k: v for f in folders for k, v in _files(f).items()}
     payload = {"session_id": session, "transcript_path": str(workspace / f"{session}.jsonl"), "prompt": "approve 000000",
                "hook_event_name": "UserPromptSubmit", "cwd": str(workspace)}
     try:
         done = subprocess.run([str(hook), "user-prompt-submit"], input=json.dumps(payload), capture_output=True, text=True, timeout=30)
     except (OSError, subprocess.SubprocessError) as exc:
         return "unknown", f"the hook did not run ({exc})"
-    after = _files(records)
+    after = {k: v for f in folders for k, v in _files(f).items()}
     changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
     left = []
     for path in changed:
@@ -397,12 +398,13 @@ def _hook(home: Path, workspace: Path) -> tuple:
             Path(path).write_bytes(before[path]) if path in before else os.unlink(path)
         except OSError:
             left.append(tilde(path))
-    if not had and records.is_dir() and not any(records.iterdir()):
-        records.rmdir()
+    for folder in (f for f in folders if f not in had and f.is_dir() and not any(f.iterdir())):
+        folder.rmdir()
+    where = " or ".join(tilde(f) for f in folders)
     if changed:
-        return "wrote", f"run with a made-up prompt, the hook wrote {len(changed)} record(s) in {tilde(records)}; " + (
+        return "wrote", f"run with a made-up prompt, the hook wrote {len(changed)} file(s) in {where}; " + (
             f"put {', '.join(left[:3])} back from your own terminal" if left else "put back")
-    return "held", f"run with a made-up prompt, the hook wrote nothing in {tilde(records)} (exit {done.returncode})"
+    return "held", f"run with a made-up prompt, the hook wrote nothing in {where} (exit {done.returncode})"
 
 
 def _landed(marker: Path, seconds: float) -> bool:
