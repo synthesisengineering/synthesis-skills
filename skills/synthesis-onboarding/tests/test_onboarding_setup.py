@@ -294,8 +294,8 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
     """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Codex reads
     permission profiles unless `sandbox_mode` is set, and then the older [sandbox_workspace_write]. The outbox is
     granted the same way (2026-11-12: a Codex session could not stage a file it attaches). Only those two are
-    granted either way: the state folder holds approvals and send windows, which no sandboxed agent may write."""
-    board, state, outbox = setup.paths.board(), setup.paths.state(), setup.paths.outbox()
+    granted either way: the sealed approvals folder holds approvals and send windows, which no sandboxed agent may write."""
+    board, sealed, outbox = setup.paths.board(), setup.paths.approvals(), setup.paths.outbox()
     keep = 'project_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n[features]\nhooks = true\n'
     mine = 'default_permissions = "mine"\n' + keep + '[permissions.mine]\nextends = ":workspace"\n'
     legacy = 'sandbox_mode = "workspace-write"\n'
@@ -309,7 +309,7 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
                                  (legacy + keep, "", "")):
         new, notes = setup.codex_overlay(given if keep in given else given + keep)
         config = setup.doctor.read_toml(new)
-        assert setup.doctor.check_codex_board(config, board, state, outbox).status == "ok", given
+        assert setup.doctor.check_codex_board(config, board, sealed, outbox).status == "ok", given
         assert [str(folder) in note for folder, note in zip((board, outbox), notes)] == [True, True], notes
         assert len(notes) == (3 if profile else 2) and setup.codex_overlay(new) == (new, []), given  # a profile is sealed too
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, given
@@ -329,7 +329,7 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
 def test_an_install_that_granted_the_board_alone_gains_the_outbox_and_writes_the_board_no_second_time():
     """What an earlier setup wrote grants the board and nothing else. The next run adds the outbox to the same
     profile, or the same writable roots, and leaves the board's rule as it is."""
-    board, state, outbox = setup.paths.board(), setup.paths.state(), setup.paths.outbox()
+    board, sealed, outbox = setup.paths.board(), setup.paths.approvals(), setup.paths.outbox()
     keep = 'project_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n[features]\nhooks = true\n'
     profile = ('default_permissions = "synthesis"  # synthesis setup: :workspace plus the board\n\n' + keep
                + f'\n{setup.BOARD_BEGIN}\n[permissions.synthesis]\nextends = ":workspace"\n'
@@ -337,23 +337,23 @@ def test_an_install_that_granted_the_board_alone_gains_the_outbox_and_writes_the
     legacy = ('sandbox_mode = "workspace-write"\n' + keep + f'\n{setup.BOARD_BEGIN}\n[sandbox_workspace_write]\n'
               f'writable_roots = [{json.dumps(str(board))}]\n{setup.BOARD_END}\n')
     for earlier in (profile, legacy):
-        lacking = setup.doctor.check_codex_board(setup.doctor.read_toml(earlier), board, state, outbox)
+        lacking = setup.doctor.check_codex_board(setup.doctor.read_toml(earlier), board, sealed, outbox)
         assert lacking.status == "fail" and setup.doctor._short(outbox) in lacking.detail, earlier
         new, notes = setup.codex_overlay(earlier)
         assert len(notes) == (2 if earlier is profile else 1) and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, new
-        assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, state, outbox).status == "ok", new
+        assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, sealed, outbox).status == "ok", new
         assert setup.codex_overlay(new) == (new, [])
 
 
 def test_a_folder_the_person_granted_themselves_is_not_granted_again():
-    board, state, outbox = setup.paths.board(), setup.paths.state(), setup.paths.outbox()
+    board, sealed, outbox = setup.paths.board(), setup.paths.approvals(), setup.paths.outbox()
     mine = ('default_permissions = "mine"\nproject_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n'
             '[features]\nhooks = true\n[permissions.mine]\nextends = ":workspace"\n[permissions.mine.filesystem]\n'
             f'{json.dumps(str(outbox))} = "write"\n')
     new, notes = setup.codex_overlay(mine)
     assert len(notes) == 2 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1
-    assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, state, outbox).status == "ok"
+    assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, sealed, outbox).status == "ok"
     assert setup.codex_overlay(new) == (new, [])
 
 
@@ -392,13 +392,13 @@ def test_the_install_reference_and_the_readme_name_both_folders_setup_lets_codex
     for folder in ("`~/.synthesis/v5/board`", "`~/.synthesis/v5/outbox`"):
         assert folder in reference and folder in readme, folder
     assert "Only the board is granted" not in reference  # the earlier text
-    for said in ("stage a file", "Only those two are granted", "`~/.synthesis/v5/state`"):
+    for said in ("stage a file", "Only those two are granted", "`~/.synthesis/v5/approvals` holds approvals and send windows"):
         assert said in reference, said
     # and the reference that tells sessions why the board has its own folder no longer calls it the only one granted
     coordination = " ".join((setup.REPO / "skills" / "synthesis-project-management" / "references" / "coordination.md")
                             .read_text(encoding="utf-8").split())
     assert "the one synthesis folder granted there" not in coordination
-    assert "`~/.synthesis/v5/outbox/`" in coordination and "`~/.synthesis/v5/state/`" in coordination
+    assert "`~/.synthesis/v5/outbox/`" in coordination and "`~/.synthesis/v5/approvals/`" in coordination
 
 
 # ---- the guard's sandbox (design note 22.9, 4.2 and 4.3) ---------------------------------------------------------
@@ -411,7 +411,7 @@ def test_the_overlay_keeps_what_the_guard_trusts_read_only_to_codexs_sandbox():
     config = setup.doctor.read_toml(new)
     assert config["permissions"]["synthesis"]["filesystem"] == {str(p): a for p, a in setup.sandbox.codex_rules()}
     assert setup.sandbox.profile_problems(config) == [] and any("read-only" in n for n in notes)
-    assert setup.doctor.check_codex_board(config, setup.paths.board(), setup.paths.state(), setup.paths.outbox()).status == "ok"
+    assert setup.doctor.check_codex_board(config, setup.paths.board(), setup.paths.approvals(), setup.paths.outbox()).status == "ok"
     assert setup.codex_overlay(new) == (new, [])
 
 

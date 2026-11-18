@@ -400,22 +400,24 @@ def test_a_refusal_is_held_only_when_the_system_says_not_permitted(mac, tmp_path
 
 def test_the_hook_run_with_a_made_up_prompt_writes_no_record_or_is_reported(mac, tmp_path, monkeypatch):
     """The M5 route: a shell pipes an invented prompt into the hook. A hook started from a sandboxed shell runs inside
-    the sandbox and writes nothing; one that writes the session's record is reported, and the record removed."""
-    from synthesis import approvals
+    the sandbox and writes nothing; one that writes the session's record or a grant is reported, and what it wrote
+    removed. The folders are those of the sealed layout (design 4.1): the session's record in records/, a grant in
+    grants/, or in effects/ for a kind whose effect the hook applies."""
     v5 = sealed_tree(mac)
     monkeypatch.setattr(sandbox, "_create", _refused_in(v5 / "approvals", sandbox._create))
-    records, grants = approvals._dir("transcripts"), approvals._dir("approvals")
+    records, grants, effects = (v5 / "approvals" / name for name in ("records", "grants", "effects"))
     hook = v5 / "bin" / "synthesis-hook"
     hook.write_text(f"#!{sys.executable}\nimport json, os, sys\npayload = json.load(sys.stdin)\n"
-                    f"os.makedirs({str(records)!r}, exist_ok=True)\nos.makedirs({str(grants)!r}, exist_ok=True)\n"
-                    f"open(os.path.join({str(records)!r}, payload['session_id'] + '.json'), 'w').write('{{}}')\n"
-                    f"open(os.path.join({str(grants)!r}, '000000.json'), 'w').write('{{}}')\n")  # a grant, and its record
+                    + "".join(f"os.makedirs({str(folder)!r}, exist_ok=True)\n" for folder in (records, grants, effects))
+                    + f"open(os.path.join({str(records)!r}, payload['session_id'] + '.json'), 'w').write('{{}}')\n"
+                    f"open(os.path.join({str(grants)!r}, '000000.json'), 'w').write('{{}}')\n"  # a grant, and its record
+                    f"open(os.path.join({str(effects)!r}, '000000.json'), 'w').write('{{}}')\n")  # and an effect's grant
     workspace = tmp_path / "workspace"
     workspace.mkdir()
     before = tree(mac)
     found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, no_broker, "linux")}
-    assert found["the hook with a made-up prompt"][0] == "wrote" and "2 file(s)" in found["the hook with a made-up prompt"][1]
-    assert sandbox.tilde(records) in found["the hook with a made-up prompt"][1]
+    assert found["the hook with a made-up prompt"][0] == "wrote" and "3 file(s)" in found["the hook with a made-up prompt"][1]
+    assert all(sandbox.tilde(folder) in found["the hook with a made-up prompt"][1] for folder in (records, grants, effects))
     assert tree(mac) == before
     hook.write_text("#!/bin/sh\nexit 1\n")
     found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, no_broker, "linux")}
@@ -466,7 +468,7 @@ def test_under_a_real_seatbelt_profile_that_seals_the_set_every_probe_is_held(ma
     v5 = sealed_tree(mac)
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    sealed = [os.path.realpath(p) for p, _, _ in sandbox.sealed()] + [os.path.realpath(v5 / "state" / "transcripts")]
+    sealed = [os.path.realpath(p) for p, _, _ in sandbox.sealed()]  # the session's records are in approvals/ (design 4.1)
     ancestors = sorted({os.path.realpath(v5)} | {str(Path(os.path.realpath(v5)).parent)})
     profile = ("(version 1)(allow default)(deny file-write* " + " ".join(f'(subpath "{p}")' for p in sealed) + ")"
                "(deny file-write-unlink file-write-create " + " ".join(f'(literal "{p}")' for p in ancestors) + ")")
