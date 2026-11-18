@@ -119,7 +119,9 @@ there with no item here fails:
   mended by running setup again, the person's by editing or removing it. A copy left on
   beside a covering declaration, an event declared twice, setup's switch with nothing
   covering its event, a `hooks.json` Codex reads none of while the option is on, and
-  hook state held as an inline table are faults, not approvals), and the skill catalog
+  hook state held as an inline table are faults, not approvals; with Codex's requirements
+  installed and holding the keys, the guard's hooks are managed hooks, trusted by policy, and
+  no other Codex hook runs, so the line is ok with nothing to approve), and the skill catalog
   (asked of `codex app-server`) within budget with every shipped skill discoverable. The
   budget follows the configured model's context window, from Codex's own cache of its
   models, read by its first whole value (its clients share that file, and one copy
@@ -239,7 +241,32 @@ there with no item here fails:
   (`fdesetup`, `socketfilterfw`, `csrutil` and `spctl`, asked at once). All well is one
   line; each problem is a warning, never a failure, that names the one step that fixes it.
   The doctor runs at each day's start and after every install, so a new Mac's first setup
-  runs it too (5.24.1).
+  runs it too (5.24.1);
+- `sandbox`: the guard's sandbox in one line, for the administrator file of each harness
+  found (Claude Code's managed settings, `/Library/Application Support/ClaudeCode/managed-settings.json`,
+  and Codex's requirements, `/etc/codex/requirements.toml`) and the read-only folders of the
+  Codex profile setup writes: off (neither staged nor installed), staged (setup put the
+  bytes in `~/.synthesis/v5/install/`, and the principal has not yet run the one `sudo`
+  command it printed), or installed and holding the keys: owned by root with every folder
+  above it, writable by neither this user nor its groups, the bytes this release stages, and
+  no MDM profile ranking above it nor a Claude Code drop-in in `managed-settings.d` merging
+  sandbox or permission keys over it. Each problem is a warning that names its one step
+  (design note 22.9; the principal's rulings of 2026-11-15);
+- `seal <name>`: only with `--seal`, the seal itself. From a session's shell that runs inside
+  a sandbox (macOS's `sandbox_check` says so; where nothing can tell, a session's shell), each
+  write the seal must refuse is tried: create, open to write, rename and delete in the approval
+  records, the same by a shell, by a background child and through a link made in the
+  workspace, renames of the synthesis home and its parent, a write in each harness's records,
+  the runtime, `config.json` and each settings file, the hook run with a made-up prompt, and on
+  macOS `launchctl submit` and `open -a` asked to write for it. A refusal (`EPERM`) is ok; a
+  write that goes through fails, and what it made is removed or put back at once. Where the
+  first write in the approval records goes through, nothing that moves a live folder or asks
+  a broker is tried, and a delete runs only where a move was refused, its file copied out
+  first. Outside a sandbox the configuration is read: each file as the `sandbox` line judges
+  it, Codex's profile, Muse's state (no approval until a probe shows its sandbox seals the
+  set), every hook, MCP server and launch-agent command that runs a file a sandboxed shell may
+  write, and every workspace repository whose own config sets `core.hooksPath`. A session's
+  shell outside every sandbox is itself a failure.
 
 ## Live: proving the harness ran it
 

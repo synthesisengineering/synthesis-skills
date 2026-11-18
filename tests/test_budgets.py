@@ -2459,10 +2459,35 @@ ROOT = Path(__file__).resolve().parents[1]
 # interpreter_problems before it is run, each python.org version read from its folder's name and never by running it
 # (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
 # the version's own fixed alone, so the warning goes once the steps are run.
+# 22.9, part 2 (2026-11-18): the guard's sandbox, its two administrator files and their check (design note 22.9, 4.2,
+# 4.3, 4.6 and 4.8; the principal's rulings of 2026-11-15): core 693 more and plugin 750, all new behavior that nothing
+# existing carries. sandbox.py 627, one module so the folder move changes the sealed set there alone. The sealed set
+# and the two files: tilde 4, _harness 14 (each harness's records, settings and programs, the note's 2.1), sealed 3,
+# _rule 5 (a permission rule's // before an absolute path), claude_managed 8 (the note's 4.2), codex_rules 9 (the
+# profile's read-only folders, every ancestor of a sealed one included), managed_hooks 9 (the plugin's hooks as Codex
+# runs them, held to hooks/hooks.json by a test, since the runtime carries no hooks.json), codex_requirements 16 (a
+# profile of its own in the table form Codex 0.169 reads, no full access, the guard's hooks managed), expected, target
+# and staged 6, install_command 5 (the one sudo command). Judging them: admin_problems 16 (root's, with every folder
+# above it), _same 7, _outranked 19 (an MDM profile above a file, a Claude Code drop-in merged over it), judge 19 (off,
+# staged or installed, each problem with its one step), managed_hooks_hold 3, profile_rules 13, holds 3 and
+# profile_problems 12 (the Codex profile setup writes), codex_config 6, in_sandbox 12 (macOS's sandbox_check). The
+# probes of `doctor --seal`: _refused 2, _create 15, _append 9, _rename 14 and _delete 20 (each move or delete undone at
+# once, a deleted file copied out first), _child 15 (a shell and a background child), _files 2, _hook 28 (the hook run
+# with a made-up prompt, what it wrote put back), _landed 5 and _broker 16 (launchd and LaunchServices asked to write for
+# the shell), probes 61, _remove 10. The configuration read: _commands 34 (every hook, MCP server and launch agent),
+# _paths_in 11, _write_area 10, loose_commands 6, hooks_path_overrides 19 (a repository's own core.hooksPath),
+# config_read 25. Beside them the constants 20 (HELD and PATHLIKE among them), imports 14, the docstring 5, the sealed
+# set's comment and two section comments 6, and 91 blank lines. doctor.py 66: check_sandbox 19 (the one line: off,
+# staged, or installed and holding the keys), check_codex_managed_hooks 7 (no approval waits on hooks Codex runs by
+# policy), check_seal 17 (the probes inside a sandbox, the configuration outside one), _TELL 1, harness_checks 2, main 10
+# (`--seal`), a section comment 1 and 9 blank lines. The plugin's 57 more, in setup.py: stage_sandbox 24 (each file's
+# bytes staged, the command for each, what is installed verified), _seal 19 (the profile's seal rules, a rule of the
+# person's own named and kept), codex_overlay 3, main 4 (the `sandbox` command, the staging in every plugin run, no
+# restart line for it), the usage line 1, a section comment 1 and 5 blank lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23692
-PLUGIN_BUDGET = 50361
+CORE_BUDGET = 24385
+PLUGIN_BUDGET = 51111
 
 
 def _lines(files):

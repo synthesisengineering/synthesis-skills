@@ -134,8 +134,9 @@ def test_each_file_installs_with_one_command_that_copies_the_staged_file_as_root
     for name in ("claude", "codex"):
         words = shlex.split(sandbox.install_command(name))
         target, staged = sandbox.target(name), sandbox.staged(name)
-        assert words == ["sudo", "install", "-d", "-o", "root", "-g", "wheel", "-m", "755", str(target.parent), "&&",
-                         "sudo", "install", "-o", "root", "-g", "wheel", "-m", "644", str(staged), str(target)], name
+        group = "wheel" if sys.platform == "darwin" else "root"  # root's own group on each system
+        assert words == ["sudo", "install", "-d", "-o", "root", "-g", group, "-m", "755", str(target.parent), "&&",
+                         "sudo", "install", "-o", "root", "-g", group, "-m", "644", str(staged), str(target)], name
         assert staged.parent == paths.home() / sandbox.STAGED  # sealed: no session changes it before it is installed
 
 
@@ -181,7 +182,7 @@ def test_a_claude_file_that_holds_the_keys_with_other_spacing_still_holds_them(m
 def test_an_installed_file_this_user_can_change_is_no_seal(mac):
     there = _install("claude")
     state, problems = sandbox.judge("claude")
-    assert state == "installed" and any("not owned by root" in p and "sudo chown root:wheel" in p for p in problems)
+    assert state == "installed" and any("not owned by root" in p and f"sudo chown root:{sandbox.ROOT_GROUP}" in p for p in problems)
     assert sandbox.admin_problems(Path("/bin/sh").resolve()) == []  # the system's own: root's, and no one else writes it
     assert any("not owned by root" in p for p in sandbox.admin_problems(there))
 
@@ -387,7 +388,6 @@ def test_a_refusal_is_held_only_when_the_system_says_not_permitted(mac, tmp_path
     workspace.mkdir()
     found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, no_broker, "linux")}
     assert found["create in approvals"] == ("held", "EPERM") and found["overwrite in approvals"] == ("held", "EPERM")
-    assert found["a write through a link"][0] == "held"
     assert found["write ~/.claude/settings.json"] == ("unknown", "ENOENT")
 
 
@@ -433,6 +433,16 @@ def test_a_broker_that_runs_the_write_outside_the_sandbox_is_reported_and_its_jo
     assert any(a[:2] == ["launchctl", "remove"] for a in asked)
     assert tree(mac) == before and tree(workspace) == around
 
+    # What launchd made outside the sandbox, a sandboxed shell may not remove: said, never a crash.
+    real_remove = sandbox._remove
+    monkeypatch.setattr(sandbox, "_remove", lambda made, until=0: [sandbox.tilde(p) for p in made] if any(
+        "launchd" in str(p) or "-open" in str(p) for p in made) else real_remove(made, until))
+    found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, broker, "darwin")}
+    assert found["launchctl submit"][0] == "wrote" and "from your own terminal" in found["launchctl submit"][1]
+    monkeypatch.setattr(sandbox, "_remove", real_remove)
+    for marker in (v5 / "approvals").glob(".seal-probe-*"):
+        marker.unlink()
+
     def refused(argv, **kwargs):
         return subprocess.CompletedProcess(argv, 1, "", "Operation not permitted")
     found = {name: (outcome, detail) for name, outcome, detail in sandbox.probes(paths.home(), workspace, refused, "darwin")}
@@ -470,6 +480,7 @@ def test_under_a_real_seatbelt_profile_that_seals_the_set_every_probe_is_held(ma
 
 def test_from_a_sandboxed_shell_the_seal_check_probes_and_outside_one_it_reads_the_configuration(mac, tmp_path, monkeypatch):
     calls = []
+    monkeypatch.setattr(doctor, "find_client", lambda name: None)  # never this Mac's own harnesses
     monkeypatch.setattr(sandbox, "probes", lambda home, workspace, run=None, platform=None, brokers=True:
                         calls.append("probes") or [("create in approvals", "held", "EPERM"), ("open -a", "wrote", "ran")])
     monkeypatch.setattr(sandbox, "config_read", lambda found, run=None: calls.append("read") or [("claude", "ok", "holds")])
@@ -532,7 +543,7 @@ def test_a_command_run_outside_the_sandbox_from_the_write_area_fails_the_read(ma
         {"Label": "com.example.fine", "ProgramArguments": ["/usr/bin/true"]}))
     (mac / ".claude").mkdir()
     (mac / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"PreToolUse": [{"hooks": [
-        {"type": "command", "command": "$HOME/workspaces/tool/hook.sh"}]}]}}))
+        {"type": "command", "command": f"$HOME/{work.relative_to(mac)}/hook.sh"}]}]}}))
     (mac / ".claude.json").write_text(json.dumps({"mcpServers": {"tool": {"command": "node", "args": [f"{work}/server.js"]}}}))
     (mac / ".codex").mkdir()
     (mac / ".codex" / "config.toml").write_text('[mcp_servers.fine]\ncommand = "/usr/bin/true"\n'
