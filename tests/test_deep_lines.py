@@ -5,8 +5,10 @@ and never ends the guard on an exception (BACKLOG A12).
 '<file>' '<JSON>'`, the JSON quoted as a code-mode script quotes it ('"'"' for each apostrophe), and the hook answered
 "synthesis guard failed (RecursionError: maximum recursion depth exceeded)". The argument held thousands of slashes (the
 results' addresses and closing tags) after an early `[`, and the guard expanded it as a file pattern: glob recurses once a
-path part. A pattern of more parts than any protected folder lies deep is now read as written. A line nested past what
-the readers follow at all (here, 1,500 levels of `"$(`) waits for the principal's code with that reason.
+path part. A pattern of more parts than any protected folder lies deep was then read as written; since review round 1
+of 5.25.1 every pattern is matched against the disk part by part instead, through any link, with no recursion
+(tests/test_glob_links.py), and one that matches nothing is still read as written. A line nested past what the
+readers follow at all (here, 1,500 levels of `"$(`) waits for the principal's code with that reason.
 """
 
 import json

@@ -2655,8 +2655,20 @@ ROOT = Path(__file__).resolve().parents[1]
 # wait); _one_code 5 more (its docstring 1; a check that recurses is said by that wait 4; a wait said twice is said
 # once, in the line that adds it); _too_deep 13 (its line and docstring 4; the line's grant spent, or its wait filed and
 # said, once a call, 8; the answer 1) and its 2 blank lines.
-CORE_BUDGET = 25137
-PLUGIN_BUDGET = 51889
+# Then each 32 more, all in guards.py, for review round 1 of 5.25.1 (a write through a file pattern and a link the agent
+# made in its own folder reached approvals/ and the runtime's code with no code). _globbed 28 more: its docstring 3 more
+# (the shell's expansion part by part, through any link, with no recursion, and the line that waits past the cap), and
+# its body 25 more: 27 new lines for glob's call and its import (the pattern's parts and the first folder 2, each part
+# and what it is 2, a literal part where it is there 2, a pattern's folders read one at a time with the cap and the
+# deadline 5, `**` as every folder below 1, each folder's names read and matched with a leading dot kept apart 8, the
+# cap on what it names 3, what the part found 3, the answer 1), its try and re.error's two lines kept. GLOB_NAMES and
+# GLOB_FOLDERS take GLOB_PARTS's line. _check 5 more: the pattern past the cap made a wait of its own 3,
+# and the too-deep wait handed its reason and its hint 2 (the call's `unmatched` slot rides the `deep` slot's line).
+# _unread_line 1 fewer than the _too_deep it replaces (its docstring 1 more; the wait's words, now the caller's reason
+# and hint, 2 fewer). _shell_writes, which names what a pattern target matches, and _self_grant, whose write targets
+# are read so, keep their lines.
+CORE_BUDGET = 25169
+PLUGIN_BUDGET = 51921
 
 
 def _lines(files):

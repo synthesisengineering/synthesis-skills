@@ -72,8 +72,8 @@ def test_the_shell_does_write_there(through_links, isolated_home):
 
 def test_a_pattern_that_names_more_than_the_cap_waits_with_a_plain_reason(tmp_path):
     many = tmp_path / "many"
-    for n in range(80):
-        (many / f"d{n:02}").mkdir(parents=True)
+    for n in range(guards.GLOB_NAMES + 1):  # one more than a pattern may name
+        (many / f"d{n:04}").mkdir(parents=True)
     said = guards.check("Bash", {"command": f"cp {tmp_path}/x {many}/*/"}, {}, cwd=str(tmp_path))
     assert said and "pattern" in said and "approve followed by the code" in said, said
 
