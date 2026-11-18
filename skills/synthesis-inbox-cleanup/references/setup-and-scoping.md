@@ -97,6 +97,6 @@ python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/s
 python3 -s ~/.synthesis/v5/current/skills/synthesis-inbox-cleanup/scripts/icloud_census.py
 ```
 
-The installer prints one line for each thing still missing: certifi, the Keychain password, the engine's stable path, or an engine copy left by version 1.x under `~/.synthesis/inbox-cleanup/engine/` (anything still reading that copy runs old code; point it at the stable path and remove the folder). It never overwrites `config.yaml` or `rules.yaml`, and refuses a runtime root that is `/`, your home folder, a symlink or a file.
+The installer prints one line for each thing still missing: a CA bundle to verify IMAP with (certifi's or the system's own; see prompt-injection-defenses.md), the Keychain password, the engine's stable path, or an engine copy left by version 1.x under `~/.synthesis/inbox-cleanup/engine/` (anything still reading that copy runs old code; point it at the stable path and remove the folder). It never overwrites `config.yaml` or `rules.yaml`, and refuses a runtime root that is `/`, your home folder, a symlink or a file.
 
 For Gmail and M365 setup details, see [`references/three-tool-stacks.md`](three-tool-stacks.md).

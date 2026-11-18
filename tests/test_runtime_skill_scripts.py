@@ -711,3 +711,195 @@ def test_a_config_whose_folder_is_the_home_folder_itself_holds_the_run(mac, tmp_
     (work / ".agents").mkdir()
     (work / ".agents" / "meeting-transcripts.yaml").write_text("google_account: a@example.com\narchive_dir: ~\n", encoding="utf-8")
     assert _verdict(mac, f"python3 -s {mac.rt}/{FETCHER} standup", work)
+
+
+# --- A10: a help request ----------------------------------------------------------------------------------------------
+# 2026-11-18: a Codex session ran `python3 <Codex's plugin copy>/skills/synthesis-context-lifecycle/scripts/context_doctor.py
+# --help`, and the guard held it as a change of its own settings, naming every one of them. The copy lies outside the
+# release, and the line ran Python without -s, so the hold named no copy that needs no code, and the runtime's own copy,
+# asked the same way, waited too. A help request makes none of a script's decisions: the runtime's copy, asked for its
+# usage alone, needs no code, and every script the runtime carries is held here to answering one with its usage alone.
+
+HELP = {"the records gate": DOCTOR, "the meeting fetcher": FETCHER, "the send script": SEND}
+RECORDERS = ("osascript", "say", "open", "afplay", "git", "gh", "curl", "security", "launchctl", "defaults", "sqlite3", "pbcopy",
+             "shortcuts", "codex", "claude", "muse")  # a program a script starts where a help request should start none
+
+
+@pytest.mark.parametrize("ask", ["--help", "-h"])
+@pytest.mark.parametrize("name", list(HELP))
+def test_the_runtimes_copy_asked_for_its_usage_by_plain_python_needs_no_code(mac, tmp_path, name, ask):
+    work = _work(tmp_path)
+    assert _verdict(mac, f"python3 {mac.rt}/{HELP[name]} {ask}", work) is None, (name, ask)
+
+
+def _codex_copy(mac) -> Path:
+    """The plugin as Codex caches it in its default folder, where the session of 2026-11-18 ran the records gate from."""
+    return _copy_plugin(mac.home / ".codex" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.24.1",
+                        ["synthesis-context-lifecycle"])
+
+
+def test_codexs_plugin_copy_asked_for_its_usage_names_the_runtimes_copy_and_only_the_setting_its_text_names(mac, tmp_path):
+    """The reported call, as it was made: the copy still waits (what lies around it is writable), and its hold says
+    which copy needs no code and names only the guard's settings file, which the script's own text names."""
+    work = _work(tmp_path)
+    reason = _verdict(mac, f"python3 {_codex_copy(mac) / DOCTOR} --help", work)
+    assert reason and f"the runtime's own copy, {mac.rt / DOCTOR}, runs with no code" in reason, reason
+    assert str(mac.sh / "config.json") in reason, reason
+    for other in ("startup file", "shell snapshots", "harness program", "harness's own settings", "commit check"):
+        assert other not in reason, (other, reason)
+    assert _verdict(mac, f"python3 {mac.rt / DOCTOR} --help", work) is None  # the copy it names, asked the same way
+
+
+WRITES_FIRST = ("import argparse, os\n"
+                "open(os.path.join(os.path.expanduser('~'), '.synthesis', 'v5', 'state', 'planted'), 'w').write('x')\n"
+                "argparse.ArgumentParser().parse_args()\n")
+
+
+@pytest.mark.parametrize("place", ["a folder of its own", "a carried script's place"])
+def test_a_script_outside_the_runtime_that_writes_before_it_reads_its_arguments_waits_when_asked_for_its_usage(mac, tmp_path, place):
+    work = _work(tmp_path)
+    folder = work / "agent" / ("skills/synthesis-context-lifecycle/scripts" if place == "a carried script's place" else "tools")
+    folder.mkdir(parents=True)
+    (folder / "context_doctor.py").write_text(WRITES_FIRST, encoding="utf-8")
+    assert _verdict(mac, f"python3 {folder / 'context_doctor.py'} --help", work), place
+    assert _verdict(mac, f"python3 -s {folder / 'context_doctor.py'} -h", work), place
+
+
+@pytest.mark.parametrize("words", ["--help --json", "--json -h", "-h -h", "--help=1", "--he", "--help {sh}/state"])
+def test_a_help_request_with_any_word_but_the_one_flag_is_judged_as_any_run(mac, tmp_path, words):
+    work = _work(tmp_path)
+    assert _verdict(mac, f"python3 {mac.rt / DOCTOR} {words.format(sh=mac.sh)}", work), words
+
+
+@pytest.mark.parametrize("line", ["PYTHONPATH={work}/pp python3 {doctor} --help", "env python3 {doctor} --help",
+                                  "{work}/bin/python3 {doctor} --help", "python3 -i {doctor} --help",
+                                  "alias python3={work}/evil; python3 {doctor} -h", "cd {sh}/state && python3 {doctor} --help"])
+def test_a_help_request_through_more_than_the_plain_interpreter_or_from_a_protected_folder_waits(mac, tmp_path, line):
+    work = _work(tmp_path)
+    (mac.sh / "state").mkdir(parents=True, exist_ok=True)
+    assert _verdict(mac, line.format(work=work, doctor=mac.rt / DOCTOR, sh=mac.sh), work), line
+
+
+def test_only_a_carried_script_that_answers_a_help_request_has_one_without_a_code(mac, tmp_path):
+    """The runtime's copy, and a copy whose runtime copy answers one (its hold names that copy); never a carried script
+    that reads a config or its input before its arguments, the release kit, or a script the runtime does not carry."""
+    program = ("import json, sys; sys.path.insert(0, sys.argv[1]); from synthesis import guards; "
+               "print(json.dumps([guards._answers_help(p) for p in sys.argv[2:]]))")
+    work = _work(tmp_path)
+    asked = [os.path.realpath(mac.rt / DOCTOR), str(mac.plugin / DOCTOR),
+             os.path.realpath(mac.rt / "skills/synthesis-inbox-cleanup/scripts/sanitize.py"),
+             os.path.realpath(mac.rt / "skills/synthesis-skills-manager/scripts/release.py"), str(work / "tool.py")]
+    done = subprocess.run([sys.executable, "-I", "-c", program, str(mac.rt), *asked], capture_output=True, text=True,
+                          env=mac.env, timeout=60)
+    assert done.returncode == 0, done.stderr[-600:]
+    assert json.loads(done.stdout) == [True, True, False, False, False], list(zip(asked, json.loads(done.stdout)))
+
+
+def _snapshot(*folders: Path) -> dict:
+    return {str(p): (p.is_dir(), p.lstat().st_size, p.lstat().st_mtime_ns) for folder in folders for p in [folder, *folder.rglob("*")]}
+
+
+def _help_problems(mac, script: Path, tmp_path: Path) -> list:
+    """What keeps a script from answering --help and -h with its usage alone, run by plain Python where its folder is
+    the work folder: an exit other than 0, no usage, a file or folder it made or changed in the test's Mac or the work
+    folder, or a program it started."""
+    work, calls, recorders = _work(tmp_path), tmp_path / "calls", tmp_path / "recorders"
+    if not recorders.exists():
+        recorders.mkdir()
+        for name in RECORDERS:
+            (recorders / name).write_text(f"#!/bin/sh\necho {name} >> '{calls}'\nexit 1\n", encoding="utf-8")
+            (recorders / name).chmod(0o755)
+    env, found = {**mac.env, "PATH": f"{recorders}:{mac.env['PATH']}"}, []
+    for ask in ("--help", "-h"):
+        before = _snapshot(mac.base, work)
+        done = subprocess.run([sys.executable, str(script), ask], capture_output=True, text=True, env=env, cwd=str(work),
+                              stdin=subprocess.DEVNULL, timeout=60)
+        after, said = _snapshot(mac.base, work), f"{script.name} {ask}"
+        found += [f"{said}: exits {done.returncode}"] * (done.returncode != 0)
+        found += [f"{said}: prints no usage"] * ("usage" not in (done.stdout + done.stderr).lower())
+        found += [f"{said}: changes {p}" for p in sorted(set(before) ^ set(after) | {p for p in after if before.get(p, after[p]) != after[p]})]
+        found += [f"{said}: starts {' '.join(calls.read_text(encoding='utf-8').split())}"] if calls.exists() else []
+        calls.unlink(missing_ok=True)
+    return found
+
+
+def test_every_script_the_runtime_carries_answers_a_help_request_with_its_usage_alone(mac, tmp_path):
+    """The proof the guard's help allowance rests on, for the release's own bytes: each Python script the runtime carries
+    outside the release kit, but the few the guard names as answering none, prints its usage for --help and for -h, exits
+    0, and writes and starts nothing. The ones it names must still be carried."""
+    from synthesis import guards
+    carried = [rel for rel, _ in install._stable_skill_files(ROOT) if rel.endswith(".py") and Path(rel).parts[1] not in KIT]
+    none = getattr(guards, "NO_HELP", frozenset())
+    assert set(none) <= set(carried), sorted(set(none) - set(carried))
+    problems = [p for rel in carried if rel not in none for p in _help_problems(mac, mac.rt / rel, tmp_path)]
+    assert not problems, "\n".join(problems)
+
+
+CONTROLS = {
+    "writes before it reads its arguments": "import argparse, pathlib\npathlib.Path('made.txt').write_text('x')\n"
+                                            "argparse.ArgumentParser().parse_args()\n",
+    "makes a folder before it reads its arguments": "import argparse, os\nos.makedirs(os.path.expanduser('~/.made'))\n"
+                                                    "argparse.ArgumentParser().parse_args()\n",
+    "starts a program first": "import argparse, subprocess\nsubprocess.run(['git', 'status'])\nargparse.ArgumentParser().parse_args()\n",
+    "does its work whatever it is asked": "print('did its work')\n",
+}
+
+
+@pytest.mark.parametrize("name", list(CONTROLS))
+def test_the_help_check_finds_a_script_that_writes_starts_or_works_before_it_reads_its_arguments(mac, tmp_path, name):
+    script = tmp_path / "control.py"
+    script.write_text(CONTROLS[name], encoding="utf-8")
+    assert _help_problems(mac, script, tmp_path), name
+
+
+# --- A10: a documented runtime command runs ---------------------------------------------------------------------------
+# 2026-11-18: an operations seat ran `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/
+# slack_workspaces.py` and `.../preflight.py --config <its sync config> --json`, as every other ritual script runs, and
+# the guard held both: the runtime did not carry that skill, so the line named a script that was not there, in the
+# runtime's folder, which the guard could not read (`runs python3, which this guard cannot prove only reads, and names
+# ~/.synthesis/v5/current`). The skill's own text gave `python3 <synthesis-slack-sync-root>/scripts/...`, a root it never
+# defined. The runtime carries the skill now, its text runs the runtime's copy, and every runtime command any skill
+# documents is held to naming a script the runtime carries that the guard lets run as written.
+
+RUNTIME_RUN = re.compile(r"\bpython3((?:[ \t]+-[A-Za-z]+)*)[ \t]+\"?(?:\$HOME|\$\{HOME\}|~)/\.synthesis/v5/current/"
+                         r"(skills/[\w./-]+?\.py)\"?([^`\n]*)")
+
+
+def _documented_runs() -> list:
+    """(where, interpreter options, the script's path in the runtime, its words) for each runtime command a skill's text
+    gives, with what only stands for a value made a plain word: a placeholder, an optional part, a comment, a shell tail."""
+    found = []
+    for path in sorted((ROOT / "skills").rglob("*.md")):
+        rel = path.relative_to(ROOT / "skills").parts
+        if "tests" in rel or ARCHIVAL.search(path.name):
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for m in RUNTIME_RUN.finditer(line):
+                words = re.sub(r"\s+#.*$", "", m.group(3)).split("||")[0].rstrip(" \\")
+                words = re.sub(r"\[[^\[\]]*\]", "", words).split("[")[0]
+                found.append((f"skills/{'/'.join(rel)}:{n}", m.group(1), m.group(2), re.sub(r"<[^>]*>", "x", words)))
+    return found
+
+
+SEAT_RUNS = ("python3 -s {rt}/skills/synthesis-slack-sync/scripts/slack_workspaces.py",
+             "python3 -s {rt}/skills/synthesis-slack-sync/scripts/preflight.py --config {work}/.agents/slack-sync.yaml --json")
+
+
+@pytest.mark.parametrize("line", SEAT_RUNS)
+def test_the_slack_sync_scripts_run_from_the_runtime_as_the_seat_ran_them(mac, tmp_path, line):
+    work = _work(tmp_path)
+    assert _verdict(mac, line.format(rt=mac.rt, work=work), work) is None, line
+    documented = {Path(script).name for _, _, script, _ in _documented_runs() if "synthesis-slack-sync" in script}
+    assert {"slack_workspaces.py", "preflight.py"} <= documented, documented  # and the skill's own text runs that copy
+
+
+def test_every_documented_runtime_command_names_a_carried_script_and_is_judged_runnable(mac, tmp_path):
+    work, held = _work(tmp_path), []
+    runs = _documented_runs()
+    for where, options, script, words in runs:
+        if not (mac.rt / script).is_file():
+            held.append(f"{where}: the runtime carries no {script}")
+            continue
+        said = _verdict(mac, f"python3{options} {mac.rt}/{script}{words}", work)
+        held += [f"{where}: {said[:300]}"] if said else []
+    assert len(runs) > 50 and not held, "\n".join(held)

@@ -265,6 +265,10 @@ harness that gives no transcript cannot carry approved sends or deploys until it
    the v5 state folder, its board (which only the `synthesis` CLI writes, so that Codex's
    sandbox may be granted it without reaching the state folder), a harness's transcript
    folder or the approved commit lines.
+   - **A record of a hold.** The refusal of a command that carries a pending code says how
+     to record a hold without one: leave the code out (the call, the check that held it and
+     the time are the record), or write the record with the harness's file tool, which
+     writes only the file it names and is judged for that file (A10, 2026-11-18).
    - **How it reads a path.** Every write in the command is resolved and judged, whether or
      not the command spells a protected folder out: relative to the session's folder (or the
      folder a Codex or Muse shell call names as its own, its `workdir`), to a

@@ -2612,8 +2612,51 @@ ROOT = Path(__file__).resolve().parents[1]
 # to the code); guards.py none (SYNTHESIS_WRITES names install._move_records in its two lines) and doctor.py none (its off
 # line reads ROLLOUT). And the plugin 2 more, in setup.py's stage_sandbox (an ordinary run's staged and dry-run lines
 # point to the rollout, without the commands).
-CORE_BUDGET = 25044
-PLUGIN_BUDGET = 51780
+# BACKLOG A10 (5.25.1; three false holds a Codex session met on 2026-11-18), each 27 more for its help requests, all in
+# guards.py: NO_HELP 4 and its comment 6 (a script the runtime carries, asked by the plain interpreter for --help or -h
+# alone, needs no -s; the carried scripts that answer none), _answers_help 6 (its line and docstring 3; the runtime's
+# copy of a script, a carried skill's Python, never the kit's or one of NO_HELP, 3), _plainly 1 more (its docstring: a
+# help request may load the user's own site folder), _self_grant 1 more (`asks`; args moved above `unplain` keeps its
+# line), check_self_grant 1 more (what the readings that held a command name, kept for its hold), _reached 4 more (its
+# docstring 1; the settings those readings name, before every setting is named, 3), _settings_hold none (the parameter
+# that hands them on), and 4 blank lines.
+# Then each 4 more, in guards._self_grant, for a record of a hold: the refusal of a line that carries a pending code says
+# why the line may not (it may hand the code to a program that types into a session or writes its record) and how to
+# record a hold, with the code left out or through the harness's file tool, which writes only the file it names.
+# Then each 32 more, all in guards.py, for a forward's quoted header: the section's comment 5 (the header a mail client
+# writes over a forwarded or replied-to message is that message's, and a time there proposes none), QUOTE_MARK,
+# HEADER_LINE, WROTE and LINE_END 4 (a forward's or an original message's marker, a header line, a reply's dated
+# attribution, where a line ends in text or HTML), _quoted_headers_out 19 (its line and docstring 2; the lines as the
+# text shows them, in plain text or HTML, 4; each run of header lines, blank lines read past, 4; a run under a marker or
+# a rule, or with a sender and a dated Date or Sent, cut, 6; a dated attribution, wrapped or not, cut, 2; the words
+# without them, 1), and 4 blank lines; _time_without_calendar keeps its line (a time is looked for there only in a text
+# that names one).
+# Then each 2 more, in guards._quoted_headers_out: each line kept with its quote marks 1, and a run whose every line is
+# behind them 1, since a header block counts only with a sender and a dated Date or Sent, under a mark, a rule or quote
+# marks (a block of its own with no mark, or a slot's From and To under a rule, still names its time); the section's
+# comment keeps its lines.
+# Then the plugin 15 more, for the inbox engine's TLS under `python3 -s` (an operations seat, 2026-11-18: every IMAP
+# connection failed CERTIFICATE_VERIFY_FAILED, certifi being in the user's own site folder). _lib.py 29 more:
+# SYSTEM_CA_FILES 1 and its 2 blank lines; _root_owned 15 (its line and docstring 3, the real path of a regular file 3,
+# each folder up to the root owned by root and unwritable 9) and 2 blank lines; _ca_file 12 (its line and docstring 5,
+# certifi's bundle where it is importable 6, the first of those and the system's that no agent can change 1) and 2 blank
+# lines; _ssl_context 6 fewer (its docstring 3 fewer, the choice moved to _ca_file 3 fewer); connect 1 more (its error
+# names the bundles it looked for and the one it found). icloud_census.py 14 fewer: its docstring 1 more (the connection
+# is _lib.connect's, which verifies), main 15 fewer (its own unverified connection and login loop go for connect).
+# Then core and plugin each 1 more, in install.STABLE_SKILL_SCRIPTS (the runtime carries synthesis-slack-sync, so the
+# rituals' Slack step runs its workspace map, preflight and thread checker from the runtime as every other ritual
+# script runs: 2026-11-18, a seat's `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/...` named scripts
+# that were not there and waited). And the plugin 1 more, in thread_checker.py: its usage line, which names the
+# runtime's copy, takes two lines.
+# BACKLOG A12 (a seat's `python3 -c` line handed a JSON argument of 3,000 slashes, and the guard failed on
+# RecursionError), each 27 more, all in guards.py: GLOB_PARTS 1 and its 2 blank lines and _globbed's docstring 2 more (a
+# pattern of more parts than any protected folder lies deep is read as written, as glob recurses once a part; its
+# condition keeps its line); _check 2 more (the call's `deep` slot, and the dispatch handing _one_code its too-deep
+# wait); _one_code 5 more (its docstring 1; a check that recurses is said by that wait 4; a wait said twice is said
+# once, in the line that adds it); _too_deep 13 (its line and docstring 4; the line's grant spent, or its wait filed and
+# said, once a call, 8; the answer 1) and its 2 blank lines.
+CORE_BUDGET = 25137
+PLUGIN_BUDGET = 51889
 
 
 def _lines(files):
