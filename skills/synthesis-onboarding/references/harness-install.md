@@ -5,6 +5,7 @@
 - [What setup does, in order](#what-setup-does-in-order)
 - [Each harness's own commands](#each-harnesss-own-commands)
 - [Codex settings setup owns](#codex-settings-setup-owns)
+- [The guard's sandbox: two administrator files](#the-guards-sandbox-two-administrator-files)
 - [The runtime, the commit check and the CLI](#the-runtime-the-commit-check-and-the-cli)
 - [The day-end launcher and nudge](#the-day-end-launcher-and-nudge)
 - [The hourly copy of session transcripts](#the-hourly-copy-of-session-transcripts)
@@ -20,7 +21,7 @@
 everything, asking only what it cannot detect: the plugin in every harness it finds,
 Codex's settings, the stable runtime, the commit check (asked), a first config (fresh
 installs only), then optionally a workspace or an organization. Each part is also its
-own command (`plugin`, `workspace`, `org`, `uninstall`). Every run prints one line per
+own command (`plugin`, `workspace`, `org`, `sandbox`, `uninstall`). Every run prints one line per
 step and ends with the restart sentence. `--no-input` never asks and names the flag it
 needed.
 
@@ -145,13 +146,78 @@ Setup changes only these keys in `~/.codex/config.toml`, after copying the file 
   still sets `sandbox_mode` gets the folders in `[sandbox_workspace_write] writable_roots`
   instead, which is what Codex reads then. An install that granted the board alone gains
   the outbox on the next run, and setup makes both folders, since the sandbox may write
-  inside a granted folder and never create it. Only those two are granted:
-  `~/.synthesis/v5/state` holds approvals and send windows, which no sandboxed agent may
-  write, and the doctor fails a grant that covers it, as it fails a config that leaves
-  either folder out.
+  inside a granted folder and never create it. Only those two are granted, apart from the
+  guard's sandbox below: `~/.synthesis/v5/state` holds approvals and send windows, which no
+  sandboxed agent may write, and the doctor fails a grant that covers it, as it fails a
+  config that leaves either folder out.
+- The guard's sandbox, in the profile form only (design note 22.9, 4.3): what the guard
+  trusts made read-only to Codex's shells, with `read` rules for `~/.synthesis` (every
+  ancestor of the sealed folders, so none can be renamed away), `~/.synthesis/v5/approvals`
+  (stated again), `~/.claude`, `~/.claude.json` (Claude Code's MCP servers), `~/.codex`,
+  `~/.local/share/muse`, `~/.config/muse`,
+  `~/Library/LaunchAgents`, `~/Library/Application Support/Claude`, `~/.local/share/claude`
+  and `~/.local/bin`, and a `write` rule for `~/.synthesis/v5/state/requests`, where a shell
+  files a request. A narrower rule wins in Codex, so the board and the outbox stay writable
+  inside the read-only `~/.synthesis`. For a session started in a workspace nothing that
+  works today changes; a session started in the home folder loses those folders. A rule of
+  the person's own for one of them is named and left as written, and a config that sets
+  `sandbox_mode` gets none of them, since the older settings have no read rule: the doctor
+  names both. The list lives in the runtime (`synthesis/sandbox.py`), the one place the
+  sealed set is written down.
 
 Other keys, including feature keys the Codex app writes itself, are never touched. A
 rerun changes nothing.
+
+## The guard's sandbox: two administrator files
+
+The guard's approvals hold only if no agent's shell can write what they rest on: the
+approval records, the hook's code and configuration, each harness's records and its hook
+and sandbox settings (design note 22.9; the principal's rulings of 2026-11-15). Each harness's
+own operating-system sandbox enforces that, set by one file owned by root that a session
+cannot change. `setup.py sandbox`, and every `plugin` or full run, stages the exact bytes of
+each file in `~/.synthesis/v5/install/` (a sealed folder, so no session changes a staged
+file before it is installed) and prints the one command that installs it; setup never
+installs either, and never writes `/Library` or `/etc`. The principal runs the command with
+his password, once per Mac and again when a release changes a file:
+
+```bash
+sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
+sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
+```
+
+- Claude Code's managed settings,
+  `/Library/Application Support/ClaudeCode/managed-settings.json`: the sandbox on
+  (`enabled`, and `failIfUnavailable`, so no session runs unsandboxed for want of one), its
+  write area a session's own folders and temp plus `~/workspaces` and `~/.Trash`, an `Edit`
+  deny rule for every sealed path (it binds the file tools in every mode and the shell's
+  sandbox alike), Claude Code's own records denied to the shell alone (`denyWrite`, so the
+  file tools keep the memory files the guard allows), and an ask rule for a command run
+  outside the sandbox, behind the guard's own hold. Every repository's `.claude` settings and
+  `.mcp.json` are denied too: with unsandboxed commands allowed, Claude Code honors a
+  repository's settings that loosen the sandbox (an `excludedCommands` entry runs a command
+  outside it, past the guard's hold), and their hooks and MCP servers run with full access, so
+  the principal edits those files himself; `~/.claude.json`, which holds the user's and each
+  project's MCP servers, is denied for the same reason. Managed values outrank every other settings file,
+  and once they configure the sandbox's folders only managed settings can turn it off.
+- Codex's requirements, `/etc/codex/requirements.toml` (Codex's own documentation names
+  it for macOS and Linux): a profile of its own, `synthesis-sealed`, with the rules above,
+  pinned as `default_permissions` and allowed with `:read-only` alone by the table form of
+  `[allowed_permission_profiles]` (Codex ignores an array there, and a profile the file
+  defines may not share a name with one in `config.toml`); `allowed_sandbox_modes` without
+  full access, so neither `--sandbox danger-full-access` nor the bypass flag widens it; and
+  the guard's four hooks as managed hooks with `[features] hooks = true` pinned and
+  `allow_managed_hooks_only = true`. Managed hooks are trusted by policy, so no release asks
+  for `/hooks` again, and no session can switch them off; the cost is that no other Codex
+  hook runs (user, project, session or plugin), the plugin's own copies included, which is
+  what keeps the guard from running twice.
+
+The doctor reads both back on every run in one `sandbox` line: off, staged, or installed
+and holding the keys (root's, with every folder above it, and the bytes this release stages;
+an MDM profile that outranks a file, or a Claude Code drop-in that merges over it, is named).
+Each problem names its one step. `synthesis doctor --seal`, run from a session's shell,
+tries each write the seal must refuse and fails loudly on any that goes through, removing
+what it made; run outside a sandbox, it reads this configuration and every command that
+runs outside the sandbox from where a session writes.
 
 ## The runtime, the commit check and the CLI
 

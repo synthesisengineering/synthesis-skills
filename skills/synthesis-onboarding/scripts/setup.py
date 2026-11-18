@@ -5,6 +5,7 @@ and optionally a workspace's repositories or an organization's configuration.
     python3 setup.py plugin [--clients claude,codex,muse] [--ref stable|main|vX.Y.Z] [--[no-]codex-user-hooks]
     python3 setup.py workspace [--kb URL|PATH] [--workspace NAME]   # new Mac: clone repos.yaml
     python3 setup.py org --org-repo URL [--personal-source PATH]
+    python3 setup.py sandbox [--dry-run]  # stage the guard's two administrator files; prints the command for each
     python3 setup.py uninstall [--dry-run]
 
 Every step is safe to rerun: finished work is reported, not redone. Questions go to the
@@ -34,7 +35,7 @@ sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; 
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 try:
-    from synthesis import doctor, install, paths  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)
+    from synthesis import doctor, install, paths, sandbox  # noqa: E402  (the plugin's own core: listings, CLI finder, TOML reader)
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
     print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from the "
           "installed synthesis-skills plugin or a checkout of it", file=sys.stderr)
@@ -280,7 +281,8 @@ def _key_line(lines: list, table: str, key: str):
 def codex_overlay(text: str) -> tuple:
     """(new text, notes). Hooks on unless the person set them off; instruction bytes at least
     98,304; CLAUDE.md as a fallback instruction name when the key is absent; the synthesis board and outbox,
-    and no other synthesis folder, writable from Codex's sandbox (5.1.18). Nothing else changes."""
+    and no other synthesis folder, writable from Codex's sandbox (5.1.18); in the profile Codex reads, what the guard
+    trusts read-only to its shells (the guard's sandbox, design note 22.9, 4.3). Nothing else changes."""
     config, lines, notes, add_top = doctor.read_toml(text), text.splitlines(), [], []
     limit = config.get("project_doc_max_bytes")
     if isinstance(limit, int) and not isinstance(limit, bool) and limit < CODEX_DOC_BYTES:
@@ -320,10 +322,33 @@ def codex_overlay(text: str) -> tuple:
             notes.append(f"let Codex's sandbox write the synthesis {what} ({folder}), so its sessions can {so}"
                          if edited else f"Codex's sandbox settings are written in a form setup does not edit: grant {folder}")
             config = doctor.read_toml("\n".join(lines))  # the next folder joins what this one wrote
+    if config.get("sandbox_mode") is None and not doctor.codex_write_roots(config)[1]:  # the older settings have no read
+        notes += _seal(lines, config)                                                     # rule: the doctor names them
     return "\n".join(lines).strip("\n") + "\n", notes
 
 
-def _profile_grant(lines: list, config: dict, folder: str) -> bool:
+def _seal(lines: list, config: dict) -> list:
+    """The guard's sandbox in the profile Codex reads: each folder of sandbox.codex_rules with its access. A rule of the
+    person's own for one of them is named and left as written."""
+    have, added, theirs = sandbox.profile_rules(config)[0], [], []
+    for folder, access in sandbox.codex_rules():
+        found = have.get(os.path.realpath(folder))
+        if found is None:
+            if not _profile_grant(lines, config, str(folder), access):
+                return [f"Codex's sandbox settings are written in a form setup does not edit: keep {sandbox.tilde(folder)} and "
+                        "the rest of what the guard trusts read-only there yourself"]
+            added.append((folder, access))
+            config = doctor.read_toml("\n".join(lines))
+        elif not sandbox.holds(found, access):
+            theirs.append(f"your profile gives {sandbox.tilde(folder)} \"{found}\" where the guard's sandbox needs \"{access}\": "
+                          "change that rule, then run this again")
+    said = [f"made {', '.join(sandbox.tilde(f) for f, a in added if a == 'read')} read-only to Codex's sandbox"] * any(
+        a == "read" for _, a in added) + [f"let it write {', '.join(sandbox.tilde(f) for f, a in added if a == 'write')}"] * any(
+        a == "write" for _, a in added)
+    return ([" and ".join(said) + ", so no Codex shell changes what the guard trusts"] if said else []) + theirs
+
+
+def _profile_grant(lines: list, config: dict, folder: str, access: str = "write") -> bool:
     """Codex's permission profiles (0.166): the person's own default profile gains the folder; a built-in or no
     choice is replaced by PROFILE, which extends it with the folder, so nothing else changes."""
     chosen = config.get("default_permissions")
@@ -332,7 +357,7 @@ def _profile_grant(lines: list, config: dict, folder: str) -> bool:
     at = next((i for i, line in enumerate(lines) if line.strip() == header), None)
     if at is None and profile is not None and (not isinstance(profile, dict) or "filesystem" in profile):
         return False  # written inline or as dotted keys
-    rule = f'{json.dumps(folder)} = "write"'
+    rule = f'{json.dumps(folder)} = "{access}"'
     if at is not None:
         lines[at + 1:at + 1] = [rule]
     elif profile is None:
@@ -451,7 +476,7 @@ def configure_codex(dry_run: bool = False) -> list:
     if problem:  # nothing written into a file Codex cannot read (review round 1 of 5.21.0)
         raise SetupError(f"codex config: {path} does not parse ({problem}), so it was left as it is")
     new, notes = codex_overlay(text)
-    for folder in (paths.board(), paths.outbox()) if not dry_run else ():
+    for folder in [f for f, access in sandbox.codex_rules() if access == "write"] if not dry_run else ():
         folder.mkdir(parents=True, exist_ok=True)  # Codex's sandbox may write inside it, never create it
     if new == (text if text.endswith("\n") else text + "\n") or dry_run:
         return [f"codex config: {'would ' if dry_run else ''}{n}" for n in notes] or ["codex config: already set"]
@@ -654,6 +679,34 @@ def configure_claude(dry_run: bool = False) -> list:
                 else "claude settings: would keep transcripts 3,650 days instead of Claude Code's 30"]
     _replace(path, json.dumps({**data, "cleanupPeriodDays": 3650}, indent=2) + "\n", "claude-settings.json")
     return ["claude settings: transcripts kept 3,650 days instead of Claude Code's 30"]
+
+
+# ---- the guard's sandbox: the two administrator files, staged (design note 22.9, 4.2 and 4.3) ----------------------
+
+def stage_sandbox(clients: list, dry_run: bool = False) -> list:
+    """Stage each administrator file of the guard's sandbox for the harnesses named: the exact bytes, in the synthesis
+    home's sealed install folder, and the one command that installs it, which the principal runs with his password (his
+    ruling of 2026-11-15). Setup installs neither; it says what is installed and whether it holds the keys."""
+    lines = []
+    for name in (n for n in ("claude", "codex") if n in clients):
+        label, copy, there = sandbox.LABELS[name], sandbox.staged(name), sandbox.target(name)
+        if dry_run:
+            lines.append(f"sandbox: would stage {label} in {sandbox.tilde(copy)}; installing it takes `{sandbox.install_command(name)}`")
+            continue
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        tmp = copy.with_name(f".{copy.name}.{os.getpid()}.tmp")
+        try:  # read by everyone, as the installed copy is
+            with os.fdopen(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644), "w", encoding="utf-8") as handle:
+                handle.write(sandbox.expected(name))
+            os.chmod(tmp, 0o644)
+            os.replace(tmp, copy)
+        finally:
+            tmp.unlink(missing_ok=True)
+        state, problems = sandbox.judge(name)
+        lines.append(f"sandbox: {label} installed at {there}, holding the keys" if state == "installed" and not problems else
+                     f"sandbox: {label} installed at {there}, but: " + "; ".join(problems) if state == "installed" else
+                     f"sandbox: staged {label} in {sandbox.tilde(copy)}; to install it, run: {sandbox.install_command(name)}")
+    return lines
 
 
 # ---- runtime, CLI and first config ----------------------------------------------
@@ -863,7 +916,7 @@ def setup_plugins(clients: list, ref: str, dry_run: bool, user_hooks=None) -> tu
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="setup.py", description=__doc__.split("\n\n")[0], allow_abbrev=False)
-    parser.add_argument("command", nargs="?", default="all", choices=("all", "plugin", "workspace", "org", "uninstall"))
+    parser.add_argument("command", nargs="?", default="all", choices=("all", "plugin", "workspace", "org", "uninstall", "sandbox"))
     parser.add_argument("--clients", default="", help="default claude,codex,muse (or what the organization asks for)")
     parser.add_argument("--ref", default="", help="marketplace ref: stable (default for new installs), main or vX.Y.Z")
     parser.add_argument("--git-hooks", action="store_true", help="run the commit check for every repository")
@@ -907,6 +960,9 @@ def main(argv=None) -> int:
             clients, args.ref = (clients if args.clients else org_clients), args.ref or org_ref
         if args.command == "uninstall":
             return _uninstall(clients, args.dry_run, session)
+        if args.command == "sandbox":
+            say(stage_sandbox([c for c in clients if c != "muse" and doctor.find_client(c)], args.dry_run)
+                or ["sandbox: no Claude Code or Codex on this Mac, so nothing to stage"])
         if args.command in ("all", "plugin"):
             if not any(doctor.find_client(client) for client in clients):
                 say([f"stopped: {no_harness(clients)}"])
@@ -918,6 +974,7 @@ def main(argv=None) -> int:
                 say(install_runtime(git_hooks, session))
             plugin_lines, failed = setup_plugins(clients, args.ref, args.dry_run, args.codex_user_hooks)
             say(plugin_lines)
+            say(stage_sandbox([c for c in clients if c != "muse" and doctor.find_client(c)], args.dry_run))
             if args.dry_run:
                 say([f"runtime: would install it from {REPO} into {install._home()}" + (", with the commit check in every "
                      "repository" if args.git_hooks else "") + (f"; would link day-end ({args.day_end})" if args.day_end else "")
@@ -955,7 +1012,7 @@ def main(argv=None) -> int:
             shutil.rmtree(scratch, ignore_errors=True)
     if args.dry_run:
         print("Dry run: nothing was changed.")
-    elif args.command != "workspace":
+    elif args.command not in ("workspace", "sandbox"):
         print(RESTART)
     return 1 if failed else 0
 

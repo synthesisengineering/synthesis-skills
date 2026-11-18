@@ -2632,6 +2632,9 @@ def test_the_audit_reference_says_what_the_newer_checks_look_at():
     assert "`ALLOWED_FILE_DIRS`" in lines["outbox"] and "auto-start" in lines["outbox"]
     assert "`--latest`" in lines["latest release"] and "`pr_gated`" in lines["pr gate"]
     assert "`cleanupPeriodDays`" in lines["claude transcripts"] and "`config.json`" in lines["config"]
+    assert "managed settings" in lines["sandbox"] and "requirements" in lines["sandbox"] and "staged" in lines["sandbox"]
+    assert "`--seal`" in lines["seal <name>"] and "EPERM" in lines["seal <name>"] and "core.hooksPath" in lines["seal <name>"]
+    assert "`excludedCommands`" in lines["seal <name>"] and "`.mcp.json`" in lines["seal <name>"]
 
 
 def test_the_doctor_warns_while_something_a_test_set_up_is_still_in_place(tmp_path):
