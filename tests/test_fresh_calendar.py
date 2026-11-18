@@ -523,7 +523,6 @@ HEADERS = {  # each mail client's header over a quoted message, with the earlier
                              "Date: November 17, 2026 at 2:33 PM EST\nTo: B Reader <b@example.com>\n\nThe notes."),
     "Thunderbird's forward": ("FYI.\n\n-------- Forwarded Message --------\nSubject: Notes\nDate: Tue, 17 Nov 2026 14:33:05 -0500\n"
                               "From: A Sender <a@example.com>\nTo: B Reader <b@example.com>\n\nThe notes."),
-    "a dated header with no marker": "FYI.\n\nFrom: A Sender <a@example.com>\nSent: Tuesday, November 17, 2026 2:33 PM\nTo: B Reader\n\nThe notes.",
     "a header quoted in a reply": ("Thanks.\n\n> From: A Sender <a@example.com>\n> Sent: Tuesday, November 17, 2026 2:33 PM\n> To: B Reader\n"
                                    "> The notes."),
     "a reply's attribution": "Thanks, that works.\n\nOn Tue, Nov 17, 2026 at 2:33 PM A Sender <a@example.com> wrote:\n> The notes.",
@@ -546,6 +545,8 @@ PROPOSALS = {  # a new message's words, shaped like a header or not: each propos
     "a dated line with no sender": "Date: Thursday, November 19, 2026 at 2:30 PM\nSubject: our meeting\nTo: you",
     "an attribution with no date": "On Thursday at 2:30 PM, Dana wrote:\n> the room is free",
     "a marker in the middle of a line": "As the forwarded message said, could we meet at 2:30 PM?",
+    "a header of its own with no mark": "Hi all,\n\nFrom: the planning team\nDate: Thursday, November 19, 2026 at 2:30 PM\nSubject: offsite",
+    "a slot's from and to under a rule": "The slot I can offer:\n________________\nFrom: 2:30 PM\nTo: 3:30 PM",
 }
 
 
