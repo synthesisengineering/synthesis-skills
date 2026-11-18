@@ -148,9 +148,10 @@ def test_an_install_writes_its_record_in_the_sealed_install_folder(compiled_runt
     assert (isolated_home / "install" / "registrations.json").is_file() and not (isolated_home / "registrations.json").exists()
 
 
-def test_a_home_whose_records_lie_only_in_the_sealed_folders_shows_a_runtime_was_there(isolated_home):
-    """A session start installs from the harness's own plugin folder only into a home no runtime has been in: the sealed
-    folders show one was, as state/ and the board do."""
-    for folder in ("approvals", "install"):
-        (isolated_home / folder).mkdir(parents=True, exist_ok=True)
-        assert folder in install.traces(isolated_home)
+def test_a_refused_install_leaves_nothing_that_shows_a_runtime_was_there(isolated_home, monkeypatch):
+    """The installer tries the sealed runtime's folders before it installs: where one is not there yet it makes it and
+    removes it, so an install refused afterwards leaves the home a first install may still go into (`traces`)."""
+    monkeypatch.setattr(install, "pinned_python", lambda candidates=None: "")
+    with pytest.raises(install.Refused):
+        install.install(ROOT)
+    assert install.traces(isolated_home) == [] and not (isolated_home / "bin").exists()

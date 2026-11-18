@@ -483,7 +483,7 @@ def _install_lock(home: Path):
         os.close(fd)
 
 
-TRACES = ("releases", "current", "bin", "git-hooks", "state", "board", "sessions", "approvals", "install")
+TRACES = ("releases", "current", "bin", "git-hooks", "state", "board", "sessions")
 
 
 def traces(home: Path) -> list:
@@ -579,13 +579,13 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
 
 def _unwritable(home: Path) -> str:
     """The first folder of the sealed runtime an install writes that this process cannot, with why; '' for none. Each is
-    tried by making a file and removing it, since a sandbox's rules show only when a write is made."""
+    tried by making a file in it and removing it, or the folder itself where it is not there yet, since a sandbox's rules
+    show only when a write is made; nothing is left, so a refused install leaves no trace of a runtime (`traces`)."""
     for folder in (home / "releases", home / "bin", home / "approvals"):
-        probe = folder / f".probe.{os.getpid()}"
+        probe, made = folder / f".probe.{os.getpid()}", not folder.is_dir()
         try:
-            folder.mkdir(parents=True, exist_ok=True)
-            probe.touch()
-            probe.unlink()
+            folder.mkdir(parents=True) if made else probe.touch()
+            folder.rmdir() if made else probe.unlink()
         except OSError as exc:
             return f"{folder} ({exc.strerror or exc})"
     return ""
