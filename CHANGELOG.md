@@ -4,6 +4,43 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.24.1] - 2026-11-17
+
+- **A Mac on 5.23 upgrades directly.** 5.24.0's installer refused the principal's code on a Mac moving from 5.23,
+  because 5.23's prompt hook recorded the session's transcript without the folders beside it, which 5.24.0 requires; the
+  runtime had to be installed with 5.23's own `synthesis install` first. Such a note now counts where its path lies
+  inside each harness's folders under the account's own home, as the system's user database names it
+  (`paths.account_home`), which no variable a command sets can move. Anywhere else, through a link or a climb out of
+  those folders, it still counts for nothing, and a note that names its folders is read as before.
+- **The hooks follow the Mac's newest Python.** The installer pinned the first acceptable interpreter, the one running
+  the install, so a Mac whose default moved to Python 3.15 kept its hooks on 3.12. It now pins the newest final release
+  from 3.9 to the newest the checks test (`install.TESTED`, which a test reads from the workflow), among the interpreter
+  running it, the system's own and each of python.org's versions; a pre-release or a newer version is never pinned. A
+  release installed by 5.24.0's installer pins as before; installing the tag again with the new runtime
+  (`synthesis-release --install-only --tag v5.24.1`) moves the hooks, with no code.
+- **The checks test four interpreters:** Linux on 3.12 and 3.15, macOS on 3.15 and Apple's own 3.9, in 24 jobs, 12 of
+  them on macOS, where GitHub's runners are scarcest (were 30, 18 on macOS, on 3.12 and 3.13).
+- **One command, one code.** The guard stopped at the first check that held a command, so a command two checks held
+  asked for two codes, one after the other: on 2026-11-17 the runtime check and then the check on a script that names
+  synthesis's writers held one command minutes apart. Every check of a shell command or a file write is now judged; a
+  refusal is what the call gets, and the checks that wait are said together, every request they file under one code
+  that grants them all (`approvals.one_code`). A retry keeps the code, and a program's own check (the CLI's install)
+  finds its request among the code's others.
+- **One approval per send.** The send hold, the message guard's procedure and the correspondence skill say the code is
+  the principal's only approval: make the call when the text is final and show the text with its code in one message,
+  never after a separate go-ahead on the draft, which made the principal approve twice.
+- **The doctor checks the Mac's security.** One `machine security` line when all is well, otherwise a `security <name>`
+  warning for each problem, naming the one step that fixes it: the home folder and `~/.ssh` open to no other local user,
+  no private key in `~/.ssh` readable by one, and on macOS FileVault, the firewall, System Integrity Protection and
+  Gatekeeper on. The doctor runs at each day's start and after every install, so a new Mac's first setup runs it too.
+- **The browser tests find Chrome's headless shell** where AGENTS.md now says to install it (`~/.cache/synthesis/browsers`),
+  so a local run skips none of them.
+- **CI can run a maintainer's own macOS jobs on a self-hosted Mac.** When the repository variable
+  `SELF_HOSTED_MAC_ACTORS` names both the run's actor and the person who started its attempt, and the code is the
+  repository's own, the macOS jobs run there with a read-only token, no secret and no credentials left in the checkout;
+  every other job, every fork's included, stays on GitHub's machines. The variable is unset, so nothing changes until a
+  runner is registered. AGENTS.md says what a login that can act on the repository must never do while it is set.
+
 ## [5.24.0] - 2026-11-15
 
 - **The runtime the guard runs changes only on the principal's code** (review round 2 of 5.23.1, N5 and N6, both live
