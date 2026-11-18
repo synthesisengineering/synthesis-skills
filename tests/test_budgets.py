@@ -2641,8 +2641,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # script runs: 2026-11-18, a seat's `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/...` named scripts
 # that were not there and waited). And the plugin 1 more, in thread_checker.py: its usage line, which names the
 # runtime's copy, takes two lines.
-CORE_BUDGET = 25107
-PLUGIN_BUDGET = 51857
+# BACKLOG A12 (a seat's `python3 -c` line handed a JSON argument of 3,000 slashes, and the guard failed on
+# RecursionError), each 27 more, all in guards.py: GLOB_PARTS 1 and its 2 blank lines and _globbed's docstring 2 more (a
+# pattern of more parts than any protected folder lies deep is read as written, as glob recurses once a part; its
+# condition keeps its line); _check 2 more (the call's `deep` slot, and the dispatch handing _one_code its too-deep
+# wait); _one_code 5 more (its docstring 1; a check that recurses is said by that wait 4; a wait said twice is said
+# once, in the line that adds it); _too_deep 13 (its line and docstring 4; the line's grant spent, or its wait filed and
+# said, once a call, 8; the answer 1) and its 2 blank lines.
+CORE_BUDGET = 25134
+PLUGIN_BUDGET = 51884
 
 
 def _lines(files):

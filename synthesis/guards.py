@@ -6194,12 +6194,17 @@ SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-work
 SUBSCRIPTED = _Pattern(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
 
 
+GLOB_PARTS = 64  # past this many parts a pattern is read as written: no protected folder lies that deep
+
+
 def _globbed(path: str) -> list:
     """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
-    copy and redirect checks read one, else the path as written (review round 2, R2-3)."""
+    copy and redirect checks read one, else the path as written (review round 2, R2-3). A pattern of more than GLOB_PARTS
+    parts is read as written too, its written prefix judged as any path's: glob recurses once a part (A12, 2026-11-18: a
+    JSON argument of 3,000 slashes went past Python's recursion limit)."""
     import glob
     try:
-        return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) else [path]
+        return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) and path.count("/") <= GLOB_PARTS else [path]
     except re.error:  # a range Python 3.9 cannot compile (`[t-f]`), which matches nothing in the shell either
         return [path]
 
@@ -10911,7 +10916,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False,
+                 deep=[])  # and every script it runs
     if code_mode_script(tool, tool_input, session):
         return None  # it acts only through its nested calls, each judged here as a call of its own
     if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
@@ -10938,7 +10944,8 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                              lambda: check_claimed(_shell_writes(command, cwd), cwd, session),
                              lambda: check_hook_writes(tool, tool_input, cwd, session),
                              lambda: senders.extend(_CALL.get("senders") or []),  # before the check below judges each git program
-                             lambda: check_git_programs(command, config, cwd, session)))  # last: each program as a call of its own
+                             lambda: check_git_programs(command, config, cwd, session)),  # last: each program as a call of its own
+                            deep=lambda: _too_deep(command, cwd, session))  # a line nested past what the readers follow (A12)
         if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
             from synthesis import sends
             for run in senders:
@@ -10961,10 +10968,11 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
 ASKS_CODE = _Pattern(r"\bapprove followed by the code [0-9][0-9a-f]{5}\b")  # what every wait says (approvals.how)
 
 
-def _one_code(checks) -> str | None:
+def _one_code(checks, deep=None) -> str | None:
     """Judge every check of one call: the first refusal is what it gets, and nothing after it is judged; the checks that
     wait are said together, every request they file under one code (A5, 2026-11-17: one command the runtime check, then
-    the writers check, held asked the principal for two codes, minutes apart)."""
+    the writers check, held asked the principal for two codes, minutes apart). A check that recurses past Python's limit
+    is said by `deep`, once (A12)."""
     waits = []
     with approvals.one_code() as call:
         for judge in checks:
@@ -10972,15 +10980,34 @@ def _one_code(checks) -> str | None:
                 reason = judge()
             except approvals.Unverified as held:  # a grant its record did not back, asked again: said with the rest (review
                 reason = str(held)                 # of 5.24.1: the waits before it were dropped, though the code carried them)
+            except RecursionError:
+                if deep is None:
+                    raise
+                reason = deep()
             if reason and not ASKS_CODE.search(reason):
                 return reason
-            waits += [reason] if reason else []
+            waits += [reason] if reason and reason not in waits else []
     if call["code"]:  # the code they share, known once the call's requests are filed (an outer call files them itself)
         waits = [w.replace(call["shown"], call["code"]) for w in waits]
     if len(waits) > 1:
         return f"This waits on {len(waits)} of the guard's checks. Each names the same code, so it is typed once:\n" + "\n".join(
             f"{n}. {w}" for n, w in enumerate(waits, 1))
     return waits[0] if waits else None
+
+
+def _too_deep(command: str, cwd: str, session: dict | None) -> str | None:
+    """A shell line the guard's readers would follow past Python's recursion limit (A12, 2026-11-18) waits for the
+    principal's code of exactly that line, where it runs: never let through unread, never an exception. Judged once a
+    call, so each check that meets it says it once and its code is spent once."""
+    if not _CALL["deep"]:
+        subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+        _CALL["deep"].append(None if approvals.consume("protected-read", subject, session) else (
+            "This command nests or repeats deeper than this guard can read (past Python's recursion limit), so what it runs "
+            "and writes is not known. If it only reads, show the principal this exact command and ask them to type "
+            f"{approvals.how(approvals.request('protected-read', subject, f'a line too deep to read: {command[:120]}'))}; "
+            f"then run the identical command again from {cwd}. To hand a program a large value, write it to a file with the "
+            "file tool and give the command that file's path."))
+    return _CALL["deep"][0]
 
 
 def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
