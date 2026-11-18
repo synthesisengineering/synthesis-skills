@@ -350,8 +350,12 @@ def test_ci_runs_the_local_command_in_jobs_that_together_run_each_test_once():
     assert "run: python -m pytest -q tests/ skills/" not in workflow  # no job runs the whole of it
     assert list((ROOT / "tests").glob("test_*.py")) and unrun_core_tests(ROOT, core) == []
     assert unrun_skill_tests(ROOT, skills) == []
-    apple = re.findall(r'- os: macos-latest\n\s+python: apple\n\s+part: "([^"]+)"', workflow)
-    assert sorted(apple) == sorted(parts)  # an entry added to a matrix by hand names every part
+    oses = re.findall(r"[\w.-]+", re.search(r"^\s+os: \[(.+)\]$", workflow, re.M).group(1))
+    pythons = re.findall(r"[\w.]+", re.search(r"^\s+python: \[(.+)\]$", workflow, re.M).group(1))
+    excluded = set(re.findall(r'- os: ([\w.-]+)\n\s+python: "?([\w.]+)"?', workflow))
+    assert "include:" not in workflow  # an entry added to the matrix by hand runs only the parts it names
+    assert {(o, p) for o in oses for p in pythons} - excluded == {  # A5 (2026-11-17): the newest Python on both systems,
+        ("ubuntu-latest", "3.12"), ("ubuntu-latest", "3.15"), ("macos-latest", "3.15"), ("macos-latest", "apple")}  # 3.12 on Linux, Apple's 3.9 on macOS
 
 
 def test_the_skills_split_rule_finds_a_folder_no_job_runs_one_two_run_and_a_loose_test_file(tmp_path):
