@@ -345,6 +345,25 @@ def test_a_seat_counts_for_a_repository_only_where_its_claims_cover_the_work(mac
     assert board.short_name("S-live") not in report["findings"][0]["detail"]
 
 
+def test_a_declared_clone_deeper_than_discovery_reaches_is_read_and_an_unreadable_declaration_is_unknown(machine):
+    """Discovery looks one and two folders down; a repository the workspace declares deeper is read all the same. A
+    declared list that cannot be read (a link into a knowledge repository that is not here) is unknown, never empty."""
+    deep = machine.ws / "group" / "team" / "deep"
+    deep.parent.mkdir(parents=True)
+    _published(machine.remotes, deep, "deep")
+    (deep / "README.md").write_text("changed\n", encoding="utf-8")
+    with (machine.ws / ".agents" / "repos.yaml").open("a", encoding="utf-8") as declared:
+        declared.write(f"  - name: deep\n    path: group/team/deep/\n    remotes:\n      origin: {machine.remotes}/deep.git\n    ritual_sync: yes\n")
+    report = review.review(run=machine.run, platform="darwin")
+    assert _rows(report) == [("warn", "repositories", "~/workspaces/acme/group/team/deep")]
+    manifest = machine.ws / ".agents" / "repos.yaml"
+    manifest.unlink()
+    manifest.symlink_to(machine.tmp / "no-knowledge-repository-here" / "repos.yaml")
+    report = review.review(run=machine.run, platform="darwin")
+    assert ("unknown", "workspaces", "~/workspaces/acme/.agents/repos.yaml") in _rows(report)
+    assert report["exit"] == 2
+
+
 def test_what_the_doctor_last_saw_of_a_harness_hook_approval_is_reported(machine, monkeypatch):
     from synthesis import __version__
     monkeypatch.setattr(review, "_present", lambda harness: harness == "codex")
