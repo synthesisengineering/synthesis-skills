@@ -165,10 +165,17 @@ references/gates-and-sending.md.
 ## Approval: only the principal's own prompt
 
 A clean message is blocked with `Sending needs the principal's approval of this exact
-message. Show them the exact text and recipient and ask them to type approve followed by
-the code <code>. Then make this identical call again.` The message never prints
-"approve" and the code together, and no hook text does, so nothing an agent or a tool
+message. Show them the exact text and recipient with this code, in one message, and ask
+them to type approve followed by the code <code>: it is their only approval, so ask them
+for no other go-ahead (2026-11-17). Then make this identical call again.` The message never
+prints "approve" and the code together, and no hook text does, so nothing an agent or a tool
 echoes can stand in for the principal's words.
+
+**One approval per send** (2026-11-17). The code is the principal's only approval of the
+message: make the call as soon as the text is final, and show them the text with its code
+in one message. Asking for a go-ahead on the draft first, then making the call, makes them
+approve twice, which is slower and harder on them; a change they ask for after reading
+means a new call and a new code, shown the same way.
 
 **Several calls, one message.** The principal can type the word once and the codes after it
 on the same line, separated by spaces, commas or "and": `approve <code> <code> <code>`. Each
