@@ -1315,6 +1315,121 @@ def render(rec: dict, width: int = 0) -> str:
     return f"#{rec.get('seq', '?')} {rec.get('at', '')[:19]} {who}: {body}"
 
 
+# --- the web searches a session made (BACKLOG B5) -------------------------------------------------------------
+# A session's web searches come out of one budget, whichever of its agents makes them (2026-09-23: six research agents
+# each took it for its own and used it up). Each harness's adapter reads a search as a call of the harness's own tool:
+# Claude Code's `WebSearch`, Muse's `web_search` (in its client mode, where Muse runs it), Codex's hosted tool as a
+# `web_search_call` response item. Codex has since recorded each use of that tool only as an item event, of which the
+# adapter keeps no record: an item of type `WebSearch` or of kind `web.search` (on this Mac on 2026-11-18, 241 and 5,067
+# of them in 2,788 rollouts, against 3 response items; an item and a response item of one use share its id). A page
+# Codex's tool opened or searched in is a use of it, and counts.
+SEARCH_TOOLS = {"claude-code": "WebSearch", "codex": "web_search_call", "muse": "web_search"}
+SEARCH_ITEM = re.compile(r"web[._]?search", re.I)  # a Codex item's type or kind
+SEARCH_MARKS = (b"WebSearch", b"web_search", b"web.search")  # a row that names none holds no search, and is not parsed
+CLIENT_ONLY = ", and only in the client mode does Muse record each search as a call of its own"
+
+
+def _below(harness: str, folder: Path, wanted, shut: list) -> list:
+    """The files under a folder whose names `wanted` takes; a folder in it that cannot be listed goes into `shut` as
+    (harness, folder, why), and one that is not there holds none."""
+    def closed(exc):
+        if not isinstance(exc, (FileNotFoundError, NotADirectoryError)):
+            shut.append((harness, str(exc.filename), exc.strerror or str(exc)))
+    return sorted(Path(top, name) for top, _, names in os.walk(folder, onerror=closed) for name in names if wanted(name))
+
+
+def _threads(rollout: Path, every: list, shut: list) -> list:
+    """The rollouts of a Codex thread's sub-agents, and of theirs: each names its parent thread on its first line, and
+    none is named for a moment before the thread that started it (2,106 of them on this Mac, 2026-11-18)."""
+    kids = collections.defaultdict(list)
+    for harness, native in every:
+        if harness != "codex" or native == rollout or native.name[8:27] < rollout.name[8:27]:
+            continue
+        try:
+            with native.open("rb") as handle:
+                payload = json.loads(handle.readline()).get("payload")
+        except OSError as exc:  # it may be one of them
+            shut.append(("codex", str(native), exc.strerror or str(exc)))
+            continue
+        except (ValueError, AttributeError):  # a first line still being written names no parent yet
+            continue
+        if isinstance(payload, dict) and payload.get("parent_thread_id"):
+            kids[str(payload["parent_thread_id"])].append(native)
+    found, todo = [], [_identity("codex", rollout)]
+    while todo:
+        for native in kids.pop(todo.pop(), []):
+            found.append(native)
+            todo.append(_identity("codex", native))
+    return found
+
+
+def searches(session: str) -> dict:
+    """The web searches a session has made, its sub-agents' included: {"harness", "count", "agents"} where its records
+    tell, else {"harness", "count": None, "why"}, never a count of 0 for records that cannot tell. Its own record is
+    where the prompt hook recorded it, else wherever a harness keeps it; its sub-agents' are Claude Code's under <its
+    record without .jsonl>/subagents (a workflow's one folder deeper), Muse's under <its folder>/subagent, and Codex's
+    in rollouts of their own that name it, or one of its sub-agents, as their parent thread. Each record is read
+    through its harness's adapter, a row that names no search passed over unparsed, and each call counted once by its
+    id (a row written twice, a forked agent's copy of its parent's calls)."""
+    from synthesis import approvals
+    recorded, unlisted = approvals.transcript({"session_id": session}), []
+    every = [] if recorded else natives(0, unlisted)
+    name = os.path.basename(recorded)
+    own = [("codex" if name.startswith("rollout-") else "muse" if name == "session.jsonl" else "claude-code", Path(recorded))] if recorded else [
+        (h, n) for h, n in every if _identity(h, n) == session or h == "claude-code" and n.stem == session and "subagents" not in n.parts]
+    if not own:
+        return {"harness": "", "count": None, "why": "this Mac holds no record of it" + "".join(
+            f", and {folder} cannot be listed ({why})" for _, folder, why in unlisted[:1])}
+    harness, agents = own[0][0], []
+    every = natives(0, unlisted) if harness == "codex" and recorded else every  # a sub-agent's rollout may be in any of its folders
+    shut = [entry for entry in unlisted if harness == "codex" and entry[0] == "codex"]
+    for h, native in own:
+        agents += (_below(h, native.with_suffix("") / "subagents", lambda n: n.endswith(".jsonl"), shut) if h == "claude-code" else
+                   _below(h, native.parent / "subagent", lambda n: n == "session.jsonl", shut) if h == "muse" else _threads(native, every, shut))
+    if shut:
+        where, why = shut[0][1:]
+        return {"harness": harness, "count": None,
+                "why": f"{where} cannot be {'listed' if os.path.isdir(where) else 'read'} ({why}), and a record of it may be there"}
+    ids, modes, told = set(), {}, harness != "codex"
+    for h, native in own + [(harness, agent) for agent in agents]:
+        reading = _Session(h, native, _identity(h, native), dry=True)
+        reading.folder = reading.folder or root()  # where an image a row holds would be filed: dry, nothing is written
+        try:
+            with native.open("rb") as handle:
+                for number, raw in enumerate(handle):
+                    told = told or b'"item_completed"' in raw  # Codex records each completed item, a use of its search tool among them
+                    if not any(mark in raw for mark in SEARCH_MARKS):
+                        continue
+                    try:
+                        row = json.loads(raw)
+                    except ValueError:  # a line still being written
+                        continue
+                    payload = row.get("payload") if isinstance(row, dict) and isinstance(row.get("payload"), dict) else {}
+                    item = payload.get("item") if payload.get("type") == "item_completed" and isinstance(payload.get("item"), dict) else {}
+                    if h == "codex" and SEARCH_ITEM.search(f"{item.get('type')} {item.get('kind')}"):
+                        ids.add(str(item.get("id") or f"{native}#{number}"))
+                    try:
+                        found = list(ADAPTERS[h](row, reading)) if isinstance(row, dict) else []
+                    except Exception as exc:  # noqa: BLE001  a row of a shape no adapter was written for may hold a search
+                        return {"harness": harness, "count": None, "why": f"line {number + 1} of {native} cannot be read "
+                                f"({type(exc).__name__}: {exc})"}
+                    for place, rec in enumerate(r for r in found if r):
+                        if rec.get("kind") == "tool_call" and rec.get("tool") == SEARCH_TOOLS[h]:
+                            ids.add(str(rec.get("id") or f"{native}#{number}.{place}"))
+                        elif rec.get("kind") == "session" and isinstance(rec.get("data"), dict) and "web_search_mode" in rec["data"]:
+                            modes.setdefault(str(rec["data"]["web_search_mode"]), native)  # Muse's: each mode, with the first record that names it
+        except OSError as exc:
+            return {"harness": harness, "count": None, "why": f"{native} cannot be read ({exc.strerror or exc})"}
+    other = sorted(mode for mode in modes if mode != "client")
+    if harness == "muse" and (other or not set(modes.values()) & {n for _, n in own}):
+        return {"harness": harness, "count": None,
+                "why": (f"its records name the web search mode {other[0]!r}" if other else "its record names no web search mode") + CLIENT_ONLY}
+    if not (told or ids):
+        return {"harness": harness, "count": None,
+                "why": "none of its records holds an item event, where Codex records each use of its search tool"}
+    return {"harness": harness, "count": len(ids), "agents": len(agents)}
+
+
 # --- copying each workspace's conversation off the Mac (R10.2 to R10.4) ---------------------------------------
 
 

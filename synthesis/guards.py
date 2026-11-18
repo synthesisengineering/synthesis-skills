@@ -5668,7 +5668,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("board", "_claim _claim_lock _describe _post claim inbox mark_carried mark_read_messages message notify release resolve save touch"),
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_batch _main cmd_claim cmd_config cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
-            "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
+            "cmd_searches cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
     ("doctor", "_note_waits check_seal check_wait_check main run_checks"),
     ("hook", "_batch _carried_since _line _newer_plugin_note _ran _upgrade_note _window apply_effects main pre_tool_use session_start stop "
              "user_prompt_submit"),
@@ -5680,7 +5680,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("sandbox", "_append _broker _create _delete _hook _remove _rename probes"),  # the seal check's probes (doctor --seal)
     ("sends", "_note batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window sender_ticket settle ticket undo "
               "window_request"),
-    ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),
+    ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent searches sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
                                                                     "paths"))  # the writers approvals rest on; the board's grant nothing
