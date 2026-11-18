@@ -110,3 +110,21 @@ def test_an_install_that_cannot_write_the_sealed_runtime_refuses_and_installs_no
         (isolated_home / "releases").chmod(0o755)
     assert str(isolated_home / "releases") in str(refused.value) and not os.path.lexists(isolated_home / "current")
     assert not (isolated_home / "bin").exists()
+
+
+def test_a_settings_path_that_is_no_regular_file_never_holds_the_guard_or_the_command(tmp_path, monkeypatch, capsys):
+    """The guard reads the file an agent names in a settings line: a FIFO there must not hold it to its deadline."""
+    import time
+    from synthesis import hook
+    fifo = tmp_path / "settings.fifo"
+    os.mkfifo(fifo)
+    launcher = str(paths.home() / "bin" / "synthesis")
+    monkeypatch.setattr(guards, "_launcher", lambda word, name: word == launcher)
+    began = time.monotonic()
+    hook.pre_tool_use({"session_id": "S1", "tool_name": "Bash", "cwd": str(tmp_path),
+                       "tool_input": {"command": f"{launcher} config apply {fifo}", "dangerouslyDisableSandbox": True}})
+    held = json.loads(capsys.readouterr().out)["hookSpecificOutput"]["permissionDecisionReason"]
+    assert "type approve followed by the code" in held and time.monotonic() - began < 2, held
+    refused = subprocess.run([sys.executable, "-m", "synthesis.cli", "config", "apply", str(fifo)], capture_output=True, text=True,
+                             cwd=ROOT, stdin=subprocess.DEVNULL, timeout=20)
+    assert refused.returncode == 2 and "JSON object" in refused.stderr
