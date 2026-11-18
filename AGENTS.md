@@ -86,6 +86,18 @@ On a machine with the plugin installed, `synthesis doctor` checks the installed 
 the stable runtime, each harness's plugin bytes against it, hook wiring and trust,
 Codex's settings and catalog, instruction adapters and durable storage.
 
+## CI on a self-hosted Mac
+
+The macOS jobs of a run that someone the repository variable `SELF_HOSTED_MAC_ACTORS` names
+started, on a branch of this repository, run on a self-hosted Mac; every other job runs on
+GitHub's machines. That routing in `.github/workflows/ci.yml` is no control: a pull request
+can rewrite it. So, with any login that can act on this repository:
+
+- never approve a fork's workflow run without reading every change it makes under `.github/`;
+- never push another person's unreviewed commits to a branch of this repository;
+- never add a `pull_request_target` or `workflow_run` workflow that checks out pull request
+  code, a job that asks for more than `contents: read`, or a secret a CI job could read.
+
 ## Releases
 
 - Use semantic versioning; bump all three plugin manifests together and add the
