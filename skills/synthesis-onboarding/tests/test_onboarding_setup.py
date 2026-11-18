@@ -473,7 +473,7 @@ def system(tmp_path, monkeypatch):
 
 
 def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neither(system):
-    lines = setup.stage_sandbox(["claude", "codex"])
+    lines = setup.stage_sandbox(["claude", "codex"], seal=True)
     for name in ("claude", "codex"):
         staged = setup.sandbox.staged(name)
         assert staged.read_text(encoding="utf-8") == setup.sandbox.expected(name) and stat_mode(staged) == 0o644
@@ -482,7 +482,7 @@ def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neithe
     assert not system.exists()
     codex = [line for line in lines if line.startswith("codex config: ")]  # Codex's profile, sealed: the rollout's step 2
     assert any("read-only to Codex" in line for line in codex)
-    again = setup.stage_sandbox(["claude", "codex"])  # a rerun stages the same bytes and says the same
+    again = setup.stage_sandbox(["claude", "codex"], seal=True)  # a rerun stages the same bytes and says the same
     assert again == ["codex config: already set"] + lines[len(codex):]
     assert setup.stage_sandbox(["claude"]) == lines[len(codex):len(codex) + 1]  # only for the harnesses here
 

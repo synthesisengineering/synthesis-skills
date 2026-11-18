@@ -686,11 +686,13 @@ def configure_claude(dry_run: bool = False) -> list:
 
 # ---- the guard's sandbox: the two administrator files, staged (design note 22.9, 4.2 and 4.3) ----------------------
 
-def stage_sandbox(clients: list, dry_run: bool = False) -> list:
+def stage_sandbox(clients: list, dry_run: bool = False, seal: bool = False) -> list:
     """Stage each administrator file of the guard's sandbox for the harnesses named: the exact bytes, in the synthesis
     home's sealed install folder, and the one command that installs it, which the principal runs with his password (his
-    ruling of 2026-11-15). Setup installs neither; it says what is installed and whether it holds the keys."""
-    lines = configure_codex(dry_run, seal=True) if "codex" in clients else []  # Codex's profile, sealed: the rollout's step 2
+    ruling of 2026-11-15). Setup installs neither; it says what is installed and whether it holds the keys. Only
+    `setup.py sandbox` passes `seal`, which makes Codex's profile read-only where the guard's records are: the rollout's
+    step 2, after its test that Codex runs its hooks inside its sandbox (review round 1 of 5.25.0, finding 1)."""
+    lines = configure_codex(dry_run, seal=True) if seal and "codex" in clients else []
     for name in (n for n in ("claude", "codex") if n in clients):
         label, copy, there = sandbox.LABELS[name], sandbox.staged(name), sandbox.target(name)
         if dry_run:
@@ -964,7 +966,7 @@ def main(argv=None) -> int:
         if args.command == "uninstall":
             return _uninstall(clients, args.dry_run, session)
         if args.command == "sandbox":
-            say(stage_sandbox([c for c in clients if c != "muse" and doctor.find_client(c)], args.dry_run)
+            say(stage_sandbox([c for c in clients if c != "muse" and doctor.find_client(c)], args.dry_run, seal=True)
                 or ["sandbox: no Claude Code or Codex on this Mac, so nothing to stage"])
         if args.command in ("all", "plugin"):
             if not any(doctor.find_client(client) for client in clients):
