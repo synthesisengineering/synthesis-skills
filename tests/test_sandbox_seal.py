@@ -202,6 +202,55 @@ def test_a_shells_request_under_a_code_the_hook_filed_is_never_granted(principal
     assert approvals.grant("send", {"to": "a"}) and not approvals.grant("send", {"to": "b"})
 
 
+def test_the_hook_and_a_shell_never_file_under_codes_of_the_same_shape(monkeypatch):
+    """Review round 1 of 5.25.0, finding 2: which folder a code's request is read from follows from the code itself, so
+    no file a shell writes can stand for a code the hook showed, even once the hook's request under it has gone."""
+    for in_hook in (True, False):
+        monkeypatch.setattr(approvals, "IN_HOOK", in_hook)
+        codes = {approvals.request("send", {"to": n}, f"send {n}") for n in range(60)}
+        assert all(approvals.CODE.fullmatch(f"approve {c}") and approvals.hooks(c) is in_hook for c in codes), codes
+    assert {approvals.hooks(c) for c in approvals.pending()} == {True, False}
+
+
+def test_a_shells_request_planted_under_a_code_the_hook_showed_after_it_expired_is_never_granted(principal, monkeypatch):
+    """The reviewer's case: the hook holds call A under X; a later hold expires X; a shell files call B under X, where its
+    sandbox lets it write; the principal types the code he was shown for A. Nothing is granted, by the hook or by a
+    command that reads his prompt itself (`answered`)."""
+    monkeypatch.setattr(approvals, "IN_HOOK", True)
+    x = approvals.request("deploy", {"cmd": "wrangler pages deploy A"}, "deploy A")
+    old = time.time() - approvals.TTL_SECONDS - 60
+    os.utime(paths.approvals() / "requests" / f"{x}.json", (old, old))
+    approvals.request("deploy", {"cmd": "another"}, "another hold")  # any later hold expires X
+    assert not (paths.approvals() / "requests" / f"{x}.json").exists()
+    b = {"cmd": "wrangler pages deploy B --branch main"}
+    paths.write_json(paths.requests() / f"{x}.json", {"kind": "deploy", "digest": approvals.digest("deploy", b),
+                                                      "summary": "deploy A", "at": time.time() - 30, "by": "shell"})
+    assert x not in approvals.pending()
+    assert principal(f"code {x}") == []
+    assert not approvals.grant("deploy", b) and not approvals.consume("deploy", b, SESSION)
+    assert not approvals.answered("deploy", b, SESSION)
+
+
+def test_a_code_the_principal_typed_answers_one_request_once(principal, monkeypatch):
+    """`answered` matched a shell's request against his prompt from the time the shell wrote in it, so a request planted
+    after he typed a code, dated before, counted that prompt again (review round 1 of 5.25.0, its note on finding 2)."""
+    monkeypatch.setattr(approvals, "IN_HOOK", False)
+    first, second = {"step": "install 5.25.0"}, {"step": "something else"}
+    y = approvals.request("install", first, "install 5.25.0")
+    asked = paths.read_json(paths.requests() / f"{y}.json")["at"]
+    principal(f"code {y}", grant=False)  # typed where no prompt hook runs: the command reads his prompt itself
+    assert approvals.answered("install", first, SESSION)
+    paths.write_json(paths.requests() / f"{y}.json", {"kind": "install", "digest": approvals.digest("install", second),
+                                                      "summary": "install 5.25.0", "at": asked, "by": "shell"})
+    assert not approvals.answered("install", second, SESSION)
+    z = approvals.request("install", second, "something else")  # filed again, it waits for a code typed for it
+    assert z != y and not approvals.answered("install", second, SESSION)
+    principal(f"code {z}")  # and once the hook has granted a code, a request planted under it again counts for nothing
+    paths.write_json(paths.requests() / f"{z}.json", {"kind": "install", "digest": approvals.digest("install", first),
+                                                      "summary": "something else", "at": asked, "by": "shell"})
+    assert not approvals.answered("install", first, SESSION)
+
+
 def test_a_process_that_cannot_write_the_sealed_folder_spends_nothing_and_says_why(principal, sealed):
     code = approvals.request("send", {"to": "a"}, "a send")
     principal(f"code {code}")
