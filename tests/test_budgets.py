@@ -2636,8 +2636,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # lines; _ssl_context 6 fewer (its docstring 3 fewer, the choice moved to _ca_file 3 fewer); connect 1 more (its error
 # names the bundles it looked for and the one it found). icloud_census.py 14 fewer: its docstring 1 more (the connection
 # is _lib.connect's, which verifies), main 15 fewer (its own unverified connection and login loop go for connect).
-CORE_BUDGET = 25106
-PLUGIN_BUDGET = 51855
+# Then core and plugin each 1 more, in install.STABLE_SKILL_SCRIPTS (the runtime carries synthesis-slack-sync, so the
+# rituals' Slack step runs its workspace map, preflight and thread checker from the runtime as every other ritual
+# script runs: 2026-11-18, a seat's `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/...` named scripts
+# that were not there and waited). And the plugin 1 more, in thread_checker.py: its usage line, which names the
+# runtime's copy, takes two lines.
+CORE_BUDGET = 25107
+PLUGIN_BUDGET = 51857
 
 
 def _lines(files):

@@ -70,7 +70,8 @@ def test_e14_the_report_names_its_denominator_and_every_unread_target():
 
 
 def test_every_command_the_skill_names_exists():
-    named = set(re.findall(r"<synthesis-slack-sync-root>/(scripts/[\w.]+\.py)", PROTOCOL + BRIEF))
+    named = set(re.findall(r"python3 -s ~/\.synthesis/v5/current/skills/synthesis-slack-sync/(scripts/[\w.]+\.py)", PROTOCOL + BRIEF))
+    assert "<synthesis-slack-sync-root>" not in PROTOCOL + BRIEF  # a root the text never defined (2026-11-18)
     named |= set(re.findall(r"`(scripts/[\w.]+\.py)", BRIEF))
     assert named and all((SKILL / path).is_file() for path in named), named
     rituals = SKILL.parent / "synthesis-daily-rituals" / "scripts" / "sync_watermark.py"

@@ -52,6 +52,7 @@ STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synth
                         "synthesis-message-exports",  # the importer and the one-chat page reader, run the same way
                         "synthesis-local-messaging",  # the day-end's messages read, which moves its watermark
                         "synthesis-context-lifecycle",  # the day-end's records gate (context_doctor.py)
+                        "synthesis-slack-sync",  # the rituals' Slack step: its workspace map, preflight and thread checker
                         "synthesis-bitbucket",  # pr_queue.py, which the rituals' pr_queue_scan.py loads from beside its skill
                         "synthesis-skills-manager", "synthesis-onboarding")  # the release tool and its imports, run from here
 # Every skill runs the runtime's copy, the only one the guard trusts (guards._shipped). The release tool and what it

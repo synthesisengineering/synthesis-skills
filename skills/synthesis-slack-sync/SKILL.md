@@ -59,15 +59,15 @@ A protocol for syncing Slack channels and threads to local transcript files usin
 
 Every sync — whether day-start, mid-day, or day-end — follows these steps. No shortcuts, no skipped steps.
 
-Each step below is its command; the full step is in references/sync-protocol.md. Before any sync, `python3 <synthesis-slack-sync-root>/scripts/slack_workspaces.py` names the readable workspaces (exit 2: no map or unknown workspace).
+Each step below is its command; the full step is in references/sync-protocol.md. Before any sync, `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/slack_workspaces.py` names the readable workspaces (exit 2: no map or unknown workspace).
 
 ### Step 0: Run the thread checker (MANDATORY)
 
-`python3 <synthesis-slack-sync-root>/scripts/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]`, also for `_dms.md` and `_group-dms.md`; every thread it lists is re-read in Step 2.
+`python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/thread_checker.py {transcripts_repo}/{transcripts_path}/slack/YYYY-MM-DD/<channel>.md [action_plan_file]`, also for `_dms.md` and `_group-dms.md`; every thread it lists is re-read in Step 2.
 
 ### Step 0: Preflight — resolve every read target (v3.7.0, REQUIRED)
 
-`python3 <synthesis-slack-sync-root>/scripts/preflight.py --config .agents/slack-sync.yaml` prints the resolved-target table and a **census** line (`census: 9 C / 4 D / 0 unresolved`); `--json --out <declared.json>` writes the declared set Step 4's gate reads. Exit 1: a target is unresolved; exit 2: empty set or bad config.
+`python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/preflight.py --config .agents/slack-sync.yaml` prints the resolved-target table and a **census** line (`census: 9 C / 4 D / 0 unresolved`); `--json --out <declared.json>` writes the declared set Step 4's gate reads. Exit 1: a target is unresolved; exit 2: empty set or bad config.
 
 ### Step 1: Read channels for new top-level messages
 
