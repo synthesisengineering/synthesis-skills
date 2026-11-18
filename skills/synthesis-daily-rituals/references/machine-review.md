@@ -6,6 +6,8 @@ command and none proposing a repair. The review joins them with the board's clai
 in launchd, and ends in a numbered plan. It repairs nothing: every step runs only on the principal's word (BACKLOG C3,
 roadmap FUTURE-01, which the principal ruled to build on 2026-11-18).
 
+Contents: Where it runs, and why there · What it reads · How it stays read-only · The findings and the plan.
+
 ```bash
 synthesis review            # findings by severity, then the numbered repair plan
 synthesis review --json     # the same, as one JSON object
@@ -45,7 +47,8 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   on its checked-out branch (as `--discover` reads it), and every repository a workspace declares, not dormant, that has
   no clone here.
 - **Claims:** each session quiet past eight hours that still holds claims and holds no live wait (a seat inside a
-  wait is quiet, not gone), and each live seat whose claim covers a repository with work to save.
+  wait is quiet, not gone), and each live seat whose claim covers a repository's uncommitted files, or, where it has
+  none, the repository: in a repository many seats share, the seat whose work it is is the one whose claim covers it.
 - **Projects:** every knowledge root (`knowledge_roots`, default `~/workspaces/*/ai-knowledge-*`), audited by the
   context doctor's own `audit_root`. A project with defects is one finding; a root's warnings are one finding.
 
@@ -91,8 +94,10 @@ work under it is committed, a commit before its push. Each step names:
   own hands: macOS settings, `sudo`, an approval inside a harness, a choice only the principal can make).
 - **fixes:** the findings it addresses.
 
-Work under a live seat's claim gets one step, a board message to that seat, and nothing else: the work is the seat's.
-No step runs. Once the principal says go, the steps run in order, and `synthesis review` again shows what remains.
+A quiet seat's claims still block a claim over them, so their step is `synthesis claim <paths> --take`; the board tells
+that seat what was taken and keeps it on its record. Work under a live seat's claim gets one step, a board message to
+that seat, and nothing else: the work is the seat's. No step runs. Once the principal says go, the steps run in order,
+and `synthesis review` again shows what remains.
 
 `--json` prints one object: `healthy`, `exit`, `fetched`, `ms`, `counts` (fail, unknown, warn), `read` (what was read,
 counted), `not_run`, `findings` (`id`, `severity`, `area`, `subject`, `detail`) and `plan` (`step`, `who`, `do`,

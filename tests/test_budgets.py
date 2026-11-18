@@ -2681,8 +2681,86 @@ ROOT = Path(__file__).resolve().parents[1]
 # _unread_line 1 fewer than the _too_deep it replaces (its docstring 1 more; the wait's words, now the caller's reason
 # and hint, 2 fewer). _shell_writes, which names what a pattern target matches, and _self_grant, whose write targets
 # are read so, keep their lines.
-CORE_BUDGET = 25170
-PLUGIN_BUDGET = 51934
+# BACKLOG C3 (roadmap FUTURE-01, which the principal ruled to build on 2026-11-18: one read-only review of every
+# workspace's repositories, projects, claims, scheduled jobs and installed state, ending in an exact repair plan whose
+# steps run only on his word), each 593 more. It is the core's because no skill's script may load both the strand scan
+# (chief of staff) and the context doctor (core) by the collections' rule 3, while the runtime carries both beside
+# synthesis/; the rituals' references/machine-review.md says so. synthesis/review.py 573, a module the CLI loads only for
+# `review` and no hook imports: its docstring 9 and imports 16; SEVERITY, AREAS and WHO 3 (the three severities worst
+# first, the six areas in the order findings print, who may run a step), READ 2 (what was read, counted, each with its
+# one's name), SKILLS 1 (the release's own folder of the two scripts it loads), the three launch agents' labels 1, DORMANT
+# 1 (the declared repositories onboarding does not clone), COMMIT 1 and LIVE 1 (the plan's commit message, its message to
+# a live seat), APPROVE 2 (a harness's hook approval, the principal's own), AGENT_FIXES 3 (the doctor's lines an agent
+# works through, each with its instruction), NOT_RUN 12 (each doctor check not run here, with why: a test holds every
+# check to there or to a call) and NOT_SAID 3 (the sentence the header says them in). _Report 34: its line and docstring
+# 2, its findings, steps and counts 2, add 3, doctor 7 (its line and docstring 3, counted 1, a line that fails or warns
+# with its fix, unknown where it could not tell, 3), done 16 (its line and docstring 3, the rank 1, the order and the ids
+# 2, the plan in the order of what each step fixes, one command said once with every finding it fixes, 6, the counts and
+# the exit code, 2 for anything unknown and 1 for a failure, 2, the report 2), and its 4 blank lines. _arg 5 (its line
+# and docstring 2, the path under the home folder 2, `~` where the rest needs no quotes, else quoted whole, 1), _runtime 4
+# (its line and docstring 2, a carried script's command, the runtime's copy, Python with -s, 2), _version 2 (the runtime's
+# release, else this code's) and _reinstall 3 (its line and docstring 2, the release launcher's install of it, which the
+# guard lets run with no code, 1). _fix 23: its line and docstring 5, the line's name and words, the home and the setup's
+# command 2, a newer release named 1, then two lines each for the runtime's parts reinstalled, the newer release
+# installed, transcripts copied, the export's schedule and a harness's settings by the onboarding setup (which waits for
+# the code), a sessions repo synced and a list the agent works through, and the rest the principal's 1. _load 12 (its line
+# and docstring 2, bytecode off 1, the path and the spec 2, registered while it loads, as a dataclass needs, 1, loaded and
+# taken out again where it fails 5, the module 1); _programs 7 (its line and docstring 4, the import 1, the guard's own
+# reader asked for each subcommand, the repository's own scope kept, 2); _present 5 (its line and docstring 2, the
+# doctor's own variable, else PATH and each install location, 2, found and never run 1); _covers 6 (its line and
+# docstring 3, the uncommitted files 1, an untracked folder as what is beneath it, else the whole repository, 1, covered
+# 1); _claimed 4 (its line and docstring 2, a folder by its path, else as held, 2). installed 34: its line and docstring
+# 3, the imports 1, the runtime's, config's, board's and approvals' checks 1, the launchers and the pinned interpreter
+# where the hook is there 2, home paths, outbox, teardown and sandbox 2, machine security 1, the prompt check, from the
+# rituals' config or why it cannot be read, 4, with a readable config the sessions repos, packets and browser accounts 3
+# and the PR gate and temporary addresses where configured 2, Codex's own config read as the doctor reads it and its five
+# checks 8, Claude Code's transcripts' setting 2, the latest release with --fetch 2, each line said, a check with nothing
+# to say left out, 2, the approvals 1. _approvals 19: its line and docstring 4, the doctor's note read 1, each harness
+# whose approval it notes, where it is here, 4, one this release looked at within a day whose guard was not running, a
+# failure with the principal's approval as its step, 6, else unknown with the doctor to run 4. schedules 24: its line and
+# docstring 4, macOS only 2, the launch agents' folder, the export's records and the setup's command 2, the com.synthesis
+# agents listed and counted 2, the export's and the fetch's doctor checks 3, each other agent's programs, the ones gone,
+# whether launchd holds it and what is wrong 6, its own setup, or the principal's for a name no public setup writes, 3,
+# said 2. workspaces 30: its line and docstring 3, the imports 3, each workspace folder 2, its declared list read, link
+# or file, with what is dormant left out, or unknown with the principal's step where it cannot be read, 8, its clones and
+# declarations kept and counted 2, the rituals' config's workspaces with no folder here 4, each said with the principal's
+# step 4, the doctor's adapter and temporary-work checks 3, the answer 1. repositories 28: its line and docstring 4, the
+# import 1, each clone found and each declared repository once by its real path, a declared clone read wherever it lies,
+# 4, their order and git's subcommands (the guard's own list for the strand scan, and fetch with --fetch) 1, a blank line
+# 1, one read: none for a declared repository with no clone 4, the guard's reader first and the strand scan's check after
+# 3, what cannot be read never read as fine 2; side by side 2, the live and quiet seats with this session's own left out
+# 2, each said 2, counted 1, the answer 1. _repository 56: its line and docstring 3, the path as a command takes it and
+# as said 2, a declared repository with no clone, a clone of its origin or the principal's step, 6, one whose own
+# configuration names a program or cannot be told, unknown with the principal's step, 8, the state and nothing for one
+# that is level 3, the uncommitted files counted 2, unreachable with why and the principal's step for a fetch or a read 5,
+# a detached HEAD 3, the uncommitted files said and committed 4, each branch: one with no upstream 6, ahead, behind or
+# diverged said 3, the commit counted 1, the push, the fast-forward or the principal's rebase or merge 3; the seats whose
+# claims cover its work 2, said 2, a live seat's work its message alone 2, the finding 1. _onto_branch 10 (its line and
+# docstring 2, the branches that point at HEAD 4, back onto the one 2, else the principal's choice 2) and _upstream 17 (its
+# line and docstring 3, the remotes 5, origin first 1, with none the principal's remote 3, the remote's branch of that
+# name, else a first push, 4, the upstream set 1). claims 15: its line and docstring 4, the import and the time 2, each
+# quiet seat with claims and no live wait 3, the uncommitted work under its claims 1, said with the take-over 5. projects
+# 61: its line and docstring 4, the import and the script 2, the context doctor loaded, unknown where it cannot be, 6, its
+# knowledge roots, unknown where they cannot be read, 5, the command, the day and git's subcommands (the guard's own list
+# for the context doctor) 2, a blank line 1, one root's audit: none without projects/ 3, the guard's reader first and the
+# doctor's own audit after 4, what cannot be read 2; side by side 2, the repositories read 1, each root 2, a configured
+# root not here 6, one that cannot be read, unknown, 4, its audits counted 2, each project with defects, with the remedies
+# its --project lists, 6, the projects with warnings only, counted by check, 5, the index's and the push's findings, not
+# said twice where its repository is read with the rest, 4. review 27: its line and docstring 2, the time, the home and
+# the report 1, the config, unknown with the principal's step where it cannot be read, 7, the installed side 1, the
+# board's sessions counted 2, the schedules 1, the repositories read 1, with a readable config the strand scan loaded,
+# unknown where it cannot be, 7, the workspaces, the repositories and the projects 3, the claims 1, the report 1. render
+# 16 (its line and docstring 2, what was read and the counts 2, the first line and the line of what is not run 2, each
+# severity's findings 4, the plan with its head and its last line 5, joined 1) and main 12 (its line 1, the parser and
+# its two options 6, parsed 1, bytecode off 1, the review 1, printed 1, the exit code 1). And the 6 section headings and
+# the 58 blank lines. cli.py 10: cmd_review 3 (its line, the import, the review with the two options handed on) and its 2
+# blank lines, and the parser 5 (the command and its help 2, --json 1, --fetch 1, its function 1). wait.py 10: held 15
+# (live's old body 14, with its docstring 1 more: it reads only, and lists in `over` each record that is over, where the
+# old else removed it), its 2 blank lines, and live 7 (its line and docstring 2, held asked with the list 2, each record
+# that is over removed 2, the answer 1). The plugin none more: the strand scan's git runs with GIT_OPTIONAL_LOCKS=0 in the
+# lines it had, so `git status` never rewrites an index.
+CORE_BUDGET = 25763
+PLUGIN_BUDGET = 52527
 
 
 def _lines(files):
