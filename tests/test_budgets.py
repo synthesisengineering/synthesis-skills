@@ -2612,8 +2612,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # to the code); guards.py none (SYNTHESIS_WRITES names install._move_records in its two lines) and doctor.py none (its off
 # line reads ROLLOUT). And the plugin 2 more, in setup.py's stage_sandbox (an ordinary run's staged and dry-run lines
 # point to the rollout, without the commands).
+# 5.25.1, BACKLOG A11 (a mid-day sync could not be recorded: `record --direction` took day-start, day-end and
+# weekly-review, and the worker contract records each run by its run type, `midday` among them): the plugin 6 more,
+# all in the rituals' ritual_state.py. DIRECTIONS' comment 5 (a sync records as `midday`, a later one that day too;
+# the checks that hold its record and why, the prompts left to the close; no view counts a sync as opening or closing
+# a workday) and row 1 (`last_midday`, the newest sync, in the row `last` and `summary` list). The direction itself,
+# the docstring and the refusal that say what a record's day is keep their lines. The core none: its readers count
+# only a day-start as opening a workday and only a day-end as closing one; any record, a sync's too, ends a quiet.
 CORE_BUDGET = 25044
-PLUGIN_BUDGET = 51780
+PLUGIN_BUDGET = 51786
 
 
 def _lines(files):
