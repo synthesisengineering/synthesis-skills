@@ -6,7 +6,7 @@ and draft target, and outputs a structured checklist of threads that MUST be
 re-read during the next sync.
 
 Usage:
-    python3 thread_checker.py <transcript_file> [action_plan_file]
+    python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/thread_checker.py <transcript_file> [action_plan_file]
 
 Output:
     A checklist of parent thread TSes grouped by channel, with channel IDs.
@@ -249,7 +249,8 @@ def extract_unsent_drafts(action_plan_path: str) -> list[dict]:
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
-        print("Usage: python3 thread_checker.py <transcript_file> [action_plan_file]")
+        print("Usage: python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/thread_checker.py <transcript_file> "
+              "[action_plan_file]")
         sys.exit(0 if len(sys.argv) > 1 else 1)
     transcript_path = sys.argv[1]
     action_plan_path = sys.argv[2] if len(sys.argv) > 2 else None

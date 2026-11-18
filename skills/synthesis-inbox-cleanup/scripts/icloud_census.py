@@ -11,12 +11,13 @@ Credential: app-specific password read at runtime from macOS Keychain
 This script NEVER writes, prints, or logs the password.
 
 Read-only: INBOX is opened readonly=True. Makes no changes to the mailbox.
+The connection is `_lib.connect`'s, which verifies the server's certificate.
 """
-import imaplib, email, collections
+import email, collections
 from email.utils import parseaddr
 import sys
 sys.dont_write_bytecode = True  # an installed plugin must stay byte-identical; Muse verifies its bundle
-from _lib import HOST, USER_CANDIDATES, MANIFEST_PATH, get_password, dec, _load_yaml
+from _lib import MANIFEST_PATH, connect, dec, _load_yaml
 
 MASKED_DOMAINS = {"icloud.com", "privaterelay.appleid.com"}
 
@@ -50,22 +51,7 @@ def classify(name, addr, domain, rules):
 
 
 def main():
-    pw = get_password()
-    M = imaplib.IMAP4_SSL(HOST)
-    user = None
-    err = None
-    for u in USER_CANDIDATES:
-        try:
-            M.login(u, pw)
-            user = u
-            break
-        except imaplib.IMAP4.error as e:
-            err = e
-    if not user:
-        import sys
-        sys.exit(f"ERROR: IMAP login failed for {USER_CANDIDATES}: {err}")
-
-    M.select("INBOX", readonly=True)
+    M, user = connect(readonly=True)  # INBOX selected read-only, over a verified connection
     typ, data = M.search(None, "ALL")
     ids = data[0].split()
     total = len(ids)

@@ -162,9 +162,15 @@ when this session last read a calendar. With `fresh_calendar` in the config:
   the hour that closes a range (`2-3pm`, `10-11am`). Not one: a duration (`1:23:45`), a time inside a web address
   or after its `#`, an offset alone (`-05:00`), a full stamp with its offset
   (`2026-11-13T10:20:00-05:00`), and a time in words or with a dot and no `am` or `pm` (`noon`, `Thursday
-  afternoon`, `19.30`), which is not held. A time in a quoted thread is held like any other; in thirty days of
-  recorded messages that name a clock time (164), none quoted one. A number that only looks like a time (`John 3:16`, `line 12:30`) is
-  held like one.
+  afternoon`, `19.30`), which is not held. Not one either: a time in the header a mail client writes over a
+  forwarded or replied-to message, which is when that message was sent (2026-11-18: a forward was held for the
+  time in its quoted `Date:` line). That header is the run of `From:`, `Sent:`, `Date:`, `To:`, `Cc:` and
+  `Subject:` lines that carries a sender and a `Date:` or `Sent:` with its year, under a forward's or an original
+  message's marker (`---------- Forwarded message ---------`, `-----Original Message-----`, `Begin forwarded
+  message:`), a rule (a line of underscores, `<hr>`) or quote marks (`>`), and a reply's dated `On <date>, <sender>
+  wrote:`, in plain text or HTML. A time in the quoted message's own words, in the message's new words, or in a
+  header-like block with no such mark is held like any other. A number that only looks like a time (`John 3:16`,
+  `line 12:30`) is held like one.
 - **When it asks:** at the first call, before any approval code is asked, so the principal is not shown a text
   the check may still change; and again at the approved call, since the approval may have taken longer than the
   read stays fresh. That second question is the moment the incident missed. An approval already typed stands: the

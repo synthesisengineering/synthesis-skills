@@ -167,6 +167,67 @@ def test_the_nudge_entry_point_fails_toward_nudging(isolated_home, tmp_path):
     assert owed(isolated_home) != 0
 
 
+def test_a_midday_sync_neither_opens_nor_closes_a_workday_for_the_line_or_the_nudge(isolated_home, tmp_path, monkeypatch):
+    """5.25.1: a mid-day sync is recorded as `midday`. Only a day-start opens a workday and only a day-end closes one,
+    so the line and the nudge read as they did without it: on a day left open, on a day with no day-start, after a
+    close. A workspace whose only ritual is a sync was worked, and is counted with the others, opening nothing."""
+    cfg = {"workspaces": {"alpha": {"streak": "expected-days"}, "beta": {"streak": "expected-days"}}}
+    log(isolated_home, rec("day-end", "alpha", MONDAY - timedelta(days=4)), rec("day-start", "alpha", MONDAY - timedelta(days=3)),
+        rec("weekly-review", "alpha", MONDAY - timedelta(days=3)), rec("day-start", "beta", MONDAY), rec("day-end", "beta", MONDAY),
+        config=cfg)
+    cwd = here(tmp_path, monkeypatch)
+    line = rituals.session_line(cwd, MONDAY)
+    assert ("this workspace: last day-end 2026-09-10; streak 0; no day-start recorded today; 1 workday(s) started and "
+            "never closed (2026-09-11). 1 other workspace(s): 0 with workdays never closed, 1 owing a weekly review.") in line
+    assert rituals.owed_today(MONDAY)                                                    # alpha has not closed today
+
+    log(isolated_home, rec("midday", "alpha", MONDAY - timedelta(days=3)), rec("midday", "alpha", MONDAY),
+        rec("midday", "beta", MONDAY))
+    assert rituals.session_line(cwd, MONDAY) == line and rituals.owed_today(MONDAY)
+
+    log(isolated_home, rec("day-end", "alpha", MONDAY))
+    closed = rituals.session_line(cwd, MONDAY)
+    assert "last day-end 2026-09-14; streak 1; no day-start recorded today" in closed and not rituals.owed_today(MONDAY)
+    log(isolated_home, rec("midday", "alpha", MONDAY))                                   # a sync after the close
+    assert rituals.session_line(cwd, MONDAY) == closed and not rituals.owed_today(MONDAY)
+
+    log(isolated_home, rec("midday", "gamma", MONDAY))
+    records, bad = rituals.read()
+    assert bad == 0 and rituals.open_days(records, MONDAY) == [("alpha", "2026-09-11")] and not rituals.owed_today(MONDAY)
+    assert rituals.session_line(cwd, MONDAY) == closed.replace(
+        "1 other workspace(s): 0 with workdays never closed, 1 owing", "2 other workspace(s): 0 with workdays never closed, 2 owing")
+
+
+def test_a_midday_sync_ends_the_quiet_of_a_workspace_worked_occasionally(isolated_home, tmp_path, monkeypatch):
+    """Quiet counts the days since a workspace's newest ritual record, and a sync reads every surface it declares: it is
+    a ritual there like any other. The workspace still owes no weekly review, and its last close stays where it was."""
+    cfg = {"workspaces": {"alpha": {"streak": "expected-days"}, "advisory": {"streak": "none", "quiet_after_days": 21}}}
+    log(isolated_home, rec("day-end", "alpha", MONDAY - timedelta(days=1)), rec("weekly-review", "alpha", MONDAY - timedelta(days=3)),
+        rec("day-end", "advisory", MONDAY - timedelta(days=25)), config=cfg)
+    cwd = here(tmp_path, monkeypatch)
+    records, _ = rituals.read()
+    assert rituals.quiet(records, cfg, "advisory", MONDAY) == 25
+    assert "1 worked occasionally and quiet too long" in rituals.session_line(cwd, MONDAY)
+
+    log(isolated_home, rec("midday", "advisory", MONDAY - timedelta(days=2)))
+    records, _ = rituals.read()
+    assert rituals.quiet(records, cfg, "advisory", MONDAY) is None and not rituals.weekly_owed(records, cfg, "advisory", MONDAY)
+    assert rituals.last(records, "advisory")["date"] == "2026-08-20" and rituals.open_days(records, MONDAY, "advisory") == []
+    assert "quiet too long" not in rituals.session_line(cwd, MONDAY)
+
+
+def test_of_two_records_in_one_second_the_one_appended_later_is_read(isolated_home):
+    """day-end.md: a corrected record appended after the close wins. Times are kept to the second, and of two records
+    tied on day and second the first one met was read, so a correction made within the second read as the close
+    (5.25.1). The later one is read, whichever outcome it carries."""
+    log(isolated_home, rec("day-end", "alpha", MONDAY, outcome="clean"), rec("day-end", "alpha", MONDAY, outcome="blocked"),
+        rec("midday", "beta", MONDAY, outcome="blocked"), rec("midday", "beta", MONDAY, outcome="clean"))
+    records, _ = rituals.read()
+    assert records[0]["ts"] == records[1]["ts"] == records[3]["ts"]
+    assert rituals.last(records, "alpha")["outcome"] == "blocked"
+    assert rituals.last(records, "beta", "midday")["outcome"] == "clean"
+
+
 def test_the_line_is_fast_on_a_year_of_records(isolated_home, tmp_path, monkeypatch, pace):
     start = MONDAY - timedelta(days=400)
     log(isolated_home, *[rec(d, w, start + timedelta(days=i)) for i in range(400)

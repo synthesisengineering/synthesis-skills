@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -35,6 +36,8 @@ except ImportError as exc:  # no runtime beside this copy; one that fails otherw
 
 STATUSES = ("active", "on-demand", "dormant")
 RUN_TYPES = ("day-start", "midday", "day-end", "weekly-review")
+# decay_sweep's MIDDAY_RUN, copied: the sweep imports synthesis.rituals, which the chief-of-staff collection lacks
+MIDDAY_RUN = re.compile(r"^(\d{4}-\d{2}-\d{2})-midday-([2-9]|[1-9][0-9]{1,2})\.md$")
 
 
 def registry_path() -> Path:
@@ -69,7 +72,10 @@ def coverage(workers: dict, day: date) -> list[dict]:
     for name, worker in sorted(workers.items()):
         if worker["status"] == "dormant":
             continue
-        filed = [(kind, worker["artifact_dir"] / f"{day}-{kind}.md") for kind in RUN_TYPES]
+        folder = worker["artifact_dir"]  # a later sync that day is `midday-N`: after the first, as the sweep reads it
+        later = sorted((int(m[2]), m[0]) for p in folder.glob(f"{day}-midday-*.md") if (m := MIDDAY_RUN.fullmatch(p.name)))
+        filed = [(kind, folder / file) for kind in RUN_TYPES
+                 for file in [f"{day}-{kind}.md", *(run for _, run in later if kind == "midday")]]
         filed = [(kind, path) for kind, path in filed if path.is_file()]
         if not filed:
             rows.append({"workspace": name, "state": "pending" if worker["status"] == "active" else "not scheduled"})

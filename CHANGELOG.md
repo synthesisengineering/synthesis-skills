@@ -4,6 +4,65 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.25.1] - 2026-11-18
+
+What the principal's operations seats met in ordinary work on 2026-11-18 (BACKLOG A10, A11 and A12), each fixed tests
+first, and a TLS gap found while fixing one of them.
+
+- **A help request needs no code.** A script the runtime carries, run by the interpreter's plain word with `--help` or
+  `-h` alone, runs with no code even without `-s`: it prints its usage and makes none of its decisions, and what the
+  user's own site folder loads into it loads into every Python run the guard lets through. A test runs every Python
+  script the runtime carries both ways in a home of its own and holds each to its usage, writing and starting nothing;
+  the eleven that read a config or their input first, or are no script, are named in `guards.NO_HELP` and keep the rule
+  of any run. A copy outside the runtime, such as a harness's plugin cache, still waits; its hold now names the
+  runtime's copy, which needs no code, and a settings hold names the settings the held program's own text names rather
+  than every one the guard has.
+- **A record of a hold.** A shell line that carries a pending approval code is still refused, since it may hand the code
+  to a program that types into a session or writes its record. The refusal now says how to record a hold: leave the
+  code out (the call, the check that held it and the time are the record), or write the record with the harness's file
+  tool, which writes only the file it names.
+- **A forward's quoted header names no meeting.** The fresh-calendar rule no longer holds a message for a time in the
+  header a mail client writes over a forwarded or replied-to message: From, Sent, Date, To, Cc and Subject lines with a
+  sender and a dated Date or Sent, under a forward's or an original message's marker, a rule or quote marks, and a
+  reply's dated "On <date>, <sender> wrote:", in plain text or HTML. A time in the message's new words, in the quoted
+  message's own words, or in a header-like block with no such mark is still held.
+- **The inbox engine connects under `python3 -s`, and always verifies.** It verifies IMAP against a CA bundle no agent
+  can change: certifi's where it is importable and root-owned, else the operating system's own (`/etc/ssl/cert.pem` on
+  macOS, owned by root with every folder above it), and the interpreter's default store only where neither is there;
+  verification is never off. The census, which opened its connection with imaplib's default context (which verifies
+  no certificate), now connects through the same verified path.
+- **The runtime carries the slack-sync skill.** Its workspace map, preflight and thread checker run as
+  `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/…`, as every other ritual script runs; a seat
+  that ran them so was held, since the runtime had no such files. A test holds every runtime command a skill documents
+  to a script the runtime carries that the guard lets run.
+- **Concurrent-seats mode and the Slack gate agree.** A ritual's own watermark advances, the end-of-sync gate and the
+  decay sweep run with seats live: the watermark store has been written under a lock and never backwards since
+  2026-11-11, and the sweep writes no state. Rule 4 keeps its words and says so, and so does the Slack sync's Step 4.
+- **A long argument no longer stops the guard (BACKLOG A12).** A pattern of more than 64 parts is read as written, so a
+  JSON argument full of addresses no longer recurses through glob, and a line nested past what the guard reads waits for
+  the principal's code with a plain reason instead of failing on RecursionError.
+- **A mid-day sync is recorded** (BACKLOG A11). `ritual_state.py record --direction midday` now works; before, the
+  recorder took only day-start, day-end and weekly-review, though the worker contract records every run by its run type.
+  Each sync appends its own record, a later one that day too (its artifact is `midday-N`). It is held to the critical
+  deadlines, travel, choices and commitments as a day-start is, and leaves the prompts to the day's close. No view counts
+  a sync as opening or closing a workday, so streaks, the last close, workdays never closed, the weekly review, the
+  session line and the nudge read as before. The row of `query last` and `summary` lists the newest sync (`last_midday`),
+  and a sync ends the quiet of a workspace worked occasionally.
+- **A correction recorded in the same second as the close wins.** `rituals.last` kept the first of two records tied to
+  the second, so a corrected day-end appended within the second of a clean close read clean, against day-end.md's rule
+  that the later record wins. The later one is now read, by every view that reads through it.
+- **The desk's coverage line folds the newest mid-day run.** `ritual_workers.py coverage` looked for a day's `midday`
+  artifact alone, so after a second sync, filed as `midday-N`, the line gave the first one's time and outcome. It now
+  reads later runs by the deadline sweep's own pattern, after the first in the order of N and before the day-end.
+- **A file pattern is read where the shell writes it** (review round 1 of 5.25.1). The guard matches a pattern against
+  the disk part by part, through any link and with no recursion, for a redirect or a copy's target as for any word, and
+  a pattern it cannot match within its caps (1,024 names, 256 folders read) waits for the principal's code. Through a
+  link the agent made in its own folder, `cp … <folder>/l*k/grants/…` past 64 parts (since A12) and
+  `echo … > <folder>/c*r/guards.py` at any length (as in 5.25.0) had written into the sealed approvals and the runtime's
+  code with no code.
+- **Not synthesis's:** the refusal of a push "after the preceding commit failed" came from Codex's own approval reviewer
+  (`auto_review`), which read the previous cell's hold as a failed commit. No change.
+
 ## [5.25.0] - 2026-11-18
 
 The guard's sandbox (BACKLOG C1; design note 22.9, sections 2 and 4, and the principal's eight rulings of 2026-11-15,

@@ -854,6 +854,40 @@ def _calendar_read(transcript: str, reads: list) -> float | None:
     return newest
 
 
+# A forwarded or replied-to message's quoted header (A10, 2026-11-18: a forward was held for the time in its quoted Date
+# line). The From, Sent, Date, To, Cc and Subject lines a mail client writes over a quoted message, with a sender and a
+# dated Date or Sent, under a forward's or an original message's marker or a rule or behind quote marks, and a reply's
+# "On <date>, <sender> wrote:", are the earlier message's: a time there is when it was sent. They are read as the text
+# shows them, in plain text or HTML. The quoted message's own words, the new ones and a header with no mark still count.
+QUOTE_MARK = _Pattern(r"(?i)-{2,}\s*(?:forwarded|original)\s+message\s*-{2,}|begin forwarded message:?|_{8,}")
+HEADER_LINE = _Pattern(r"(?i)(from|sent|date|to|cc|bcc|subject|reply-to)\s*:\s*\S")
+WROTE = _Pattern(r"(?is)on\s.{0,200}?\b(?:19|20)\d\d\b.{0,200}?\swrote:")  # a reply's attribution, dated
+LINE_END = _Pattern(r"(?i)\n|<br\s*/?>|</?(?:p|div|li|tr|td|table|blockquote|hr)\b[^>]*>")  # where a line ends, in text or HTML
+
+
+def _quoted_headers_out(text: str) -> str:
+    """A message's words with the quoted header of each forwarded or replied-to message it carries left out."""
+    import html
+    breaks = list(LINE_END.finditer(text))
+    spans = list(zip([0] + [m.end() for m in breaks], [m.start() for m in breaks] + [len(text)]))
+    seen = [html.unescape(re.sub(r"<[^>]*>", "", text[a:b])) for a, b in spans]  # each line as the text shows it
+    shown = [re.sub(r"^[>\s]+", "", line).strip() for line in seen]  # past its quote marks
+    runs, cut = [[]], set()
+    for k, line in enumerate(shown):  # each run of header lines, blank lines between them read past
+        runs[-1] += [k] if HEADER_LINE.match(line) else []
+        runs += [[]] if line and runs[-1] and runs[-1][-1] != k else []
+    for run in filter(None, runs):
+        above = next((k for k in range(run[0] - 1, -1, -1) if shown[k]), -1)  # the nearest line with words above it
+        fields = {HEADER_LINE.match(shown[k])[1].lower(): shown[k] for k in run}
+        marked = (above >= 0 and QUOTE_MARK.fullmatch(shown[above])) or any(m[0][:3].lower() == "<hr" for m in breaks[max(above, 0):run[0]])
+        quoted = all(seen[k].lstrip().startswith(">") for k in run)
+        dated = "from" in fields and bool(re.search(r"\b(?:19|20)\d\d\b", fields.get("date", "") + " " + fields.get("sent", "")))
+        cut |= set(run) if dated and (marked or quoted) else set()
+    for at in range(len(shown)):
+        cut |= next((set(range(at, at + n)) for n in (1, 2, 3) if WROTE.fullmatch(" ".join(shown[at:at + n]))), set())  # wrapped too
+    return "".join(text[a:b] * (k not in cut) + (breaks[k][0] if k < len(breaks) else "") for k, (a, b) in enumerate(spans))
+
+
 def _time_without_calendar(texts: list, config: dict, session: dict | None) -> str | None:
     """Config: {"fresh_calendar": {"minutes": 10, "reads": ["<a tool's whole name, a pattern over it, or its end>", ...]}};
     off when the key is absent or false, and `{}` is ten minutes with the tools the guard knows. For the words of a
@@ -868,7 +902,7 @@ def _time_without_calendar(texts: list, config: dict, session: dict | None) -> s
     if not (type(minutes) is int and 1 <= minutes <= 60 and isinstance(reads, list) and all(isinstance(name, str) and name for name in reads)):
         return ('fresh_calendar in the synthesis config needs "minutes" as a whole number from 1 to 60 and "reads" as a list of '
                 "tool names, each where it has one; messages are blocked until it is fixed")
-    times = list(dict.fromkeys(found.group(0).strip() for text in texts for found in CLOCK.finditer(text)))
+    times = list(dict.fromkeys(found.group(0).strip() for text in texts if CLOCK.search(text) for found in CLOCK.finditer(_quoted_headers_out(text))))
     if not times:
         return None
     named = f"This message names a time ({', '.join(f'`{t}`' for t in times[:3])})"
@@ -4140,7 +4174,7 @@ def _shell_writes(command: str, cwd: str, unread: list | None = None) -> list[st
             targets += [at(where, w) for w in _landing(words)]
             if os.path.basename(words[0]) == "apply_patch":
                 targets += [at(where, a or b) for a, b in PATCH_PATHS.findall(text)]
-    return targets
+    return [m for t in targets for m in _globbed(t, True)]  # a target written as a pattern: what it names, through any link
 
 
 def check_claimed(targets: list[str], cwd: str, session: dict | None) -> str | None:
@@ -6160,14 +6194,47 @@ SERVICE_WRITERS = frozenset(f"skills/synthesis-meeting-transcripts/optional-work
 SUBSCRIPTED = _Pattern(r"(?:^|(?<=[\s;&|({]))([A-Za-z_]\w*)\[[^\]\n]*\]\+?=")  # NAME[...]=, zsh's PATH[1,-1]= (round 3, N1)
 
 
-def _globbed(path: str) -> list:
-    """A path after the shell's own pattern expansion (`*`, `?`, `[...]`): what it matches on the file system, as the
-    copy and redirect checks read one, else the path as written (review round 2, R2-3)."""
-    import glob
+GLOB_NAMES, GLOB_FOLDERS = 1024, 256  # what one pattern may name, and the folders read to match it: past either, its line waits
+
+
+def _globbed(path: str, hidden: bool = False) -> list:
+    """A path after the shell's own pattern expansion (`*`, `?`, `[...]`, and `**` as zsh reads it, every folder below):
+    what it matches on the file system, as the copy and redirect checks read one, else the path as written (review round
+    2, R2-3). Matched part by part with no recursion (A12: glob recursed past Python's limit on a JSON argument of 3,000
+    slashes), each folder read through any link it is, as the shell follows one (review round 1 of 5.25.1: a pattern
+    through a link the agent made wrote into approvals/); a leading dot only to a part that starts with one, unless
+    `hidden`. One that names more than GLOB_NAMES paths, reads more than GLOB_FOLDERS folders or runs past the call's
+    deadline is not matched: it is kept in `_CALL["unmatched"]`, and its line waits."""
+    found, read = [os.sep if path.startswith(os.sep) else ""], 0
+    parts = [part for part in path.split(os.sep) if part not in ("", ".")] if re.search(r"[*?\[]", path) else []
     try:
-        return (sorted(glob.glob(path))[:64] or [path]) if re.search(r"[*?\[]", path) else [path]
+        for at, part in enumerate(parts):
+            last, grown, queue = at == len(parts) - 1, [], list(found) if re.search(r"[*?\[]", part) else []
+            if not queue:  # a literal part: the name, where it is there
+                grown = [p for p in (os.path.join(f, part) for f in found) if (os.path.lexists(p) if last else os.path.isdir(p))]
+            while queue:
+                folder, read = queue.pop(0), read + 1
+                if read > GLOB_FOLDERS or len(grown) > GLOB_NAMES or time.monotonic() > _CALL["until"]:
+                    _CALL["unmatched"] = path
+                    return [path]
+                grown += [folder] if part == "**" and not last else []  # zero folders or more
+                try:
+                    names = sorted(os.listdir(folder or "."))
+                except OSError:
+                    continue
+                for name in (n for n in names if (hidden or n[:1] != "." or part[:1] == ".") and fnmatch.fnmatchcase(n, part.replace("**", "*"))):
+                    spot = os.path.join(folder, name)
+                    queue += [spot] if part == "**" and os.path.isdir(spot) else []
+                    grown += [spot] if (last or os.path.isdir(spot)) and not (part == "**" and not last) else []
+            if len(grown) > GLOB_NAMES:
+                _CALL["unmatched"] = path
+                return [path]
+            found = list(dict.fromkeys(grown))
+            if not found:
+                return [path]
     except re.error:  # a range Python 3.9 cannot compile (`[t-f]`), which matches nothing in the shell either
         return [path]
+    return found if parts else [path]
 
 
 def _shared(path: str, roots: list) -> str:
@@ -6215,12 +6282,13 @@ def _follows(code: str, where: str, args: list, env: dict, raw: list, linked: li
     return ""
 
 
-def _plainly(words: list, where: str, text: str, found: list, given: list) -> str:
+def _plainly(words: list, where: str, text: str, found: list, given: list, asks: bool = False) -> str:
     """'' when a script runs as the plain word of its interpreter runs it: that word with no path, no wrapper or
     assignment in front of it, handed on by no other program, with no option but Python's that only take away what it
     loads; on a line that defines no function or alias, reads no file into the shell, exports nothing and gives no value
     to a variable in the environment or one that moves where a program loads from. Else what the line does instead,
-    which may run or load something other than the release's own code (the review of 5.23.1, finding 4)."""
+    which may run or load something other than the release's own code (the review of 5.23.1, finding 4). A help request
+    (`asks`) may load the user's own site folder (A10)."""
     head = os.path.basename(words[0])
     interpreter = bool(SCRIPT.match(head) or UNREAD.match(head)) or head in SHELLS
     kind, at, _ = _program(words) if interpreter else ("file", 0, "")
@@ -6228,7 +6296,7 @@ def _plainly(words: list, where: str, text: str, found: list, given: list) -> st
     if getattr(words, "wrapped", True) or isinstance(where, Quoted) or (interpreter and "/" in words[0]) or kind != "file" or words[at:at + 1] == ["-m"] or (
             words[1:at] and not (python and all(PLAIN_OPTIONS.fullmatch(w) for w in words[1:at]))):
         return "runs it through more than its interpreter's plain word (a path to it, a wrapper, an option or another program)"
-    if python and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
+    if python and not asks and not re.search(r"[sSI]", "".join(w[1:] for w in words[1:at])):
         return "runs Python without -s, -S or -I, so a usercustomize.py or a .pth file in the user's own site folder loads into it"
     upper = {name.upper() for name in os.environ}
     if DEFINES.search(text) or any(n.upper() in upper or STARTUP.fullmatch(n.upper()) or STARTUP.fullmatch(n.lower()) for n in (
@@ -6247,6 +6315,26 @@ def _runtime_copy(path: str) -> str:
     rel = os.path.join(*parts[len(parts) - 1 - parts[::-1].index("skills"):]) if "skills" in parts[:-1] else ""
     stable, release = str(paths.home() / "current"), _release()
     return os.path.join(stable if _real(stable) == release else release, rel) if rel and os.path.isfile(os.path.join(release, rel)) else ""
+
+
+# A help request (A10, 2026-11-18: Codex's `python3 <its plugin copy>/.../context_doctor.py --help` was held as a change of
+# every setting the guard has). A script the runtime carries, asked by the interpreter's plain word for `--help` or `-h`
+# alone, prints its usage and makes none of its decisions, so it needs no -s: what the user's own site folder loads into
+# it loads into every Python run the guard lets through. A test runs each such script both ways in a home of its own and
+# holds it to its usage, writing and starting nothing. These answer none: they read a config or their input first, or
+# are no script.
+NO_HELP = frozenset(f"skills/{name}.py" for name in (
+    *(f"synthesis-inbox-cleanup/scripts/{n}" for n in ("_lib", "icloud_apply", "icloud_archive_senders", "icloud_catchall_google_purge",
+                                                         "icloud_census", "icloud_inspect_senders", "icloud_plan", "icloud_tail", "sanitize")),
+    "synthesis-local-messaging/scripts/os_sandbox", "synthesis-bitbucket/scripts/pr_queue"))
+
+
+def _answers_help(path: str) -> bool:
+    """Whether the runtime's own copy of a script (itself, or the one `_runtime_copy` names) answers a help request: a
+    Python script of a skill the runtime carries, never the release kit's, and none of NO_HELP."""
+    mine = _real(path if _shipped(path) else _runtime_copy(path) or os.devnull)
+    rel = os.path.relpath(paths.spelled(mine), paths.spelled(_release())).replace(os.sep, "/")
+    return _shipped(mine) and rel.startswith("skills/") and rel.endswith(".py") and rel not in NO_HELP
 
 
 def _unread(words: list, where: str, written: set, line: str, bodies: dict | None = None) -> tuple:
@@ -7003,7 +7091,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, unplaced=False, until=time.monotonic() + CALL_SECONDS, approved=False)
     waits = Unproven("gives HOME a value this guard does not read (read, printf -v, a loop, a parameter that assigns and their like) "
                      "and then uses it, so what the line names and runs is not known") if homeless else None
-    touched, inside = False, _CALL.get("settings") is not None  # inside: a command a program starts, judged in its pass
+    touched, inside, naming = False, _CALL.get("settings") is not None, []  # inside: a command a program starts, judged in its pass
     still, was = _CALL.get("still", frozenset()), _CALL.get("clean")  # readings whose functions move a folder only in a subshell (`_cd_sources`)
     _CALL["clean"] = hold or clean  # nothing ran before the line itself; before a command a program starts, anything may have
     if FUNCTION.search(command) and FOLDER_MOVE.search(command) and not _moves_by_function(command):
@@ -7017,6 +7105,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
                     return base  # refused whatever the settings: the folders every approval rests on take no code
                 if time.monotonic() <= _CALL["until"]:  # judged in its time; else the wait found with the settings protected stands
                     alone = touched or not base or not isinstance(reason, Unproven) or _judged(command, text, cwd, config, "only", depth)
+                    naming += [str(r) for r in (reason, alone) if isinstance(r, Unproven)]  # the settings its readings name (A10)
                     touched, reason = bool(alone) and not isinstance(alone, Overdue) and alone != base, base  # the same wait alone names no setting
             if reason and not isinstance(reason, Unproven):
                 return reason
@@ -7027,7 +7116,7 @@ def check_self_grant(command: str, cwd: str, config: dict | None = None, session
         waits = waits or Unproven("changes folder in a way this guard does not follow (a CDPATH it cannot read, a redefined cd, "
                                   "a cd inside eval, source, a function, an alias or a trap, BASH_ENV or ZDOTDIR, or more ways than it reads)")
     if touched:
-        return _settings_hold(command, cwd, waits, session, hold)
+        return _settings_hold(command, cwd, waits, session, hold, "\n".join(naming))
     if not waits:
         return None
     if not hold:
@@ -7060,10 +7149,11 @@ def _judged(command: str, text: str, cwd: str, config: dict | None, settings, de
         _CALL["settings"] = before
 
 
-def _reached(command: str, cwd: str) -> list:
+def _reached(command: str, cwd: str, said: str = "") -> list:
     """Which of the guard's settings a held command reaches, for its hold to name: where its writes land, or in a folder
-    they change whole; else the ones in or above a path it names, else those whose names it spells; all of them, where
-    it shows none of those (a pattern, a path a program builds)."""
+    they change whole; else the ones in or above a path it names, else those the readings that held it name (`said`: a
+    program's own text, A10), else those whose names it spells; all of them, where it shows none of those (a pattern, a
+    path a program builds)."""
     try:
         landed = [_real(re.sub(r"/\*\*(?:/\*)?$", "", t)) for t in _shell_writes(command, cwd)]
     except RecursionError:
@@ -7075,6 +7165,9 @@ def _reached(command: str, cwd: str) -> list:
         found = [s for s in _settings() if any(paths.inside(t, _real(s)) or paths.inside(_real(s), t) for t in group)]
         if found:
             return found
+    found = [s for s in _settings() if any(re.search(re.escape(p) + r"(?![\w.-])", said) for p in {s, _real(s)})] if said else []
+    if found:
+        return found
     try:
         installed = {_installs(words) for words, _ in _parse(command, cwd)[0]} - {""}
     except (Unreadable, StopIteration, IndexError, RecursionError):
@@ -7101,11 +7194,11 @@ def _named_files(command: str, cwd: str) -> list:
     return sorted(marks.items())
 
 
-def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool) -> str | None:
+def _settings_hold(command: str, cwd: str, also: str | None, session: dict | None, hold: bool, named: str = "") -> str | None:
     """A shell command that may change the guard's own settings, a git hook, a shell's startup file, a shell snapshot or a
     harness program waits for the principal's code for that command, the folder it runs in, each script it runs and each
     file it names, as they stand (22.20, 22.26)."""
-    said, does = _settings_said(_reached(command, cwd))
+    said, does = _settings_said(_reached(command, cwd, named))
     if not hold:
         return Unproven(f"may change {said}")
     subject = {"command": command, "runs_in": os.path.realpath(cwd), "scripts": sorted(_CALL["ran"].items()),
@@ -7146,8 +7239,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
     asked = [(_led(os.path.expanduser(os.path.expandvars(t)), spot), spot) for t, w in redirects for spot in spots(w)]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
     why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
-    if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
-        why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
+    if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):  # how to record a hold without it (A10)
+        why = ("carries a pending approval code (to see pending requests, run `synthesis approvals`), which a shell line may hand to "
+               "a program that types into a session or writes its record. To record a hold, leave the code out: the call, the check "
+               "that held it and the time are the record, and the code is spent or gone within 15 minutes. To keep the hold's words "
+               "whole, write the record with the harness's file tool (Write or Edit, apply_patch or write_file), which writes only "
+               "the file it names")
     feeds, env, given = [], dict(os.environ), list(ASSIGNED.finditer(_own_text(text)))
     found = _parse(text, cwd, feeds=feeds)[0]
     for m in given:  # the value the command gives a variable; given two, the one that names a protected path
@@ -7211,8 +7308,9 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
             said = "runs synthesis's approval or send-window code, which only the guard and the principal's prompt use"
             why, waits = (why, waits or Unproven(said + ", on a line of the script")) if depth else (why or said, waits)
         mine_run = bool(ran) and _shipped(ran)  # inside the release this guard runs from
-        unplain = _plainly(words, where, command + "\n" + text, found, given) if ran and (mine_run or python) else "is not run"  # finding 4
         args = words[1:] if "/" in words[0] and not (SCRIPT.match(head) or head in SHELLS) else words[_program(words)[1] + 1:]
+        asks = python and bool(ran) and args in (["--help"], ["-h"]) and _answers_help(ran)  # its usage alone (A10)
+        unplain = _plainly(words, where, command + "\n" + text, found, given, asks) if ran and (mine_run or python) else "is not run"  # finding 4
         values = [v for v in (m[3].strip("'\"") for m in given) if not paths.inside(ran, _real(os.path.join(where, os.path.expanduser(v))))]
         heard = (_spells([fed, *args, *values], [head, *args], where, env, raw, linked) or (where if within else "") or (  # what its line names,
             "the files xargs hands it" if HANDED in words and names else "")) if ran and not unplain else ""  # past where the script lies
@@ -7338,7 +7436,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         why = ("writes to a place this guard cannot read (the target starts with a variable or a substitution the command "
                "does not set) while it names the synthesis state folder, its board or a harness's transcripts")
     targets = [os.path.join(w, t) for t, w in asked]
-    real = [_real(os.path.join(w, os.path.expanduser(t))) for t in targets for w in wheres]
+    real = [_real(m) for t in targets for w in wheres for m in _globbed(os.path.join(w, os.path.expanduser(t)), True)]  # as the shell expands a pattern
     real += [aim + t[len(link):] for t in real for link, aim in linked if t not in links and paths.inside(t, link)]  # through a link made here
     real += [os.path.join(t, store.name) for t in real] if mine else []  # a copy into its folder
     owned = next((o for o in map(_cli_owned, real) if o), "") if not why else ""
@@ -10846,7 +10944,8 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
-    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False)  # and every script it runs
+    _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False,
+                 deep=[], unmatched="")  # and every script it runs
     if code_mode_script(tool, tool_input, session):
         return None  # it acts only through its nested calls, each judged here as a call of its own
     if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command
@@ -10873,7 +10972,13 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
                              lambda: check_claimed(_shell_writes(command, cwd), cwd, session),
                              lambda: check_hook_writes(tool, tool_input, cwd, session),
                              lambda: senders.extend(_CALL.get("senders") or []),  # before the check below judges each git program
-                             lambda: check_git_programs(command, config, cwd, session)))  # last: each program as a call of its own
+                             lambda: _CALL["unmatched"] and _unread_line(command, cwd, session, (  # a pattern past the matcher's cap
+                                 f"names a file pattern this guard cannot match within its limit ({GLOB_NAMES} names, {GLOB_FOLDERS} "
+                                 f"folders read): `{_CALL['unmatched'][:120]}`"), "Name the files it writes instead."),
+                             lambda: check_git_programs(command, config, cwd, session)),  # last: each program as a call of its own
+                            deep=lambda: _unread_line(command, cwd, session, "nests or repeats deeper than this guard can read (past "
+                                                      "Python's recursion limit)", "To hand a program a large value, write it to a "
+                                                      "file with the file tool and give the command that file's path."))  # A12
         if verdict is None and senders:  # it runs messages_send.py: each run's sends spend this session's entries alone
             from synthesis import sends
             for run in senders:
@@ -10896,10 +11001,11 @@ def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: 
 ASKS_CODE = _Pattern(r"\bapprove followed by the code [0-9][0-9a-f]{5}\b")  # what every wait says (approvals.how)
 
 
-def _one_code(checks) -> str | None:
+def _one_code(checks, deep=None) -> str | None:
     """Judge every check of one call: the first refusal is what it gets, and nothing after it is judged; the checks that
     wait are said together, every request they file under one code (A5, 2026-11-17: one command the runtime check, then
-    the writers check, held asked the principal for two codes, minutes apart)."""
+    the writers check, held asked the principal for two codes, minutes apart). A check that recurses past Python's limit
+    is said by `deep`, once (A12)."""
     waits = []
     with approvals.one_code() as call:
         for judge in checks:
@@ -10907,15 +11013,33 @@ def _one_code(checks) -> str | None:
                 reason = judge()
             except approvals.Unverified as held:  # a grant its record did not back, asked again: said with the rest (review
                 reason = str(held)                 # of 5.24.1: the waits before it were dropped, though the code carried them)
+            except RecursionError:
+                if deep is None:
+                    raise
+                reason = deep()
             if reason and not ASKS_CODE.search(reason):
                 return reason
-            waits += [reason] if reason else []
+            waits += [reason] if reason and reason not in waits else []
     if call["code"]:  # the code they share, known once the call's requests are filed (an outer call files them itself)
         waits = [w.replace(call["shown"], call["code"]) for w in waits]
     if len(waits) > 1:
         return f"This waits on {len(waits)} of the guard's checks. Each names the same code, so it is typed once:\n" + "\n".join(
             f"{n}. {w}" for n, w in enumerate(waits, 1))
     return waits[0] if waits else None
+
+
+def _unread_line(command: str, cwd: str, session: dict | None, why: str, hint: str) -> str | None:
+    """A shell line the guard cannot read in full (A12: its readers would recurse past Python's limit; review round 1 of
+    5.25.1: a pattern past the matcher's cap) waits for the principal's code of exactly that line, where it runs, saying
+    why: never let through unread, never an exception. Judged once a call, so each check that meets it says it once and
+    its code is spent once."""
+    if not _CALL["deep"]:
+        subject = {"command": command, "runs_in": os.path.realpath(cwd)}
+        _CALL["deep"].append(None if approvals.consume("protected-read", subject, session) else (
+            f"This command {why}, so what it runs and writes is not known. If it only reads, show the principal this exact "
+            f"command and ask them to type {approvals.how(approvals.request('protected-read', subject, f'a line not read in full: {command[:120]}'))}; "
+            f"then run the identical command again from {cwd}. {hint}"))
+    return _CALL["deep"][0]
 
 
 def _connector(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:

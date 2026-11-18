@@ -83,7 +83,7 @@ Use this variant whenever the board (`synthesis who`) shows other live seats —
 1. **Claim file-by-file.** The ritual seat claims exactly the files it will write — daily plan, CONTEXT.md, session log, state file — never whole directories. Directory claims block peer landings; named files do not.
 2. **Fetch-all, fast-forward-only-unheld.** `git fetch --all` everywhere (fetching is read-only and safe), but fast-forward only branches no live seat holds: pass `repo_state.py --skip <name>` for each repo a live claim covers. A held branch that moved is a `decision` with the holder named.
 3. **Report health, never repair it under a live seat.** When `synthesis doctor` reports a client behind or a hook drifted while another session holds the release or install area, the briefing carries the line verbatim and the ritual moves on. No plugin reinstall, no runtime switch while the holder is live.
-4. **Skip shared-state maintenance while seats are live.** Index rebuilds, inventory regeneration, watermark advances, decay sweeps — anything every seat reads — waits for a clear board. The ritual reports `deferred: seats live` rather than half-running them.
+4. **Skip shared-state maintenance while seats are live.** Index rebuilds, inventory regeneration, watermark advances, decay sweeps — anything every seat reads — waits for a clear board. The ritual reports `deferred: seats live` rather than half-running them. Two of these run with seats live all the same, since by this rule's own reason neither collides (2026-11-18): the advance of a watermark for a target this ritual itself read and saved, with the end-of-sync gate that checks it (Step 4 of synthesis-slack-sync's sync-protocol.md; `sync_watermark.py` has written its store under a lock and never backwards since 2026-11-11, and without the advance the gate blocks on every target the sync read), and the decay sweep, which writes no state (`decay_sweep.py` only reads) and which critical-deadlines.md runs in every ritual. What the sweep leads to is written only to files this ritual claims (rule 1).
 5. **Fold, don't run, others' artifacts.** A day-end artifact or handoff filed by another seat is folded into the briefing as-is. The ritual never executes, regenerates, or "verifies by re-running" a peer's artifact — re-running someone else's step under their claim is a collision wearing diligence as a costume.
 6. **Release claims at end.** Every claim the ritual took is released (`synthesis release`), or narrowed to nothing retained, before the run closes, so the next seat starts from a clean board.
 
@@ -92,6 +92,8 @@ Use this variant whenever the board (`synthesis who`) shows other live seats —
 - Board + inbox read at start (`synthesis who`, `synthesis inbox`), and the ritual's own seat registered with its file claims
 - The check of what other people rely on (`relied_on.py --workspace <W>`): it only reads, so it runs whoever else is live
 - Full sync reads (fetch, channel reads, transcript capture) — reads never need a window
+- `sync_watermark.py advance` for each target this ritual read and saved, and the end-of-sync gate (rule 4)
+- The decay sweep, `decay_sweep.py --alert`: it only reads (rule 4)
 - Daily plan creation with the `decision`/`deferred` lines the rules above produce
 - CONTEXT.md + session archive updates for the ritual's own files
 - `ritual_state.py record` with `--mode concurrent-seats`
