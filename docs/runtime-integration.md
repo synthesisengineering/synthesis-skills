@@ -152,6 +152,49 @@ the harness's own transcript of the session shows the person typing approve and 
 code after the request was filed. Requests and grants expire after 15 minutes.
 `synthesis approvals` lists what is waiting.
 
+### The sealed folders (the guard's sandbox, 2026-11-15)
+
+Every record an approval rests on lives in `~/.synthesis/v5/approvals/`, which only the
+hook writes, and what only the installer writes in `~/.synthesis/v5/install/`; each
+harness's operating-system sandbox keeps every shell out of both (the policy files and the
+doctor's seal check are their own part). `approvals/` holds `grants/` (one file per live
+grant), `requests/` (those the hook files), `effects/` (grants the hook applies itself),
+`granted.jsonl` (each typed code the hook spent: the code, what it granted, when the
+principal typed it, and the record and line that showed it), `records/` (each session's
+record, as the prompt hook names it), `sends/` (the window, the day's ledger, batches,
+their spends and code records, the sender's tickets), `deploys/`, `desktop/`, `typed/`,
+`imessage-sends/`, `stop/`, `release-grants/`, `browser.json`, `browser-accounts.json`,
+`lock` and `line-allowances.json`. `install/` holds `codex-user-hooks.json`. What a shell
+may write stays in `state/`: the requests it files (`state/requests/`, named as a shell's
+when granted, and never granted under a code the hook filed), the close mark of
+`synthesis sends close`, the doctor's notes and the autopilot's pointers.
+
+- **A shell asks; the hook applies.** `synthesis sends open` and `sends batch` file the
+  request (the batch carried in it) and open nothing; the commit check files the line's
+  request and never writes the store. Once the session's record shows the principal
+  typing the code, the hook applies it at that prompt, the turn's next tool call or its
+  end: it opens the window or the batch, or keeps the line. `synthesis sends close`
+  writes a close mark beside the state, which ends what opened before it and never
+  extends anything. The lost-session and gap-review commands read a live, typed grant
+  and spend nothing.
+- **A process that cannot write the sealed folder spends nothing**: `consume`, `void`,
+  `alone` and `answered` raise `approvals.Sealed`, naming the folder.
+- **A command outside the sandbox** (Claude Code's `dangerouslyDisableSandbox`, Codex's
+  `sandbox_permissions: "require_escalated"` or `with_escalated_permissions`, the desktop
+  app's terminal panel) waits for the principal's code of exactly that command, where it
+  runs; the release launcher's own line leaves the sandbox with no code.
+- **A Muse session gets no approval** until Muse's sandbox is shown to seal the folders:
+  its prompt hook grants nothing, a grant made elsewhere lets nothing through there, and a
+  held call says to make it in a Claude Code or Codex session.
+- **The move.** The first install or hook that finds `approvals/` not there moves the old
+  records out of `state/` (and merges a line store the config once placed elsewhere),
+  once; after that a file in an old place is a shell's and stays where it is.
+- **Residual.** A shell-filed request can misdescribe what its code approves (it deceives
+  the principal; it forges nothing). A Codex `write_stdin` into a session an escalated
+  command started types into that unsandboxed shell under the one code. The plugin caches
+  are sealed by the sandbox alone: the skills' scripts run from there, so the guard does
+  not hold a program that reads them.
+
 The commit check uses the same approvals for a disclosure hit: a line in a file or a
 commit message that matches the principal's exposure patterns. No word list can tell a
 leak from a legitimate mention, and agents that reworded, split or assembled a term at
@@ -159,9 +202,10 @@ run time to get past the check weakened the text and defeated the check, so the
 principal ruled (2026-10-06) that a legitimate line is approved instead, and that a
 flagged term is never reworded, split, encoded or built at run time to get past any
 guard. The request is keyed to a SHA-256 of the repository (its normalized push
-remotes), the path (or `commit message`) and the line's exact bytes. Once spent, the
-approval is kept in the store `line_allowances` names (by default
-`line-allowances.json` beside the commit policy) as that hash and a date, so the line
+remotes), the path (or `commit message`) and the line's exact bytes. The check runs in
+the agent's shell, so it only files the request (in `state/requests`); once the session's
+record shows the principal typing its code, the hook keeps the line in the sealed store,
+`~/.synthesis/v5/approvals/line-allowances.json`, as that hash and a date, so the line
 passes from then on; an edited line or a new place asks again. `git commit` from an
 agent's shell has no hook payload, so the check finds the transcript by the session id
 the shell carries: `CLAUDE_CODE_SESSION_ID` (seen in a live Claude Code shell),

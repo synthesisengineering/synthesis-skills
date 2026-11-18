@@ -283,7 +283,7 @@ so, since a declaration that runs a missing hook holds every guarded call in Cod
   the plugin's), it names the event and the cost: where the guard runs twice, a call
   both copies judge is held even once approved, since one copy spends the approval and
   the other asks again. Setup records the groups it wrote
-  (`~/.synthesis/v5/state/codex-user-hooks.json`) and treats only those as its own.
+  (`~/.synthesis/v5/install/codex-user-hooks.json`) and treats only those as its own.
 - It switches the plugin's own copy of each covered event off by its state key in
   `config.toml` (`[hooks.state."synthesis-skills@synthesis-engineering:hooks/hooks.json:<event>:0:0"]`,
   `enabled = false`), so no event runs twice. A key Codex already holds an approval

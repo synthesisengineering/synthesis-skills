@@ -276,7 +276,7 @@ RELEASE_URL = "https://github.com/synthesisengineering/synthesis-skills.git"  # 
 
 def _grant_file(home: Path, version: str) -> Path:
     key = hashlib.sha256((os.path.realpath(home) + "\0" + version).encode("utf-8")).hexdigest()[:32]
-    return paths.state() / "release-grants" / f"{key}.json"
+    return paths.approvals() / "release-grants" / f"{key}.json"
 
 
 def grant_release(version: str, line: str = "") -> Path:
@@ -335,7 +335,7 @@ def approval(wanted: dict, said: str, session: dict | None) -> None:
     try:
         if approvals.consume("runtime", wanted, session) or approvals.answered("runtime", wanted, session):
             return
-    except approvals.Unverified as exc:
+    except (approvals.Unverified, approvals.Sealed) as exc:  # sealed: a shell the sandbox confines installs nothing
         raise Unapproved(str(exc)) from None
     code = approvals.request("runtime", wanted, f"the synthesis runtime: {said[:150]}")
     raise Unapproved(f"This {said}. That runtime is what the guard runs, so it changes only on the principal's word: show "
@@ -541,8 +541,9 @@ def install(plugin_root: Path, first_only: bool = False, git_hooks: bool = False
     found = traces(home)
     try:
         move_board(home)  # before any switch, so the new release's first read finds the board in place
+        move_approvals(home)  # and the sealed records in theirs
     except OSError as exc:  # never blocks a session start; the doctor names what is left in state/
-        print(f"synthesis: the board could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
+        print(f"synthesis: the board or the approvals could not be moved out of {home / 'state'}: {exc}", file=sys.stderr)
     if first_only and found and current_hash() and os.access(home / "bin" / "synthesis-hook", os.X_OK):
         _compile(home / "current" / "synthesis")  # an older release's installer made the switch, or the interpreter changed
         return f"synthesis runtime kept at {current_hash()}: a session start installs only into a home no runtime has been in"
@@ -620,6 +621,28 @@ def move_board(home: Path) -> list:
             _merge(old, home / "board" / name, home / "archive" / f"board-{stamp}" / name)
             moved.append(name)
     return moved
+
+
+def move_approvals(home: Path) -> list:
+    """The sealed records live in approvals/ and install/ since the guard's sandbox (the principal's rulings of
+    2026-11-15), where only the hook and the installer write. What a release before kept in state/, and the approved
+    commit lines the config placed beside the commit policy, move there once: by the first install or hook that finds
+    approvals/ not there. After that a file in an old place is a shell's and stays where it is. Nothing is deleted: a
+    name already taken in the new place keeps it, and the old copy goes to the archive. Returns what moved."""
+    home = Path(home)
+    if os.path.lexists(home / "approvals"):
+        return []
+    try:
+        old = paths.old_line_allowances(paths.config())
+    except (OSError, ValueError):
+        old = None
+    lines, stamp, moved = paths.read_json(old).get("lines") if old else None, time.strftime("%Y%m%dT%H%M%S"), []
+    for name in [n for n in (*paths.MOVED, "codex-user-hooks.json") if os.path.lexists(home / "state" / n)]:
+        new = home / "install" / name if name == "codex-user-hooks.json" else home / "approvals" / paths.MOVED[name]
+        _merge(home / "state" / name, new, home / "archive" / f"approvals-{stamp}" / name)
+        moved.append(name)
+    paths.write_json(home / "approvals" / "line-allowances.json", {"lines": lines if isinstance(lines, dict) else {}})
+    return moved + ["line-allowances.json"] * bool(lines)
 
 
 def _merge(old: Path, new: Path, archive: Path) -> None:

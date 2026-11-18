@@ -23,7 +23,7 @@ def test_requests_filed_while_one_call_is_judged_share_one_code_which_grants_the
         second = approvals.request("deploy", {"line": "b"}, "a deploy")
     assert first == second and approvals.pending() == [first]
     assert approvals.grant_from_prompt(f"approve {first}") == ["the runtime", "a deploy"]
-    assert approvals.held("runtime", {"to": "a"}) and approvals.held("deploy", {"line": "b"}) and approvals.pending() == []
+    assert approvals.grant("runtime", {"to": "a"}) and approvals.grant("deploy", {"line": "b"}) and approvals.pending() == []
 
 
 def test_outside_one_call_each_request_keeps_its_own_code():
@@ -105,7 +105,7 @@ def test_a_request_voided_while_another_code_carries_it_second_takes_that_code_w
         approvals.request("runtime", {"to": "a"}, "x")
         approvals.request("send", {"tool": "t"}, "a send")
     approvals.void("send", {"tool": "t"})
-    assert approvals.grant_from_prompt(f"approve {call['code']}") == [] and not approvals.held("send", {"tool": "t"})
+    assert approvals.grant_from_prompt(f"approve {call['code']}") == [] and not approvals.grant("send", {"tool": "t"})
 
 
 def test_one_call_inside_another_files_under_the_outer_call_s_code():

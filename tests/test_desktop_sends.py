@@ -499,7 +499,7 @@ def test_typed_words_never_land_in_an_approval_record_in_plain_text():
     call = _opened("https://www.example.com/account", ("form_input", {"ref": "ref_2", "value": "s3cret-test-pass"}),
                    _click("Clicks the Submit button"))
     assert "approve" in (check(CHROME, call) or "")
-    stored = [f.read_text(encoding="utf-8") for f in (paths.state() / "approval-requests").glob("*.json")]
+    stored = [f.read_text(encoding="utf-8") for f in (paths.approvals() / "requests").glob("*.json")]
     assert stored and not any("s3cret-test-pass" in text for text in stored)
 
 

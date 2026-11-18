@@ -9,6 +9,12 @@ OS user and can write that grant itself, or feed the hook a made-up prompt (M5,
 session must also hold that prompt, typed by the principal after the request was filed.
 Tool output, hook text, compaction summaries and other sessions' messages never count.
 A verified grant lets exactly one matching call through and expires.
+
+Every record here is sealed (the guard's sandbox, the principal's rulings of 2026-11-15): only the hook writes the
+approvals folder, and each harness's sandbox keeps every shell out of it. A shell files its requests beside its working
+state, where they grant nothing until the principal types the code; the hook grants them, named as a shell's, and itself
+applies what a typed code approves whose effect is a sealed record (EFFECTS). A process that cannot write the folder
+spends nothing, and says why.
 """
 
 from __future__ import annotations
@@ -44,13 +50,43 @@ class Unverified(PermissionError):
     """A grant exists, but the harness's record does not show the principal typing it."""
 
 
+class Sealed(PermissionError):
+    """This process cannot write the sealed approvals folder: a shell the harness's sandbox confines, which files
+    requests and spends nothing."""
+
+
+def _sealed(exc: OSError) -> Sealed:
+    return Sealed(f"This process cannot write {paths.approvals()}, the sealed approvals folder ({exc.strerror or exc}): only the "
+                  "hook spends or withdraws an approval, and a shell the sandbox confines files requests alone. Make the call the "
+                  "approval is for, and the hook spends it there.")
+
+
+IN_HOOK = False  # set by the hook process (hook.main): a request it files is sealed, anyone else's goes to state/requests
+SHELL = " (a request a shell command filed, in its own words)"  # how a grant of one is named to the principal
+# What a typed code approves whose effect is a sealed record: the hook applies it once the session's record shows the
+# code typed (hook.apply_effects), since a shell can no longer write the record itself (design 2.3).
+EFFECTS = frozenset({"disclosure-line", "send-window", "send-batch"})
+
+
 def digest(kind: str, subject) -> str:
     canonical = subject if isinstance(subject, str) else json.dumps(subject, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(f"{kind}\0{canonical}".encode("utf-8")).hexdigest()
 
 
 def _dir(name: str) -> Path:
-    return paths.state() / name
+    return paths.approvals() / name
+
+
+def _folders() -> tuple:
+    """Where requests wait: the hook's, sealed, first, then those a shell filed."""
+    return _dir("requests"), paths.requests()
+
+
+def _request_file(code: str) -> Path:
+    """The pending request of this code: the hook's where one is filed under it, else a shell's. A shell's under a code
+    the hook filed is never granted: a shell can read the hook's codes and plant its own request under one."""
+    sealed = _dir("requests") / f"{code}.json"
+    return sealed if sealed.exists() else paths.requests() / f"{code}.json"
 
 
 def how(code: str) -> str:
@@ -59,14 +95,16 @@ def how(code: str) -> str:
 
 
 def pending() -> list[str]:
-    """The codes of requests waiting for the principal."""
-    return [p.stem for p in _dir("approval-requests").glob("*.json")]
+    """The codes of requests waiting for the principal, the hook's and the shells'."""
+    return list(dict.fromkeys(p.stem for folder in _folders() for p in folder.glob("*.json")))
 
 
-def request(kind: str, subject, summary: str) -> str:
+def request(kind: str, subject, summary: str, carry: dict | None = None) -> str:
     """File (or refresh) a pending request; returns the code the principal types. A retry keeps the code the principal
-    was already shown. Inside `one_code` the request joins the call's, filed together under one code when it ends."""
-    entry = {"kind": kind, "digest": digest(kind, subject), "summary": summary}
+    was already shown. Inside `one_code` the request joins the call's, filed together under one code when it ends. A
+    request of a kind in EFFECTS carries its subject, and `carry` what else the hook needs to apply it."""
+    entry = {"kind": kind, "digest": digest(kind, subject), "summary": summary,
+             **({"subject": subject, **(carry or {})} if kind in EFFECTS else {})}
     if CALL:
         CALL[0]["entries"] += [] if any(e["digest"] == entry["digest"] for e in CALL[0]["entries"]) else [entry]
         CALL[0]["shown"] = CALL[0]["shown"] or _new_code()  # made on the first request: a call that asks none pays nothing
@@ -82,12 +120,15 @@ def _new_code() -> str:
 def _file(entries: list, code: str) -> str:
     """File these requests under the code a pending request of exactly these already has (a retry), else under `code`.
     Never a code that carries anything else: a code the principal was shown names exactly what it grants (the
-    integration review of 5.24.1, finding 1: a later call's requests joined a code shown for fewer)."""
+    integration review of 5.24.1, finding 1: a later call's requests joined a code shown for fewer). The hook files in
+    the sealed folder; any other process beside its state, marked as a shell's, under a code the hook has not filed."""
     _expire()
-    keys = sorted(e["digest"] for e in entries)
-    code = next((c for c in pending() if sorted(_keys(_dir("approval-requests") / f"{c}.json")) == keys), code)
-    paths.write_json(_dir("approval-requests") / f"{code}.json", {**entries[0], "at": time.time(),
-                                                                    **({"also": entries[1:]} if entries[1:] else {})})
+    folder, keys = _dir("requests") if IN_HOOK else paths.requests(), sorted(e["digest"] for e in entries)
+    code = next((p.stem for p in folder.glob("*.json") if sorted(_keys(p)) == keys), code)
+    while not IN_HOOK and (_dir("requests") / f"{code}.json").exists():
+        code = _new_code()
+    paths.write_json(folder / f"{code}.json", {**entries[0], "at": time.time(), **({"also": entries[1:]} if entries[1:] else {}),
+                                               **({} if IN_HOOK else {"by": "shell"})})
     return code
 
 
@@ -122,13 +163,14 @@ def _keys(path: Path) -> list:
 
 
 def _expire() -> None:
-    """Drop requests and grants older than the TTL, so state never grows (R8.3)."""
+    """Drop requests and grants older than the TTL, so state never grows (R8.3); a process that cannot write the sealed
+    folder drops only the requests beside its state."""
     cutoff = time.time() - TTL_SECONDS
-    for path in (p for name in ("approval-requests", "approvals") for p in _dir(name).glob("*.json")):
+    for path in (p for folder in (*_folders(), _dir("grants"), _dir("effects")) for p in folder.glob("*.json")):
         try:
             if path.stat().st_mtime < cutoff:
                 path.unlink()
-        except FileNotFoundError:
+        except (FileNotFoundError, PermissionError):
             pass
 
 
@@ -166,23 +208,27 @@ def mentioned(prompt: str) -> list[str]:
     return list(dict.fromkeys(code.lower() for code in re.findall(rf"\b{ONE}", prompt or "", re.IGNORECASE)))
 
 
-def grant_from_prompt(prompt: str, transcript_path: str = "") -> list[str]:
+def grant_from_prompt(prompt: str, transcript_path: str = "", session_id: str = "") -> list[str]:
     """Grant every pending request whose code the prompt carries, each with where the session's record ended when the
-    principal typed, so that finding his prompt reads only from there. Returns the summaries granted."""
-    granted = []
+    principal typed, so that finding his prompt reads only from there, and the session it was typed in. A request of a
+    kind in EFFECTS waits in effects/ for the hook to apply it. Returns the summaries granted, a shell's named as one."""
+    said, me = [], session_id or paths.session_id()
     try:
         ended = {"record_at": os.path.getsize(transcript_path)} if transcript_path and os.path.isfile(transcript_path) else {}
     except OSError:
         ended = {}
     for code in typed_codes(prompt):
-        pending_file = _dir("approval-requests") / f"{code}.json"
-        data = paths.read_json(pending_file)
+        pending_file = _request_file(code)
+        data, shell = paths.read_json(pending_file), pending_file.parent == paths.requests()
         for entry in _entries(data) if data.get("digest") else []:  # every request the code carries (A5)
-            paths.write_json(_dir("approvals") / f"{entry['digest']}.json", {"kind": entry["kind"], "digest": entry["digest"],
-                             "summary": entry.get("summary", ""), "code": code, "asked": data.get("at", 0), "at": time.time(), **ended})
-            granted.append(entry.get("summary", ""))
-        pending_file.unlink(missing_ok=True)
-    return granted
+            effect = entry["kind"] in EFFECTS and digest(entry["kind"], entry.get("subject")) == entry["digest"]
+            paths.write_json(_dir("effects" if effect else "grants") / f"{entry['digest']}.json", {
+                **(entry if effect else {}), "kind": entry["kind"], "digest": entry["digest"], "summary": entry.get("summary", ""),
+                "code": code, "asked": data.get("at", 0), "at": time.time(), "session": me, "shell": shell, **ended})
+            said.append(entry.get("summary", "") + SHELL * shell)
+        for folder in _folders():  # a shell's request planted under the hook's code goes with it
+            (folder / f"{code}.json").unlink(missing_ok=True)
+    return said
 
 
 def transcript(session: dict | None) -> str:
@@ -195,7 +241,7 @@ def transcript(session: dict | None) -> str:
     sid = paths.session_id(session)
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
-    record = paths.read_json(_dir("transcripts") / f"{sid}.json")
+    record = paths.read_json(_dir("records") / f"{sid}.json")
     recorded = str(record.get("path") or "")
     folders = record["folders"] if "folders" in record else _account_folders()  # a note 5.23's prompt hook wrote names none
     return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, folders) else ""
@@ -218,13 +264,13 @@ def remember(session_id: str, transcript_path: str) -> None:
     runs, with the folders each harness keeps its records in as this process's environment names them. The prompt hook
     records them: the harness starts it, with the harness's own environment, which no agent's command sets, while a
     check a script enters runs inside the agent's command, which can name any folder as a harness's for itself. The
-    state folder holds them, which an agent's command, or a program that calls this, writes only on the principal's code."""
+    sealed approvals folder holds them, which only the hook writes."""
     if re.fullmatch(r"[\w.-]+", str(session_id or "")) and transcript_path and os.path.isabs(str(transcript_path)):
         record = {"path": str(transcript_path), "folders": {**{name: str(root) for name, root in paths.transcript_roots().items()},
                                                             "codex-archived": str(paths.codex_home() / "archived_sessions"),  # as sessions.natives reads them
                                                             "desktop": str(paths.desktop_dir() / "local-agent-mode-sessions")}}
-        if paths.read_json(_dir("transcripts") / f"{session_id}.json") != record:
-            paths.write_json(_dir("transcripts") / f"{session_id}.json", record)
+        if paths.read_json(_dir("records") / f"{session_id}.json") != record:
+            paths.write_json(_dir("records") / f"{session_id}.json", record)
 
 
 def _kept_by_a_harness(path: str, folders) -> bool:
@@ -333,13 +379,19 @@ def _lines_back(transcript_path: str, block: int = 1 << 20, stop: int = 0):
 
 
 def typed(transcript_path: str, code: str, since: float, session_id: str = "", start=None) -> bool:
-    """Whether the harness's record shows the principal typing approve <code> after `since`. It is read from its end:
+    """Whether the harness's record shows the principal typing approve <code> after `since` (`showing`)."""
+    return showing(transcript_path, code, since, session_id, start) is not None
+
+
+def showing(transcript_path: str, code: str, since: float, session_id: str = "", start=None) -> tuple | None:
+    """(when, the SHA-256 of its line) of the prompt in the harness's record that shows the principal typing approve
+    <code> after `since`; None for none. The record is read from its end:
     back to MARGIN before `start`, where the record ended when the prompt hook granted, and the whole line there (a
     forged position can only hide a prompt, never add one), and with no position, only as far as the approval window, a run of lines all older than it
     ending the search (2026-11-15: a Codex record of 1.9 GB took 4.6 s to read from its start, past the hook's 4 s; then
     a compaction block of older lines written after a prompt ended the window's search before it)."""
     if not code:
-        return False
+        return None
     size = os.path.getsize(transcript_path)
     bounded = isinstance(start, int) and not isinstance(start, bool) and 0 <= start <= size
     hit, old = re.compile(re.escape(code), re.IGNORECASE), 0
@@ -350,39 +402,39 @@ def typed(transcript_path: str, code: str, since: float, session_id: str = "", s
             except (ValueError, TypeError, AttributeError):
                 when, texts = 0.0, []
             if when > since and any(code in typed_codes(text) for text in texts):
-                return True
+                return when, hashlib.sha256(line.encode("utf-8", "replace")).hexdigest()
         stamps = [] if bounded else _stamps(line)
         if stamps:
             old = old + 1 if max(stamps) < since - SLACK_SECONDS else 0
             if old >= OLD_RUN:
-                return False
-    return False
-
-
-def held(kind: str, subject) -> bool:
-    """A live grant of exactly this subject exists. Spends nothing: the command it lets run spends it."""
-    data = paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
-    return data.get("kind") == kind and time.time() - float(data.get("at", 0)) <= TTL_SECONDS
+                return None
+    return None
 
 
 def grant(kind: str, subject) -> dict:
     """The live grant of exactly this subject as recorded (its code, and when it was asked for); {} for none. Spends
     nothing: a batch keeps its code, so each of its sends can find the principal typing it again."""
-    return paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
+    return paths.read_json(_dir("grants") / f"{digest(kind, subject)}.json")
 
 
-def backed(kind: str, subject, session: dict | None = None) -> bool:
-    """A live grant of exactly this subject that the principal's own prompt backs. Spends nothing: it holds until it
-    expires, for an approval of a thing (an address) that each call it lets through still waits on its own."""
-    data = paths.read_json(_dir("approvals") / f"{digest(kind, subject)}.json")
-    if data.get("kind") != kind or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
+def _muse(session: dict | None) -> bool:
+    """A Muse session gets no approval until Muse's sandbox is shown to keep its shells out of the sealed folders (the
+    principal's ruling of 2026-11-15): a grant typed elsewhere, or there, lets nothing through in one."""
+    return paths.harness(session) == "muse"
+
+
+def granted(kind: str, subject, session: dict | None = None, why: list | None = None) -> bool:
+    """A live grant of exactly this subject that the principal's own prompt backs. Spends nothing, so a shell may ask it:
+    it holds until it expires, for an approval of a thing (an address, an accepted loss, a review) that is the same
+    whenever it is read, or that each call it lets through still waits on on its own. With `why`, a grant there that the
+    record does not back adds the reason to it."""
+    data = paths.read_json(_dir("grants") / f"{digest(kind, subject)}.json")
+    if data.get("kind") != kind or time.time() - float(data.get("at", 0)) > TTL_SECONDS or _muse(session):
         return False
-    try:
-        return bool(transcript(session)) and typed(transcript(session), str(data.get("code", "")),
-                                                   max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), paths.session_id(session),
-                                                   data.get("record_at"))
-    except OSError:
-        return False
+    shown, _, problem = _backing(data, session)
+    if why is not None and not shown:
+        why.append(problem)
+    return bool(shown)
 
 
 def answered(kind: str, subject, session: dict | None = None) -> bool:
@@ -391,18 +443,21 @@ def answered(kind: str, subject, session: dict | None = None) -> bool:
     CLI's install and uninstall) reads that record itself, so a runtime can be approved while none runs the hook. The
     request is spent."""
     key, record = digest(kind, subject), transcript(session)
-    for code in pending() if record else []:
-        data = paths.read_json(_dir("approval-requests") / f"{code}.json")
+    for code in pending() if record and not _muse(session) else []:
+        file = _request_file(code)
+        data = paths.read_json(file)
         if key not in [e["digest"] for e in _entries(data)] or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
             continue
         try:
             if typed(record, code, float(data.get("at", 0)), paths.session_id(session)):
                 rest = [e for e in _entries(data) if e["digest"] != key]  # the code's other requests stay for their own checks
                 if rest:
-                    paths.write_json(_dir("approval-requests") / f"{code}.json", {**rest[0], "at": data.get("at", 0), "also": rest[1:]})
+                    paths.write_json(file, {**rest[0], "at": data.get("at", 0), "also": rest[1:]})
                 else:
-                    (_dir("approval-requests") / f"{code}.json").unlink(missing_ok=True)
+                    file.unlink(missing_ok=True)
                 return True
+        except PermissionError as exc:
+            raise _sealed(exc) from None
         except OSError:
             return False
     return False
@@ -415,15 +470,17 @@ def void(kind: str, subject) -> list:
     Returns what it removed, (file, bytes) each, for a call that is then held to put back. A request carried beside
     others takes its code with it: that code was shown granting it (the integration review of 5.24.1)."""
     key = digest(kind, subject)
-    files = [_dir("approvals") / f"{key}.json"] + [_dir("approval-requests") / f"{code}.json" for code in pending()
-                                                   if key in _keys(_dir("approval-requests") / f"{code}.json")]
+    files = [_dir("grants") / f"{key}.json"] + [p for folder in _folders() for p in folder.glob("*.json") if key in _keys(p)]
     removed = []
     for path in files:
         try:
-            removed.append((path, path.read_bytes()))
+            held = path.read_bytes()
             path.unlink()
         except FileNotFoundError:
             continue
+        except PermissionError as exc:
+            raise _sealed(exc) from None
+        removed.append((path, held))
     return removed
 
 
@@ -443,9 +500,13 @@ def alone():
             _ALONE[0] -= 1
         return
     import fcntl
-    held = _dir("approvals.lock")  # beside the folder: a spent or expired approval leaves no file in it
-    held.parent.mkdir(parents=True, exist_ok=True)
-    with open(held, "a") as handle:
+    held = _dir("lock")  # beside the folders: a spent or expired approval leaves no file in them
+    try:
+        held.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(held, "a")
+    except PermissionError as exc:
+        raise _sealed(exc) from None
+    with handle:
         fcntl.flock(handle, fcntl.LOCK_EX)
         _ALONE[0], _ALONE[1] = 1, me
         try:
@@ -490,6 +551,8 @@ def _spend(path: Path) -> bytes | None:
         os.replace(path, spent)
     except FileNotFoundError:
         return None
+    except PermissionError as exc:
+        raise _sealed(exc) from None
     try:
         return spent.read_bytes()
     except OSError:
@@ -503,10 +566,12 @@ def consume(kind: str, subject, session: dict | None = None) -> bool:
     grant is read before it is spent, so a deadline that ends the read leaves it for the identical retry (2026-11-15:
     two grants were spent, then the read ran past the hook's 4 s); a grant that does not hold, or that the record does
     not back, is spent all the same, and for the latter the request is filed again and this raises."""
-    path = _dir("approvals") / f"{digest(kind, subject)}.json"
+    path = _dir("grants") / f"{digest(kind, subject)}.json"
     try:
         before = path.read_bytes()
     except FileNotFoundError:
+        return False
+    if _muse(session):
         return False
     try:
         data = json.loads(before)
@@ -516,18 +581,74 @@ def consume(kind: str, subject, session: dict | None = None) -> bool:
     if data.get("kind") != kind or time.time() - float(data.get("at", 0)) > TTL_SECONDS:
         _spend(path)
         return False
+    shown, record, problem = _backing(data, session)
+    if shown:
+        if _spend(path) != before:  # once; a grant put in place while the record was read was never checked
+            return False
+        SPENT.append((path, before))
+        _ledger(data, record, shown)
+        return True
+    _spend(path)
+    raise Unverified(unbacked(problem, request(kind, subject, str(data.get("summary", "")))))
+
+
+def _backing(data: dict, session: dict | None) -> tuple:
+    """(where the session's own record shows the principal typing this grant's code since it was asked for, or None;
+    the record; why it does not, or '')."""
     record, since = transcript(session), max(float(data.get("asked", 0)), time.time() - TTL_SECONDS)
     try:
-        if record and typed(record, str(data.get("code", "")), since, paths.session_id(session), data.get("record_at")):
-            if _spend(path) != before:  # once; a grant put in place while the record was read was never checked
-                return False
-            SPENT.append((path, before))
-            return True
-        problem = (f"{record} shows no prompt from the principal with its code since it was asked for" if record else
-                   "the harness gave no transcript for this session, and only that record can show who typed it")
+        shown = showing(record, str(data.get("code", "")), since, paths.session_id(session), data.get("record_at")) if record else None
     except OSError as exc:
-        problem = f"the session's transcript could not be read ({exc})"
-    _spend(path)
-    code = request(kind, subject, str(data.get("summary", "")))
-    raise Unverified(f"An approval for this call was recorded, but {problem}. Approvals come only from the principal's "
-                     f"own prompt, so it was not used. Show them the exact call again and ask them to type {how(code)}.")
+        return None, record, f"the session's transcript could not be read ({exc})"
+    return shown, record, "" if shown else (f"{record} shows no prompt from the principal with its code since it was asked for"
+                                            if record else "the harness gave no transcript for this session, and only that "
+                                            "record can show who typed it")
+
+
+def unbacked(problem: str, code: str) -> str:
+    return (f"An approval for this call was recorded, but {problem}. Approvals come only from the principal's own prompt, "
+            f"so it was not used. Show them the exact call again and ask them to type {how(code)}.")
+
+
+def _ledger(data: dict, record: str, shown: tuple) -> None:
+    """One line in granted.jsonl for each typed code the hook spends: the code, what it granted, when the principal typed
+    it, and the record and line that showed it."""
+    row = {"code": data.get("code"), "kind": data.get("kind"), "digest": data.get("digest"), "summary": data.get("summary"),
+           "typed": shown[0], "record": record, "line": shown[1], "at": time.time(), **({"shell": True} if data.get("shell") else {})}
+    with open(_dir("granted.jsonl"), "a", encoding="utf-8") as log:
+        log.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+
+def ready(session: dict | None) -> list:
+    """(file, grant, (when, line)) for each grant waiting in effects/ that this session's own record shows the principal
+    typing, oldest first: the hook applies each (hook.apply_effects). Nothing in a Muse session."""
+    found, me = [], paths.session_id(session)
+    waiting = sorted(_dir("effects").glob("*.json"), key=lambda p: p.stat().st_mtime) if _dir("effects").is_dir() else []
+    record = transcript(session) if waiting and not _muse(session) else ""
+    for path in waiting if record else []:
+        data = paths.read_json(path)
+        if (data.get("session") != me or data.get("kind") not in EFFECTS or time.time() - float(data.get("at", 0)) > TTL_SECONDS
+                or digest(data["kind"], data.get("subject")) != path.stem):
+            continue
+        try:
+            shown = showing(record, str(data.get("code", "")), max(float(data.get("asked", 0)), time.time() - TTL_SECONDS), me,
+                            data.get("record_at"))
+        except OSError:
+            continue
+        found += [(path, data, shown)] if shown else []
+    return found
+
+
+def apply(path: Path, data: dict, shown: tuple, record: str, effect) -> str:
+    """Spend one waiting effect grant and apply it (`effect(data)`, what it says it did); one another hook took first is
+    left alone, and one whose effect fails is put back for the next hook event to try again."""
+    before = _spend(path)
+    if before is None:
+        return ""
+    try:
+        said = effect(data)
+    except BaseException:  # a deadline too: the grant stays for the next hook event
+        put_back([(path, before)])
+        raise
+    _ledger(data, record, shown)
+    return said

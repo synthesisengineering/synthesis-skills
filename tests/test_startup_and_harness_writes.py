@@ -40,7 +40,7 @@ def world(tmp_path, monkeypatch):
     record = home / ".claude" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})
+    paths.write_json(paths.approvals() / "records" / "S-principal.json", {"path": str(record)})
     for name in (".zshrc", ".zprofile"):
         (home / name).write_text("export EDITOR=vi\n", encoding="utf-8")
     (home / ".claude" / "shell-snapshots").mkdir(parents=True)
@@ -308,12 +308,12 @@ def test_a_program_that_hands_its_child_the_harness_s_own_variables_is_not_held_
     take that as a protected path the program may write. A variable naming the state folder still holds it."""
     monkeypatch.setenv("CLAUDE_CODE_EXECPATH", str(world["desktop"] / "claude"))
     assert _shell(world, COPIES_ENV) is None
-    monkeypatch.setenv("HELD_HERE", str(paths.state() / "approvals" / "x.json"))
+    monkeypatch.setenv("HELD_HERE", str(paths.approvals() / "grants" / "x.json"))
     assert _shell(world, COPIES_ENV) is not None
 
 
 def test_a_variable_that_names_the_state_folder_still_holds_a_program_that_reads_the_environment(world, monkeypatch):
-    monkeypatch.setenv("HELD_HERE", str(paths.state() / "approvals" / "x.json"))
+    monkeypatch.setenv("HELD_HERE", str(paths.approvals() / "grants" / "x.json"))
     assert _shell(world, UNFOLLOWED) is not None
 
 

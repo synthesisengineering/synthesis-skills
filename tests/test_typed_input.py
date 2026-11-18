@@ -41,7 +41,7 @@ def codex(tmp_path, monkeypatch):
     (v5 / "git-hooks").mkdir(parents=True)
     (v5 / "git-hooks" / "pre-commit").write_text("#!/bin/sh\nexec true\n", encoding="utf-8")
     (v5 / "config.json").write_text("{}\n", encoding="utf-8")
-    (paths.state() / "approvals").mkdir(parents=True)
+    (paths.approvals() / "grants").mkdir(parents=True)
     work = tmp_path / "work"
     work.mkdir()
     rollout = home / ".codex" / "sessions" / "2026" / "11" / "15" / "rollout-2026-11-15T10-00-00-01a18a2b-0000-7000-8000-0000000000c1.jsonl"
@@ -118,7 +118,7 @@ def test_a_line_typed_into_a_shell_is_judged_in_the_folder_its_session_started_i
 
 def test_a_typed_line_is_judged_by_every_shell_guard(codex):
     codex["started"]("bash", workdir=codex["work"])
-    assert _typed(codex, f"echo x > {paths.state() / 'approvals' / 'forged.json'}\n").startswith("Refused")
+    assert _typed(codex, f"echo x > {paths.approvals() / 'grants' / 'forged.json'}\n").startswith("Refused")
     assert "refusing a recursive delete" in _typed(codex, "rm -rf ~\n")
     assert _held(_typed(codex, "gh pr comment 5 -R someone-else/app --body 'Looks good to me.'\n"))
     assert _held(_typed(codex, "echo x > ~/.synthesis/v5/config.json\n"), SETTINGS)
@@ -259,7 +259,7 @@ def test_an_installer_script_binds_the_settings_file_it_copies(codex, tmp_path, 
     record.parent.mkdir(parents=True)
     record.touch()
     monkeypatch.setenv("SYNTHESIS_SESSION", "S-principal")
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})
+    paths.write_json(paths.approvals() / "records" / "S-principal.json", {"path": str(record)})
     me = {"session_id": "S-principal", "transcript_path": str(record)}
     (work / "v5-config.json").write_text('{"send_tools": ["approved"]}\n', encoding="utf-8")
     (work / "install.sh").write_text(f'#!/bin/sh\ncp v5-config.json "{v5}/config.json"\n', encoding="utf-8")

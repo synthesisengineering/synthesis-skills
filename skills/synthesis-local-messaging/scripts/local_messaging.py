@@ -476,9 +476,12 @@ def _close(coverage, review, subject) -> None:
     except ImportError:
         raise Refused("Closing these gaps needs the principal's approval of this review, and only the synthesis runtime "
                       "can record that approval; nothing was closed. The whole set, synthesis-skills, has it") from None
-    if not approvals.consume("message-gap-review", subject):
+    why = []  # read, never spent: a shell writes nothing sealed, and the same review closes the same gaps
+    if not approvals.granted("message-gap-review", subject, None, why):
         code = approvals.request("message-gap-review", subject, "close message-reader gaps reviewed by hand, rows "
                                  + ", ".join(str(g["row"]) for g in coverage["gaps"])[:160])
+        if why:  # a grant no prompt of the principal's backs: said, as a spent one was
+            raise approvals.Unverified(approvals.unbacked(why[0], code))
         raise Refused("Closing these gaps needs the principal's approval of this review: " + json.dumps(coverage["gaps"])[:2000]
                       + f". Show them the rows and reasons and ask them to type {approvals.how(code)}. Then run the "
                       "identical command again.")

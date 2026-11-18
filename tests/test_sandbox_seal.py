@@ -53,9 +53,11 @@ class _Seal:
 
 
 @pytest.fixture
-def sealed(isolated_home):
+def sealed(isolated_home, monkeypatch):
+    """A shell the harness's sandbox confines: it files its requests beside its state and writes nothing sealed."""
     if os.geteuid() == 0:
         pytest.skip("root writes a folder whatever its mode")
+    monkeypatch.setattr(approvals, "IN_HOOK", False)
     seal = _Seal()
     yield seal
     seal.open()
@@ -77,6 +79,17 @@ def test_the_sealed_records_live_in_folders_of_their_own(isolated_home, tmp_path
     assert install._grant_file(isolated_home, "5.30.0").parent == sealed / "release-grants"
     for folder in (sealed, isolated_home / "install"):
         assert str(folder) in guards._protected_roots({})
+
+
+def test_a_harness_settings_file_or_a_launch_agent_waits_for_the_principals_code(tmp_path):
+    """What each harness runs as a hook or lets out of its sandbox, and what launchd starts with full access, is as much
+    of the trust base as the runtime (design 2.1): a write there waits for his code; reading it needs none."""
+    for target in paths.harness_settings():
+        file = target / "job.plist" if target.suffix not in (".json", ".toml") else target
+        held = guards.check("Write", {"file_path": str(file), "content": "{}"}, {}, cwd=str(tmp_path))
+        assert held and "type approve followed by the code" in held, file
+        assert guards.check("Bash", {"command": f"echo x > '{file}'"}, {}, cwd=str(tmp_path)), file
+    assert guards.check("Bash", {"command": f"cat '{paths.harness_settings()[0]}'"}, {}, cwd=str(tmp_path)) is None
 
 
 def test_the_hook_files_and_grants_in_the_sealed_folder(principal, isolated_home, monkeypatch):
@@ -124,7 +137,7 @@ def _old_layout(home: Path, tmp_path: Path, write_config) -> None:
 
 def test_the_installer_moves_the_old_layout_into_the_sealed_folders_once(isolated_home, tmp_path, write_config):
     _old_layout(isolated_home, tmp_path, write_config)
-    assert sorted(paths.old_approvals()) == sorted({name.split("/")[0] for name in OLD})
+    assert sorted(paths.old_approvals()) == sorted({name.split("/")[0] for name in OLD} | {"codex-user-hooks.json", "line-allowances.json"})
     moved = install.move_approvals(isolated_home)
     assert moved and paths.old_approvals() == []
     for old, new in OLD.items():
@@ -169,7 +182,8 @@ def test_an_install_moves_the_old_layout_before_anything_else(isolated_home, tmp
 
 # --- requests a shell files, and what only the hook spends (design 2.3 and 4.5) --------------------------------------------
 
-def test_a_shells_request_is_filed_beside_its_state_and_named_as_a_shells_when_granted(principal, isolated_home):
+def test_a_shells_request_is_filed_beside_its_state_and_named_as_a_shells_when_granted(principal, isolated_home, monkeypatch):
+    monkeypatch.setattr(approvals, "IN_HOOK", False)
     code = approvals.request("message-gap-review", {"rows": [1]}, "close the gaps of rows 1")
     assert (paths.requests() / f"{code}.json").is_file() and not (paths.approvals() / "requests" / f"{code}.json").exists()
     assert code in approvals.pending()
@@ -219,7 +233,7 @@ def test_each_code_the_hook_spends_is_kept_in_the_granted_ledger(principal):
     assert approvals.consume("send", {"to": "a"}, SESSION)
     row = json.loads((paths.approvals() / "granted.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert (row["code"], row["kind"], row["digest"], row["summary"]) == (code, "send", approvals.digest("send", {"to": "a"}), "a send")
-    assert row["record"] == str(principal.transcript) and len(row["line"]) == 64 and row["typed"] <= time.time()
+    assert row["record"] == str(principal.transcript) and len(row["line"]) == 64 and 0 < row["typed"] <= row["at"] + 1
 
 
 def test_a_commit_line_is_approved_by_the_hook_and_never_by_the_commit_check(principal, sealed, tmp_path):
@@ -270,7 +284,7 @@ def test_a_shell_ends_a_window_early_and_never_extends_one(sealed):
     sealed.open()
     sends.open_window(3, ["jira"], count=2)
     assert sends.window()  # a mark older than the window closes nothing
-    paths.write_json(paths.state() / "sends-closed.json", {"at": time.time() + 3600})
+    paths.write_json(sends._closed_file(), {"at": time.time() + 3600})
     assert sends.window()  # nor does one dated ahead
 
 

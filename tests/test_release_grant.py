@@ -65,12 +65,12 @@ def _launcher(world, options: str) -> str:
 
 
 def _grants(world) -> list:
-    folder = world["v5"] / "state" / "release-grants"
+    folder = world["v5"] / "approvals" / "release-grants"
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 
 def _requests(world) -> list:
-    folder = world["v5"] / "state" / "approval-requests"
+    folder = world["v5"] / "approvals" / "requests"
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 

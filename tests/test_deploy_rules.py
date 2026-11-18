@@ -127,7 +127,7 @@ def test_a_future_dated_post_is_refused_in_both_layouts(site, layout):
     _commit(site)
     reason = _push(site)
     assert "never go live before its stated date" in reason and rel in reason
-    assert not (approvals.paths.state() / "approval-requests").exists()  # no approval is even asked for
+    assert not (approvals.paths.approvals() / "requests").exists()  # no approval is even asked for
 
 
 def test_an_approved_deploy_is_still_refused_and_its_approval_is_not_spent(site):
@@ -317,7 +317,7 @@ def test_a_catalog_article_dated_ahead_is_refused_by_its_entry(unified):
     _article(unified, SECOND, time.time() + DAY)
     reason = _upload(unified, CATALOG)
     assert "never go live before its stated date" in reason and f"catalog.json#{SECOND}" in reason
-    assert not (approvals.paths.state() / "approval-requests").exists()
+    assert not (approvals.paths.approvals() / "requests").exists()
 
 
 def test_a_documented_instant_ahead_is_refused_though_its_clock_is_past(unified):

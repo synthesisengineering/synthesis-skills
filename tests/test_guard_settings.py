@@ -45,7 +45,7 @@ def world(tmp_path, monkeypatch):
     record = home / ".claude" / "projects" / "-work" / "S-principal.jsonl"
     record.parent.mkdir(parents=True)
     record.write_text(json.dumps({"type": "user", "message": {"role": "user", "content": "hello"}}) + "\n", encoding="utf-8")
-    paths.write_json(paths.state() / "transcripts" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
+    paths.write_json(paths.approvals() / "records" / "S-principal.json", {"path": str(record)})  # as the prompt hook records it
     (v5 / "git-hooks").mkdir(parents=True)
     for name in ("pre-commit", "pre-merge-commit", "commit-msg"):
         (v5 / "git-hooks" / name).write_text(GIT_HOOK, encoding="utf-8")
@@ -287,7 +287,7 @@ def test_a_shell_tool_that_names_its_own_folder_is_judged_there(world):
 
 def test_a_command_that_also_writes_the_state_folder_is_still_refused_outright(world):
     """The settings wait for a code; the folder approvals rest on never takes one."""
-    line = f"echo '{{}}' > {shlex.quote(str(world['v5'] / 'config.json'))}; echo x > {shlex.quote(str(paths.state() / 'approvals' / 'x.json'))}"
+    line = f"echo '{{}}' > {shlex.quote(str(world['v5'] / 'config.json'))}; echo x > {shlex.quote(str(paths.approvals() / 'grants' / 'x.json'))}"
     assert _verdict(world, line).startswith("Refused")
 
 
@@ -386,7 +386,7 @@ def test_an_unreadable_config_still_holds_a_file_tool_that_writes_it_or_the_stat
     assert _held(held)
     world["approve"](held)
     assert _hook(world, "Write", repair, capsys) == ""  # the repair he approved
-    forged = {"file_path": str(paths.state() / "approvals" / ("a" * 64 + ".json")), "content": "{}"}
+    forged = {"file_path": str(paths.approvals() / "grants" / ("a" * 64 + ".json")), "content": "{}"}
     assert "Refused" in _hook(world, "Write", forged, capsys)
     assert _hook(world, "Write", {"file_path": str(world["work"] / "notes.md"), "content": "x"}, capsys) == ""
 

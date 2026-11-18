@@ -40,14 +40,14 @@ def test_a_grant_survives_a_deadline_that_ends_the_check_mid_read(tmp_path, monk
     _write(transcript, [claude(f"approve {code}", time.time() + 0.01, promptSource="sdk")])
     assert approvals.grant_from_prompt(f"approve {code}")
     session = {"session_id": SID, "transcript_path": str(transcript)}
-    real = approvals.typed
+    real = approvals.showing  # the record's read, which says where it found the prompt (granted.jsonl)
 
     def late(*args, **kwargs):
         raise Deadline()
-    monkeypatch.setattr(approvals, "typed", late)
+    monkeypatch.setattr(approvals, "showing", late)
     with pytest.raises(Deadline):
         guards.check(SLACK, CALL, {}, session=session)
-    monkeypatch.setattr(approvals, "typed", real)
+    monkeypatch.setattr(approvals, "showing", real)
     assert guards.check(SLACK, CALL, {}, session=session) is None  # the same grant, not a new code
     assert "approval" in guards.check(SLACK, CALL, {}, session=session)  # and it is spent once
 
@@ -124,15 +124,15 @@ def test_a_grant_changed_while_it_was_checked_is_not_used(tmp_path, monkeypatch)
     _write(transcript, [claude(f"approve {code}", time.time() + 0.01, promptSource="sdk")])
     assert approvals.grant_from_prompt(f"approve {code}")
     session = {"session_id": SID, "transcript_path": str(transcript)}
-    grant = next(approvals._dir("approvals").glob("*.json"))
-    real = approvals.typed
+    grant = next(approvals._dir("grants").glob("*.json"))
+    real = approvals.showing
 
     def swapped(*args, **kwargs):
         found = real(*args, **kwargs)
         data = json.loads(grant.read_text(encoding="utf-8"))
         grant.write_text(json.dumps({**data, "code": "zzz999"}), encoding="utf-8")
         return found
-    monkeypatch.setattr(approvals, "typed", swapped)
+    monkeypatch.setattr(approvals, "showing", swapped)
     assert guards.check(SLACK, CALL, {}, session=session) is not None
     assert not grant.exists()
 
@@ -167,7 +167,7 @@ def test_the_prompt_hook_records_where_the_record_ended_when_he_typed(tmp_path):
     _write(transcript, _old_output(10, time.time() - 60))
     size = transcript.stat().st_size
     assert approvals.grant_from_prompt(f"approve {code}", str(transcript))
-    grant = json.loads(next(approvals._dir("approvals").glob("*.json")).read_text(encoding="utf-8"))
+    grant = json.loads(next(approvals._dir("grants").glob("*.json")).read_text(encoding="utf-8"))
     assert grant["record_at"] == size
 
 
@@ -295,7 +295,7 @@ def test_a_grant_given_back_is_never_seen_half_written(tmp_path, monkeypatch):
     """Round 2, finding 2: the file was created and then written, so an identical call looking in between found an empty
     grant, spent it, and the grant given back was lost. It now appears whole or not at all."""
     session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
-    grant = next(approvals._dir("approvals").glob("*.json"))
+    grant = next(approvals._dir("grants").glob("*.json"))
     body = grant.read_bytes()
     grant.unlink()
     seen = []
@@ -325,7 +325,7 @@ def test_a_grant_voided_by_a_call_that_is_then_held_comes_back(tmp_path, monkeyp
     check holds the call, nothing went, and the ordinary code is put back."""
     from synthesis import hook
     session = _granted(tmp_path, guards.check(SLACK, CALL, {}))
-    grant = next(approvals._dir("approvals").glob("*.json"))
+    grant = next(approvals._dir("grants").glob("*.json"))
     body = grant.read_bytes()
     real = guards.check
 

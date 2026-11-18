@@ -24,8 +24,47 @@ def state() -> Path:
 
 def board() -> Path:
     """Sessions, claims, messages and the snapshot journal: with the outbox, the v5 folders a sandboxed agent may
-    write (Codex's writable roots), so nothing in it grants anything. Approvals and send windows stay in state()."""
+    write (Codex's writable roots), so nothing in it grants anything. Approvals and send windows are in approvals()."""
     return home() / "board"
+
+
+def approvals() -> Path:
+    """The sealed records every approval rests on (the guard's sandbox, the principal's rulings of 2026-11-15): grants,
+    the hook's requests, the map of each session's record, the send window and ledger, deploys, desktop, browser and
+    turn-end records, the approved commit lines. Only the hook writes here; each harness's sandbox keeps every shell out."""
+    return home() / "approvals"
+
+
+def install_dir() -> Path:
+    """Sealed like approvals(): what only the installer writes (setup's record of the Codex hooks it declared)."""
+    return home() / "install"
+
+
+def requests() -> Path:
+    """Requests a shell files: a request grants nothing until the principal types its code, so a shell may write it."""
+    return state() / "requests"
+
+
+# Each sealed record's name in state/, where releases before the sandbox kept it, and its name in approvals/: the
+# installer and the first hook that finds the old layout move it once, while approvals/ is not there (install.move_approvals).
+MOVED = {"approvals": "grants", "approval-requests": "requests", "transcripts": "records", "approvals.lock": "lock", "sends": "sends",
+         "deploys": "deploys", "desktop": "desktop", "typed": "typed", "imessage-sends": "imessage-sends", "stop": "stop",
+         "browser.json": "browser.json", "browser-accounts.json": "browser-accounts.json",
+         "browser-accounts.lock": "browser-accounts.lock", "release-grants": "release-grants"}
+
+
+def old_approvals() -> list[str]:
+    """Sealed records left in state() by a release before the sandbox, and approved lines the config placed elsewhere,
+    while approvals() is not there yet: once it is, a file in an old place is a shell's and never moves in (one lstat on
+    every hook call after the move)."""
+    if os.path.lexists(approvals()):
+        return []
+    try:
+        lines = old_line_allowances(config())
+    except (OSError, ValueError):
+        lines = None
+    return [name for name in (*MOVED, "codex-user-hooks.json") if os.path.lexists(state() / name)] + [
+        "line-allowances.json"] * bool(lines and lines.is_file())
 
 
 def sessions() -> Path:
@@ -68,8 +107,14 @@ def config() -> dict:
     return found
 
 
-def line_allowances(config: dict) -> Path | None:
-    """The commit lines the principal approved: `line_allowances`, else line-allowances.json beside the commit policy."""
+def line_allowances() -> Path:
+    """The commit lines the principal approved, sealed: the hook adds a line once his code for it is read in his record."""
+    return approvals() / "line-allowances.json"
+
+
+def old_line_allowances(config: dict) -> Path | None:
+    """Where releases before the sandbox kept the approved lines: `line_allowances`, else beside the commit policy. Read
+    once, by the move into approvals()."""
     given = config.get("line_allowances") or (config.get("commit_policy") and Path(str(config["commit_policy"])).with_name("line-allowances.json"))
     return Path(os.path.expanduser(str(given))) if given else None
 
@@ -200,7 +245,7 @@ def codex_home() -> Path:
 def codex_hooks_record() -> Path:
     """What `setup.py plugin --codex-user-hooks` declared in each Codex home's hooks.json, by the path Codex keys it by:
     setup takes out only its own, and the doctor knows whose a declaration is (review round 1 of 5.21.0)."""
-    return state() / "codex-user-hooks.json"
+    return install_dir() / "codex-user-hooks.json"
 
 
 # Each harness's own install locations: where the doctor finds its command line, and the only programs, beside its name
@@ -226,6 +271,16 @@ def transcript_roots() -> dict:
     return {"claude-code": Path(env.get("CLAUDE_CONFIG_DIR") or user / ".claude") / "projects",
             "codex": codex_home() / "sessions",
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
+
+
+def harness_settings() -> list:
+    """Each harness's hook and sandbox settings, and the launch agents that run with full access: what an approval rests
+    on as much as the runtime does, so a write there waits for the principal's code (the guard's sandbox, design 2.1).
+    The plugin caches are not among them: the skills' scripts run from there, and the sandbox seals them for a shell."""
+    env, user = os.environ, Path.home()
+    claude, muse = Path(env.get("CLAUDE_CONFIG_DIR") or user / ".claude"), Path(env.get("XDG_CONFIG_HOME") or user / ".config") / "muse"
+    return [claude / "settings.json", claude / "settings.local.json", codex_home() / "config.toml", codex_home() / "hooks.json", muse,
+            user / "Library" / "LaunchAgents"]
 
 
 def desktop_dir() -> Path:
