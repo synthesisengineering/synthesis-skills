@@ -54,6 +54,12 @@ first, and a TLS gap found while fixing one of them.
 - **The desk's coverage line folds the newest mid-day run.** `ritual_workers.py coverage` looked for a day's `midday`
   artifact alone, so after a second sync, filed as `midday-N`, the line gave the first one's time and outcome. It now
   reads later runs by the deadline sweep's own pattern, after the first in the order of N and before the day-end.
+- **A file pattern is read where the shell writes it** (review round 1 of 5.25.1). The guard matches a pattern against
+  the disk part by part, through any link and with no recursion, for a redirect or a copy's target as for any word, and
+  a pattern it cannot match within its caps (1,024 names, 256 folders read) waits for the principal's code. Through a
+  link the agent made in its own folder, `cp … <folder>/l*k/grants/…` past 64 parts (since A12) and
+  `echo … > <folder>/c*r/guards.py` at any length (as in 5.25.0) had written into the sealed approvals and the runtime's
+  code with no code.
 - **Not synthesis's:** the refusal of a push "after the preceding commit failed" came from Codex's own approval reviewer
   (`auto_review`), which read the previous cell's hold as a failed commit. No change.
 
