@@ -159,6 +159,17 @@ def test_a_read_of_the_state_folder_passes_and_a_write_there_is_still_refused(ma
         assert _verdict(mac, line).startswith("Refused"), line
 
 
+def test_a_form_that_only_prints_fills_no_folder_python_loads_from(mac):
+    """A line that moves Python's module path waits while another program on it may fill that folder unseen (review round
+    3 of 22.21): plutil or defaults reading fills none; plutil writing still may."""
+    (mac["work"] / "empty").mkdir()
+    (mac["state"] / "x.json").write_text("{}", encoding="utf-8")
+    py = "PYTHONPATH=empty python3 -c " + shlex.quote(f"import json; print(open('{mac['state']}/x.json').read())")
+    for line in ("plutil -p {agent} && " + py, "defaults read {domain} && " + py):
+        assert _verdict(mac, line) is None, line
+    assert HELD in (_verdict(mac, "plutil -convert json -e py {work}/job.plist && " + py) or "")
+
+
 @pytest.mark.parametrize("name,line", [("plutil", "plutil -p {agent}"), ("defaults", "defaults read {domain}")])
 def test_a_script_under_the_name_of_plutil_or_defaults_is_judged_as_the_script_it_is(mac, monkeypatch, name, line):
     """A form that only prints is judged by the program's name, so a script under that name, found first on PATH in a
