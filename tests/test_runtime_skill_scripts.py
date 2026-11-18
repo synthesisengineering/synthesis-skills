@@ -850,3 +850,56 @@ def test_the_help_check_finds_a_script_that_writes_starts_or_works_before_it_rea
     script = tmp_path / "control.py"
     script.write_text(CONTROLS[name], encoding="utf-8")
     assert _help_problems(mac, script, tmp_path), name
+
+
+# --- A10: a documented runtime command runs ---------------------------------------------------------------------------
+# 2026-11-18: an operations seat ran `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/
+# slack_workspaces.py` and `.../preflight.py --config <its sync config> --json`, as every other ritual script runs, and
+# the guard held both: the runtime did not carry that skill, so the line named a script that was not there, in the
+# runtime's folder, which the guard could not read (`runs python3, which this guard cannot prove only reads, and names
+# ~/.synthesis/v5/current`). The skill's own text gave `python3 <synthesis-slack-sync-root>/scripts/...`, a root it never
+# defined. The runtime carries the skill now, its text runs the runtime's copy, and every runtime command any skill
+# documents is held to naming a script the runtime carries that the guard lets run as written.
+
+RUNTIME_RUN = re.compile(r"\bpython3((?:[ \t]+-[A-Za-z]+)*)[ \t]+\"?(?:\$HOME|\$\{HOME\}|~)/\.synthesis/v5/current/"
+                         r"(skills/[\w./-]+?\.py)\"?([^`\n]*)")
+
+
+def _documented_runs() -> list:
+    """(where, interpreter options, the script's path in the runtime, its words) for each runtime command a skill's text
+    gives, with what only stands for a value made a plain word: a placeholder, an optional part, a comment, a shell tail."""
+    found = []
+    for path in sorted((ROOT / "skills").rglob("*.md")):
+        rel = path.relative_to(ROOT / "skills").parts
+        if "tests" in rel or ARCHIVAL.search(path.name):
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            for m in RUNTIME_RUN.finditer(line):
+                words = re.sub(r"\s+#.*$", "", m.group(3)).split("||")[0].rstrip(" \\")
+                words = re.sub(r"\[[^\[\]]*\]", "", words).split("[")[0]
+                found.append((f"skills/{'/'.join(rel)}:{n}", m.group(1), m.group(2), re.sub(r"<[^>]*>", "x", words)))
+    return found
+
+
+SEAT_RUNS = ("python3 -s {rt}/skills/synthesis-slack-sync/scripts/slack_workspaces.py",
+             "python3 -s {rt}/skills/synthesis-slack-sync/scripts/preflight.py --config {work}/.agents/slack-sync.yaml --json")
+
+
+@pytest.mark.parametrize("line", SEAT_RUNS)
+def test_the_slack_sync_scripts_run_from_the_runtime_as_the_seat_ran_them(mac, tmp_path, line):
+    work = _work(tmp_path)
+    assert _verdict(mac, line.format(rt=mac.rt, work=work), work) is None, line
+    documented = {Path(script).name for _, _, script, _ in _documented_runs() if "synthesis-slack-sync" in script}
+    assert {"slack_workspaces.py", "preflight.py"} <= documented, documented  # and the skill's own text runs that copy
+
+
+def test_every_documented_runtime_command_names_a_carried_script_and_is_judged_runnable(mac, tmp_path):
+    work, held = _work(tmp_path), []
+    runs = _documented_runs()
+    for where, options, script, words in runs:
+        if not (mac.rt / script).is_file():
+            held.append(f"{where}: the runtime carries no {script}")
+            continue
+        said = _verdict(mac, f"python3{options} {mac.rt}/{script}{words}", work)
+        held += [f"{where}: {said[:300]}"] if said else []
+    assert len(runs) > 50 and not held, "\n".join(held)
