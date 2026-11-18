@@ -2613,8 +2613,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # line), check_self_grant 1 more (what the readings that held a command name, kept for its hold), _reached 4 more (its
 # docstring 1; the settings those readings name, before every setting is named, 3), _settings_hold none (the parameter
 # that hands them on), and 4 blank lines.
-CORE_BUDGET = 25068
-PLUGIN_BUDGET = 51802
+# Then each 4 more, in guards._self_grant, for a record of a hold: the refusal of a line that carries a pending code says
+# why the line may not (it may hand the code to a program that types into a session or writes its record) and how to
+# record a hold, with the code left out or through the harness's file tool, which writes only the file it names.
+CORE_BUDGET = 25072
+PLUGIN_BUDGET = 51806
 
 
 def _lines(files):

@@ -7172,8 +7172,12 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
     asked = [(_led(os.path.expanduser(os.path.expandvars(t)), spot), spot) for t, w in redirects for spot in spots(w)]  # each write's target, and where it runs
     asked += [(t.strip("'\""), cwd) for t in re.findall(r">{1,2}\|?\s*([^\s;&|<>()]+)", text)] if names and not readable else []
     why, wheres, handed, links, made, linked, waits = "", {cwd}, [], [], [], [], None
-    if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):
-        why = "carries a pending approval code (to see pending requests, run `synthesis approvals`)"
+    if codes and re.search(r"(?i)\b(?:%s)\b" % "|".join(map(re.escape, codes)), command):  # how to record a hold without it (A10)
+        why = ("carries a pending approval code (to see pending requests, run `synthesis approvals`), which a shell line may hand to "
+               "a program that types into a session or writes its record. To record a hold, leave the code out: the call, the check "
+               "that held it and the time are the record, and the code is spent or gone within 15 minutes. To keep the hold's words "
+               "whole, write the record with the harness's file tool (Write or Edit, apply_patch or write_file), which writes only "
+               "the file it names")
     feeds, env, given = [], dict(os.environ), list(ASSIGNED.finditer(_own_text(text)))
     found = _parse(text, cwd, feeds=feeds)[0]
     for m in given:  # the value the command gives a variable; given two, the one that names a protected path
