@@ -145,7 +145,7 @@ def test_each_file_installs_with_one_command_that_copies_the_staged_file_as_root
         group = "wheel" if sys.platform == "darwin" else "root"  # root's own group on each system
         check = ["shasum", "-a", "256", "-c"] if sys.platform == "darwin" else ["sha256sum", "-c"]
         digest = hashlib.sha256(sandbox.expected(name).encode("utf-8")).hexdigest()
-        assert words == ["echo", f"{digest}  {staged}", "|", *check, "&&",
+        assert words == ["printf", "%s\\n", f"{digest}  {staged}", "|", *check, "&&",
                          "sudo", "install", "-d", "-o", "root", "-g", group, "-m", "755", str(target.parent), "&&",
                          "sudo", "install", "-o", "root", "-g", group, "-m", "644", str(staged), str(target)], name
         assert staged.parent == paths.home() / sandbox.STAGED  # sealed: no session changes it before it is installed
@@ -160,6 +160,18 @@ def test_the_command_installs_nothing_once_the_staged_file_differs_from_the_byte
         assert subprocess.run(["/bin/sh", "-c", check], capture_output=True).returncode == 0, name
         copy.write_text(sandbox.expected(name) + "# changed\n", encoding="utf-8")
         assert subprocess.run(["/bin/sh", "-c", check], capture_output=True).returncode != 0, name
+
+
+def test_the_digest_check_reads_a_home_whose_path_holds_a_backslash_a_quote_and_a_space(mac, tmp_path, monkeypatch):
+    """Review round 2 of 5.25.0: `echo` turned a backslash in the path into an escape in sh and zsh, so the check failed for
+    the right file."""
+    monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "odd \\new it's $HOME" / ".synthesis" / "v5"))
+    shells = [s for s in ("/bin/sh", "/bin/bash", "/bin/zsh") if os.path.exists(s)]
+    for name in ("claude", "codex"):
+        _stage(name)
+        check = sandbox.install_command(name).split(" && sudo ")[0]
+        for shell in shells:
+            assert subprocess.run([shell, "-c", check], capture_output=True).returncode == 0, (name, shell)
 
 
 def _install(name, text=None):
@@ -183,7 +195,7 @@ def test_each_file_is_off_then_staged_then_installed_and_holding_the_keys(mac, m
         assert state == "off" and "setup.py sandbox" in problems[0], name
         copy = _stage(name)
         state, problems = sandbox.judge(name)
-        assert state == "staged" and sandbox.install_command(name) in problems[0], name
+        assert state == "staged" and "after its pilot" in problems[0] and "sudo" not in problems[0], name  # review round 2
         copy.write_text("tampered\n")
         state, problems = sandbox.judge(name)
         assert state == "staged" and "out of date" in problems[0] and "setup.py sandbox" in problems[0], name
@@ -253,7 +265,7 @@ def test_the_doctor_says_off_staged_or_installed_and_holding_the_keys_in_one_lin
         _stage(name)
     line = doctor.check_sandbox(("claude", "codex"))
     assert line.status == "warn" and line.detail.startswith("staged:")
-    assert sandbox.install_command("claude") in line.detail and sandbox.install_command("codex") in line.detail
+    assert "after its pilot" in line.detail and "sudo" not in line.detail  # only `setup.py sandbox` prints the commands
     for name in ("claude", "codex"):
         _install(name)
     line = doctor.check_sandbox(("claude", "codex"))

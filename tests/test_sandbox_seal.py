@@ -193,6 +193,7 @@ def test_an_install_that_waits_for_the_code_moves_nothing_and_an_approved_one_mo
     before = install.current_hash()
     with pytest.raises(install.Unapproved) as waiting:
         install.install(newer, session=SESSION)
+    assert "Not granted" in str(waiting.value)  # what the running release says when he types it (review round 2)
     assert install.current_hash() == before and not paths.approvals().exists()
     assert sorted(paths.old_approvals()) == ["approval-requests", "sends", "transcripts"]
     assert doctor.check_approvals_layout(home).status == "warn"
@@ -224,6 +225,17 @@ def test_a_shells_request_under_a_code_the_hook_filed_is_never_granted(principal
                                                          "summary": "planted", "at": time.time(), "by": "shell"})
     assert principal(f"code {code}") == ["the guard's own request"]
     assert approvals.grant("send", {"to": "a"}) and not approvals.grant("send", {"to": "b"})
+
+
+def test_a_code_typed_while_it_matched_nothing_never_answers_a_request_filed_under_it_later(principal, monkeypatch):
+    """Review round 2 of 5.25.0: a code typed once its request had gone left no mark, so a request planted under it
+    afterwards, dated before the prompt, was answered by that prompt."""
+    monkeypatch.setattr(approvals, "IN_HOOK", False)
+    asked = time.time() - 60
+    assert principal("code 7abcde") == []  # typed where its request has gone: nothing is granted
+    paths.write_json(paths.requests() / "7abcde.json", {"kind": "install", "digest": approvals.digest("install", {"step": "x"}),
+                                                       "summary": "x", "at": asked, "by": "shell"})
+    assert not approvals.answered("install", {"step": "x"}, SESSION)
 
 
 def test_the_hook_and_a_shell_never_file_under_codes_of_the_same_shape(monkeypatch):

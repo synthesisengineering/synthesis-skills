@@ -319,7 +319,8 @@ def test_a_plugin_run_leaves_codexs_profile_unsealed_and_only_the_sandbox_comman
         text = config.read_text(encoding="utf-8")
         assert sealed not in text and '= "read"' not in text, command
         assert json.dumps(str(setup.paths.board())) in text  # its ordinary grants are there
-        assert "read-only" not in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "read-only" not in out and "sudo" not in out, command  # nor the commands that install the two files (round 2)
     assert setup.sandbox.staged("codex").is_file()  # the administrator file is still staged for him
     assert setup.main(["sandbox", "--clients", "codex"]) == 0
     assert f'{sealed} = "read"' in config.read_text(encoding="utf-8") and "read-only to Codex" in capsys.readouterr().out
