@@ -177,12 +177,13 @@ adding a remote, which changes who reads the repository, asks again. A repositor
 remote is its git folder, written with `~` for the home directory.
 
 The store is a JSON file, `{"lines": {"<sha256>": "<date approved>"}}`: hashes and
-dates, never a term or a line (`test_the_store_holds_only_hashes_and_dates`). It is the
-file `line_allowances` names in `config.json`, else `line-allowances.json` beside the
-commit policy. The check writes it atomically. It is a catalog the scan skips when it
-lives in the repository being committed, as the policy and ledger are. A shell command
-that writes it is refused by the shell guard; an edit through a file-edit tool is not
-guarded (docs/runtime-integration.md, What remains open).
+dates, never a term or a line (`test_the_store_holds_only_hashes_and_dates`). It is
+`~/.synthesis/v5/approvals/line-allowances.json`, in the folder only the synthesis hook
+writes (the guard's sandbox): the check, which runs in the agent's shell, files the request
+and never writes it, and the hook adds the line once the session's record shows the
+principal typing its code. A store an older release kept elsewhere (`line_allowances` in
+`config.json`, or beside the commit policy) was merged into it once, by the first install
+or hook after the change. A shell command or a file-edit tool that writes it is refused.
 
 A line that leaks is removed: what it discloses, not only the flagged word. Reviewed
 `allowlist_lines` and the ledger stay the principal's tools for whole classes of lines.
@@ -200,7 +201,7 @@ approved the same way as a file line, bound to the repository and the line
 ## An entry's own time
 
 Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
-[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.1/skills/synthesis-agent-guardrails/references/config.md)). In a Markdown
+[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.0/skills/synthesis-agent-guardrails/references/config.md)). In a Markdown
 file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
 `skip` list names, the check reads the time an added entry gives for itself. An entry
 states one in four places:
@@ -301,7 +302,7 @@ ending in T for a zone, neither of which those commits bear out
 ## A status and its evidence
 
 Off unless the config has `status_evidence` (`{}` turns it on; see the guardrails'
-[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.1/skills/synthesis-agent-guardrails/references/config.md)). On 2026-11-12
+[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.0/skills/synthesis-agent-guardrails/references/config.md)). On 2026-11-12
 obligation statuses said colleagues could use a tool "now" when none of them could: the
 status had been written from an assumption, and nothing asked what it rested on. That a
 line claims a thing works is meaning, which the check does not read. That a table has a

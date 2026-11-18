@@ -347,7 +347,7 @@ added to the OAuth client, a deploy key, and each client's config entry that poi
 address. When the test ends, take each one down in the same sitting and take it off the list. The
 `TEST ONLY` line ends with that instruction. With the synthesis-skills plugin installed, the list
 is the guardrails skill's
-([a test's teardown list](https://github.com/synthesisengineering/synthesis-skills/blob/v5.24.1/skills/synthesis-agent-guardrails/references/teardown.md)), and
+([a test's teardown list](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.0/skills/synthesis-agent-guardrails/references/teardown.md)), and
 `synthesis doctor` warns while an item remains:
 
 ```bash
