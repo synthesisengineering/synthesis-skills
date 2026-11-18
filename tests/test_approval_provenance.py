@@ -260,13 +260,91 @@ def test_a_codex_rollout_kept_among_its_archived_sessions_counts(monkeypatch):
     assert approvals.transcript(None) == str(rollout)
 
 
-def test_a_record_with_no_folders_beside_it_counts_once_the_prompt_hook_records_it_again(monkeypatch):
-    """A record written before 5.24.0, or by hand, names no folders: a check finds no transcript, and holds, until the
-    session's next prompt, which the principal types to approve anyway."""
+# --- A9 (5.24.1): a note 5.23's prompt hook wrote names no folders. It counts where its path lies inside the harness
+# folders under the account's own home, which no variable a command sets can move, and nowhere else (releasing 5.24.0:
+# its installer refused the code the principal typed, so every Mac moving from 5.23 had to install with 5.23's own
+# installer first) --------------------------------------------------------------------------------------------------
+
+@pytest.fixture
+def account(tmp_path, monkeypatch):
+    home = tmp_path / "account"
+    monkeypatch.setattr(paths, "account_home", lambda: home)
+    return home
+
+
+OLD_NOTES = {"claude-code": ".claude/projects/-work/{sid}.jsonl",
+             "codex": ".codex/sessions/2026/11/17/rollout-2026-11-17T10-00-00-{sid}.jsonl",
+             "codex-archived": ".codex/archived_sessions/rollout-2026-11-17T10-00-00-{sid}.jsonl",
+             "muse": ".local/share/muse/sessions/2026/11/17/{sid}/session.jsonl",
+             "desktop": "Library/Application Support/Claude/local-agent-mode-sessions/acct-1/org-1/local_s1/.claude/projects/-work/{sid}.jsonl"}
+
+
+def _old_note(path) -> None:
+    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(path)})  # as 5.23's prompt hook wrote it
+
+
+@pytest.mark.parametrize("harness", sorted(OLD_NOTES))
+def test_a_note_5_23_wrote_counts_inside_the_harness_folders_under_the_account_s_own_home(account, monkeypatch, harness):
+    monkeypatch.setenv("SYNTHESIS_SESSION", SID)
+    real = _record(account / OLD_NOTES[harness].format(sid=SID), claude("hello", time.time()))
+    _old_note(real)
+    assert approvals.transcript(None) == str(real)
+
+
+def test_a_note_5_23_wrote_counts_nowhere_else(account, tmp_path, monkeypatch):
+    monkeypatch.setenv("SYNTHESIS_SESSION", SID)
+    elsewhere = _record(tmp_path / "work" / f"{SID}.jsonl", claude("hello", time.time()))
+    desktop = account / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions" / "acct-1" / "org-1" / "local_s1"
+    for path in (elsewhere,  # outside every harness folder
+                 _record(account / ".claude" / "backups" / f"{SID}.jsonl", claude("hello", time.time())),  # the harness's folder, not its records
+                 _record(desktop / "outputs" / "forged.jsonl", claude("hello", time.time())),  # an agent-mode session's other files
+                 account / ".claude" / "projects" / ".." / ".." / ".." / "work" / f"{SID}.jsonl"):  # one that climbs out
+        _old_note(path)
+        assert approvals.transcript(None) == "", path
+    linked = account / ".claude" / "projects" / "-work" / "linked.jsonl"
+    linked.parent.mkdir(parents=True)
+    linked.symlink_to(elsewhere)  # a link inside the folder to a record outside it
+    _old_note(linked)
+    assert approvals.transcript(None) == ""
+    real = _record(account / ".claude" / "projects" / "-work" / f"{SID}.jsonl", claude("hello", time.time()))
+    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(real), "folders": None})
+    assert approvals.transcript(None) == ""  # a note that names its folders, but not as the prompt hook does, is no harness's
+
+
+@pytest.mark.parametrize("variable", ["HOME", "CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_DATA_HOME"])
+def test_a_note_5_23_wrote_never_counts_in_folders_a_variable_names(account, tmp_path, monkeypatch, variable):
+    """The check a script enters runs in the agent's own command, which may set any of these for its own process."""
+    monkeypatch.setenv("SYNTHESIS_SESSION", SID)
+    mine = tmp_path / "mine"
+    below = {"HOME": ".claude/projects", "CLAUDE_CONFIG_DIR": "projects", "CODEX_HOME": "sessions", "XDG_DATA_HOME": "muse/sessions"}
+    _old_note(_record(mine / below[variable] / "-work" / f"{SID}.jsonl", claude("approve 1abc23", time.time())))
+    monkeypatch.setenv(variable, str(mine))
+    assert approvals.transcript(None) == ""
+
+
+def test_the_account_s_own_home_comes_from_the_user_database_never_from_home(tmp_path, monkeypatch):
+    import pwd
+    monkeypatch.setenv("HOME", str(tmp_path / "elsewhere"))
+    assert paths.account_home() == Path(pwd.getpwuid(os.getuid()).pw_dir)
+
+
+def test_a_runtime_install_approved_in_a_session_5_23_recorded_goes_ahead(account, monkeypatch):
+    """The installer reads the session's own record for the principal's code; 5.23's note names no folders."""
+    monkeypatch.setenv("SYNTHESIS_SESSION", SID)
+    record = _record(account / ".claude" / "projects" / "-work" / f"{SID}.jsonl", claude("hello", time.time() - 60))
+    _old_note(record)
+    wanted = {"action": "upgrade", "to": "0123456789abcdef"}
+    code = approvals.request("runtime", wanted, "the synthesis runtime: a probe")
+    with record.open("a", encoding="utf-8") as out:
+        out.write(json.dumps(claude(f"approve {code}", time.time() + 0.01)) + "\n")
+    assert approvals.answered("runtime", wanted, None)
+
+
+def test_a_note_with_its_folders_counts_once_the_prompt_hook_records_it_again(monkeypatch):
+    """A note in 5.24.0's form names the folders its harness keeps records in, as the prompt hook's environment names
+    them; the next prompt writes it so."""
     monkeypatch.setenv("SYNTHESIS_SESSION", SID)
     real = _record(Path(os.environ["CLAUDE_CONFIG_DIR"]) / "projects" / "-work" / f"{SID}.jsonl", claude("hello", time.time()))
-    paths.write_json(paths.state() / "transcripts" / f"{SID}.json", {"path": str(real)})
-    assert approvals.transcript(None) == ""
     approvals.remember(SID, str(real))
     assert approvals.transcript(None) == str(real)
 
