@@ -217,9 +217,7 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
         ("agent", f"make the remedies `{records}` lists (freshness)", ["F4"]),
         ("agent-with-code", f"python3 -s {runtime / 'synthesis-onboarding' / 'scripts' / 'setup.py'} plugin --sessions-export", ["F5"]),
     ]
-    who, do, fixes = steps[5]
-    assert (who, fixes) == ("agent", ["F6"]) and do.startswith("synthesis msg S-stale ") and do.endswith(
-        " && synthesis claim ~/workspaces/acme/dirty --take")
+    assert steps[5] == ("agent", "synthesis claim ~/workspaces/acme/dirty --take", ["F6"])  # the board tells its holder
     who, do, fixes = steps[6]  # the live seat's own work: a message to it, nothing more
     assert (who, fixes) == ("agent", ["F7"]) and do.startswith("synthesis msg S-live ") and "&&" not in do
     assert steps[7:] == [
@@ -328,7 +326,23 @@ def test_a_quiet_seat_inside_a_live_wait_is_not_taken_over(machine):
                              seen=machine.now - 36000, claims=[os.path.realpath(machine.current) + "/**"]))
     report = review.review(run=machine.run, platform="darwin")
     assert _rows(report) == [("warn", "claims", "S-gone")]
-    assert report["plan"][0]["do"].endswith(" && synthesis claim ~/workspaces/acme/current --take")
+    assert [(s["who"], s["do"]) for s in report["plan"]] == [("agent", "synthesis claim ~/workspaces/acme/current --take")]
+
+
+def test_a_seat_counts_for_a_repository_only_where_its_claims_cover_the_work(machine):
+    """In a repository many seats work in, the seat to ask about uncommitted files is the one whose claim covers them; a
+    live seat that claims another part of it is not asked, and the work outside every live claim is committed."""
+    (machine.current / "notes").mkdir()
+    (machine.current / "notes" / "a.md").write_text("a\n", encoding="utf-8")
+    report = review.review(run=machine.run, platform="darwin")  # S-live claims the whole repository: it is asked
+    assert [(s["who"], s["do"].split()[:3]) for s in report["plan"]] == [("agent", ["synthesis", "msg", "S-live"])]
+    board.save(board.Session(session="S-live", harness="claude-code", project="alpha", started=machine.now - 60, seen=machine.now,
+                             claims=[os.path.realpath(machine.current / "docs") + "/**"]))
+    report = review.review(run=machine.run, platform="darwin")
+    assert [(s["who"], s["do"]) for s in report["plan"]] == [
+        ("agent", "git -C ~/workspaces/acme/current add -A && git -C ~/workspaces/acme/current commit -m 'Commit work left uncommitted'"),
+        ("agent", "git -C ~/workspaces/acme/current push")]
+    assert board.short_name("S-live") not in report["findings"][0]["detail"]
 
 
 def test_what_the_doctor_last_saw_of_a_harness_hook_approval_is_reported(machine, monkeypatch):
