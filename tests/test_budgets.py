@@ -2422,10 +2422,29 @@ ROOT = Path(__file__).resolve().parents[1]
 # body), _aliased 1 (`${X}alias` is `alias` where X is empty), _claude_parts 1 (its folders kept for the variables that
 # place them rather than for a call, since a check run outside a call's own start would keep another call's); an echo's
 # arithmetic still gives HOME a value (no line).
+# 5.24.1 (2026-11-17), each 139 more, all in synthesis/, for BACKLOG A5, A7, A8 and A9:
+# A9, the upgrade from 5.23: paths.account_home 4 and its 2 blank lines (the account's home as the user database names
+# it, never HOME); approvals.transcript 4 more (a note 5.23's prompt hook wrote, naming no folders, read against each
+# harness's folders under that home) and _kept_by_a_harness 1 more (its docstring says so).
+# A5, the hooks follow the Mac's newest Python: install.py 8 (`import glob` 1; FRAMEWORKS and TESTED 2, each python.org
+# version a candidate and none newer than the checks test; pinned_python 5 more, the newest final release of those
+# accepted, read from each, its docstring 2 of them). One command, one code: approvals.request 6 more (the call's code
+# taken first, its first request listing afresh what the call asks, a later one listed beside the first), CALL 1 and
+# one_code 12 (every request filed while one call is judged takes one code; a call inside another files under the
+# outer's), _entries 5 and _keys 2 (the requests a code carries), their 7 blank lines, grant_from_prompt 1 fewer (each
+# request the code carries granted, in a loop that replaced the single write), answered 4 more (a program's own check
+# finds its request among the code's others and leaves those for their own checks); guards.ASKS_CODE 1 and _one_code
+# 15 with its 4 blank lines (every check of the call judged, a refusal what it gets, the waits said together), the
+# file tools' chain 1 more (judged the same way; the shell's chain is the same length as a tuple of checks).
+# A7, one approval per send: guards._judged_send 1 more (the hold says the code is the principal's only approval).
+# A8, the Mac's security: doctor.PROTECTIONS 9 (FileVault, the firewall, System Integrity Protection and Gatekeeper,
+# each with what says it is off or on and the one step that turns it on), SSH_SHARED 1, check_security 45 (the home
+# folder and ~/.ssh open to no other user, no private key readable by one, the four asked at once, a warning per thing
+# naming its fix), their 4 blank lines, and run_checks 3 more (the check started beside the rest, its lines added).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23477
-PLUGIN_BUDGET = 50146
+CORE_BUDGET = 23616
+PLUGIN_BUDGET = 50285
 
 
 def _lines(files):
