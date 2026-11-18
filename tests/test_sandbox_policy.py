@@ -32,7 +32,7 @@ def mac(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("SYNTHESIS_HOME", str(home / ".synthesis" / "v5"))
-    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home / ".claude"))
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)  # Claude Code's own default: ~/.claude, and ~/.claude.json beside it
     monkeypatch.setenv("CODEX_HOME", str(home / ".codex"))
     monkeypatch.setenv("XDG_DATA_HOME", str(home / ".local" / "share"))
     monkeypatch.setenv("SYNTHESIS_CLAUDE_DESKTOP_DIR", str(home / "Library" / "Application Support" / "Claude"))
@@ -49,7 +49,9 @@ DESIGN_DENY = [
     "Edit(~/.synthesis/v5/approvals/**)", "Edit(~/.synthesis/v5/install/**)",
     "Edit(~/.synthesis/v5/releases/**)", "Edit(~/.synthesis/v5/current/**)", "Edit(~/.synthesis/v5/bin/**)",
     "Edit(~/.synthesis/v5/git-hooks/**)", "Edit(~/.synthesis/v5/config.json)", "Edit(~/.synthesis/v5/sessions/**)",
-    "Edit(~/.claude/settings.json)", "Edit(~/.claude/settings.local.json)", "Edit(~/.claude/plugins/**)",
+    "Edit(~/.claude/settings.json)", "Edit(~/.claude/settings.local.json)",
+    "Edit(~/.claude.json)",  # beyond the note: Claude Code's MCP servers, the user's and each project's, run unsandboxed
+    "Edit(~/.claude/plugins/**)",
     "Edit(~/.codex/sessions/**)", "Edit(~/.codex/archived_sessions/**)", "Edit(~/.codex/config.toml)",
     "Edit(~/.codex/hooks.json)", "Edit(~/.codex/plugins/**)",
     "Edit(~/.local/share/muse/sessions/**)", "Edit(~/.config/muse/**)",
@@ -59,7 +61,8 @@ DESIGN_DENY = [
     "Edit(//**/.claude/settings.json)", "Edit(//**/.claude/settings.local.json)", "Edit(//**/.mcp.json)"]
 DESIGN_RULES = {
     "~/.synthesis": "read", "~/.synthesis/v5/board": "write", "~/.synthesis/v5/outbox": "write",
-    "~/.synthesis/v5/state/requests": "write", "~/.synthesis/v5/approvals": "read", "~/.claude": "read", "~/.codex": "read",
+    "~/.synthesis/v5/state/requests": "write", "~/.synthesis/v5/approvals": "read", "~/.claude": "read",
+    "~/.claude.json": "read", "~/.codex": "read",
     "~/.local/share/muse": "read", "~/.config/muse": "read", "~/Library/LaunchAgents": "read",
     "~/Library/Application Support/Claude": "read", "~/.local/share/claude": "read", "~/.local/bin": "read"}
 
@@ -331,7 +334,8 @@ def test_with_no_sandbox_every_write_goes_through_is_reported_and_what_it_made_i
     for name in ("a shell's write", "a background child's write", "a write through a link", "records claude-code",
                  "records codex", "records muse", "records desktop", "config.json", "install", "releases", "bin", "git-hooks",
                  "current", "sessions", "write ~/.claude/settings.json", "write ~/.claude/settings.local.json",
-                 "write ~/.codex/config.toml", "write ~/.codex/hooks.json", "write ~/Library/LaunchAgents", "write ~/.local/bin"):
+                 "write ~/.codex/config.toml", "write ~/.codex/hooks.json", "write ~/Library/LaunchAgents", "write ~/.local/bin",
+                 "write ~/.claude.json"):
         assert found[name][0] == "wrote", (name, found[name])
     # Where the first write went through, nothing more is learned by moving the live folders or asking a broker.
     for name in ("rename in approvals", "delete in approvals", "rename the synthesis home", "rename its parent",
