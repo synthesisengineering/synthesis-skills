@@ -2582,8 +2582,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # 50361); the merge itself adds no line: core 25006, plugin 51735.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
+# Then the plugin 1 more, in setup.py: codex_overlay's docstring says the Codex profile's read-only rules come only
+# with `seal`, which `setup.py sandbox` passes (5.25.0's integration: whether Codex runs its hooks inside its sandbox
+# is what that step tests first, so no release's install seals Codex before it).
 CORE_BUDGET = 25006
-PLUGIN_BUDGET = 51735
+PLUGIN_BUDGET = 51736
 
 
 def _lines(files):

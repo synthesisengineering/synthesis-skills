@@ -278,11 +278,12 @@ def _key_line(lines: list, table: str, key: str):
     return None
 
 
-def codex_overlay(text: str) -> tuple:
+def codex_overlay(text: str, seal: bool = False) -> tuple:
     """(new text, notes). Hooks on unless the person set them off; instruction bytes at least
     98,304; CLAUDE.md as a fallback instruction name when the key is absent; the synthesis board and outbox,
     and no other synthesis folder, writable from Codex's sandbox (5.1.18); in the profile Codex reads, what the guard
-    trusts read-only to its shells (the guard's sandbox, design note 22.9, 4.3). Nothing else changes."""
+    trusts read-only to its shells (the guard's sandbox, design note 22.9, 4.3), only with `seal`, which `setup.py sandbox`
+    passes: whether Codex runs its hooks inside its sandbox is what that step tests first. Nothing else changes."""
     config, lines, notes, add_top = doctor.read_toml(text), text.splitlines(), [], []
     limit = config.get("project_doc_max_bytes")
     if isinstance(limit, int) and not isinstance(limit, bool) and limit < CODEX_DOC_BYTES:
@@ -322,7 +323,7 @@ def codex_overlay(text: str) -> tuple:
             notes.append(f"let Codex's sandbox write the synthesis {what} ({folder}), so its sessions can {so}"
                          if edited else f"Codex's sandbox settings are written in a form setup does not edit: grant {folder}")
             config = doctor.read_toml("\n".join(lines))  # the next folder joins what this one wrote
-    if config.get("sandbox_mode") is None and not doctor.codex_write_roots(config)[1]:  # the older settings have no read
+    if seal and config.get("sandbox_mode") is None and not doctor.codex_write_roots(config)[1]:  # older settings: no read
         notes += _seal(lines, config)                                                     # rule: the doctor names them
     return "\n".join(lines).strip("\n") + "\n", notes
 
@@ -469,13 +470,13 @@ def _toml_problem(text: str) -> str:
     return ""
 
 
-def configure_codex(dry_run: bool = False) -> list:
+def configure_codex(dry_run: bool = False, seal: bool = False) -> list:
     path = paths.codex_home() / "config.toml"
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     problem = _toml_problem(text)
     if problem:  # nothing written into a file Codex cannot read (review round 1 of 5.21.0)
         raise SetupError(f"codex config: {path} does not parse ({problem}), so it was left as it is")
-    new, notes = codex_overlay(text)
+    new, notes = codex_overlay(text, seal)
     for folder in [f for f, access in sandbox.codex_rules() if access == "write"] if not dry_run else ():
         folder.mkdir(parents=True, exist_ok=True)  # Codex's sandbox may write inside it, never create it
     if new == (text if text.endswith("\n") else text + "\n") or dry_run:
@@ -687,7 +688,7 @@ def stage_sandbox(clients: list, dry_run: bool = False) -> list:
     """Stage each administrator file of the guard's sandbox for the harnesses named: the exact bytes, in the synthesis
     home's sealed install folder, and the one command that installs it, which the principal runs with his password (his
     ruling of 2026-11-15). Setup installs neither; it says what is installed and whether it holds the keys."""
-    lines = []
+    lines = configure_codex(dry_run, seal=True) if "codex" in clients else []  # Codex's profile, sealed: the rollout's step 2
     for name in (n for n in ("claude", "codex") if n in clients):
         label, copy, there = sandbox.LABELS[name], sandbox.staged(name), sandbox.target(name)
         if dry_run:

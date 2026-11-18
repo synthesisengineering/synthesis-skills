@@ -265,9 +265,10 @@ def test_overlay_sets_only_the_owned_keys():
     assert config["features"] == {"js_repl": True, "hooks": True}
     assert config["project_doc_max_bytes"] == 98304 and config["project_doc_fallback_filenames"].startswith("[")
     assert config["model"] == "gpt-6" and config["mcp_servers"]["x"]["command"] == "y"
-    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 6
+    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 5  # the seal is setup.py sandbox's
     assert config["default_permissions"] == "synthesis" and config["permissions"]["synthesis"] == {
-        "extends": ":workspace", "filesystem": {str(folder): access for folder, access in setup.sandbox.codex_rules()}}
+        "extends": ":workspace", "filesystem": {str(folder): access for folder, access in setup.sandbox.codex_rules()
+                                                if access == "write"}}  # the read-only rules are the sandbox step's
     assert setup.codex_overlay(new) == (new, [])  # a rerun changes nothing
 
 
@@ -276,7 +277,7 @@ def test_overlay_keeps_an_explicit_hooks_false_and_says_guards_will_not_run():
                                      "[features]\nhooks = false\n")
     assert "hooks = false" in new and "hooks = true" not in new
     assert notes[0] == "kept [features] hooks = false, so no synthesis guard runs in Codex"
-    assert len(notes) == 4 and "synthesis board" in notes[1] and "synthesis outbox" in notes[2] and "read-only" in notes[3]
+    assert len(notes) == 3 and "synthesis board" in notes[1] and "synthesis outbox" in notes[2]  # no seal: setup.py sandbox's
 
 
 def test_overlay_raises_a_low_instruction_limit_and_adds_a_features_table():
@@ -353,7 +354,7 @@ def test_an_install_that_granted_the_board_alone_gains_the_outbox_and_writes_the
         lacking = setup.doctor.check_codex_board(setup.doctor.read_toml(earlier), board, sealed, outbox)
         assert lacking.status == "fail" and setup.doctor._short(outbox) in lacking.detail, earlier
         new, notes = setup.codex_overlay(earlier)
-        assert len(notes) == (2 if earlier is profile else 1) and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes
+        assert len(notes) == 1 and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes  # the seal is the sandbox step's
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, new
         assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, sealed, outbox).status == "ok", new
         assert setup.codex_overlay(new) == (new, [])
@@ -365,7 +366,7 @@ def test_a_folder_the_person_granted_themselves_is_not_granted_again():
             '[features]\nhooks = true\n[permissions.mine]\nextends = ":workspace"\n[permissions.mine.filesystem]\n'
             f'{json.dumps(str(outbox))} = "write"\n')
     new, notes = setup.codex_overlay(mine)
-    assert len(notes) == 2 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1
+    assert len(notes) == 1 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1  # no seal here
     assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, sealed, outbox).status == "ok"
     assert setup.codex_overlay(new) == (new, [])
 
@@ -420,19 +421,19 @@ def test_the_install_reference_and_the_readme_name_both_folders_setup_lets_codex
 # setup never installs either, and never writes /Library or /etc.
 
 def test_the_overlay_keeps_what_the_guard_trusts_read_only_to_codexs_sandbox():
-    new, notes = setup.codex_overlay("")
+    new, notes = setup.codex_overlay("", seal=True)
     config = setup.doctor.read_toml(new)
     assert config["permissions"]["synthesis"]["filesystem"] == {str(p): a for p, a in setup.sandbox.codex_rules()}
     assert setup.sandbox.profile_problems(config) == [] and any("read-only" in n for n in notes)
     assert setup.doctor.check_codex_board(config, setup.paths.board(), setup.paths.approvals(), setup.paths.outbox()).status == "ok"
-    assert setup.codex_overlay(new) == (new, [])
+    assert setup.codex_overlay(new, seal=True) == (new, [])
 
 
 def test_a_rule_of_the_persons_that_opens_a_sealed_folder_is_named_and_left_as_it_is():
     mine = ('default_permissions = "mine"\nproject_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n'
             '[features]\nhooks = true\n[permissions.mine]\nextends = ":workspace"\n[permissions.mine.filesystem]\n'
             '"~/.codex" = "write"\n')
-    new, notes = setup.codex_overlay(mine)
+    new, notes = setup.codex_overlay(mine, seal=True)
     assert '"~/.codex" = "write"' in new and json.dumps(str(setup.paths.codex_home())) not in new
     assert any("~/.codex" in n and "write" in n and "read" in n for n in notes)
     problems = setup.sandbox.profile_problems(setup.doctor.read_toml(new))
@@ -456,8 +457,11 @@ def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neithe
         assert any(setup.sandbox.install_command(name) in line for line in lines), name
         assert not setup.sandbox.target(name).exists()
     assert not system.exists()
-    assert setup.stage_sandbox(["claude", "codex"]) == lines  # a rerun stages the same bytes and says the same
-    assert setup.stage_sandbox(["claude"]) == lines[:1]  # only for the harnesses here
+    codex = [line for line in lines if line.startswith("codex config: ")]  # Codex's profile, sealed: the rollout's step 2
+    assert any("read-only to Codex" in line for line in codex)
+    again = setup.stage_sandbox(["claude", "codex"])  # a rerun stages the same bytes and says the same
+    assert again == ["codex config: already set"] + lines[len(codex):]
+    assert setup.stage_sandbox(["claude"]) == lines[len(codex):len(codex) + 1]  # only for the harnesses here
 
 
 def test_a_staged_file_installed_by_the_principal_is_verified_and_no_command_is_printed_again(system, monkeypatch):

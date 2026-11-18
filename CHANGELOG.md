@@ -43,8 +43,9 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
   the write area of ruling 8 (a session's folders and temp, plus `~/workspaces` and `~/.Trash`), an `Edit` deny rule
   for every sealed path, Claude Code's own records denied to the shell alone, and an ask rule behind the guard's hold;
   for Codex, a profile of its own pinned with no full access, and the guard's four hooks as managed hooks (ruling 7),
-  the only hooks Codex runs. The Codex profile setup writes in `config.toml` keeps the same set read-only, every
-  ancestor of a sealed folder included.
+  the only hooks Codex runs. The Codex profile in `config.toml` keeps the same set read-only, every ancestor of a sealed
+  folder included, once `setup.py sandbox` writes it: that is the rollout's Codex step, which first tests whether Codex
+  runs its hooks inside its sandbox (the note's section 5), so no release's install seals Codex before then.
 - **The doctor** reports the sandbox in one `sandbox` line (off, staged, or installed and holding the keys: root's with
   every folder above it, this release's bytes, nothing outranking it), counts Codex's hook trust as policy once the
   requirements hold, and fails, in a new `approvals` line, a layout that has both the old records and `approvals/`.
