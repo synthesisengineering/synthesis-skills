@@ -190,3 +190,49 @@ def test_the_doctor_checks_the_pin_and_every_launcher(tmp_path, isolated_home):
     hook.write_text(install.launcher_text(str(mine), "x"), encoding="utf-8")  # an interpreter this user can change
     check = doctor.check_hook_script(isolated_home)
     assert check.status == "fail" and "owned by root" in check.detail, check
+
+
+# --- A5 (2026-11-17): the hooks follow the Mac's newest Python. The installer pins the newest final release among the
+# acceptable interpreters, from 3.9 to the newest the checks test (install.TESTED), never one newer or not yet released.
+# Until 5.24.1 it pinned the first acceptable one, the interpreter running the install, so a Mac whose default moved to
+# 3.15 kept its hooks on 3.12. -----------------------------------------------------------------------------------------
+
+def _fake(folder: Path, name: str, says: str) -> str:
+    """A stand-in interpreter that prints what `pinned_python` asks a candidate for: major, minor and release level."""
+    path = folder / name
+    path.write_text(f"#!/bin/sh\necho '{says}'\n", encoding="utf-8")
+    path.chmod(0o755)
+    return os.path.realpath(path)
+
+
+def test_the_newest_final_python_the_checks_test_is_pinned(tmp_path, monkeypatch):
+    monkeypatch.setattr(install, "interpreter_problems", lambda path: [])  # each stands in for one owned by root
+    old, new = _fake(tmp_path, "py312", "3 12 final"), _fake(tmp_path, "py315", "3 15 final")
+    assert install.pinned_python([old, new]) == new and install.pinned_python([new, old]) == new
+    newer = _fake(tmp_path, "py316", f"3 {install.TESTED[1] + 1} final")
+    assert install.pinned_python([old, newer]) == old  # newer than the checks test: never pinned
+    assert install.pinned_python([old, _fake(tmp_path, "py315a", "3 15 alpha")]) == old  # not a final release
+    assert install.pinned_python([_fake(tmp_path, "py38", "3 8 final")]) == ""
+    assert install.pinned_python([_fake(tmp_path, "garbled", "not a version")]) == ""
+    twin = _fake(tmp_path, "py315b", "3 15 final")
+    assert install.pinned_python([new, twin]) == new  # of two the same, the first
+
+
+def test_each_python_org_version_on_the_mac_is_a_candidate(tmp_path, monkeypatch):
+    """python.org installs each version in its own folder, and `Current` names only the last one installed."""
+    monkeypatch.setattr(install, "interpreter_problems", lambda path: [])
+    versions = tmp_path / "Versions"
+    for minor in ("12", "15"):
+        (versions / f"3.{minor}" / "bin").mkdir(parents=True)
+        _fake(versions / f"3.{minor}" / "bin", "python3", f"3 {minor} final")
+    monkeypatch.setattr(install, "FRAMEWORKS", str(versions / "*" / "bin" / "python3"))
+    monkeypatch.setattr(install, "PYTHONS", ())
+    monkeypatch.setattr(sys, "executable", _fake(tmp_path, "running", "3 12 final"))
+    assert install.pinned_python() == os.path.realpath(versions / "3.15" / "bin" / "python3")
+
+
+def test_the_newest_python_the_installer_pins_is_the_newest_the_checks_test():
+    """Read from the workflow, never restated: a Python the checks stop testing is no longer pinned, and one they add is."""
+    text = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    matrix = re.search(r"^\s+python: \[(.*)\]", text, re.M).group(1)
+    assert install.TESTED == max(tuple(map(int, v.split("."))) for v in re.findall(r'"(3\.\d+)"', matrix))
