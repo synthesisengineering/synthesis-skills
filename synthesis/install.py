@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import glob
 import hashlib
 import json
 import os
@@ -67,6 +68,8 @@ STABLE_SKILL_SCRIPTS = ("synthesis-inbox-cleanup", "synthesis-autopilot", "synth
 PYTHONS = ("/Library/Frameworks/Python.framework/Versions/Current/bin/python3",  # python.org's
            "/Library/Developer/CommandLineTools/usr/bin/python3", "/Applications/Xcode.app/Contents/Developer/usr/bin/python3",
            "/usr/bin/python3", "/usr/local/bin/python3")  # the real file behind each; Apple's /usr/bin shim runs xcrun
+FRAMEWORKS = "/Library/Frameworks/Python.framework/Versions/*/bin/python3"  # python.org's, each version in its own folder
+TESTED = (3, 15)  # the newest Python the checks test (ci.yml's matrix, which a test reads): a newer one is never pinned
 KEPT = ("HOME", "USER", "LOGNAME", "TMPDIR", "TMP", "TEMP", "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "LC_MESSAGES", "COLUMNS",
         "LINES", "TERM", "TZ", "SSH_AUTH_SOCK", "GH_TOKEN", "GITHUB_TOKEN", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
         "https_proxy", "http_proxy", "no_proxy", "SYNTHESIS_HOME", "SYNTHESIS_SESSION", "SYNTHESIS_HOST", "SYNTHESIS_CLAUDE_BIN",
@@ -117,20 +120,25 @@ def interpreter_problems(path: str) -> list:
 
 
 def pinned_python(candidates=None) -> str:
-    """The interpreter to pin: the first of this one and the system's own (`PYTHONS`), each by its real path, that
-    `interpreter_problems` accepts, that is not Apple's /usr/bin shim (it finds the interpreter it runs through the xcrun
-    cache, a file this user writes: review round 3, M3; the real interpreter behind it is a candidate of its own), and
-    that, run isolated with no environment, is Python 3.9 or later; '' for none."""
-    for candidate in ([sys.executable, *PYTHONS] if candidates is None else candidates):
+    """The interpreter to pin: of this one, the system's own (`PYTHONS`) and each of python.org's versions, each by its
+    real path, those `interpreter_problems` accepts that are not Apple's /usr/bin shim (it finds the interpreter it runs
+    through the xcrun cache, a file this user writes: review round 3, M3; the real interpreter behind it is a candidate of
+    its own), the newest final release from 3.9 to `TESTED`, as each says run isolated with no environment, the first of
+    two the same (A5: the hooks follow the Mac's newest Python); '' for none."""
+    found = []
+    for candidate in ([sys.executable, *PYTHONS, *sorted(glob.glob(FRAMEWORKS))] if candidates is None else candidates):
         real = os.path.realpath(candidate) if candidate else ""
-        if real and not interpreter_problems(real) and not (sys.platform == "darwin" and real.startswith("/usr/bin/")):
-            try:
-                if subprocess.run([real, "-I", "-S", "-c", "import sys; sys.exit(sys.version_info < (3, 9))"], env={},
-                                  capture_output=True, timeout=30).returncode == 0:
-                    return real
-            except (OSError, subprocess.SubprocessError):
-                continue
-    return ""
+        if not real or interpreter_problems(real) or (sys.platform == "darwin" and real.startswith("/usr/bin/")):
+            continue
+        try:
+            said = subprocess.run([real, "-I", "-S", "-c", "import sys; v = sys.version_info; print(v[0], v[1], v[3])"],
+                                  env={}, capture_output=True, text=True, timeout=30).stdout.split()
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if len(said) == 3 and said[0].isdigit() and said[1].isdigit() and said[2] == "final" and \
+                (3, 9) <= (int(said[0]), int(said[1])) <= TESTED:
+            found.append(((int(said[0]), int(said[1])), real))
+    return max(found, key=lambda f: f[0])[1] if found else ""
 
 
 def pinned_git() -> str:

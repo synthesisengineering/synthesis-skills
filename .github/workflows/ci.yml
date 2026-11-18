@@ -20,7 +20,10 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        python: ["3.12", "3.13"]
+        # The newest Python on both systems; Linux keeps 3.12 and macOS Apple's own /usr/bin/python3 (3.9), the oldest the
+        # plugin runs on: four interpreters, 24 jobs, 12 of them on macOS, where GitHub's runners are scarcest (A5,
+        # 2026-11-17). The installer pins nothing newer than the newest here (install.TESTED, which a test reads here).
+        python: ["3.12", "3.15", "apple"]
         # What `python3 -m pytest -q tests/ skills/` runs, in six jobs: the core's tests in four parts by file name,
         # and the skills' in two by the skill's name. On 2026-11-12 the whole suite took 526 seconds on a macOS runner
         # and one job was cancelled at the ten-minute limit with no test failing; as two jobs, the core's tests took 6
@@ -29,29 +32,15 @@ jobs:
         # and the skills' (203 seconds there) on Apple's Python once; macOS runners take about twice a Mac's time. Each
         # part here is at most 169 seconds on that Mac. A lint test holds that each test file runs in exactly one job.
         part: ["tests/test_[a-g]*.py", "tests/test_[h-p]*.py", "tests/test_[q-r]*.py", "tests/test_[s-z]*.py", "skills/synthesis-[a-l]*", "skills/synthesis-[m-z]*"]
-        include:
-          # Apple's own /usr/bin/python3 (3.9), the oldest Python the plugin runs on. Until 2026-11-11 a Linux job on
-          # setup-python's 3.9 stood in for it. That day apt on the two images that still have a 3.9 build
-          # (ubuntu-22.04 and ubuntu-24.04) could resolve no mirror, so the job died installing bubblewrap before any
-          # test, and the newest image has no 3.9 build at all. macOS needs no apt and has the interpreter itself.
-          - os: macos-latest
+        exclude:
+          # Apple's own /usr/bin/python3 (3.9). Until 2026-11-11 a Linux job on setup-python's 3.9 stood in for it. That day
+          # apt on the two images that still have a 3.9 build (ubuntu-22.04 and ubuntu-24.04) could resolve no mirror, so
+          # the job died installing bubblewrap before any test, and the newest image has no 3.9 build at all. macOS needs
+          # no apt and has the interpreter itself.
+          - os: ubuntu-latest
             python: apple
-            part: "tests/test_[a-g]*.py"
           - os: macos-latest
-            python: apple
-            part: "tests/test_[h-p]*.py"
-          - os: macos-latest
-            python: apple
-            part: "tests/test_[q-r]*.py"
-          - os: macos-latest
-            python: apple
-            part: "tests/test_[s-z]*.py"
-          - os: macos-latest
-            python: apple
-            part: "skills/synthesis-[a-l]*"
-          - os: macos-latest
-            python: apple
-            part: "skills/synthesis-[m-z]*"
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
