@@ -147,7 +147,7 @@ Setup changes only these keys in `~/.codex/config.toml`, after copying the file 
   instead, which is what Codex reads then. An install that granted the board alone gains
   the outbox on the next run, and setup makes both folders, since the sandbox may write
   inside a granted folder and never create it. Only those two are granted, apart from the
-  guard's sandbox below: `~/.synthesis/v5/state` holds approvals and send windows, which no
+  guard's sandbox below: `~/.synthesis/v5/approvals` holds approvals and send windows, which no
   sandboxed agent may write, and the doctor fails a grant that covers it, as it fails a
   config that leaves either folder out.
 - The guard's sandbox, in the profile form only (design note 22.9, 4.3): what the guard

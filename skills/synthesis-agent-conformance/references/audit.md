@@ -66,6 +66,11 @@ there with no item here fails:
   defaults, and one that does not parse makes the send and deploy guards block everything;
 - `board`: no board file is left under `state/`, where no session has read one since
   5.1.18;
+- `approvals`: the records an approval rests on are in the sealed `approvals/` and
+  `install/` (the guard's sandbox, 5.25.0). One still in `state/`, or the installer's record
+  in the synthesis home itself, is named as waiting for the next hook or `synthesis install`
+  to move it while `approvals/` is not there, and fails beside `approvals/`, where nothing
+  reads it;
 - `scheduled fetch`: on macOS, the hourly job fetched each knowledge root and sessions repo
   within the last day, never merging; each it could not fetch is named with git's reason and
   when it was last fetched, and a Mac with no such checkout is ok, with nothing to fetch
@@ -109,7 +114,7 @@ there with no item here fails:
   `codex instruction chain`, `codex hook trust`, `codex skill catalog`: for Codex,
   `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board and the
   outbox writable from the sandbox (by the permissions profile in use, or the older
-  writable roots while `sandbox_mode` is set) and nothing over the state folder, the
+  writable roots while `sandbox_mode` is set) and nothing over the sealed approvals folder, the
   instruction chain for the current folder under the limit minus 4 KiB, every hook
   trusted (with `setup.py plugin --codex-user-hooks`, the user-level hooks in Codex's own
   `hooks.json`, keyed by that file's path under the home's real path, trusted and holding

@@ -199,7 +199,8 @@ when granted, and never granted under a code the hook filed), the close mark of
   held call says to make it in a Claude Code or Codex session.
 - **The move.** The first install or hook that finds `approvals/` not there moves the old
   records out of `state/` (and merges a line store the config once placed elsewhere),
-  once; after that a file in an old place is a shell's and stays where it is.
+  once; after that a file in an old place is a shell's and stays where it is, and the
+  doctor's `approvals` line fails while one is there.
 - **Residual.** A shell-filed request can misdescribe what its code approves (it deceives
   the principal; it forges nothing). A Codex `write_stdin` into a session an escalated
   command started types into that unsandboxed shell under the one code. The plugin caches

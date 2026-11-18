@@ -387,9 +387,9 @@ def _files(folder: Path) -> dict:
 
 def _hook(home: Path, workspace: Path) -> tuple:
     """The hook run as a shell runs it, with a made-up prompt: one started from a sandboxed shell runs inside the sandbox,
-    so it writes no grant and no record of the session (the note's M5 route). Whatever it wrote is put back."""
-    from synthesis import approvals
-    hook, folders = home / "bin" / "synthesis-hook", [approvals._dir("approvals"), approvals._dir("transcripts")]
+    so it writes no grant and no record of the session (the note's M5 route): neither in grants/, nor in effects/ for a
+    kind whose effect the hook applies, nor in records/ (design 4.1). Whatever it wrote is put back."""
+    hook, folders = home / "bin" / "synthesis-hook", [home / APPROVALS / name for name in ("grants", "effects", "records")]
     if not os.access(hook, os.X_OK):
         return "unknown", f"{tilde(hook)} is not there to run"
     had, session = [f for f in folders if f.is_dir()], f"seal-probe-{os.getpid()}"

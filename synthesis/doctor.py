@@ -596,16 +596,16 @@ def codex_write_roots(config: dict) -> tuple:
     return found, name == ":danger-full-access"
 
 
-def check_codex_board(config: dict, board: Path, state: Path, outbox: Path) -> Check:
+def check_codex_board(config: dict, board: Path, sealed: Path, outbox: Path) -> Check:
     """Codex's sandbox writes only the workspace and the folders its config grants: without the board among them, a
     Codex session can neither claim files nor post (2026-10-30), and without the outbox it cannot stage a file it
-    attaches. A grant over the state folder would let a sandboxed agent write approvals and send windows."""
+    attaches. A grant over the sealed approvals folder would let a sandboxed agent write approvals and send windows."""
     found, unsandboxed = codex_write_roots(config)
     roots = [os.path.realpath(os.path.expanduser(r)) for r in found]
-    exposed = [r for r in roots if paths.inside(os.path.realpath(state), r)]
+    exposed = [r for r in roots if paths.inside(os.path.realpath(sealed), r)]
     if exposed:
         return Check("fail", "codex board access", f"Codex's config lets its sandbox write {_short(exposed[0])}, which holds "
-                     f"{_short(state)}, where approvals and send windows live; grant only {_short(board)} and {_short(outbox)}")
+                     f"{_short(sealed)}, where approvals and send windows live; grant only {_short(board)} and {_short(outbox)}")
     if unsandboxed:
         return Check("ok", "codex board access", "Codex runs without a sandbox (danger-full-access)")
     for folder, cost in ((board, "can neither claim files nor post on the board"), (outbox, "cannot stage a file it attaches")):
@@ -876,6 +876,21 @@ def check_board(home: Path) -> Check:
         return Check("warn", "board", f"{', '.join(old)} still in {_short(home / 'state')}, where no session reads them; "
                      "the next hook or `synthesis install` merges them into board/ (install prints why it could not)")
     return Check("ok", "board", f"{_short(home / 'board')}")
+
+
+def check_approvals_layout(home: Path) -> Check:
+    """The sealed records live in approvals/ and install/ since the guard's sandbox (design 4.1): the first hook or install
+    that finds approvals/ not there moves them once. One left in an old place is named until then, and fails beside
+    approvals/, where nothing reads it and only a shell or an older release's process could have put it."""
+    old = [n for n in (*paths.MOVED, "codex-user-hooks.json") if os.path.lexists(home / "state" / n)] + [
+        "registrations.json"] * os.path.lexists(home / "registrations.json")
+    if old and not os.path.lexists(home / "approvals"):
+        return Check("warn", "approvals", f"{', '.join(old)} still where releases before the guard's sandbox kept them; the next "
+                     "hook or `synthesis install` moves them into approvals/ and install/ (install prints why it could not)")
+    if old:
+        return Check("fail", "approvals", f"{', '.join(old)} in an old place beside {_short(home / 'approvals')}, where nothing "
+                     "reads them: look at what they hold, then move them to the archive from your own terminal")
+    return Check("ok", "approvals", _short(home / "approvals"))
 
 
 def check_codex_doc_bytes(config: dict) -> Check:
@@ -2122,7 +2137,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
         except OSError:
             config = {}
         checks += [check_plugin("codex", entry, error), check_codex_features(config), check_codex_doc_bytes(config),
-                   check_codex_board(config, home / "board", home / "state", home / "outbox"),
+                   check_codex_board(config, home / "board", home / "approvals", home / "outbox"),
                    check_codex_instructions(cwd or Path.cwd(), config, codex_home)]
         if entry:
             versions["codex"] = entry.get("version", "")
@@ -2167,7 +2182,7 @@ def _background(fn, *args):
 def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "", cwd: Path = None) -> list:
     home, cwd, began = home or paths.home(), cwd or Path.cwd(), time.time()
     security = _background(lambda: check_security(paths.account_home()))  # beside the rest: four short questions of macOS
-    checks = [check_runtime(home), check_config(home), check_board(home)]
+    checks = [check_runtime(home), check_config(home), check_board(home), check_approvals_layout(home)]
     from synthesis import sessions
     checks += check_sessions_repos(sessions.repos(), home / "sessions" / ".state")
     if sys.platform == "darwin":
@@ -2209,7 +2224,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         checks.append(check_pr_gate(config["pr_gated"], repos))
     if "temporary_addresses" in config:  # null is a setting that cannot be read, and fails its line
         checks.append(check_temporary_addresses(config))
-    checks += [c for c in [check_browser_accounts(config, paths.read_json(paths.state() / "browser-accounts.json"))] if c]
+    checks += [c for c in [check_browser_accounts(config, paths.read_json(paths.approvals() / "browser-accounts.json"))] if c]
     try:
         from synthesis import rituals
         asked = check_prompt_check(rituals.config())

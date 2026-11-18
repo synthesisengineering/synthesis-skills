@@ -5669,7 +5669,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("checkout", "_append _staged_commit _tree_commit index_set log_claims snapshot snapshot_paths"),
     ("cli", "_batch _main cmd_claim cmd_config cmd_doctor cmd_handoff cmd_inbox cmd_index cmd_install cmd_msg cmd_release cmd_resume cmd_sends "
             "cmd_sessions cmd_uninstall cmd_use cmd_who cmd_worktree main"), ("commit_check", "main problems unapproved"),
-    ("doctor", "_note_waits check_wait_check main run_checks"),
+    ("doctor", "_note_waits check_seal check_wait_check main run_checks"),
     ("hook", "_batch _carried_since _line _newer_plugin_note _ran _upgrade_note _window apply_effects main pre_tool_use session_start stop "
              "user_prompt_submit"),
     ("install", "_install_lock _install_locked _merge _spend_release _stage _unwritable _write_exec approval grant_release install move_approvals "
@@ -5677,6 +5677,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
+    ("sandbox", "_append _broker _create _delete _hook _remove _rename probes"),  # the seal check's probes (doctor --seal)
     ("sends", "_note batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window sender_ticket settle ticket undo "
               "window_request"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent sync"),

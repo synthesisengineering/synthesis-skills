@@ -2541,10 +2541,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # shells, in the lists that already name each harness's settings, and tried by the probe set).
 # 5.25.0 merges part 1 (feature/sandbox-seal) and then part 2 (feature/sandbox-policy), each itemized above from
 # 5.24.1's ceilings (core 23692, plugin 50361); the merges themselves add no line: core 24810, plugin 51539.
+# Then each 16 more, for what part 2 and the doctor still read from the layout before part 1: doctor.check_approvals_layout
+# 13 and its 2 blank lines (design 4.1: a layout that has both the old records and approvals/ fails, and what waits for
+# the move is named); guards.SYNTHESIS_WRITES 1 more (the seal check's probes, sandbox's writers, a line of their own).
+# The browser accounts read from approvals/, the codex board line judging the sealed folder, and sandbox._hook watching
+# grants/, effects/ and records/ (its docstring 1 more, the import it no longer needs 1 fewer) keep their lines.
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 24810
-PLUGIN_BUDGET = 51539
+CORE_BUDGET = 24826
+PLUGIN_BUDGET = 51555
 
 
 def _lines(files):
