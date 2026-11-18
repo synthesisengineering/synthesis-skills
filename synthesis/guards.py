@@ -5672,8 +5672,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("doctor", "_note_waits check_seal check_wait_check main run_checks"),
     ("hook", "_batch _carried_since _line _newer_plugin_note _ran _upgrade_note _window apply_effects main pre_tool_use session_start stop "
              "user_prompt_submit"),
-    ("install", "_install_lock _install_locked _merge _spend_release _stage _unwritable _write_exec approval grant_release install move_approvals "
-                "move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+    ("install", "_install_lock _install_locked _merge _move_records _spend_release _stage _unwritable _write_exec approval grant_release install "
+                "move_approvals move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),

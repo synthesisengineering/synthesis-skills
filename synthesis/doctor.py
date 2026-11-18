@@ -1725,7 +1725,7 @@ def check_sandbox(found=HARNESSES) -> Check:
             f"{sandbox.LABELS[n]} ({sandbox.target(n)})" for n in names))
     if states == {"off"}:
         problems = [f"{' and '.join(sandbox.LABELS[n] for n in names)} {'is' if len(names) == 1 else 'are'} neither staged nor "
-                    f"installed; to fix it, run `{sandbox.SETUP} sandbox`, which prints the one command that installs each"] + problems[len(names):]
+                    f"installed: {sandbox.ROLLOUT}"] + problems[len(names):]
     word = "off" if states == {"off"} else "installed, but" if states == {"installed"} else "staged" if "installed" not in states else "partly installed"
     return Check("warn", "sandbox", f"{word}: " + "; ".join(problems))
 

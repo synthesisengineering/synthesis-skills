@@ -233,9 +233,8 @@ def grant_from_prompt(prompt: str, transcript_path: str = "", session_id: str = 
                 **(entry if effect else {}), "kind": entry["kind"], "digest": entry["digest"], "summary": entry.get("summary", ""),
                 "code": code, "asked": data.get("at", 0), "at": time.time(), "session": me, "shell": shell, **ended})
             said.append(entry.get("summary", "") + SHELL * shell)
-        if data.get("digest"):
-            paths.write_json(_dir("answered") / f"{code}.json", {"left": []})  # nothing planted under it again counts (`answered`)
-            pending_file.unlink(missing_ok=True)
+        paths.write_json(_dir("answered") / f"{code}.json", {"left": []})  # nothing filed under it later counts (`answered`),
+        pending_file.unlink(missing_ok=True)  # as with a code that matched nothing when typed (review round 2 of 5.25.0)
     return said
 
 

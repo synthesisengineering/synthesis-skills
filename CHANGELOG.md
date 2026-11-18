@@ -41,9 +41,9 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
   or sandbox settings, or of a launch agent, waits for the code of that call; an MCP tool that writes is judged by its
   path arguments, as the file tools are, since an MCP server runs outside every sandbox; and the installer refuses,
   naming the folder, where it cannot write the sealed runtime, rather than install half of it.
-- **The two administrator files.** `setup.py sandbox`, and every `plugin` or full run, stages Claude Code's managed
-  settings and Codex's requirements in `install/` and prints the one `sudo` command that installs each; setup installs
-  neither. Both are built from one sealed set (`synthesis/sandbox.py`): the sandbox on and never off for want of one,
+- **The two administrator files.** Every `plugin` or full run of setup stages Claude Code's managed settings and Codex's
+  requirements in `install/`; only `setup.py sandbox`, the rollout's step after its pilot, prints the one `sudo` command
+  that installs each, and the doctor and an ordinary run point to the rollout instead. Setup installs neither. Both are built from one sealed set (`synthesis/sandbox.py`): the sandbox on and never off for want of one,
   the write area of ruling 8 (a session's folders and temp, plus `~/workspaces` and `~/.Trash`) with the board, the
   outbox and `state/requests` named, as Codex's profile names them, an `Edit` deny rule
   for every sealed path, Claude Code's own records denied to the shell alone, and an ask rule behind the guard's hold;
@@ -52,7 +52,9 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
   folder included, once `setup.py sandbox` writes it: that is the rollout's Codex step, which first tests whether Codex
   runs its hooks inside its sandbox (the note's section 5), so no release's install, and no `plugin` or full run of
   setup, seals Codex before then. Each printed command checks the staged file's SHA-256 first, so a copy changed after
-  setup staged it installs nothing.
+  setup staged it installs nothing. A typed code that matched no request is marked too, so nothing filed under it later
+  is answered by that prompt; and an install that waits while a release before 5.25 runs says why that release answers
+  "Not granted" to its code.
 - **The doctor** reports the sandbox in one `sandbox` line (off, staged, or installed and holding the keys: root's with
   every folder above it, this release's bytes, nothing outranking it), counts Codex's hook trust as policy once the
   requirements hold, and fails, in a new `approvals` line, a layout that has both the old records and `approvals/`.

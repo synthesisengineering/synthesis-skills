@@ -2605,8 +2605,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # names them), install_command 4 (the staged file's SHA-256 checked before root copies it). doctor.py none (its layout
 # check reads the same mark). And the plugin 2 more, in setup.py's stage_sandbox (finding 1: every plugin or full run
 # sealed Codex's profile): `seal` its own parameter, passed only by the `sandbox` command, and its docstring.
-CORE_BUDGET = 25041
-PLUGIN_BUDGET = 51775
+# Then each 3 more, for review round 2 of 5.25.0, in synthesis/: approvals.py 1 fewer (grant_from_prompt marks every typed
+# code, one that matched no request included, in the two lines that marked a granted one), sandbox.py 2 (ROLLOUT, where
+# the doctor and an ordinary setup run point instead of printing the install commands, which only `setup.py sandbox`
+# prints after the pilot), install.py 2 (approval: while a release before 5.25 runs, why its prompt answers "Not granted"
+# to the code); guards.py none (SYNTHESIS_WRITES names install._move_records in its two lines) and doctor.py none (its off
+# line reads ROLLOUT). And the plugin 2 more, in setup.py's stage_sandbox (an ordinary run's staged and dry-run lines
+# point to the rollout, without the commands).
+CORE_BUDGET = 25044
+PLUGIN_BUDGET = 51780
 
 
 def _lines(files):

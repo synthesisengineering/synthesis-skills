@@ -341,7 +341,9 @@ def approval(wanted: dict, said: str, session: dict | None) -> None:
     raise Unapproved(f"This {said}. That runtime is what the guard runs, so it changes only on the principal's word: show "
                      f"them this exact install and ask them to type {approvals.how(code)}; then run the identical command "
                      "again, with the folder it installs from left as it is now." + ("" if paths.session_id(session) else
-                     " This shell names no session: pass --session with the one the principal types it in."))
+                     " This shell names no session: pass --session with the one the principal types it in.") + ("" if paths.moved() else
+                     " The release running now answers \"Not granted\" when the code is typed, as it reads no request a shell files; "
+                     "that is expected, and the identical command run again reads the code."))
 
 
 # What install and uninstall call, bound when this module loads: a program in the same process that puts a function of

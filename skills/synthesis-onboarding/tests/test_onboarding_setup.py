@@ -485,7 +485,9 @@ def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neithe
     assert any("read-only to Codex" in line for line in codex)
     again = setup.stage_sandbox(["claude", "codex"], seal=True)  # a rerun stages the same bytes and says the same
     assert again == ["codex config: already set"] + lines[len(codex):]
-    assert setup.stage_sandbox(["claude"]) == lines[len(codex):len(codex) + 1]  # only for the harnesses here
+    assert setup.stage_sandbox(["claude"], seal=True) == lines[len(codex):len(codex) + 1]  # only for the harnesses here
+    ordinary = setup.stage_sandbox(["claude", "codex"])  # a plugin or full run: staged, the commands left to the rollout
+    assert all("sudo" not in line and "after its pilot" in line for line in ordinary) and len(ordinary) == 2
 
 
 def test_a_staged_file_installed_by_the_principal_is_verified_and_no_command_is_printed_again(system, monkeypatch):

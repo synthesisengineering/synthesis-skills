@@ -696,7 +696,8 @@ def stage_sandbox(clients: list, dry_run: bool = False, seal: bool = False) -> l
     for name in (n for n in ("claude", "codex") if n in clients):
         label, copy, there = sandbox.LABELS[name], sandbox.staged(name), sandbox.target(name)
         if dry_run:
-            lines.append(f"sandbox: would stage {label} in {sandbox.tilde(copy)}; installing it takes `{sandbox.install_command(name)}`")
+            lines.append(f"sandbox: would stage {label} in {sandbox.tilde(copy)}" + (f"; installing it takes `{sandbox.install_command(name)}`"
+                         if seal else f", for the rollout: {sandbox.ROLLOUT}"))
             continue
         copy.parent.mkdir(parents=True, exist_ok=True)
         tmp = copy.with_name(f".{copy.name}.{os.getpid()}.tmp")
@@ -710,7 +711,8 @@ def stage_sandbox(clients: list, dry_run: bool = False, seal: bool = False) -> l
         state, problems = sandbox.judge(name)
         lines.append(f"sandbox: {label} installed at {there}, holding the keys" if state == "installed" and not problems else
                      f"sandbox: {label} installed at {there}, but: " + "; ".join(problems) if state == "installed" else
-                     f"sandbox: staged {label} in {sandbox.tilde(copy)}; to install it, run: {sandbox.install_command(name)}")
+                     f"sandbox: staged {label} in {sandbox.tilde(copy)}; to install it, run: {sandbox.install_command(name)}" if seal else
+                     f"sandbox: staged {label} in {sandbox.tilde(copy)}, for the rollout: {sandbox.ROLLOUT}")  # review round 2
     return lines
 
 

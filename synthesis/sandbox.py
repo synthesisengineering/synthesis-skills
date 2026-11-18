@@ -30,6 +30,8 @@ OUTRANKING = {"claude": Path("/Library/Managed Preferences/com.anthropic.claudec
 PROFILE = "synthesis-sealed"  # the requirements' own profile: one named as config.toml's conflicts with it (Codex 0.169)
 ROOT_GROUP = "wheel" if sys.platform == "darwin" else "root"
 SETUP = "python3 <synthesis-onboarding>/scripts/setup.py"
+ROLLOUT = ("the sandbox's rollout installs each file after its pilot (synthesis-onboarding's references/harness-install.md, "
+           f"'The guard's sandbox'), with the command `{SETUP} sandbox` prints")  # never an ordinary setup or doctor run (round 2)
 LABELS = {"claude": "Claude Code's managed settings", "codex": "Codex's requirements"}
 
 # The sealed set as the design note's 4.1 lays out the synthesis home: the one list the two files, the doctor and the
@@ -158,8 +160,8 @@ def install_command(name: str) -> str:
     place, owned by root and read by everyone. A copy changed since then installs nothing (review round 1 of 5.25.0)."""
     there, copy = target(name), staged(name)
     check = "shasum -a 256 -c" if sys.platform == "darwin" else "sha256sum -c"
-    digest = hashlib.sha256(expected(name).encode("utf-8")).hexdigest()
-    return (f"echo {shlex.quote(f'{digest}  {copy}')} | {check} && sudo install -d -o root -g {ROOT_GROUP} -m 755 "
+    digest = hashlib.sha256(expected(name).encode("utf-8")).hexdigest()  # printf, as echo reads a backslash as an escape
+    return (f"printf '%s\\n' {shlex.quote(f'{digest}  {copy}')} | {check} && sudo install -d -o root -g {ROOT_GROUP} -m 755 "
             f"{shlex.quote(str(there.parent))} && "
             f"sudo install -o root -g {ROOT_GROUP} -m 644 {shlex.quote(str(copy))} {shlex.quote(str(there))}")
 
@@ -227,10 +229,10 @@ def judge(name: str) -> tuple:
     try:
         held = copy.read_text(encoding="utf-8")
     except (OSError, ValueError):
-        return "off", [f"{label} is neither staged nor installed: run `{SETUP} sandbox`, which prints the command that installs it"]
+        return "off", [f"{label} is neither staged nor installed: {ROLLOUT}"]
     if not _same(name, held, want):
-        return "staged", [f"{label} staged in {tilde(copy)} is out of date: run `{SETUP} sandbox`, which prints the command that installs it"]
-    return "staged", [f"{label} is staged, not installed: run `{install_command(name)}`"]
+        return "staged", [f"{label} staged in {tilde(copy)} is out of date: {ROLLOUT}"]
+    return "staged", [f"{label} is staged, not installed: {ROLLOUT}"]
 
 
 def managed_hooks_hold() -> bool:

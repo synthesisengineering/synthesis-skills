@@ -174,17 +174,24 @@ The guard's approvals hold only if no agent's shell can write what they rest on:
 approval records, the hook's code and configuration, each harness's records and its hook
 and sandbox settings (design note 22.9; the principal's rulings of 2026-11-15). Each harness's
 own operating-system sandbox enforces that, set by one file owned by root that a session
-cannot change. `setup.py sandbox`, and every `plugin` or full run, stages the exact bytes of
-each file in `~/.synthesis/v5/install/` (a sealed folder, so no session changes a staged
-file before it is installed) and prints the one command that installs it; setup never
-installs either, and never writes `/Library` or `/etc`. Each command first checks the staged
-file's SHA-256 against the bytes setup staged, so a copy changed since then installs
-nothing. The principal runs the command with his password, once per Mac and again when a
-release changes a file; setup prints each with its digest in place of `<sha256>` and the full path:
+cannot change. Every `plugin` or full run of setup stages the exact bytes of each file in
+`~/.synthesis/v5/install/` (a sealed folder, so no session changes a staged file before it
+is installed); setup never installs either, and never writes `/Library` or `/etc`.
+
+Install them in the sandbox's rollout, never because an ordinary setup or doctor run names
+them. First a pilot: one Claude Code session started with the managed settings' content as
+its `--settings`, running `synthesis doctor --seal` and a day's work, then a session in the
+desktop app's Code tab. Then a check that Codex runs the guard's hooks inside its sandbox.
+Only then run `setup.py sandbox`. It makes the Codex profile in `config.toml` read-only where
+the guard trusts it, and it alone prints the one command that installs each file. Each
+command first checks the staged file's SHA-256 against the bytes setup staged, so a copy
+changed since then installs nothing. The principal runs it with his password, once per Mac
+and again when a release changes a file; setup prints each with its digest in place of
+`<sha256>` and the full path:
 
 ```bash
-echo "<sha256>  $HOME/.synthesis/v5/install/managed-settings.json" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
-echo "<sha256>  $HOME/.synthesis/v5/install/requirements.toml" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
+printf '%s\n' "<sha256>  $HOME/.synthesis/v5/install/managed-settings.json" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 "/Library/Application Support/ClaudeCode" && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/managed-settings.json "/Library/Application Support/ClaudeCode/managed-settings.json"
+printf '%s\n' "<sha256>  $HOME/.synthesis/v5/install/requirements.toml" | shasum -a 256 -c && sudo install -d -o root -g wheel -m 755 /etc/codex && sudo install -o root -g wheel -m 644 ~/.synthesis/v5/install/requirements.toml /etc/codex/requirements.toml
 ```
 
 - Claude Code's managed settings,
