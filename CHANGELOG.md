@@ -98,10 +98,11 @@ adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
   unsandboxed shell under the one code; and the plugin caches are sealed by the sandbox alone, since the skills'
   scripts run from there. As part 2 leaves them: the seal check asks two brokers, launchd and LaunchServices, of the
   note's list (Apple Events, a running tmux or screen server, ssh to localhost and the harnesses' own prompt routes are
-  for the pilot's probe set), and Muse's sandbox is shown to seal nothing. Not yet confirmed on a Mac (the note's
-  section 5): whether Codex runs its hooks outside its sandbox, which the profile setup now writes makes decisive for
-  approvals in Codex; whether Codex refuses the rename of a sealed folder's ancestor; the place of Codex's requirements,
-  taken from Codex's documentation; and whether Claude Code's sandbox holds in the desktop app's Code tab and agent mode.
+  for the pilot's probe set), and Muse documents no folder rules, so nothing shows its sandbox seals the set. Not yet
+  confirmed on a Mac (the note's section 5): whether Codex runs its hooks outside its sandbox, which the profile setup
+  now writes makes decisive for approvals in Codex; whether Codex refuses the rename of a sealed folder's ancestor; the
+  place of Codex's requirements, taken from Codex's documentation; and whether Claude Code's sandbox holds in the
+  desktop app's Code tab and agent mode.
 
 ## [5.24.1] - 2026-11-17
 
