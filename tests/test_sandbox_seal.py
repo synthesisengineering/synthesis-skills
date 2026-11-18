@@ -236,6 +236,18 @@ def test_the_hook_and_a_shell_never_file_under_codes_of_the_same_shape(monkeypat
     assert {approvals.hooks(c) for c in approvals.pending()} == {True, False}
 
 
+def test_a_hook_request_a_release_before_filed_under_any_digit_is_granted_after_the_move(principal, monkeypatch):
+    """A release before this one drew a code's first digit from 0 to 9, so a request pending at the upgrade can carry a
+    shell's shape; moved into the sealed folder, it is still the hook's, granted by its code and named as the hook's,
+    and a shell's file under the same code is never read."""
+    request = {"kind": "send", "digest": approvals.digest("send", {"to": "a"}), "summary": "a send", "at": time.time()}
+    paths.write_json(paths.approvals() / "requests" / "7abcde.json", request)  # as the move leaves it
+    paths.write_json(paths.requests() / "7abcde.json", {**request, "digest": approvals.digest("send", {"to": "b"}), "by": "shell"})
+    assert approvals.pending() == ["7abcde"]
+    assert principal("code 7abcde") == ["a send"]
+    assert approvals.grant("send", {"to": "a"}) and not approvals.grant("send", {"to": "b"})
+
+
 def test_a_shells_request_planted_under_a_code_the_hook_showed_after_it_expired_is_never_granted(principal, monkeypatch):
     """The reviewer's case: the hook holds call A under X; a later hold expires X; a shell files call B under X, where its
     sandbox lets it write; the principal types the code he was shown for A. Nothing is granted, by the hook or by a
