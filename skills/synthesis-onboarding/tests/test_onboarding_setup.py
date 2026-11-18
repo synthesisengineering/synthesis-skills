@@ -265,9 +265,9 @@ def test_overlay_sets_only_the_owned_keys():
     assert config["features"] == {"js_repl": True, "hooks": True}
     assert config["project_doc_max_bytes"] == 98304 and config["project_doc_fallback_filenames"].startswith("[")
     assert config["model"] == "gpt-6" and config["mcp_servers"]["x"]["command"] == "y"
-    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 5
+    assert setup.HOOKS_BEGIN in new and setup.BOARD_BEGIN in new and len(notes) == 6
     assert config["default_permissions"] == "synthesis" and config["permissions"]["synthesis"] == {
-        "extends": ":workspace", "filesystem": {str(setup.paths.board()): "write", str(setup.paths.outbox()): "write"}}
+        "extends": ":workspace", "filesystem": {str(folder): access for folder, access in setup.sandbox.codex_rules()}}
     assert setup.codex_overlay(new) == (new, [])  # a rerun changes nothing
 
 
@@ -276,7 +276,7 @@ def test_overlay_keeps_an_explicit_hooks_false_and_says_guards_will_not_run():
                                      "[features]\nhooks = false\n")
     assert "hooks = false" in new and "hooks = true" not in new
     assert notes[0] == "kept [features] hooks = false, so no synthesis guard runs in Codex"
-    assert len(notes) == 3 and "synthesis board" in notes[1] and "synthesis outbox" in notes[2]
+    assert len(notes) == 4 and "synthesis board" in notes[1] and "synthesis outbox" in notes[2] and "read-only" in notes[3]
 
 
 def test_overlay_raises_a_low_instruction_limit_and_adds_a_features_table():
@@ -311,7 +311,7 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
         config = setup.doctor.read_toml(new)
         assert setup.doctor.check_codex_board(config, board, state, outbox).status == "ok", given
         assert [str(folder) in note for folder, note in zip((board, outbox), notes)] == [True, True], notes
-        assert len(notes) == 2 and setup.codex_overlay(new) == (new, []), given
+        assert len(notes) == (3 if profile else 2) and setup.codex_overlay(new) == (new, []), given  # a profile is sealed too
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, given
         if profile:
             assert config["default_permissions"] == profile and config["permissions"][profile]["extends"] == base, given
@@ -322,7 +322,8 @@ def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_read
     inline = mine + 'filesystem = { "~/x" = "read" }\n'
     new, notes = setup.codex_overlay(inline)
     assert new == inline and "form setup does not edit" in notes[0] and str(board) in notes[0]
-    assert len(notes) == 2 and "form setup does not edit" in notes[1] and str(outbox) in notes[1]
+    assert len(notes) == 3 and "form setup does not edit" in notes[1] and str(outbox) in notes[1]
+    assert "form setup does not edit" in notes[2] and "read-only" in notes[2]
 
 
 def test_an_install_that_granted_the_board_alone_gains_the_outbox_and_writes_the_board_no_second_time():
@@ -339,7 +340,7 @@ def test_an_install_that_granted_the_board_alone_gains_the_outbox_and_writes_the
         lacking = setup.doctor.check_codex_board(setup.doctor.read_toml(earlier), board, state, outbox)
         assert lacking.status == "fail" and setup.doctor._short(outbox) in lacking.detail, earlier
         new, notes = setup.codex_overlay(earlier)
-        assert len(notes) == 1 and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes
+        assert len(notes) == (2 if earlier is profile else 1) and "synthesis outbox" in notes[0] and str(outbox) in notes[0], notes
         assert new.count(json.dumps(str(board))) == 1 and new.count(json.dumps(str(outbox))) == 1, new
         assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, state, outbox).status == "ok", new
         assert setup.codex_overlay(new) == (new, [])
@@ -351,7 +352,7 @@ def test_a_folder_the_person_granted_themselves_is_not_granted_again():
             '[features]\nhooks = true\n[permissions.mine]\nextends = ":workspace"\n[permissions.mine.filesystem]\n'
             f'{json.dumps(str(outbox))} = "write"\n')
     new, notes = setup.codex_overlay(mine)
-    assert len(notes) == 1 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1
+    assert len(notes) == 2 and "synthesis board" in notes[0] and new.count(json.dumps(str(outbox))) == 1
     assert setup.doctor.check_codex_board(setup.doctor.read_toml(new), board, state, outbox).status == "ok"
     assert setup.codex_overlay(new) == (new, [])
 
@@ -381,6 +382,7 @@ def test_configure_codex_backs_up_before_writing(tmp_path, monkeypatch):
     assert any("backed up" in line for line in lines)
     assert setup.configure_codex() == ["codex config: already set"]
     assert setup.paths.board().is_dir() and setup.paths.outbox().is_dir()  # the sandbox may write inside them, never make them
+    assert (setup.paths.home() / "state" / "requests").is_dir()
 
 
 def test_the_install_reference_and_the_readme_name_both_folders_setup_lets_codex_write():
@@ -397,6 +399,88 @@ def test_the_install_reference_and_the_readme_name_both_folders_setup_lets_codex
                             .read_text(encoding="utf-8").split())
     assert "the one synthesis folder granted there" not in coordination
     assert "`~/.synthesis/v5/outbox/`" in coordination and "`~/.synthesis/v5/state/`" in coordination
+
+
+# ---- the guard's sandbox (design note 22.9, 4.2 and 4.3) ---------------------------------------------------------
+# What no agent's shell may write is one list in the runtime (synthesis/sandbox.py). Setup keeps it read-only in the
+# Codex profile it already writes, and stages the two administrator files the principal installs with his password:
+# setup never installs either, and never writes /Library or /etc.
+
+def test_the_overlay_keeps_what_the_guard_trusts_read_only_to_codexs_sandbox():
+    new, notes = setup.codex_overlay("")
+    config = setup.doctor.read_toml(new)
+    assert config["permissions"]["synthesis"]["filesystem"] == {str(p): a for p, a in setup.sandbox.codex_rules()}
+    assert setup.sandbox.profile_problems(config) == [] and any("read-only" in n for n in notes)
+    assert setup.doctor.check_codex_board(config, setup.paths.board(), setup.paths.state(), setup.paths.outbox()).status == "ok"
+    assert setup.codex_overlay(new) == (new, [])
+
+
+def test_a_rule_of_the_persons_that_opens_a_sealed_folder_is_named_and_left_as_it_is():
+    mine = ('default_permissions = "mine"\nproject_doc_max_bytes = 98304\nproject_doc_fallback_filenames = ["CLAUDE.md"]\n'
+            '[features]\nhooks = true\n[permissions.mine]\nextends = ":workspace"\n[permissions.mine.filesystem]\n'
+            '"~/.codex" = "write"\n')
+    new, notes = setup.codex_overlay(mine)
+    assert '"~/.codex" = "write"' in new and json.dumps(str(setup.paths.codex_home())) not in new
+    assert any("~/.codex" in n and "write" in n and "read" in n for n in notes)
+    problems = setup.sandbox.profile_problems(setup.doctor.read_toml(new))
+    assert len(problems) == 1 and "~/.codex" in problems[0]
+
+
+@pytest.fixture
+def system(tmp_path, monkeypatch):
+    """The administrator files' places in the test's own folder."""
+    monkeypatch.setattr(setup.sandbox, "CLAUDE_MANAGED", tmp_path / "system" / "ClaudeCode" / "managed-settings.json")
+    monkeypatch.setattr(setup.sandbox, "CODEX_REQUIREMENTS", tmp_path / "system" / "codex" / "requirements.toml")
+    monkeypatch.setattr(setup.sandbox, "OUTRANKING", {})
+    return tmp_path / "system"
+
+
+def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neither(system):
+    lines = setup.stage_sandbox(["claude", "codex"])
+    for name in ("claude", "codex"):
+        staged = setup.sandbox.staged(name)
+        assert staged.read_text(encoding="utf-8") == setup.sandbox.expected(name) and stat_mode(staged) == 0o644
+        assert any(setup.sandbox.install_command(name) in line for line in lines), name
+        assert not setup.sandbox.target(name).exists()
+    assert not system.exists()
+    assert setup.stage_sandbox(["claude", "codex"]) == lines  # a rerun stages the same bytes and says the same
+    assert setup.stage_sandbox(["claude"]) == lines[:1]  # only for the harnesses here
+
+
+def test_a_staged_file_installed_by_the_principal_is_verified_and_no_command_is_printed_again(system, monkeypatch):
+    setup.stage_sandbox(["claude"])
+    there = setup.sandbox.target("claude")
+    there.parent.mkdir(parents=True)
+    there.write_text(setup.sandbox.expected("claude"), encoding="utf-8")
+    monkeypatch.setattr(setup.sandbox, "admin_problems", lambda path: [])
+    lines = setup.stage_sandbox(["claude"])
+    assert lines == [f"sandbox: Claude Code's managed settings installed at {there}, holding the keys"]
+
+
+def test_a_dry_run_stages_nothing_and_the_sandbox_command_stages_for_the_harnesses_here(tmp_path, system, monkeypatch, capsys):
+    claude, _ = fake_cli(tmp_path, "claude", {"--version": (0, "2.1.316")})
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: claude if name == "claude" else None)
+    before = home_tree()
+    assert setup.main(["sandbox", "--dry-run"]) == 0
+    out = capsys.readouterr().out
+    assert "would stage Claude Code's managed settings" in out and "Codex" not in out and home_tree() == before
+    assert setup.main(["sandbox"]) == 0
+    out = capsys.readouterr().out
+    assert setup.sandbox.install_command("claude") in out and setup.RESTART not in out
+    assert setup.sandbox.staged("claude").is_file() and not setup.sandbox.staged("codex").exists()
+    assert not system.exists()
+
+
+def test_the_install_reference_says_how_the_two_files_are_installed_and_what_they_hold():
+    reference = " ".join((Path(setup.__file__).resolve().parents[1] / "references" / "harness-install.md")
+                         .read_text(encoding="utf-8").split())
+    for said in ("setup.py sandbox", "/Library/Application Support/ClaudeCode/managed-settings.json",
+                 "/etc/codex/requirements.toml", "sudo", "synthesis doctor --seal", "allow_managed_hooks_only"):
+        assert said in reference, said
+
+
+def stat_mode(path):
+    return path.stat().st_mode & 0o777
 
 
 # ---- runtime, prompts, interruption and the restart line -------------------------
