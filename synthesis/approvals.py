@@ -195,12 +195,21 @@ def transcript(session: dict | None) -> str:
     if given or not re.fullmatch(r"[\w.-]+", sid):
         return given
     record = paths.read_json(_dir("transcripts") / f"{sid}.json")
-    recorded, home = str(record.get("path") or ""), paths.account_home()
-    folders = record["folders"] if "folders" in record else {  # a note 5.23's prompt hook wrote names none (A9)
-        "claude-code": home / ".claude" / "projects", "codex": home / ".codex" / "sessions", "codex-archived": home /
-        ".codex" / "archived_sessions", "muse": home / ".local" / "share" / "muse" / "sessions",
-        "desktop": home / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions"}
+    recorded = str(record.get("path") or "")
+    folders = record["folders"] if "folders" in record else _account_folders()  # a note 5.23's prompt hook wrote names none
     return recorded if os.path.isfile(recorded) and _kept_by_a_harness(recorded, folders) else ""
+
+
+def _account_folders() -> dict:
+    """Each harness's folders under the account's own home, where a note 5.23's prompt hook wrote may lie (A9); none for an
+    account the user database does not know (the integration review of 5.24.1)."""
+    try:
+        home = paths.account_home()
+    except KeyError:
+        return {}
+    return {"claude-code": home / ".claude" / "projects", "codex": home / ".codex" / "sessions", "codex-archived": home /
+            ".codex" / "archived_sessions", "muse": home / ".local" / "share" / "muse" / "sessions",
+            "desktop": home / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions"}
 
 
 def remember(session_id: str, transcript_path: str) -> None:

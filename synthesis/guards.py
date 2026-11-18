@@ -3854,6 +3854,7 @@ def _protected_roots(config: dict | None) -> list[str]:
     if key not in ROOTS_MEMO:
         ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
                                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
+                                            paths.codex_home() / "archived_sessions",  # Codex's archived rollouts, where a note may point (5.24.1)
                                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                                             *([store] if store else [])]] + (_settings() if mode else [])
     return list(ROOTS_MEMO[key])

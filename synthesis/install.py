@@ -91,9 +91,9 @@ SAFE_PATH = "/usr/bin:/bin:/usr/sbin:/sbin"
 # chosen and checked as the interpreter is. On Linux /usr/bin/git is git itself.
 GITS = ("/Library/Developer/CommandLineTools/usr/bin/git", "/Applications/Xcode.app/Contents/Developer/usr/bin/git",
         "/usr/bin/git", "/usr/local/bin/git")
-NO_PYTHON = ("synthesis: no Python 3.9 or later owned by root, with every folder above it, and writable by neither this "
-             "user nor its groups was found, so nothing runs; install python.org's Python or Apple's Command Line Tools, "
-             "then run the plugin's install again")
+NO_PYTHON = (f"synthesis: no final release of Python 3.9 to {TESTED[0]}.{TESTED[1]} owned by root, with every folder above it, and "
+             "writable by neither this user nor its groups was found, so nothing runs; install python.org's Python or Apple's "
+             "Command Line Tools, then run the plugin's install again")
 ENTRY_POINTS = ("synthesis-hook", "synthesis", "synthesis-release")  # in bin/; the git hooks' are in git-hooks/
 ENTRY = {"synthesis-hook": "{runtime}/synthesis/hook.py", "synthesis-release":
          "{runtime}/skills/synthesis-skills-manager/scripts/release.py",
@@ -128,17 +128,20 @@ def pinned_python(candidates=None) -> str:
     found = []
     for candidate in ([sys.executable, *PYTHONS, *sorted(glob.glob(FRAMEWORKS))] if candidates is None else candidates):
         real = os.path.realpath(candidate) if candidate else ""
-        if not real or interpreter_problems(real) or (sys.platform == "darwin" and real.startswith("/usr/bin/")):
-            continue
-        try:
-            said = subprocess.run([real, "-I", "-S", "-c", "import sys; v = sys.version_info; print(v[0], v[1], v[3])"],
-                                  env={}, capture_output=True, text=True, timeout=30).stdout.split()
-        except (OSError, subprocess.SubprocessError):
-            continue
-        if len(said) == 3 and said[0].isdigit() and said[1].isdigit() and said[2] == "final" and \
-                (3, 9) <= (int(said[0]), int(said[1])) <= TESTED:
-            found.append(((int(said[0]), int(said[1])), real))
+        if real and not interpreter_problems(real) and not (sys.platform == "darwin" and real.startswith("/usr/bin/")):
+            found += [(said, real) for said in [final_version(real)] if said and (3, 9) <= said <= TESTED]
     return max(found, key=lambda f: f[0])[1] if found else ""
+
+
+def final_version(real: str):
+    """(major, minor) the interpreter at `real` says it is, run isolated with no environment, when it is a final release;
+    None for a pre-release or one that does not answer."""
+    try:
+        said = subprocess.run([real, "-I", "-S", "-c", "import sys; v = sys.version_info; print(v[0], v[1], v[3])"],
+                              env={}, capture_output=True, text=True, timeout=30).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (int(said[0]), int(said[1])) if len(said) == 3 and said[0].isdigit() and said[1].isdigit() and said[2] == "final" else None
 
 
 def pinned_git() -> str:

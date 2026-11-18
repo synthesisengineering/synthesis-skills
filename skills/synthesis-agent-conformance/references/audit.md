@@ -228,6 +228,11 @@ there with no item here fails:
 - `latest release`: only with `--latest`, whether an installed harness is behind the
   published release;
 - `git hooks`: the global `core.hooksPath` (report only);
+- `hook interpreter`: the Python the hooks run, read from the hook launcher, and any newer
+  final python.org version, up to the newest the checks test, that the installer passed over,
+  with why (the guard runs only an interpreter root owns, with every folder above it, that
+  this user and its groups cannot write) and the steps that let the next install pin it: `sudo
+  chmod -R go-w` on its folder, then the release launcher's `--install-only` (5.24.1);
 - `machine security`, `security <name>`: the Mac keeps its files to its own user: the home
   folder and `~/.ssh` open to no other local user, no private key in `~/.ssh` readable by
   one, and on macOS FileVault, the firewall, System Integrity Protection and Gatekeeper on

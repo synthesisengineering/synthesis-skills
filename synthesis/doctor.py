@@ -11,6 +11,7 @@ plain inputs, so tests feed fake ones.
 from __future__ import annotations
 
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -1627,29 +1628,43 @@ PROTECTIONS = (  # macOS's own: (name, what asks, what says it is off, what says
      "start the Mac in Recovery, run `csrutil enable` in its Terminal, and restart"),
     ("Gatekeeper", ["spctl", "--status"], r"assessments disabled", r"assessments enabled",
      "allow apps from the App Store and identified developers only, in System Settings > Privacy & Security"))
-SSH_SHARED = ("known_hosts", "known_hosts.old", "config", "authorized_keys")  # files in ~/.ssh others may read; and *.pub
+SSH_SHARED = ("known_hosts", "known_hosts.old", "config", "authorized_keys", "allowed_signers", ".DS_Store")  # and *.pub: files
+# in ~/.ssh other users may read (public keys, hosts, settings, Finder's file); the review of 5.24.1 named two as keys
+
+
+def _private_group(gid: int) -> bool:
+    """Whether a folder's group is this user's own, as Linux makes one for each user, so its bits let no one else in;
+    macOS puts every user in the group staff (the integration review of 5.24.1: Ubuntu's 750 home warned)."""
+    import grp
+    import pwd
+    try:
+        group, me = grp.getgrgid(gid), pwd.getpwuid(os.getuid()).pw_name
+    except KeyError:
+        return False
+    return group.gr_name == me and all(m == me for m in group.gr_mem)
 
 
 def check_security(home: Path, run=subprocess.run, platform: str = sys.platform) -> list:
     """Every Mac keeps its files to its own user (A8, the principal, 2026-11-17): the home folder and ~/.ssh open to no
     other local user, no private key in ~/.ssh readable by one, and on macOS FileVault, the firewall, System Integrity
     Protection and Gatekeeper on. Each problem is a warning naming the one step that fixes it; all well is one line."""
-    problems, ssh = [], home / ".ssh"
+    problems, ssh, open_ssh = [], home / ".ssh", False
     for folder, name in ((home, "home folder"), (ssh, "~/.ssh")):
         try:
-            mode = folder.lstat().st_mode
+            found = folder.stat()  # where a link leads: a link's own mode is no folder's (the review of 5.24.1)
         except FileNotFoundError:
             continue
         except OSError as exc:
             problems.append((name, f"{_short(folder)} cannot be read ({exc.strerror})", f"check {_short(folder)}'s owner"))
             continue
-        if mode & 0o077:
-            problems.append((name, f"{_short(folder)} is {stat.filemode(mode)}: other local users can open it",
+        if found.st_mode & (0o007 if _private_group(found.st_gid) else 0o077):
+            problems.append((name, f"{_short(folder)} is {stat.filemode(found.st_mode)}: other local users can open it",
                              f"run `chmod 700 {_short(folder)}`"))
-    try:
+            open_ssh = open_ssh or folder == ssh
+    try:  # a file in a ~/.ssh no one else can open is read by no one else, whatever its own mode
         keys = [p for p in sorted(ssh.iterdir()) if not p.name.endswith(".pub") and p.name not in SSH_SHARED
-                and stat.S_ISREG(p.lstat().st_mode) and p.lstat().st_mode & 0o044]
-    except OSError:  # no ~/.ssh, or one that cannot be read, which the folder's line above names
+                and stat.S_ISREG(p.lstat().st_mode) and p.lstat().st_mode & 0o044] if open_ssh else []
+    except OSError:  # one that cannot be read, which the folder's line above names
         keys = []
     if keys:
         problems.append(("~/.ssh", ", ".join(_short(p) for p in keys[:4]) + " can be read by other local users",
@@ -1675,6 +1690,27 @@ def check_security(home: Path, run=subprocess.run, platform: str = sys.platform)
         merged.setdefault(name, []).append((what, fix))
     return [Check("warn", f"security {name}", "; ".join(w for w, _ in found) + "; to fix it, " + ", and ".join(
         dict.fromkeys(f for _, f in found))) for name, found in merged.items()]
+
+
+def check_interpreter(home: Path) -> Check:
+    """The Python the hooks run, read from the hook launcher, and a newer final python.org version up to the newest the
+    checks test that the installer had to pass over, with why and the steps that let the next install pin it (A5; the
+    integration review of 5.24.1: python.org's 3.15 installed writable by the admin group, so the hooks stayed on 3.12
+    and nothing said so)."""
+    pinned = next((w for w in _text(home / "bin" / "synthesis-hook").split() if w.startswith("/") and "/python" in w), "")
+    have = install.final_version(pinned) if pinned else None
+    if not have:
+        return Check("warn", "hook interpreter", "the hook launcher names no Python that answers; run the plugin's install again")
+    passed = [(v, real) for real in map(os.path.realpath, sorted(glob.glob(install.FRAMEWORKS)))
+              for v in [install.final_version(real)] if v and have < v <= install.TESTED and install.interpreter_problems(real)]
+    if not passed:
+        return Check("ok", "hook interpreter", f"Python {have[0]}.{have[1]} ({_short(pinned)})")
+    v, real = max(passed)
+    folder = Path(real).parents[1]
+    from synthesis import __version__
+    return Check("warn", "hook interpreter", f"the hooks run Python {have[0]}.{have[1]}; python.org's {v[0]}.{v[1]} is installed but "
+                 f"{install.interpreter_problems(real)[0]}, so the installer passed it over; to fix it, run `sudo chmod -R go-w "
+                 f"{folder}`, then `~/.synthesis/v5/bin/synthesis-release --install-only --tag v{__version__}`")
 
 
 def check_git_hooks_path(value: str, expected: Path) -> Check:
@@ -2078,7 +2114,7 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         checks.append(check_fetch(home / "sessions" / ".state" / "fetch.json", fetching))
     runtime = runtime_hash(home) if checks[0].status == "ok" else ""
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime line already says so
-        checks += [check_hook_script(home), check_self_test(home), check_wait_check()]  # before the CLIs start, so they don't skew timing
+        checks += [check_hook_script(home), check_self_test(home), check_wait_check(), check_interpreter(home)]  # before the CLIs start
     clis, started = {}, {}
     for h in ("claude", "muse", "codex"):  # each listing starts as soon as its CLI is found; finding Codex
         path = find(h)                     # means a version probe, which overlaps the others' listings
