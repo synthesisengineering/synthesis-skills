@@ -65,9 +65,10 @@ def test_a_malformed_registry_is_refused_not_read_as_empty(tmp_path: Path, body:
     assert done.returncode == 2 and "refused" in done.stderr
 
 
-def artifact(directory: Path, run_type: str, finished: str, outcome: str = "clean") -> None:
+def artifact(directory: Path, run_type: str, finished: str, outcome: str = "clean", name: str = "") -> None:
+    """A worker's artifact for DAY, filed under its run type, or under `name` (a later mid-day run is `midday-N`)."""
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / f"{DAY}-{run_type}.md").write_text(
+    (directory / f"{DAY}-{name or run_type}.md").write_text(
         f"---\ncontract_version: 1\nrun_type: {run_type}\ndate: {DAY}\nfinished: {finished}\n"
         f"outcome: {outcome}\ngaps: []\n---\n## Decisions needed\nnone\n", encoding="utf-8")
 
@@ -88,6 +89,41 @@ def test_coverage_folds_the_newest_run_and_names_absence(tmp_path: Path) -> None
     assert done.returncode == 0, done.stderr
     assert done.stdout.startswith("coverage: alpha day-end 2026-09-14T18:31:00-04:00 (partial)")
     assert "beta pending" in done.stdout and "gamma not scheduled" in done.stdout and "delta" not in done.stdout
+
+
+def test_coverage_folds_the_newest_midday_run_of_the_day_as_the_sweep_orders_them(tmp_path: Path) -> None:
+    """The contract files a later mid-day run that day as `midday-N`, and the deadline sweep reads it after the first
+    (5.3.7). Coverage looked for `midday` alone, so with a second sync filed the desk's line gave the first one's time
+    and outcome (5.25.1). It folds the newest, N read as a number and only where the sweep reads the name; a day-end
+    still supersedes every sync."""
+    path = registry(tmp_path, f"  alpha:\n    status: active\n    artifact_dir: {tmp_path}/alpha\n")
+    folder = tmp_path / "alpha"
+    artifact(folder, "midday", "2026-09-14T12:30:00-04:00", "partial")
+    artifact(folder, "midday", "2026-09-14T16:10:00-04:00", "clean", name="midday-2")
+
+    def folded() -> tuple:
+        row = workers_mod.coverage(workers_mod.load_workers(path), DAY)[0]
+        return row["run_type"], row["finished"], row["outcome"], Path(row["artifact"]).name
+
+    assert folded() == ("midday", "2026-09-14T16:10:00-04:00", "clean", f"{DAY}-midday-2.md")
+    done = subprocess.run([sys.executable, str(SCRIPT), "coverage", "--date", str(DAY)], capture_output=True,
+                          text=True, env={**os.environ, "RITUAL_WORKERS_FILE": str(path)})
+    assert done.returncode == 0 and done.stdout.startswith("coverage: alpha midday 2026-09-14T16:10:00-04:00 (clean)"), done.stderr
+    artifact(folder, "midday", "2026-09-14T17:20:00-04:00", "partial", name="midday-9")
+    artifact(folder, "midday", "2026-09-14T17:40:00-04:00", "clean", name="midday-10")
+    artifact(folder, "midday", "2026-09-14T17:55:00-04:00", "failed", name="midday-02")   # a name the sweep does not read
+    assert folded() == ("midday", "2026-09-14T17:40:00-04:00", "clean", f"{DAY}-midday-10.md")
+    artifact(folder, "day-end", "2026-09-14T18:31:00-04:00", "partial")
+    assert folded() == ("day-end", "2026-09-14T18:31:00-04:00", "partial", f"{DAY}-day-end.md")
+
+
+def test_coverage_names_a_later_midday_run_with_the_sweeps_own_pattern() -> None:
+    """The chief-of-staff collection carries this script without the rituals' records, which the sweep imports as it
+    starts, so the script keeps its own copy of the sweep's pattern for a later mid-day run: the two name the same
+    files (5.25.1)."""
+    sys.path.insert(0, str(SCRIPT.parent))
+    import decay_sweep
+    assert workers_mod.MIDDAY_RUN.pattern == decay_sweep.MIDDAY_RUN.pattern
 
 
 def test_list_reports_the_registry(tmp_path: Path) -> None:
