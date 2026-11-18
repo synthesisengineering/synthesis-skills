@@ -304,6 +304,29 @@ def test_an_ordinary_install_leaves_codex_unsealed_and_the_sandbox_step_seals_it
     assert setup.codex_overlay(new, seal=True) == (new, [])  # a rerun changes nothing
 
 
+def test_a_plugin_run_leaves_codexs_profile_unsealed_and_only_the_sandbox_command_seals_it(tmp_path, monkeypatch, capsys):
+    """Review round 1 of 5.25.0, finding 1: `main` staged the sandbox on every plugin or full run, and the staging sealed
+    Codex's profile, so the overlay's own opt-in never held. Run through `main`, as a release's install runs it."""
+    codex, _ = fake_cli(tmp_path, "codex", {"--version": (0, "codex-cli 0.166.0")})
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex-home"))
+    monkeypatch.setattr(setup.doctor, "find_client", lambda name: codex if name == "codex" else None)
+    monkeypatch.setattr(setup, "install_plugin", lambda *a, **k: "codex: plugin installed")  # the harness's own commands
+    monkeypatch.setattr(setup, "install_runtime", lambda *a, **k: ["synthesis runtime: installed"])
+    monkeypatch.setattr(setup, "first_config", lambda *a, **k: [])
+    sealed, config = json.dumps(str(setup.paths.approvals())), setup.paths.codex_home() / "config.toml"
+    for command in (["plugin"], ["all"]):
+        assert setup.main(command + ["--clients", "codex", "--no-input", "--no-codex-user-hooks"]) == 0
+        text = config.read_text(encoding="utf-8")
+        assert sealed not in text and '= "read"' not in text, command
+        assert json.dumps(str(setup.paths.board())) in text  # its ordinary grants are there
+        assert "read-only" not in capsys.readouterr().out
+    assert setup.sandbox.staged("codex").is_file()  # the administrator file is still staged for him
+    assert setup.main(["sandbox", "--clients", "codex"]) == 0
+    assert f'{sealed} = "read"' in config.read_text(encoding="utf-8") and "read-only to Codex" in capsys.readouterr().out
+    assert setup.main(["plugin", "--clients", "codex", "--no-input", "--no-codex-user-hooks"]) == 0
+    assert f'{sealed} = "read"' in config.read_text(encoding="utf-8")  # and a later release's install keeps the seal
+
+
 def test_overlay_grants_the_board_and_the_outbox_through_the_settings_codex_reads():
     """2026-10-30: Codex's sandbox could not write the board, so Codex sessions could not claim or post. Codex reads
     permission profiles unless `sandbox_mode` is set, and then the older [sandbox_workspace_write]. The outbox is
