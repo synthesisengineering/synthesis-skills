@@ -2459,10 +2459,33 @@ ROOT = Path(__file__).resolve().parents[1]
 # interpreter_problems before it is run, each python.org version read from its folder's name and never by running it
 # (the doctor had run the interpreters it then reported this user could rewrite), and each faulty folder named, one above
 # the version's own fixed alone, so the warning goes once the steps are run.
+# BACKLOG B5 (the principal's ruling of 2026-09-23: check the search budget before a research fan-out, after six research
+# agents used up one session-wide web-search budget, each taking it for its own), each 155 more, all in synthesis/.
+# sessions.py 115: the section's heading 1 and its comment 7 (one budget for a session's searches, and what names a search
+# in each harness's records, as measured on this Mac); SEARCH_TOOLS, SEARCH_ITEM, SEARCH_MARKS and CLIENT_ONLY 4 (each
+# harness's search tool, a Codex item's type or kind, the bytes a row must hold to be parsed, Muse's mode said once);
+# _below 7 (the files under a sub-agents' folder: its line and docstring 3, a folder in it that cannot be listed named and
+# one not there holding none 3, the files 1); _threads 23 (a Codex thread's sub-agents' rollouts and theirs: its line and
+# docstring 3, the map 1, only rollouts named since the thread began 3, each first line read 3, one that cannot be opened
+# named, as it may be one of them, 3, a first line still being written passed 2, each filed under its parent 2, the walk
+# down from the thread 5, the rollouts 1); searches 65 (its line and docstring 8; the session's own record where the
+# prompt hook recorded it, else where a harness keeps it, 6; none said, with a folder it may be in that cannot be listed,
+# 3; the sub-agents' records by harness, a Codex session's looked for in every folder of Codex's, 6; a folder or rollout
+# that cannot be read said 4; each record read through its harness's adapter, a row that names no search left unparsed,
+# each call counted once by its id, Codex's item events beside the adapter's records, and Muse's mode, 24; the reading's
+# folder, where it would file an image a row holds and, dry, writes none, 1; a row no adapter can read, and a record that
+# cannot be opened, said 5; Muse outside its client mode or naming none, and Codex with no item event, said rather than
+# counted 0, 7; the count 1); and the 8 blank lines (2 before the heading and 2 before each definition). cli.py 40: cmd_searches 34 (its line and docstring 5, the import 1, the session, the budget
+# and the config file read once 1, no session, no agents and a budget that is no whole number said as errors 6, the count
+# or why it cannot be told 4, no budget said 3, a budget against a count not told refused 5, what is left and each
+# agent's share, rounded down, 3, a share of one or more passing 2, a share under one refused, with the next step for
+# none left and for some, 4), its 2 blank lines, and the parser 4 (the command, --agents, --session after it as before
+# it, its function). guards.py none: SYNTHESIS_WRITES names cli.cmd_searches and sessions.searches in its two lines (a
+# test reads synthesis's writers from the source).
 # Code may grow past these only with an itemized reason here (Rajiv, 2026-10-20: raise the ceiling, itemized, rather
 # than consolidate first).
-CORE_BUDGET = 23692
-PLUGIN_BUDGET = 50361
+CORE_BUDGET = 23847
+PLUGIN_BUDGET = 50516
 
 
 def _lines(files):
