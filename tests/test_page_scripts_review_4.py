@@ -98,12 +98,13 @@ def _line(name, given, said, ago):
                                                                                                 "content": [{"type": "text", "text": said}]}]}}) + "\n")
 
 
-def _busy(tmp_path, records=70, megabytes=1.0):
+def _busy(tmp_path, records=70, megabytes=1.0, below=""):
     """A session whose own list shows tab 5 on an ordinary page, and `records` sub-agents active since, each record
-    `megabytes` long; only the last two use the browser, the newest moving tab 5 to a chat."""
+    `megabytes` long; only the last two use the browser, the newest moving tab 5 to a chat. `below` puts the records
+    in a folder under subagents/, where a workflow's agents keep theirs."""
     main = tmp_path / "S-principal.jsonl"
     main.write_text(_line(CHROME + "computer", {"action": "screenshot", "tabId": 5}, _listing({5: "https://www.example.com/"}, 5), 900))
-    folder = tmp_path / "S-principal" / "subagents"
+    folder = tmp_path / "S-principal" / "subagents" / below
     folder.mkdir(parents=True)
     filler = _line("Bash", {"command": "ls"}, "x" * 4000, 800)
     body = filler * max(1, int(megabytes * (1 << 20) / len(filler)))
@@ -117,8 +118,12 @@ def _busy(tmp_path, records=70, megabytes=1.0):
     return {"session_id": "S-principal", "transcript_path": str(main)}
 
 
-def test_a_sub_agent_record_that_names_no_tab_list_is_not_parsed(tmp_path, monkeypatch):
-    session = _busy(tmp_path, records=70, megabytes=0.05)
+BELOW = ["", "workflows/wf_1"]  # a sub-agent's own record, and a workflow agent's one folder deeper
+
+
+@pytest.mark.parametrize("below", BELOW)
+def test_a_sub_agent_record_that_names_no_tab_list_is_not_parsed(tmp_path, monkeypatch, below):
+    session = _busy(tmp_path, records=70, megabytes=0.05, below=below)
     parsed = []
     real = guards._tab_list
     monkeypatch.setattr(guards, "_tab_list", lambda record, server="": parsed.append(record) or real(record, server))
@@ -126,12 +131,14 @@ def test_a_sub_agent_record_that_names_no_tab_list_is_not_parsed(tmp_path, monke
     assert len(set(parsed)) <= 3, len(set(parsed))  # its own record and the two that name a list
 
 
-def test_reading_a_busy_sessions_sub_agent_records_stays_well_within_the_guards_deadline(tmp_path, pace):
+@pytest.mark.parametrize("below", BELOW)
+def test_reading_a_busy_sessions_sub_agent_records_stays_well_within_the_guards_deadline(tmp_path, pace, below):
     """The busiest 12 hours of real records held 70 sub-agent records (round 4's notes: 122 MB to read with the 8 MB cap,
     about 0.9 s of the guard's 4 s); 70 records of 1 MB here are read in a quarter of that deadline on the principal's
-    Mac, stretched by `pace` on a slower machine (main's CI after 5.24.1's merge: 1.30 s on a macOS runner)."""
+    Mac, stretched by `pace` on a slower machine (main's CI after 5.24.1's merge: 1.30 s on a macOS runner). A
+    workflow's agents' records, one folder deeper, are read within the same budget."""
     from synthesis import hook
-    session = _busy(tmp_path, records=70, megabytes=1.0)
+    session = _busy(tmp_path, records=70, megabytes=1.0, below=below)
     started = time.perf_counter()
     verdict = _check(CHROME + "computer", {"action": "key", "text": "Return", "tabId": 5}, session)
     spent = time.perf_counter() - started

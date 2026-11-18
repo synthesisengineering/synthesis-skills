@@ -1835,6 +1835,33 @@ def test_a_sub_agents_send_step_on_a_tab_it_made_reads_its_own_record():
     assert [e["session"] for e in today()] == ["S-principal"]
 
 
+WORKFLOW_AGENT = ("workflows", "wf_1", "agent-w1.jsonl")  # a workflow's agents keep their records below subagents/
+
+
+def test_a_page_script_a_workflow_agent_ran_on_the_tab_since_this_session_made_it_voids_it():
+    """The records `synthesis searches` reads as subagents/**/*.jsonl: a page script one of a workflow's agents ran on
+    the tab is seen as one a sub-agent ran, and a window it opened keeps a handle to the tab."""
+    granted([CHAT])
+    opened("https://example.com/")
+    deep = RECORD.parent.joinpath(RECORD.stem, "subagents", *WORKFLOW_AGENT)
+    deep.parent.mkdir(parents=True, exist_ok=True)
+    ran(SCRIPT, {"action": "javascript_exec", "text": "window.name = 'x'; open('https://example.com/b')", "tabId": 7}, deep)
+    listed()  # navigated to the conversation since
+    reason = sent(step())
+    assert reason and "page script" in reason, reason
+
+
+def test_a_workflow_agents_send_step_on_a_tab_it_made_reads_its_own_record():
+    granted([CHAT])
+    own = RECORD.parent.joinpath(RECORD.stem, "subagents", *WORKFLOW_AGENT)
+    own.parent.mkdir(parents=True, exist_ok=True)
+    made(7, own)
+    listed(E2EE, 7, own)
+    agent = {**SESSION, "transcript_path": str(RECORD), "agent_id": "w1"}
+    assert guards.check(CHROME, step(), CONFIG, session=agent) is None
+    assert [e["session"] for e in today()] == ["S-principal"]
+
+
 def test_the_changelog_says_what_mains_rule_does_on_other_messaging_sites():
     entry = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8").split("## [5.23.1]")[0]
     assert "on every other messaging site's page none runs but the shipped read-only ones" not in entry
