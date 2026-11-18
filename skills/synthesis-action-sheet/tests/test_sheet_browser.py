@@ -2,7 +2,7 @@
 and the paste summary, which the Python recorder must accept as written.
 
 Set SYNTHESIS_TEST_CHROMIUM to a chrome-headless-shell executable, or put one on PATH (else
-chromium, chromium-browser or google-chrome), as for the decision packet's browser tests. Without
+chromium, chromium-browser or google-chrome), or install it where AGENTS.md says, where they look too, as for the decision packet's browser tests. Without
 a browser these tests skip, except where CI requires one. The page is loaded from a local file
 with a throwaway profile; nothing touches the network.
 """
@@ -31,14 +31,18 @@ def find_chromium():
     configured = os.environ.get("SYNTHESIS_TEST_CHROMIUM")
     if configured:
         return configured if Path(configured).is_file() else None
-    return next(filter(None, (shutil.which(n) for n in
-                              ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"))), None)
+    on_path = next(filter(None, (shutil.which(n) for n in
+                                 ("chrome-headless-shell", "chromium", "chromium-browser", "google-chrome"))), None)
+    cache = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "synthesis" / "browsers"  # where AGENTS.md installs it
+    found = sorted(cache.glob("chrome-headless-shell/*/chrome-headless-shell-*/chrome-headless-shell"),
+                   key=lambda p: [int(n) for n in re.findall(r"\d+", p.parent.parent.name)])
+    return on_path or (str(found[-1]) if found else None)
 
 
 CHROMIUM = find_chromium()
 if CHROMIUM is None and os.environ.get("SYNTHESIS_REQUIRE_CHROMIUM") == "1":  # CI: a missing browser fails
     raise RuntimeError("SYNTHESIS_REQUIRE_CHROMIUM=1 but no Chromium was found")
-pytestmark = pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM or put one on PATH")
+pytestmark = pytest.mark.skipif(CHROMIUM is None, reason="no Chromium: set SYNTHESIS_TEST_CHROMIUM, put one on PATH, or install it as AGENTS.md says")
 
 PRELUDE = """<script>
 window.sheetErrors = [];

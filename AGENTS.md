@@ -82,6 +82,14 @@ would not be collected by that command (a folder pytest skips, or a file name sh
 another test module outside a package). Code must also run on Apple's `/usr/bin/python3` (3.9);
 CI runs a 3.9 job.
 
+The browser tests drive Chrome's headless shell. Install it once where they look for it,
+or set `SYNTHESIS_TEST_CHROMIUM` to one; without it they skip locally, and CI requires it
+(`SYNTHESIS_REQUIRE_CHROMIUM=1`):
+
+```bash
+npx --yes @puppeteer/browsers install chrome-headless-shell@stable --path ~/.cache/synthesis/browsers
+```
+
 On a machine with the plugin installed, `synthesis doctor` checks the installed side:
 the stable runtime, each harness's plugin bytes against it, hook wiring and trust,
 Codex's settings and catalog, instruction adapters and durable storage.
