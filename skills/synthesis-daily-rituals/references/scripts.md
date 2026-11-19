@@ -55,7 +55,12 @@ than half-reading it.
   (`{"defaults": {...}, "workspaces": {"<W>": {"streak": "expected-days", "weekdays": [0,1,2,3,4],
   "non_working_dates": ["YYYY-MM-DD"], "plans_dirs": ["<folder of dated plans>"],
   "artifacts_dirs": ["<folder of ritual-worker artifacts>"]}}}`; an example ships as
-  `assets/ritual-config.example.json`). `plans_dirs` and `artifacts_dirs` declare where the
+  `assets/ritual-config.example.json`). A workspace's own settings may instead live in its private repository, linked
+  as `~/workspaces/<W>/.agents/rituals.json` the way its `repos.yaml` and `mailboxes.yaml` are: there they reach every
+  machine by git, on any system, and they take the place of that workspace's entry in `config.json`, which keeps the
+  defaults (2026-11-19). A link whose repository is not on a machine is skipped there; a file that cannot be read, or
+  is not an object, stops the rituals and names itself, as `config.json` does. Write home paths in either file with
+  `~`; the doctor's `home paths` line reads both. `plans_dirs` and `artifacts_dirs` declare where the
   workspace's dated plans live: the deadline sweep, `record` and the nudge read them, and `record`
   refuses a workspace that declares neither (`"plans_dirs": []` says it keeps none). `records_dirs` adds folders of
   other Markdown records (drafts, a ledger) whose items the sweep reads unless a plan carries them, and in which
