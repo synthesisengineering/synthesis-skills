@@ -1132,6 +1132,23 @@ as one; Codex's records show hooks refusing such nested calls inside the scripts
   reads them under the name Codex's hook gives the tool (`workspace-mcp` and
   `github.fetch` make `mcp__workspace_mcp__github__fetch`), and a direct call's event,
   which carries the call's own id, is counted once.
+- **A config's tool globs read Codex's names too** (5.26.1, A15). Codex's hook writes each character of an MCP server's
+  name that is no letter, digit or `_` as `_`, so a glob written with the server's own name (`*workspace-mcp__send_message`
+  in `signature.plain_url_tools`) missed Codex's call and a Chat message signed as the config allows was refused. Every
+  glob over tool names (`send_tools`, `not_send_tools`, `plain_email_tools`, `plain_url_tools`, `fresh_calendar.reads`)
+  now matches a hyphen outside its brackets as either.
+- **Codex's computer-use REPL is computer use** (5.26.1, A14). `mcp__cua_repl__js` runs one JavaScript program a call
+  over tabs and apps bound in earlier calls, with a `title`; the guard knew no such tool, so a chat reply, a slide import
+  into a shared deck, an upload and two form saves went through it with no code and no ledger line. Each call is now
+  read as the actions its program writes out, each said by its title, under the computer-use rules (a send, an upload,
+  a document edit or a form save waits for a code naming it), and no batch takes it; a program the guard cannot read is
+  refused, and one that imports a module or reaches the process waits for its own code. The message guard's config
+  reference has the detail, with the replay of 199 recorded calls it was measured on.
+- **Uploads are judged by kind in every harness** (5.26.1, A14). A tool whose name says it uploads or attaches a file
+  (no reading verb before that word), a browser's `set_input_files`, and a Drive call that reads a file from this disk
+  wait for a code naming the upload: a browser's on the page it acts on, so a local app's page asks nothing, and a
+  connector's as a send. Claude in Chrome's `file_upload` and `upload_image` had reached no send rule, and Playwright's
+  `browser_file_upload` was read as a read.
 - **The doctor proves that Codex still runs hooks on nested calls.** Its `codex nested hooks`
   line reads Codex's newest rollouts for a hook's refusal in a script's result, which only
   a hook run on a nested call makes, and names the Codex version and the date it proves:

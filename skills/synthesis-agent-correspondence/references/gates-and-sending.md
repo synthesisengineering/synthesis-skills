@@ -113,15 +113,15 @@ The same rule holds for the connector's Drive tools that read a local file.
 `update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and
 `import_to_google_slides` take it as `file_path`, a full path or a `file://` URL;
 `create_drive_file` takes it as `fileUrl` when that is a `file://` URL.
-`update_drive_file` waits for a code and is refused before one is issued; the others ask
-for none and are refused before the call is made: ``the file <path> is outside the
+Each waits for a code and is refused before one is issued (the imports and
+`create_drive_file` asked for none until 5.26.1, when an upload of a file from this disk
+became one that waits, A14): ``the file <path> is outside the
 folders the connector reads: copy the file into <outbox> (make the folder if it is
 missing), give that copy's full path as `file_path` and make this call again``. Their
 `file_url` is fetched over http or https and never read from this disk, so a `file://`
 URL or a path there is refused with `file_path` named. A source that cannot be parsed as a
 path or a URL, or a path holding a NUL, is refused with its field named; and a staged file
-the connector could not read is refused for the tools that ask for no code too (the guard
-reads its first byte), as it is for a send.
+the connector could not read is refused before any code, as it is for a send.
 
 - Give the path whole, under the key `path`, the one the connector reads. It resolves
   a relative path in its own folder, expands no `~`, follows links, and then compares
