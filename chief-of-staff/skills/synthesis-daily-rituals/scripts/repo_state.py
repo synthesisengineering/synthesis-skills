@@ -45,8 +45,8 @@ ORDER = ("UNREACHABLE", "BLIND", "DIRTY", "DECISION", "BEHIND", "CURRENT", "CACH
 
 
 def git(repo: Path, *args: str, timeout: int = 60) -> str:
-    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=timeout,
-                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=timeout,  # status never
+                          env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"})  # rewrites an index
     if done.returncode:
         lines = (done.stderr or done.stdout).strip().splitlines()
         raise RuntimeError(lines[-1] if lines else f"git {args[0]} failed")

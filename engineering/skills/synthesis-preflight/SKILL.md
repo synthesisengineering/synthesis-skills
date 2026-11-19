@@ -28,7 +28,7 @@ A branch can contain perfectly good code and still fail preflight: tests broken,
 6. **Consume current evidence instead of repeating it.** Check that implementation-integrity and audit evidence covers the exact branch state, and audit only what is uncovered.
 7. **A secret in a commit message fails the branch,** because it persists in git history even when the code is clean.
 8. **A tracked workaround or known failure never excuses a required check.** Remove resolved temporary considerations and report them.
-9. **READY grants nothing.** It is not merge, release or deployment authority; apply the [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.2/skills/synthesis-thinking-framework/references/decision-ownership.md) and the action owner's gate. When another workflow invoked preflight, return the full report to it.
+9. **READY grants nothing.** It is not merge, release or deployment authority; apply the [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.0/skills/synthesis-thinking-framework/references/decision-ownership.md) and the action owner's gate. When another workflow invoked preflight, return the full report to it.
 
 ## Contents
 
