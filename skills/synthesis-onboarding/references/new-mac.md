@@ -40,7 +40,8 @@ Mac?").
      upstream: skips it and says so by name;
    - `status: dormant` (or archived): not cloned, and listed.
    Progress prints as `[3/12] repo ...` then `[3/12] repo: cloned`.
-5. **Links the workspace** to its knowledge repository: `.agents/repos.yaml`, and
+5. **Links the workspace** to its knowledge repository: each `*.yaml` and `*.json` in its `.agents/`
+   (`repos.yaml`, `mailboxes.yaml`, `rituals.json` and the rest; a file already there is kept), and
    `AGENTS.md` to `.agents/workspace-AGENTS.md` with `CLAUDE.md` as `@AGENTS.md`.
 
 Ctrl-C prints "run the same command again to resume; finished steps are kept", and a

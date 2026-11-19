@@ -268,14 +268,17 @@ def _place_instructions(ws_root: Path, content, adopt: bool, generated_only: boo
 
 
 def link_workspace(ws_root: Path, kb_dir: Path, adopt: bool, dry_run: bool = False) -> list:
-    """The workspace's instructions and repos.yaml are links into its knowledge repository."""
+    """The workspace's instructions, and each config file in its knowledge repository's .agents/ (every *.yaml and *.json:
+    repos.yaml, mailboxes.yaml, rituals.json and the rest), are links into that repository, so a new machine on any system
+    reads them as the first one does (2026-11-19: only repos.yaml was linked here, the rest by the Mac-only mac-sync)."""
     lines, source = [], kb_dir / ".agents" / "workspace-AGENTS.md"
-    repos_link = ws_root / ".agents" / "repos.yaml"
-    if (kb_dir / ".agents" / "repos.yaml").is_file() and not os.path.lexists(repos_link):
-        if not dry_run:
-            repos_link.parent.mkdir(exist_ok=True)
-            repos_link.symlink_to(Path("..") / kb_dir.name / ".agents" / "repos.yaml")
-        lines.append(f"{'would link' if dry_run else 'linked'} {repos_link}")
+    for found in sorted((kb_dir / ".agents").glob("*")) if (kb_dir / ".agents").is_dir() else []:
+        link = ws_root / ".agents" / found.name
+        if found.suffix in (".yaml", ".json") and found.is_file() and not os.path.lexists(link):
+            if not dry_run:
+                link.parent.mkdir(exist_ok=True)
+                link.symlink_to(Path("..") / kb_dir.name / ".agents" / found.name)
+            lines.append(f"{'would link' if dry_run else 'linked'} {link}")
     if source.is_file():
         relative = Path(kb_dir.name) / ".agents" / "workspace-AGENTS.md"
         if (ws_root / "AGENTS.md").is_symlink() and os.readlink(ws_root / "AGENTS.md") == str(relative):

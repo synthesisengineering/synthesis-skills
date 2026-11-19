@@ -15,7 +15,8 @@ metadata:
 # Machine Sync
 
 Keep the principal's Macs working as one system. Work moves; processes do not. Git remotes
-carry project records and code, the iCloud sync folder carries config and credentials
+carry project records, code and each workspace's settings (its `.agents/` files, ritual settings
+included), the iCloud sync folder carries personal config and credentials
 (`synthesis-mac-sync`), and everything else is per Mac: each Mac has its own board, its own
 sessions and its own claims.
 

@@ -126,6 +126,24 @@ repos:
     assert "tool: current" in again and any("already links" in line for line in again)
 
 
+def test_every_config_file_of_the_knowledge_repository_is_linked_into_the_workspace(tmp_path):
+    """2026-11-19: a new machine got only repos.yaml, so a workspace's mailboxes and ritual settings came only with the
+    Mac-only mac-sync. Every *.yaml and *.json in the repository's .agents/ is linked; other files and a file already
+    in the workspace's .agents/ are left as they are."""
+    kb, _ = remote(tmp_path, "ai-knowledge-demo", {".agents/repos.yaml": "repos: []\n", ".agents/workspace-AGENTS.md": "# Demo\n",
+                                                   ".agents/mailboxes.yaml": "accounts: []\n", ".agents/rituals.json": "{}\n",
+                                                   ".agents/sharing-policy.md": "# Policy\n", ".agents/slack-sync.yaml": "x: 1\n"})
+    ws = Path.home() / "workspaces" / "demo"
+    (ws / ".agents").mkdir(parents=True)
+    (ws / ".agents" / "slack-sync.yaml").write_text("mine: 1\n")
+    lines = workspace.bring_workspace(kb, "demo", lambda line: None)
+    for name in ("repos.yaml", "mailboxes.yaml", "rituals.json"):
+        assert os.readlink(ws / ".agents" / name) == str(Path("..") / "ai-knowledge-demo" / ".agents" / name), name
+        assert f"linked {ws / '.agents' / name}" in lines
+    assert not os.path.lexists(ws / ".agents" / "sharing-policy.md") and not os.path.lexists(ws / ".agents" / "workspace-AGENTS.md")
+    assert (ws / ".agents" / "slack-sync.yaml").read_text() == "mine: 1\n"
+
+
 def test_existing_workspace_instructions_are_kept_unless_adopted_and_then_archived(tmp_path):
     kb, _ = knowledge_repo(tmp_path, "repos: []\n")
     ws = Path.home() / "workspaces" / "demo"

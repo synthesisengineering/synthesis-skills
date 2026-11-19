@@ -312,7 +312,7 @@ def installed(report, config, home: Path, fetch: bool) -> None:
               ("board", lambda: doctor.check_board(home)), ("approvals", lambda: doctor.check_approvals_layout(home))]
     if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime's line says so
         checks += [("hook script", lambda: doctor.check_hook_script(home)), ("hook interpreter", lambda: doctor.check_interpreter(home))]
-    checks += [("home paths", lambda: doctor.check_home_paths([home / "config.json"])), ("outbox", lambda: doctor.check_outbox(
+    checks += [("home paths", lambda: doctor.check_home_paths([home / "config.json", *rituals.workspace_files()])), ("outbox", lambda: doctor.check_outbox(
         paths.outbox(), *doctor.connector_files())), ("teardown", lambda: doctor.check_teardown(home / "teardown.jsonl")), (
         "sandbox", lambda: doctor.check_sandbox([h for h in doctor.HARNESSES if _present(h)])), ("machine security", lambda: doctor.check_security(
             paths.account_home())), ("prompt check", prompts)]

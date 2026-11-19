@@ -15,6 +15,8 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from synthesis import rituals
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -307,6 +309,68 @@ def test_a_config_whose_workspace_is_no_object_is_refused_in_words(isolated_home
     for empty in (None, False, 0, "", []):                                       # nothing set is no fault, as it never was
         log(isolated_home, config={"defaults": empty, "workspaces": {"alpha": empty, "beta": {}}})
         assert rituals.settings(rituals.config(), "alpha")["streak"] == "none", empty
+
+
+# --- a workspace's own settings, carried by git (2026-11-19) -------------------------------------------------------------
+# The principal asked why his ritual settings would travel by iCloud when synthesis is meant for Windows, Linux and Mac in
+# any mix. A workspace's settings now live in its private repository, linked into `<workspace>/.agents/` as its other
+# manifests are, and reach every machine by git.
+
+def _own(tmp_path, workspace, settings, *, link=False):
+    repo = tmp_path / "workspaces" / workspace / f"ai-knowledge-{workspace}" / ".agents"
+    repo.mkdir(parents=True, exist_ok=True)
+    (repo / "rituals.json").write_text(settings if isinstance(settings, str) else json.dumps(settings), encoding="utf-8")
+    agents = tmp_path / "workspaces" / workspace / ".agents"
+    agents.mkdir(parents=True, exist_ok=True)
+    if link:
+        (agents / "rituals.json").symlink_to(Path("..") / f"ai-knowledge-{workspace}" / ".agents" / "rituals.json")
+    else:
+        (agents / "rituals.json").write_text((repo / "rituals.json").read_text(encoding="utf-8"), encoding="utf-8")
+    return agents / "rituals.json"
+
+
+def test_a_workspace_s_own_settings_take_its_place_in_the_machine_s(isolated_home, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    log(isolated_home, config={"defaults": {"weekdays": [0, 1, 2, 3, 4]}, "workspaces": {
+        "alpha": {"streak": "none", "plans_dirs": ["~/old"]}, "beta": {"streak": "none"}}})
+    _own(tmp_path, "alpha", {"streak": "expected-days", "plans_dirs": ["~/records/alpha-plans"]}, link=True)
+    _own(tmp_path, "gamma", {"quiet_after_days": 21})
+    cfg = rituals.config()
+    assert rituals.settings(cfg, "alpha") == {**rituals.DEFAULTS, "streak": "expected-days",
+                                              "plans_dirs": ["~/records/alpha-plans"]}  # whole, not merged key by key
+    assert rituals.settings(cfg, "beta")["streak"] == "none" and rituals.settings(cfg, "gamma")["quiet_after_days"] == 21
+    assert sorted(cfg["workspaces"]) == ["alpha", "beta", "gamma"]  # what `--all` walks
+
+
+def test_a_link_whose_repository_is_not_on_this_machine_is_none(isolated_home, tmp_path, monkeypatch):
+    """A second machine that holds only some workspaces reads the rest from nowhere, and fails none of them."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    log(isolated_home, config={"workspaces": {"alpha": {"streak": "none"}}})
+    linked = _own(tmp_path, "alpha", {"streak": "expected-days"}, link=True)
+    (tmp_path / "workspaces" / "alpha" / "ai-knowledge-alpha" / ".agents" / "rituals.json").unlink()
+    assert linked.is_symlink() and rituals.workspace_files() == []
+    assert rituals.settings(rituals.config(), "alpha")["streak"] == "none"
+
+
+@pytest.mark.parametrize("bad, says", [("{not json", "cannot be read"), ("[1, 2]", "must be an object"),
+                                       ('{"quiet_after_days": 0}', "whole number of days")])
+def test_a_workspace_file_that_cannot_be_read_stops_the_rituals_and_names_itself(isolated_home, tmp_path, monkeypatch, bad, says):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    log(isolated_home, config={"workspaces": {}})
+    named = _own(tmp_path, "alpha", bad)
+    with pytest.raises(ValueError, match=says) as raised:
+        rituals.config()
+    assert says == "whole number of days" or str(named) in str(raised.value)
+
+
+def test_the_doctor_reads_a_workspace_file_for_a_literal_home_path(tmp_path, monkeypatch):
+    from synthesis import doctor
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _own(tmp_path, "alpha", {"plans_dirs": [str(tmp_path / "workspaces" / "alpha" / "plans")]})
+    found = doctor.check_home_paths(rituals.workspace_files())
+    assert found.status == "fail" and "rituals.json:1" in found.detail
+    _own(tmp_path, "alpha", {"plans_dirs": ["~/records/alpha-plans"]})
+    assert doctor.check_home_paths(rituals.workspace_files()).status == "ok"
 
 
 def test_the_prompt_checks_setting_is_read_in_one_place_for_the_day_end_and_the_doctor():

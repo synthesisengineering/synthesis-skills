@@ -2928,7 +2928,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # in a try 3, the refusal 1; the hold names the references in its line). _hands_over none (a reference in its return
 # line) and _file_refs 3 with FILE_REF 1 and their 4 blank lines. synthesis/sends.py 2: matches 2 more (its docstring 2
 # more; the tool's two spellings, each glob as written, in the 3 lines that rewrote the glob).
-# 5.27.1 adds 87 to both, for three of the principal's asks of 2026-11-19. synthesis/approvals.py 67: a code he types
+# Then each 14 more, all in synthesis/rituals.py, for a workspace's own ritual settings carried by git (the principal's
+# question of 2026-11-19: synthesis is for Windows, Linux and Mac in any mix, and iCloud is Mac-only): workspace_files 5
+# (its line, docstring 3, the files that are there 1) with its 2 blank lines; config 7 more (the loop over the files 1,
+# each read in place of the machine's entry in a try 2, the refusal that names it 2, one not an object 2); the doctor
+# and the review read the files' home paths in their lines. The plugin 3 more in skills/synthesis-onboarding/scripts/
+# workspace.py: link_workspace links each config file of the knowledge repository's .agents/ on a new machine, not
+# repos.yaml alone (its docstring 2 more, the loop over the files 1 more, each link named in repos.yaml's lines).
+# Then each 87 more, for three of the principal's asks of 2026-11-19. synthesis/approvals.py 67: a code he types
 # into a Codex question card's answer counts (his direction through the operations seat): the module's docstring 1 (what
 # a card's reply counts as); CARD's comment 5 with its three constants 3 and 2 blank lines; card_answers 21 (the client's
 # block read as one JSON list, each item's asking call, place and answer, any other shape none), _offered 14 (the options
@@ -2959,8 +2966,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # call goes, 1); sends' read_batch and _unspendable join guards.SYNTHESIS_WRITES in its two lines.
 # Then each 1 more, in synthesis/guards.py, for review round 2 of 5.27.1 (finding A, what an honest agent hits): message_problems
 # reads a Drive file's content as a document's own lines, its breaks_ok over 2 lines; _hands_over's empty-key fix in its line.
-CORE_BUDGET = 26400
-PLUGIN_BUDGET = 53174
+CORE_BUDGET = 26414
+PLUGIN_BUDGET = 53191
 
 
 def _lines(files):
