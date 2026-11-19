@@ -91,16 +91,16 @@ Each finding has an id (`F1`, `F2`, ...), a severity, an area, a subject (a path
 is wrong. Findings print grouped by severity, worst first, then by area in the order above:
 
 - **fail:** broken now, or work that can be lost: a part of the guard's install that is down, a branch with no
-  upstream whose commits no remote this checkout knows holds, a detached HEAD, a repository the rituals sync
-  (`ritual_sync: yes`) with no clone here, a record defect.
+  upstream whose commits no remote this checkout knows holds, a detached HEAD at a commit no remote holds, a repository
+  the rituals sync (`ritual_sync: yes`) with no clone here, a record defect.
 - **unknown:** a piece that could not run or could not tell, never read as fine: a doctor line the doctor marks
   `unknown`, a `.git` git cannot read, a session file the board cannot read, or anything that raised while an area was
   read. The rest is still read, and exit 2 is the last resort.
 - **warn:** drifting: uncommitted or unpushed work, a branch behind its upstream, another declared repository with no
   clone here, a stale claim, a doctor warning, a root's record warnings. A checkout whose one condition is a branch
-  with no upstream whose commits a remote-tracking branch already holds (a worktree whose pull request merged) is
-  nothing at risk: every such checkout shares one warning, naming five, with no step, since removing a finished
-  worktree is the principal's tidying.
+  with no upstream, or a detached HEAD, whose commits a remote-tracking branch already holds (a worktree whose pull
+  request merged, or one checked out at a published commit) is nothing at risk: every such checkout shares one warning,
+  naming five, with no step, since removing a finished worktree is the principal's tidying.
 
 The plan numbers each step in the order it runs: the steps for failures first, a stale claim taken over before the
 work under it is committed, a commit before its push. Each step names:

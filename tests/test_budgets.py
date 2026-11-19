@@ -2871,8 +2871,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # returned 2, and the answer for the rest 1); _holder 11 (its line and docstring 3, the remote-tracking branches that
 # contain the branch, eight at most, 3, none where git cannot tell 2, the first that is no remote's HEAD 1, two blank
 # lines). The failure turns on `lost`, the warning's line on what is left.
-CORE_BUDGET = 26059
-PLUGIN_BUDGET = 52833
+# Then each 3 more, all in synthesis/review.py, for the review run as released on the principal's Mac (11 of the 23
+# detached checkouts it failed sat at a commit a remote-tracking branch already holds). repositories 1 (the shared
+# warning names a detached HEAD beside a branch with no upstream, its sentence one line longer); _repository 2 (a
+# detached HEAD asks the holder: the question 1 and the said line kept, the held checkout kept for the shared warning 1,
+# the step only where nothing holds it 1, in place of the two lines it had; `landed` set with the finding's other names,
+# so `lost` keeps one line and loses none for a held detached HEAD); _holder's docstring and its query keep their lines,
+# taking a ref (a branch's, or HEAD) where it took a branch name.
+CORE_BUDGET = 26062
+PLUGIN_BUDGET = 52836
 
 
 def _lines(files):
