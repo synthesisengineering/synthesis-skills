@@ -128,18 +128,20 @@ def test_asking_where_to_upload_hands_nothing_over():
 @pytest.mark.parametrize("tool,key", [("mcp__workspace-mcp__import_to_google_doc", "file_path"),
                                       ("mcp__workspace_mcp__import_to_google_slides", "file_path"),
                                       ("mcp__workspace-mcp__create_drive_file", "fileUrl")])
-def test_a_drive_call_that_reads_a_file_from_this_disk_waits_for_a_code_bound_to_its_bytes(principal, tool, key):
+def test_a_drive_call_that_puts_a_file_from_this_disk_in_a_named_folder_waits_for_a_code_bound_to_its_bytes(principal, tool, key):
     staged = paths.outbox() / "plan.md"
     staged.parent.mkdir(parents=True, exist_ok=True)
     staged.write_text("# Plan\n", encoding="utf-8")
-    given = {"user_google_email": "me@example.com", "file_name": "Plan", key: staged.as_uri() if key == "fileUrl" else str(staged)}
+    mine = {"user_google_email": "me@example.com", "file_name": "Plan", key: staged.as_uri() if key == "fileUrl" else str(staged)}
+    assert guards.check(tool, mine, CONFIG, session=SESSION) is None  # into the principal's own My Drive: no one else's (5.27.1)
+    given = {**mine, "folder_id": "1sharedFolderId"}
     reason = guards.check(tool, given, CONFIG, session=SESSION)
-    assert held(reason) and "This call uploads" in reason and str(staged) in reason, reason
+    assert held(reason) and "This call uploads" in reason and str(staged) in reason and "1sharedFolderId" in reason, reason
     principal(reason)
     staged.write_text("# Another plan\n", encoding="utf-8")  # the code binds the file as it was shown
     assert held(guards.check(tool, given, CONFIG, session=SESSION))
-    assert guards.check(tool, {"user_google_email": "me@example.com", "file_name": "Plan", "content": "# Plan"}, CONFIG,
-                        session=SESSION) is None  # nothing read from this disk
+    assert held(guards.check(tool, {"user_google_email": "me@example.com", "file_name": "Plan", "content": "# Plan",
+                                    "folder_id": "1sharedFolderId"}, CONFIG, session=SESSION))  # inline bytes land there too
 
 
 def test_one_code_releases_one_upload(principal):

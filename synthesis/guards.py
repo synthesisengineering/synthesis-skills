@@ -281,7 +281,8 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     change is released only by the principal's approval of the address itself, which the message's own never is."""
     from synthesis import sends
     fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
-    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or sends.matches(tool, sends.DOCUMENT_EDITS)  # a document's own lines
+    breaks_ok = (bool(fmt.get("allow_line_breaks_in_paragraphs")) or sends.matches(tool, sends.DOCUMENT_EDITS)  # a document's own
+                 or tool.rsplit("__", 1)[-1] in DRIVE_PLACES)  # lines, a Drive file's too (review round 2 of 5.27.1, finding A)
     strings, html_format = list(_strings(tool_input)), tool_input.get("body_format") == "html"
     texts, html_parts, problems = [], [], []
     for key, text in strings:
@@ -776,8 +777,8 @@ FETCHES = _Pattern(r"(?i)url|uri|link|path|file|attach|upload|download|media|ima
 def _fetches(value) -> bool:
     """Whether a call's input names, at any depth, something its connector fetches or reads when the call runs: a url,
     a path, an attachment (the review of 5.23.0: a mail's attachment fetched from a url hours after the batch was read)."""
-    if isinstance(value, dict):
-        return any(FETCHES.search(str(k)) or _fetches(v) for k, v in value.items())
+    if isinstance(value, dict):  # a key that names, as `file_name` does, fetches nothing (review round 1 of 5.27.1, finding 3)
+        return any(FETCHES.search(str(k)) and not str(k).lower().endswith("name") or _fetches(v) for k, v in value.items())
     return isinstance(value, list) and any(_fetches(v) for v in value)
 
 
@@ -5728,8 +5729,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
     ("sandbox", "_append _broker _create _delete _hook _remove _rename probes"),  # the seal check's probes (doctor --seal)
-    ("sends", "_note batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window sender_ticket settle ticket undo "
-              "window_request"),
+    ("sends", "_note _unspendable batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window read_batch "
+              "sender_ticket settle ticket undo window_request"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent searches sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
@@ -9719,12 +9720,31 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
             or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)) or _hands_over(tool, tool_input))
 
 
+# Where a Drive call puts content decides whether it waits (5.27.1; the principal's question of 2026-11-19): a gate exists
+# because content reaches people in his name. A file made in his own My Drive (no folder, or `root`) reaches no one; one
+# made in a named folder, or copied into one, may land where others open it (11-11: 34 knowledge files into a shared
+# drive's folder), so it waits for a code naming the file and the folder, wherever its bytes come from. 5.26.1 held by
+# the source, a file on this disk: a private upload waited and inline bytes into a shared folder did not.
+DRIVE_PLACES = {"create_drive_file": "folder_id", "import_to_google_doc": "folder_id", "import_to_google_sheets": "folder_id",
+                "import_to_google_slides": "folder_id", "copy_drive_file": "parent_folder_id", "create_doc": "folder_id",
+                "create_spreadsheet": "folder_id", "export_doc_to_pdf": "folder_id", "create_drive_folder": "parent_folder_id"}
+# The Google Drive connector's generic names, each known by a key of its own schema so that another server's tool of the
+# same name is not caught; its folder is `parentId`, and a copy given none lands beside its original, which may be shared
+# (review round 1 of 5.27.1, finding 2).
+DRIVE_PARENTS = {"create_file": "title", "update_file": "fileId", "copy_file": "fileId"}
+
+
 def _hands_over(tool: str, tool_input: dict) -> bool:
-    """A connector's call that hands a file to its service (A14): a tool whose name says it uploads (no browser's, which
-    the computer-use rules judge on the page it acts on), or a Drive call that has its connector read a file from this
-    disk: any `file_path` it takes, or a file:// `fileUrl` (one that cannot be parsed is judged, and refused, as named)."""
+    """A connector's call that hands content to its service where others may read it (A14): a tool whose name says it
+    uploads (no browser's, which the computer-use rules judge on the page it acts on); a Drive call that makes or copies
+    a file into a named folder (DRIVE_PLACES); or a Drive update from a file on this disk: its `file_path`."""
     from urllib.parse import urlparse
-    key = FILE_DRIVE_TOOLS.get(tool.rsplit("__", 1)[-1])
+    name = tool.rsplit("__", 1)[-1]
+    if isinstance(tool_input, dict) and (name in DRIVE_PLACES or name in DRIVE_PARENTS and DRIVE_PARENTS[name] in tool_input):
+        folder = tool_input.get(DRIVE_PLACES.get(name, "parentId"))  # by where it lands; anything but a name is named
+        return (folder is None and name == "copy_file") or not (folder is None or isinstance(folder, str) and
+                                                                 folder.strip().lower() in ("", "root"))
+    key = FILE_DRIVE_TOOLS.get(name)
     value = tool_input.get(key) if key and isinstance(tool_input, dict) else None
     try:
         read = isinstance(value, str) and (key == "file_path" or urlparse(value).scheme == "file")

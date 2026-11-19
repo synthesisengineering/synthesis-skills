@@ -2935,8 +2935,39 @@ ROOT = Path(__file__).resolve().parents[1]
 # and the review read the files' home paths in their lines. The plugin 3 more in skills/synthesis-onboarding/scripts/
 # workspace.py: link_workspace links each config file of the knowledge repository's .agents/ on a new machine, not
 # repos.yaml alone (its docstring 2 more, the loop over the files 1 more, each link named in repos.yaml's lines).
-CORE_BUDGET = 26291
-PLUGIN_BUDGET = 53068
+# Then each 87 more, for three of the principal's asks of 2026-11-19. synthesis/approvals.py 67: a code he types
+# into a Codex question card's answer counts (his direction through the operations seat): the module's docstring 1 (what
+# a card's reply counts as); CARD's comment 5 with its three constants 3 and 2 blank lines; card_answers 21 (the client's
+# block read as one JSON list, each item's asking call, place and answer, any other shape none), _offered 14 (the options
+# the asking call offered, read back from the record's end), card_codes 15 (a code from an answer the record shows asked,
+# none of whose options carries it, read once per prompt and record), each with its 2 blank lines; grant_from_prompt and
+# showing read card answers in their lines. synthesis/guards.py 13: a Drive call that makes or copies a file waits by
+# where it lands, not by where its bytes come from (his question why an import asked a code): DRIVE_PLACES 2 with its
+# comment 5 and 2 blank lines; _hands_over 4 more (the tool's name once, the destination in 3). synthesis/hook.py 5: the
+# prompt hook's note for a pending code in a card's answer that did not count (the codes in answers 1, the note's other
+# wording 4); the record named once and the typed codes with the card's in their lines. synthesis/sends.py 2: a batch
+# entry the send path never spends (a forward's attachments, a url, a path) is refused as the batch is prepared, its
+# reason in 2 lines of _entry_problem's conditional (the operations seat's report of 2026-11-19, 09:35).
+# Then each 28 more, for review round 1 of 5.27.1 (one grant from text the principal did not type, three holes an honest
+# agent hits). synthesis/approvals.py 7: CARD's comment 2 more (a reply counts alone, and in the record only as its
+# client's message); card_answers 1 more (the whole text one block, in place of the first and last tag); card_codes 1
+# more (a code as typed in the raw block); showing 3 more (the record parsed once, its item's client id, both in the
+# try); _offered's options not a list counts as carrying everything, in its 2 lines. synthesis/guards.py 6:
+# DRIVE_PLACES 1 more line (create_doc, create_spreadsheet, export_doc_to_pdf, create_drive_folder); DRIVE_PARENTS 1
+# with its comment 3 (the Google Drive connector's create_file, update_file and copy_file, each by a key of its own
+# schema); _hands_over 1 more (a copy with no folder lands beside its original); _fetches' named keys in its line.
+# synthesis/sends.py 15: _entry_problem 2 more (a file named by reference refused as the batch is prepared);
+# _unspendable 11 (its line, docstring 2, the import, the settings read in a try 4, the problems and the meeting on
+# today 1, the answer 2) with its 2 blank lines.
+# Then each 7 more, all in synthesis/sends.py: the entries are judged as a batch is read from its file, not each time a
+# stored batch is listed or opened, since the words' check files a request for an address that can change (the full
+# suite's writers test): read_batch 5 more (the batch named, the loop over its entries, the problem, its refusal, the
+# return); _unspendable 2 more (its docstring 1, the settings without the address rule, whose own code is asked as the
+# call goes, 1); sends' read_batch and _unspendable join guards.SYNTHESIS_WRITES in its two lines.
+# Then each 1 more, in synthesis/guards.py, for review round 2 of 5.27.1 (finding A, what an honest agent hits): message_problems
+# reads a Drive file's content as a document's own lines, its breaks_ok over 2 lines; _hands_over's empty-key fix in its line.
+CORE_BUDGET = 26414
+PLUGIN_BUDGET = 53191
 
 
 def _lines(files):
