@@ -5,7 +5,7 @@ Read when checking where a rule of an earlier text lives now (ruling D8). Two re
 restructure, kept word for word one heading level down.
 
 Contents:
-- 2.0.0 to 2.1.0: SKILL.md; files unchanged
+- 2.0.0 to 2.1.0: SKILL.md; references/process.md; files unchanged
 - 1.1.1 to 2.0.0 (v5): the section map; lines restructured in place; the 1.1.1 frontmatter
 
 ## 2.0.0 to 2.1.0: the rewrite to the D8 standard
@@ -43,6 +43,28 @@ the skill's evaluation cases cite.
 | When to skip: an explicitly requested comparison still deserves a concise explanation of why excluded approaches fail the constraints | Rule 4, last sentence | Reworded: "explain briefly" for "a concise explanation"; it is where rule 4 meets a request (format rule 11) |
 | Principles: framework-first, convention over configuration, root cause over symptom, less code is better ("a one-line config change beats 50 lines of custom code") | Rule 8 | Merged: each restated rule 8 (format rule 11, one home per rule); the illustration kept word for word as rule 8's reason |
 | (none) | Which path | Added (W18): routes a trivial change, a determined approach, a real choice, a defect and a requested checkpoint |
+
+### references/process.md
+
+The file holds the 2.0.0 Inputs and Process sections, moved word for word from SKILL.md (above), then rewritten
+where they restated a binding rule. The old words are in [preserved.md](preserved.md), inside the 2.0.0 SKILL.md.
+
+| 2.0.0 (SKILL.md) | 2.1.0 (process.md) | How |
+|---|---|---|
+| (none) | Title and opening line: read it for a real choice or a defect; the binding rules govern every step, and the steps point to them by number | Added: the file stands on its own (format rule 4) |
+| Inputs, whole | Inputs | Kept from the move, word for word |
+| Step 1, whole | Step 1 | Kept from the move, word for word |
+| Step 2: "Compare distinct viable approaches only when a real choice remains. If the constraints determine one approach, state that reason and proceed; do not manufacture a second option." | Step 2, first sentence: each distinct viable approach "that remains under binding rule 4" | Reworded: a copy of binding rule 4, now a pointer to it (format rule 11) |
+| Step 2: "For each remaining approach, document:" and two identical blocks, Approach 1 and Approach 2, each with two advantages and two drawbacks | Step 2: one block, Approach N, marked as the exact template, "with as many advantages and drawbacks as it has" | Reworded (W17): one exact template, so a model copies its shape and not a count of two |
+| Step 2: investigate the uncertainty that could change the selection; generate more approaches only for a materially different tradeoff | Step 2 | Kept, word for word |
+| Step 2: "For diagnosis, record the hypothesis, a falsifiable prediction and the observation that would change the approach before editing code." | Step 2, diagnosis paragraph: "write binding rule 5's three lines before editing code" | Reworded: a copy of binding rule 5, now a pointer to it (format rule 11) |
+| Step 2: use the decisive-uncertainty method; "preserve refuted predictions and re-open only their affected acceptance closure" | Step 2: the same link and "preserve refuted predictions"; "re-open only the acceptance checks they affect" | Reworded: plain words for "affected acceptance closure" (format rule 6) |
+| Step 2: inspect the actual consumer program as well as its result | Step 2 | Kept, word for word |
+| Step 3: select and justify; the four bullets | Step 3 | Kept, word for word |
+| Step 3: "The delegated decision owner selects; a close technical tradeoff does not itself require another user approval. Clarify only material outcome ambiguity or an actual unsatisfied gate." | Step 3: "Binding rule 6 settles a close call, and rules 1 and 3 name the only reasons to ask." | Reworded: a copy of binding rule 6, now a pointer (format rule 11) |
+| Step 3: new counterevidence can reopen a prior premise through its recorded owner | Step 3 | Kept, word for word |
+| Step 4: implement; the first five bullets | Step 4 | Kept, word for word |
+| Step 4, last bullet: "Run the consumer checks and required audits, and invalidate affected evidence after a change. Delegation changes approval cadence, not verification obligations." | Step 4, last bullet: "Run the checks binding rule 7 names." | Reworded: a copy of binding rule 7, now a pointer (format rule 11) |
 
 ### Files unchanged
 

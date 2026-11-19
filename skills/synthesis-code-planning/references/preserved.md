@@ -4,8 +4,8 @@ Read this only to review what a rewrite replaced. The passages below are no long
 word for word so the reasoning stays readable (ruling D8).
 
 Contents:
-- Retired in 2.1.0, the rewrite to the D8 standard: why each part of SKILL.md changed, then the 2.0.0 SKILL.md
-  word for word
+- Retired in 2.1.0, the rewrite to the D8 standard: why each part of SKILL.md changed, why each part of
+  references/process.md changed, then the 2.0.0 SKILL.md word for word
 
 ## Retired in 2.1.0: the rewrite to the D8 standard
 
@@ -62,6 +62,24 @@ Why each part changed:
 - **Principles.** Each restated rule 8, so rule 8 now says them once (format rule 11): built-in features,
   the codebase's conventions, the root cause and the least code, with "a one-line config change beats 50 lines
   of custom code" kept as its reason.
+
+### references/process.md
+
+The file holds the 2.0.0 Inputs and Process, moved word for word from SKILL.md. Its old words are in the 2.0.0
+SKILL.md below, from "## Inputs" to the end of Step 4. Why each part changed in the rewrite that followed:
+
+- **Title and opening line.** New, so the file says when to read it and that the binding rules govern its steps
+  (format rule 4).
+- **Four passages that restated binding rules 4, 5, 6 and 7.** Step 2's first two sentences (rule 4), the first
+  sentence of Step 2's diagnosis paragraph (rule 5), the first two sentences of Step 3's last paragraph (rule 6)
+  and Step 4's last bullet (rule 7) said those rules again in the 2.0.0 words, beside rules now worded
+  differently. Each is now a pointer to its rule by number, since two wordings of one rule drift apart and leave
+  the model to reconcile them (format rule 11).
+- **The approach template.** Two identical blocks, each with exactly two advantages and two drawbacks, became one
+  block marked as the exact template, with "as many advantages and drawbacks as it has": a model copies an
+  example's shape, count included (W17, format rule 17).
+- **"Re-open only their affected acceptance closure."** Now "re-open only the acceptance checks they affect":
+  the same set in plain words (format rule 6).
 
 The 2.0.0 SKILL.md, verbatim:
 
