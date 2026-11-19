@@ -470,6 +470,25 @@ def test_a_git_entry_git_cannot_read_is_unknown_and_a_worktree_is_read(machine):
     assert report["exit"] == 2
 
 
+def test_a_declared_repository_whose_git_cannot_be_read_is_unknown_once_and_never_cloned_over(machine):
+    """Finding 3a, declared: a repository the workspace declares, with a `.git` git cannot read, was a repository with no
+    clone here, whose step clones into the folder that holds it; one discovery also found was said twice. Each is unknown,
+    said once, with the principal's step, wherever it lies."""
+    gone, lost = machine.ws / "gone", machine.ws / "group" / "team" / "lost"
+    for folder in (gone, lost):
+        folder.mkdir(parents=True)
+    (gone / ".git").symlink_to(machine.tmp / "nowhere" / ".git")
+    (lost / ".git").write_text(f"gitdir: {machine.tmp / 'gone' / '.git' / 'worktrees' / 'lost'}\n", encoding="utf-8")
+    with (machine.ws / ".agents" / "repos.yaml").open("a", encoding="utf-8") as declared:
+        for name, path in (("gone", "gone/"), ("lost", "group/team/lost/")):
+            declared.write(f"  - name: {name}\n    path: {path}\n    remotes:\n      origin: {machine.remotes}/{name}.git\n    ritual_sync: yes\n")
+    report = review.review(run=machine.run, platform="darwin")
+    assert sorted(_rows(report)) == [("unknown", "repositories", "~/workspaces/acme/gone"),
+                                     ("unknown", "repositories", "~/workspaces/acme/group/team/lost")]
+    assert all("not there" in f["detail"] and "no clone" not in f["detail"] for f in report["findings"])
+    assert [s["who"] for s in report["plan"]] == ["principal", "principal"] and report["exit"] == 2
+
+
 def test_a_doctor_line_that_could_not_tell_is_unknown(machine):
     """Finding 3b: the doctor's could-not-tell lines came through as warnings, by the words they began with. The doctor
     gives them a status of their own, which the review keeps."""
