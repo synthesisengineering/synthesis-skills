@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.27.0] - 2026-11-19
+
+- **A standard for writing skills, measured before release** (`docs/skill-writing.md`, BACKLOG B1). A binding rule
+  says what to do, when, and why, in its own words, so an agent can apply it without opening another file; a rule
+  that was only a link is now complete. Passages move into references word for word, and each rewrite passes the
+  evaluation gate on two models at six repetitions with no rule weaker before it merges.
+- **synthesis-meeting-transcripts 1.3.0.** Its eleven rules are stated whole; Step 0, the declared-window sweep,
+  moves into `references/declared-window-sweep.md` word for word, and the earlier text stays verbatim in
+  `references/preserved.md`. Gate: Opus 137 of 138 against 137 of 138, Sonnet 136 against 132, no rule weaker.
+- **synthesis-code-planning 2.1.0.** Its eight rules are stated whole (rule 1, a bare link to the decision-ownership
+  contract, now says what the contract requires of code work, and still links it); the procedure moves into
+  `references/process.md` word for word. Gate: Opus 95% against 87%, Sonnet 92% against 87%; rule 1 rose from 5 of
+  12 to 8 of 12 on Opus and from 3 of 12 to 7 of 12 on Sonnet, and no rule is weaker.
+
 ## [5.26.1] - 2026-11-18
 
 - **The send guard reads Codex's computer-use REPL as computer use** (BACKLOG A14, an operations seat's report of
