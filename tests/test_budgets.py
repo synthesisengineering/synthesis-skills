@@ -2909,8 +2909,27 @@ ROOT = Path(__file__).resolve().parents[1]
 # the step only where nothing holds it 1, in place of the two lines it had; `landed` set with the finding's other names,
 # so `lost` keeps one line and loses none for a held detached HEAD); _holder's docstring and its query keep their lines,
 # taking a ref (a branch's, or HEAD) where it took a branch name.
-CORE_BUDGET = 26225
-PLUGIN_BUDGET = 52999
+# Then each 52 more, for review round 1 of 5.26.1 (what an honest agent hits in the REPL, and cheap exact fixes).
+# synthesis/guards.py 50. The constants 6: SAVED_HERE 2 (a download, a screenshot, an export or the REPL's own state
+# saved here), LEADING_ROUTINE 1, REPL_OUTSIDE 3 more (4 in place of 1: global, a member that reaches the process or a
+# module loader, a module's file and process methods); REPL_ACTS and REPL_KINDS take evaluateAll, waitForFunction and
+# setContent in their lines. _publishes 1 (its docstring; a REPL title's routine word only where it leads, in its lines).
+# _repl_unread 3 (its docstring 1, eval, Function or constructor named anywhere 1, the answer over two lines 1).
+# _repl_label 13 (its line and docstring 3, the literal 1, getBy names 1, their texts and a filter's hasText 1, the text
+# found 2, a selector given to locator() or the click 2, its aria-label, has-text, text or name 2, the answer 1), with its
+# 2 blank lines. _repl_items 8 more (its docstring 2, a title that waits for a download 2, no words typed skipped 2 with
+# its kind read after the words in a line moved, the click's statement over lines and a name bound in the call 2 more,
+# 7 lines in place of 5; the title's own click where no action shows on its return line). UNREAD_FORMS none (eval's
+# lookbehind). check_desktop 2 (changes 1 more: the routine word for a REPL title and the save kept here; the unwritten
+# refusal 1 more, only where the call sends by another sign; the scan of typed words, only in a call that sends, and
+# goes' leading routine in their lines). _osa_code none (octal escapes in the escape's two lines). _driven_steps 2 (a
+# drop's paths an upload 1, the server's own code read with the REPL's reader for uploads and named controls 1).
+# _judged_send 5 (a file named by reference, its bytes bound as an attachment's, or refused unread: the loop 1, the hash
+# in a try 3, the refusal 1; the hold names the references in its line). _hands_over none (a reference in its return
+# line) and _file_refs 3 with FILE_REF 1 and their 4 blank lines. synthesis/sends.py 2: matches 2 more (its docstring 2
+# more; the tool's two spellings, each glob as written, in the 3 lines that rewrote the glob).
+CORE_BUDGET = 26277
+PLUGIN_BUDGET = 53051
 
 
 def _lines(files):

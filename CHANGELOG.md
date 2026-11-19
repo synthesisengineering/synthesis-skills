@@ -10,24 +10,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   2026-11-18: a chat reply sent through `mcp__cua_repl__js` left no ledger line under a batch whose entry was never
   spent, and a slide import, uploads and two form saves ran with no code). A REPL call is read as the actions its code
   writes out, described by the call's title. One that sends, uploads, edits a document or saves a form waits for a code
-  naming it and is logged once released. Return, a typed line break and an untitled click wait, as in any messaging
-  app, since a REPL call never names its app. Code the guard cannot read, or a send whose words are not written into the
-  call, is refused; code that imports a module or reaches the process waits for its own code. No batch takes a REPL
-  call, and a batch an earlier release opened with one no longer counts as open.
+  naming it and is logged once released, and since the REPL keeps what earlier calls defined, so does one whose title
+  says so though its code shows no action (a helper an earlier call defined). A control is read where an ordinary
+  spelling names it (a locator bound to a name, a chain over lines, a test id, a selector's aria-label or text, a
+  filter's text), and page code run by `evaluateAll`, `waitForFunction`, `$eval` or `$$eval` is read as a page script.
+  Return, a typed line break and an untitled click wait, as in any messaging app, since a REPL call never names its app.
+  Typed words are scanned as a message only in a call that sends, so an address, CSV rows, code or a search is never
+  refused for its words. Code the guard cannot read, `eval`, `Function` or `constructor` named anywhere, or a send whose
+  words are not written into the call, is refused; code that imports a module, reaches the process or calls a module's
+  file or process methods (`writeFile`, `execSync`) waits for its own code. No batch takes a REPL call, and a batch an
+  earlier release opened with one no longer counts as open.
 - **Uploads, document edits and form saves wait on every computer-use tool** when the action's summary says so, except
-  on a local app's page; a send window covers only sends.
+  on a local app's page; a save of a download, a screenshot, an export or the REPL's own state is no form save, and a
+  send window covers only sends.
 - **A file handed to a page or a service waits for a code naming the upload** (A14). By kind: a tool whose name says it
   uploads or attaches, with no reading verb before that word; a browser's `set_input_files`; Claude in Chrome's
   `file_upload` and `upload_image` and Playwright's `browser_file_upload`, judged on their page, so a local app asks
-  nothing; and a Drive call that reads a file from this disk (`create_drive_file` and the three imports), which asked
-  for no code, since its destination may be a shared folder. A connector's upload holds as a send that names
-  the file and where it goes. Each released upload is in the sends ledger, and no batch takes a driven browser's tool.
-- **A JavaScript string's escapes are read as they run**, so a typed `'\n'` counts as Return; this closes two
-  page-script spellings on the open list.
+  nothing; a Drive call that reads a file from this disk (`create_drive_file` and the three imports), which asked
+  for no code, since its destination may be a shared folder; a driven browser's drop of files and its own
+  `setInputFiles`; and a connector field given a file by `sha256:<hex>:<path>` reference, its bytes bound. A connector's
+  upload holds as a send that names the file and where it goes. Each released upload is in the sends ledger, and no
+  batch takes a driven browser's tool.
+- **A JavaScript string's escapes are read as they run**, so a typed `'\n'` or legacy octal `'\12'` counts as Return;
+  this closes two page-script spellings on the open list.
 - **A config's tool globs match a tool as every harness names it** (BACKLOG A15). Codex writes a server named
   `workspace-mcp` as `workspace_mcp`, so a Google Chat message signed with the plain `Ragbot (ragbot.ai)` form its
   config allows (`signature.plain_url_tools`) was refused there. `send_tools`, `not_send_tools`, the document-edit
-  tools, `plain_email_tools`, `plain_url_tools` and `fresh_calendar.reads` now match both spellings.
+  tools, `plain_email_tools`, `plain_url_tools` and `fresh_calendar.reads` now match each glob as written against the
+  tool's name and against it with its server's `_` read as `-`, so a glob written with the server's own name matches
+  both harnesses' names.
 - **The review: a detached HEAD at a commit a remote holds is nothing at risk.** Run as released on the Mac it was built
   on, 11 of the 23 detached checkouts it failed sat at a published commit. Such a checkout with nothing else to repair
   joins the shared no-risk warning; one detached at a commit no remote holds still fails.
