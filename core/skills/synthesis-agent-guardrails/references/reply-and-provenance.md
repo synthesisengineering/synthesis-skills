@@ -266,7 +266,7 @@ blocked a fix had no watch on it, and the next look was hours away. A hook canno
 something today; the seat that sent it can, and this check makes it say.
 
 - **Which calls:** what the send guard takes for a message to a person
-  ([its reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.1/skills/synthesis-message-guard/references/config.md#a-time-in-the-words-2026-11-12) says what
+  ([its reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.0/skills/synthesis-message-guard/references/config.md#a-time-in-the-words-2026-11-12) says what
   that is): a call whose own name says it sends, replies or forwards a message, on mail, Slack, chat or texts or
   by a connector the guard has no name for, and a message sent from the shell: `osascript` to Messages or Mail, a
   command `send_commands` names for `messages`, `email`, `slack` or `chat`, and the local-messaging skill's sender.
