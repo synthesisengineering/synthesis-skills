@@ -99,8 +99,8 @@ BLOCK_START = _Pattern(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
 
 
 def is_send_tool(tool: str, config: dict) -> bool:
-    patterns = DEFAULT_SEND_TOOLS + list(config.get("send_tools", []))
-    return any(fnmatch.fnmatchcase(tool, p) for p in patterns)
+    from synthesis import sends
+    return sends.matches(tool, DEFAULT_SEND_TOOLS + list(config.get("send_tools", [])))  # as every harness names it (A15)
 
 
 def _strings(value, key: str = "", leave: frozenset = frozenset()):
@@ -281,8 +281,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     change is released only by the principal's approval of the address itself, which the message's own never is."""
     from synthesis import sends
     fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
-    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or any(  # a document's lines are its own
-        fnmatch.fnmatchcase(tool, p) for p in sends.DOCUMENT_EDITS)
+    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or sends.matches(tool, sends.DOCUMENT_EDITS)  # a document's own lines
     strings, html_format = list(_strings(tool_input)), tool_input.get("body_format") == "html"
     texts, html_parts, problems = [], [], []
     for key, text in strings:
@@ -317,8 +316,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     html_keys = {k for k, _, _ in html_parts}
     if _is_email(tool, tool_input):
         bodies = [(k, t) for k, t in strings if k in BODY_FIELDS | HTML_FIELDS]
-        plain_ok = fmt.get("default_email_format") == "plain" or any(
-            fnmatch.fnmatchcase(tool, p) for p in fmt.get("plain_email_tools", []))
+        plain_ok = fmt.get("default_email_format") == "plain" or sends.matches(tool, fmt.get("plain_email_tools", []))
         if bodies and not (html_format or html_keys & HTML_FIELDS) and not plain_ok:
             problems.append("email goes out as HTML, never plain text (plain text is hard-wrapped on send): pass the "
                             "body as htmlBody, or body_format html, with each paragraph in <p>")
@@ -337,9 +335,8 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
     rendered = "\n".join(t for _, t in _strings(tool_input, leave=UNSIGNED))
-    if any(m and m in rendered for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
-            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send", "desktop_type"]
-            + signature.get("plain_url_tools", [])):
+    if any(m and m in rendered for m in signature.get("markers", [])) and not sends.matches(  # iMessage and typed text carry no
+            tool, ["imessage_send", "messages_send", "desktop_type"] + signature.get("plain_url_tools", [])):  # named link (A15)
         shown = LINKED.sub(" ", rendered)
         exposed = [d for d in signature.get("domains", []) if d and d in shown]
         if exposed:
@@ -818,10 +815,11 @@ def _reads_calendar(name: str, reads: list) -> bool:
     """A tool that reads a calendar: one whose name ends as such a read does and says it is a calendar's (a
     workspace server's events are its calendar's), a free-busy query or a suggestion of times, or one the setting
     names by its whole name, a pattern over it, or its end. An error tracker's `search_events` is none."""
+    from synthesis import sends
     short = name.rsplit("__", 1)[-1]
     return not CALENDAR_WRITE.search(short) and bool(  # a write is no read, whatever pattern names its server
         CALENDAR_READ.search(short) and CALENDARS.search(name.lower()) or short in ("query_freebusy", "suggest_time")
-        or any(fnmatch.fnmatchcase(name, known) or known == short for known in reads))
+        or any(sends.matches(name, [known]) or known == short for known in reads))
 
 
 def _calendar_read(transcript: str, reads: list) -> float | None:

@@ -61,12 +61,21 @@ def _words(name: str) -> list:
     return [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", name)]
 
 
+def matches(tool: str, globs) -> bool:
+    """Whether a tool's name fits one of these globs as any harness spells it (A15, 2026-11-18): Codex's hook writes each
+    character of an MCP server's name that is no letter, digit or _ as _ (`mcp__workspace_mcp__send_message`), Claude
+    Code keeps the server's own (`mcp__workspace-mcp__send_message`), so a hyphen outside a glob's brackets is either."""
+    plain = tool.replace("-", "_")
+    return any(fnmatch.fnmatchcase(tool, g) or fnmatch.fnmatchcase(plain, re.sub(r"\[[^\]]*\]|-", lambda m: "_" if m[0] == "-" else m[0], g))
+               for g in globs)
+
+
 def says(tool: str, config: dict) -> bool:
     """True when a connector tool delivers words to people: a saying verb (send, comment, post...), or a
     writing verb whose object is something people read (create an issue, update a page)."""
-    if any(fnmatch.fnmatchcase(tool, p) for p in NOT_PEOPLE + list(config.get("not_send_tools", []))):
+    if matches(tool, NOT_PEOPLE + list(config.get("not_send_tools", []))):
         return False
-    if any(fnmatch.fnmatchcase(tool, p) for p in ALSO_SENDS + DOCUMENT_EDITS):
+    if matches(tool, ALSO_SENDS + DOCUMENT_EDITS):
         return True
     words = _words(tool.rsplit("__", 1)[-1])
     verbs = [i for i, w in enumerate(words) if w in READS | SAYS | WRITES]
