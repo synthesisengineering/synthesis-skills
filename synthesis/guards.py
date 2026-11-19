@@ -7708,8 +7708,8 @@ def _repl_items(given: dict) -> list:
             chain = code[max(code.rfind(";", 0, found.start()), code.rfind("\n", 0, found.start())) + 1:found.start()]  # its statement
             label = re.findall(r"getBy(Role|Text|Label|Title|Placeholder|AltText)\s*\(\s*\0(\d+)\0(?:[^()]*?\bname\s*:\s*\0(\d+)\0)?", chain)
             role, named = (label[-1][0].lower(), literals[int(label[-1][2] or label[-1][1])]) if label else ("", "")
-            said = f'{title} (clicks the "{named}" {literals[int(label[-1][1])] if role == "role" else role})' if named else title
-            items.append({"action": "left_click", "action_summary": said.strip()})
+            said = f'{title}; clicks the "{named}" {literals[int(label[-1][1])] if role == "role" else role}' if named else title
+            items.append({"action": "left_click", "action_summary": said.strip("; ")})
     if _writes_by_fetch(code, literals) or REPL_REQUESTS.search(code):
         items.append({"action": "request", "action_summary": title})
     return items
@@ -8533,7 +8533,7 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         return "upload" if kind == "upload" or UPLOADS.search(s) else "edit" if EDITS.search(s) else "save" if SAVES.search(s) else ""
     does = [("send" if goes(kind, v, s, reached) else changes(kind, s), s or {"type": "a typed line break", "script": "a page script",
              "upload": "a file set in the page", "request": "a request that may write"}.get(kind, f"{kind} {v}".strip())) for kind, v, s in actions]
-    kinds, sending = [k for k, _ in does if k], list(dict.fromkeys(d for k, d in does if k))
+    kinds, sending = [k for k, _ in does if k], list(dict.fromkeys(p for k, d in does if k for p in d.split("; ")))  # each part once
     if formed and not reached and not sending:
         kinds, sending = ["send"], ["a key that submits the form after the typed words"]
     unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) or changes(k, s) for k, v, s in actions) and bool(
