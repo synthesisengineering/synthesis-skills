@@ -456,18 +456,22 @@ def repositories(report, scan, spaces: list, sessions: list, fetch: bool) -> lis
     own = paths.session_id()  # this session's own claims hold its own work, which it repairs itself
     live = [(s, [_split(c) for c in s.claims]) for s in sessions if s.claims and not s.stale and s.session != own]
     quiet = [(s, [_split(c) for c in s.claims]) for s in sessions if s.claims and s.stale]
-    for real, found in zip(order, results):
-        report.guard("repositories", doctor._short(real), lambda real=real, found=found: _repository(
-            report, scan, entries[real], found, live, quiet, fetch))
+    landed = [kept for real, found in zip(order, results) for kept in [report.guard("repositories", doctor._short(real), lambda
+              real=real, found=found: _repository(report, scan, entries[real], found, live, quiet, fetch))] if kept]
+    if landed:  # one line for them all, and no step: what a worktree whose work merged needs is the principal's tidying
+        report.add("warn", "repositories", f"{len(landed)} checkout{'s' * (len(landed) != 1)}", "each on a branch with no upstream "
+                   "whose commits a remote already holds, so nothing in them is at risk; one whose work is done can be removed: "
+                   + ", ".join(f"{short} ({branch})" for short, branch in landed[:5]) + (", ..." if len(landed) > 5 else ""))
     report.read["repositories"] = len(order)
     return [(real, found) for real, found in zip(order, results) if found is not None]
 
 
-def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: bool) -> None:
+def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: bool):
     """One repository's finding, with its steps in the order they run: back on a branch, the commit of the paths no live
     claim covers (past NAMED of them, the principal's choice of what is work), then the upstream or the integration. A
     live seat whose claim covers work here is asked about it, and with a seat asked nothing more than the commit is
-    planned: the push is that seat's, after its own commit."""
+    planned: the push is that seat's, after its own commit. A checkout whose one condition is a branch with no upstream
+    whose commits a remote already holds is no finding of its own: it returns (path, branch) for the area's one line."""
     path = Path(row["path"])
     where, short, real = _arg(path), doctor._short(path), os.path.realpath(path)
     if found is None:
@@ -512,11 +516,18 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
     sort = [("principal", f"decide which of the {len(unclaimed)} uncommitted paths in {short} are work, and commit those (`git -C {where} "
              f"status` lists them): more than the {NAMED} one step of this plan names")] if len(unclaimed) > NAMED else []
     steps += commit + sort
+    landed, lost = [], state == "UNREACHABLE" or (state == "BLIND" and not items)
     for item in items:
         branch, upstream = item["branch"], item.get("upstream", "")
+        held = _holder(scan, path, branch) if item["state"] == "BLIND" else ""
+        if held:  # a worktree whose work merged, or a branch pushed under another name: nothing in it is at risk
+            said.append(f"branch {branch} has no upstream; {held} holds its commits")
+            landed.append(f"{branch}, on {held}")
+            continue
         if item["state"] == "BLIND":
-            said.append(f"branch {branch} has no upstream: nothing tells whether its commits reached a remote")
+            said.append(f"branch {branch} has no upstream, and no remote this checkout knows holds its commits")
             steps.append(_upstream(scan, path, where, branch))
+            lost = True
             continue
         ahead, behind = item.get("ahead", 0), item.get("behind", 0)
         said += [f"{branch} and {upstream} have diverged: {ahead} commit{'s' * (ahead != 1)} here, {behind} there"] if ahead and behind else [
@@ -529,7 +540,21 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
         f"under the claim of session {s.short}, quiet {int((time.time() - s.seen) / 3600)} h" for s, claims in quiet if _covered(claims, real, files)]
     if asked:
         steps = commit + sort + [("agent", f"synthesis msg {shlex.quote(s.session)} {shlex.quote(LIVE.format(short))}") for s, _ in asked]
-    report.add("fail" if state in ("UNREACHABLE", "BLIND") else "warn", "repositories", short, "; ".join(said), *steps)
+    if landed and len(said) == len(landed) and not steps:
+        return short, landed[0]
+    report.add("fail" if lost else "warn", "repositories", short, "; ".join(said), *steps)
+    return None
+
+
+def _holder(scan, path: Path, branch: str) -> str:
+    """The first remote-tracking branch that holds every commit of `branch`, a remote's HEAD left out; '' where none does,
+    or git cannot tell."""
+    try:
+        listed = scan.git(path, "for-each-ref", "--contains", f"refs/heads/{branch}", "--count=8", "--format=%(refname:short)",
+                          "refs/remotes").split()
+    except (RuntimeError, OSError, subprocess.SubprocessError):
+        return ""
+    return next((ref for ref in listed if not ref.endswith("/HEAD") and "/" in ref), "")
 
 
 def _onto_branch(scan, path: Path, where: str) -> tuple:

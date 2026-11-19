@@ -2861,8 +2861,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # synthesis/board.py 5 more: split_overlap 8 (its line and docstring 2, overlaps' body 6), overlaps 5 fewer (that body
 # called with the two claims split), and 2 blank lines. The plugin none more: the directory package's list of the
 # runtime's commands names `review` in its line.
-CORE_BUDGET = 26034
-PLUGIN_BUDGET = 52808
+# Then each 25 more, all in synthesis/review.py, for the integration check of C3 before its last review round (on the
+# principal's Mac, 86 of the 130 checkouts on a branch with no upstream held commits a remote already had, a worktree
+# whose pull request merged, and each was a failure with a push in the plan). repositories 3 (each finding's answer
+# kept, and one warning for every checkout whose one condition that is, naming five, with no step, in place of the
+# loop's 3 lines); _repository 11 (its docstring 1: such a checkout returns its path and branch; what is lost, set for
+# an unreadable repository or a detached HEAD, 1; the holder asked for a branch with no upstream 1, and a held branch
+# said and kept with no step 4; a branch no remote holds marks the finding lost 1; the checkout with nothing else
+# returned 2, and the answer for the rest 1); _holder 11 (its line and docstring 3, the remote-tracking branches that
+# contain the branch, eight at most, 3, none where git cannot tell 2, the first that is no remote's HEAD 1, two blank
+# lines). The failure turns on `lost`, the warning's line on what is left.
+CORE_BUDGET = 26059
+PLUGIN_BUDGET = 52833
 
 
 def _lines(files):

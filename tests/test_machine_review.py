@@ -534,7 +534,7 @@ def test_a_git_entry_git_cannot_read_is_unknown_and_a_worktree_is_read(machine):
     rows, said = _rows(report), {f["subject"]: f["detail"] for f in report["findings"]}
     assert {("unknown", "repositories", "~/workspaces/acme/broken"), ("unknown", "repositories", "~/workspaces/acme/ghost")} <= set(rows)
     assert "not there" in said["~/workspaces/acme/ghost"] and "not there" in said["~/workspaces/acme/broken"]
-    assert ("fail", "repositories", "~/workspaces/acme/current-wt") in rows
+    assert ("warn", "repositories", "~/workspaces/acme/current-wt") in rows  # its branch's commits are origin/main's: the file is the work
     assert "1 uncommitted file" in said["~/workspaces/acme/current-wt"] and "branch wt has no upstream" in said["~/workspaces/acme/current-wt"]
     assert report["exit"] == 2
 
