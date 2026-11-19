@@ -501,10 +501,13 @@ nothing else is overlooked: a trailing space, a lookalike letter, another case o
 send. A connector entry binds the whole call, every field of its input, compared as JSON (`true` is not `1`); a call
 whose input names anything its connector fetches, reads or carries when it runs (a key naming a url, a uri, a link, a
 path, a file, an attachment, an upload, a download, media, an image, a photo, a picture, video, audio, a voice clip, a
-blob, a sticker, a thumbnail or an avatar) is never covered, since a batch binds words, not what a url, a path or a
-file holds when the call runs. Since 5.27.1 such an entry is refused as the batch is prepared, with that reason, so the
-principal is never asked to open a batch whose entry can never go (2026-11-19: a forward carrying the original's
-attachments was opened and could not be spent); make that call alone, for its own code. A messages entry binds what the sender's own approval binds; a photo beside it
+blob, a sticker, a thumbnail or an avatar; a key that only names one, such as `file_name`, fetches nothing) is never
+covered, since a batch binds words, not what a url, a path or a file holds when the call runs. Since 5.27.1 a connector
+entry the send path would never spend is refused as the batch is prepared, with the reason, so the principal is never
+asked to open it (2026-11-19: a forward carrying the original's attachments was opened and could not be spent): one
+that fetches or reads as above, one that names a file by `sha256:<hex>:<path>` reference, one whose words a rule of the
+principal's settings refuses, and one that puts a meeting on today; make that call alone, for its own code, or mend its
+words. A messages entry binds what the sender's own approval binds; a photo beside it
 is outside every batch. A Messenger entry is sent in one step, a single `browser_batch` (the review's third round: a
 check read in one call and a Return pressed in another left room between them for a page script that rewrote what the
 check reported, a typist the guard could not see, and another session):

@@ -214,7 +214,9 @@ def typed_codes(prompt: str) -> list[str]:
 # a JSON list of {"questionItemId", "question", "answer"} (Codex 0.162, 2026-11-19). `typed_text` drops the block whole,
 # since the question is the agent's words. The answer is the principal's (Rajiv, 2026-11-19: "allow approval codes from
 # inside cards as well as long as the approval code is sent by me"): a code in it counts when the record shows the call
-# that asked and none of the options that call offered carries the code, since a picked option is the agent's words.
+# that asked and none of the options that call offered carries the code, since a picked option is the agent's words. A
+# reply counts only standing alone, and in the record only on a message its client sent: Codex also records an
+# automation's heartbeat, whose words an agent sets, as the user's message (review round 1 of 5.27.1, finding 1).
 CARD = "send_user_message_question_reply"
 CARD_REACH = 64 << 20  # how far back the record is read for the asking call; an answer to one asked before counts for nothing
 CARDS: dict = {}  # the last answer read, by prompt and record as it stood: the hook asks for it twice
@@ -222,12 +224,13 @@ CARDS: dict = {}  # the last answer read, by prompt and record as it stood: the 
 
 def card_answers(prompt: str) -> list:
     """(the asking call's id, the question's place in it, the answer) for each answer in a question card's reply, read as
-    the client writes it: everything from the first opening tag to the last closing one is one JSON list, so a question
-    that quotes a tag stays inside its own string. A reply in any other shape gives none."""
-    text = prompt or ""
-    start, end = text.find(f"<{CARD}>"), text.rfind(f"</{CARD}>")
+    the client writes it: the whole text is the one block, and all between its tags one JSON list, so a question that
+    quotes a tag stays inside its own string. A block inside other text, or a reply of any other shape, gives none."""
+    text = (prompt or "").strip()
+    if not (text.startswith(f"<{CARD}>") and text.endswith(f"</{CARD}>")):
+        return []
     try:
-        items = json.loads(text[start + len(CARD) + 2:end]) if 0 <= start < end else None
+        items = json.loads(text[len(CARD) + 2:-len(CARD) - 3])
     except ValueError:
         return []
     found = []
@@ -252,8 +255,8 @@ def _offered(transcript_path: str, call: str, at: int) -> list | None:
                 body = json.loads(line).get("payload") or {}
                 if (body.get("type") == "function_call" and body.get("call_id") == call
                         and str(body.get("name", "")).startswith("request_user_input")):
-                    asked = json.loads(body.get("arguments") or "{}")["questions"][at]
-                    return [o if isinstance(o, str) else json.dumps(o) for o in asked.get("options") or []]
+                    offered = json.loads(body.get("arguments") or "{}")["questions"][at].get("options") or []
+                    return [o if isinstance(o, str) else json.dumps(o) for o in offered] if isinstance(offered, list) else None
     except (OSError, ValueError, TypeError, KeyError, IndexError, AttributeError):
         return None
     return None
@@ -270,7 +273,8 @@ def card_codes(prompt: str, transcript_path: str) -> list[str]:
         codes = []
         for call, at, answer in card_answers(prompt):
             offered = _offered(transcript_path, call, at)
-            codes += [c for c in typed_codes(answer) if offered is not None and not any(c in o.lower() for o in offered)]
+            codes += [c for c in typed_codes(answer) if offered is not None and not any(c in o.lower() for o in offered)
+                      and c in prompt.lower()]  # as typed: no client escapes a letter or a digit
         CARDS.clear()
         CARDS[key] = list(dict.fromkeys(codes))
     return CARDS[key]
@@ -473,10 +477,13 @@ def showing(transcript_path: str, code: str, since: float, session_id: str = "",
     for line in _lines_back(transcript_path, stop=max(0, start - MARGIN) if bounded else 0):
         if hit.search(line):
             try:
-                when, texts = _prompt(json.loads(line), session_id)
+                record = json.loads(line)
+                when, texts = _prompt(record, session_id)
+                body = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+                sent = isinstance(body.get("item"), dict) and bool(body["item"].get("client_id"))  # its client's, not a heartbeat
             except (ValueError, TypeError, AttributeError):
-                when, texts = 0.0, []
-            if when > since and any(code in typed_codes(text) or code in card_codes(text, transcript_path) for text in texts):
+                when, texts, sent = 0.0, [], False
+            if when > since and any(code in typed_codes(text) or sent and code in card_codes(text, transcript_path) for text in texts):
                 return when, hashlib.sha256(line.encode("utf-8", "replace")).hexdigest()
         stamps = [] if bounded else _stamps(line)
         if stamps:

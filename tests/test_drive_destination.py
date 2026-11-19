@@ -67,3 +67,35 @@ def test_reading_drive_never_asks_for_a_code():
     for name, given in reads.items():
         assert guards.check(f"mcp__workspace-mcp__{name}", {"user_google_email": "me@example.com", **given}, CONFIG,
                             session=SESSION) is None, name
+
+
+# --- review round 1 of 5.27.1, finding 2: the same act under other names --------------------------------------------------
+GOOGLE = "mcp__7512aea3-58de-400a-851f-20f5336abdb7__"
+NAMED = [(GOOGLE + "create_file", {"title": "Plan", "textContent": "# Plan", "contentMimeType": "text/plain", "parentId": "1sharedFolderId"}),
+         (GOOGLE + "copy_file", {"fileId": "1privateFileId", "parentId": "1sharedFolderId"}),
+         (GOOGLE + "copy_file", {"fileId": "1privateFileId"}),  # this connector puts the copy beside its original
+         (GOOGLE + "update_file", {"fileId": "1privateFileId", "parentId": "1sharedFolderId"}),  # a move into the folder
+         ("mcp__workspace-mcp__create_doc", {**ME, "title": "Plan", "content": "# Plan", "folder_id": "1sharedFolderId"}),
+         ("mcp__workspace-mcp__export_doc_to_pdf", {**ME, "document_id": "1privateDocId", "folder_id": "1sharedFolderId"}),
+         ("mcp__workspace-mcp__create_spreadsheet", {**ME, "title": "Plan", "sheet_names": ["Q4"], "folder_id": "1sharedFolderId"}),
+         ("mcp__workspace-mcp__create_drive_folder", {**ME, "folder_name": "Plan", "parent_folder_id": "1sharedFolderId"})]
+MINE = [(GOOGLE + "create_file", {"title": "Plan", "textContent": "# Plan", "contentMimeType": "text/plain"}),
+        (GOOGLE + "copy_file", {"fileId": "1privateFileId", "parentId": "root"}),
+        (GOOGLE + "update_file", {"fileId": "1privateFileId", "title": "Plan v2"}),
+        ("mcp__workspace-mcp__create_doc", {**ME, "title": "Plan", "content": "# Plan"}),
+        ("mcp__workspace-mcp__export_doc_to_pdf", {**ME, "document_id": "1privateDocId"}),
+        ("mcp__workspace-mcp__create_spreadsheet", {**ME, "title": "Plan", "folder_id": "root"}),
+        ("mcp__workspace-mcp__create_drive_folder", {**ME, "folder_name": "Plan"}),
+        ("mcp__filesystem__create_file", {"path": "/tmp/plan.md", "content": "# Plan"}),  # another server's name, its own keys
+        ("mcp__filesystem__copy_file", {"source": "/tmp/a.md", "destination": "/tmp/b.md"})]
+
+
+@pytest.mark.parametrize("tool,given", NAMED)
+def test_a_file_made_moved_or_copied_into_a_named_folder_by_any_drive_tool_waits(tool, given):
+    assert held(guards.check(tool, given, CONFIG, session=SESSION)), tool
+
+
+@pytest.mark.parametrize("tool,given", MINE)
+def test_the_same_tools_into_the_principals_own_my_drive_or_another_servers_tools_ask_nothing(tool, given):
+    assert guards.check(tool, given, CONFIG, session=SESSION) is None, tool
+

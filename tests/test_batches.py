@@ -2113,3 +2113,45 @@ def test_a_sender_run_beside_a_git_command_whose_repository_names_a_program_stil
     line = f"python3 -s {SENDER} {' '.join(TO_A)} && git -C {repo} status"
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=me) is None
     assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+
+
+# --- review round 1 of 5.27.1 -------------------------------------------------------------------------------------------
+
+DRIVE = "mcp__workspace-mcp__create_drive_file"
+
+
+def test_files_made_inline_in_a_named_folder_go_on_one_batch_code():
+    """Finding 3: `file_name` read as a fetched file, so no batch could take a Drive file and each asked a code of its own."""
+    entries = [{"tool": DRIVE, "input": {"user_google_email": "me@example.com", "file_name": f"Note {n}", "content": f"# Note {n}",
+                                         "folder_id": "1sharedFolderId"}} for n in range(3)]
+    granted(entries)
+    for entry in entries:
+        assert guards.check_send(DRIVE, entry["input"], CONFIG, SESSION) is None
+    assert all(e["how"].startswith("batch") for e in today()[-3:])
+
+
+def _settings(**given):
+    paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    paths.config_file().write_text(json.dumps({**CONFIG, **given}), encoding="utf-8")
+
+
+def test_an_entry_the_send_path_would_hold_is_refused_as_the_batch_is_prepared(tmp_path, monkeypatch):
+    """Finding 4: a file named by reference, words a rule refuses, and a meeting on today were put to the principal,
+    opened, and never spent."""
+    staged = tmp_path / "plan.md"
+    staged.write_text("# Plan\n", encoding="utf-8")
+    ref = f"sha256:{hashlib.sha256(staged.read_bytes()).hexdigest()}:{staged}"
+    with pytest.raises(ValueError, match="entry 1 names a file on this disk by reference"):
+        sends.read_batch(str(batch_file([{"tool": "mcp__google__create_file", "input": {"title": "Plan", "base64Content": ref}}])))
+    _settings()
+    with pytest.raises(ValueError, match="entry 2 can't go out as written: .*delay"):
+        sends.read_batch(str(batch_file([CALL, {"tool": SLACK, "input": {"channel_id": "D0456", "message": "Sorry for the delay, Tuesday works."}}])))
+    monkeypatch.setattr(guards, "_today", lambda: date(2026, 11, 9))
+    _settings(same_day_meetings={"exempt": []})
+    invite = {"summary": "Follow-up", "start_time": "2026-11-09T15:00:00", "end_time": "2026-11-09T15:30:00",
+              "attendees": ["a@example.com"], "user_google_email": "me@example.com"}
+    with pytest.raises(ValueError, match="entry 1 puts a meeting on today"):
+        sends.read_batch(str(batch_file([{"tool": EVENT, "input": invite}])))
+    assert sends.read_batch(str(batch_file([{"tool": EVENT, "input": {**invite, "start_time": "2026-11-10T15:00:00",
+                                                                     "end_time": "2026-11-10T15:30:00"}}])))
+

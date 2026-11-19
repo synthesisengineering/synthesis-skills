@@ -1172,12 +1172,13 @@ as one; Codex's records show hooks refusing such nested calls inside the scripts
   `browser_file_upload` was read as a read. A drop of `paths`, a driven browser's own `setInputFiles`, and a
   `sha256:<hex>:<path>` file reference count too (review round 1 of 5.26.1). Since 5.27.1 a Drive call that makes or
   copies a file waits by where it lands, not where its bytes come from: nothing in the principal's own My Drive, a code
-  for any named folder.
+  for any named folder, by the workspace connector's names and the Google Drive connector's.
 - **A code typed into a Codex question card's answer counts** (5.27.1, the principal's direction of 2026-11-19). The
   client wraps a card's reply in one block, a JSON list of question and answer, which the parser had dropped whole as
   harness text. Now each answer is read alone: a code in it counts when the session's record shows the card's asking
   call and none of the options that call offered carries the code, since a picked option is the agent's words. The
-  question never counts. A replay of the 66 card answers in this Mac's 1,003 Codex rollouts found three carrying a code,
+  question never counts, nor does a reply inside other text or, in the record, one its client did not send: Codex also
+  records an automation's heartbeat, whose words an agent sets, as the user's message (review round 1 of 5.27.1). A replay of the 66 card answers in this Mac's 1,003 Codex rollouts found three carrying a code,
   the three the principal typed, and all three count.
 - **The doctor proves that Codex still runs hooks on nested calls.** Its `codex nested hooks`
   line reads Codex's newest rollouts for a hook's refusal in a script's result, which only

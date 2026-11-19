@@ -553,7 +553,9 @@ def _entry_problem(entry) -> str:
                 f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
                 if tool in ("imessage_send", "messages_send") else  # the send path takes no such call from a batch (2026-11-19)
                 "carries what its connector fetches or reads as the call runs (a url, a path, an attachment), which a batch "
-                "never binds: make that call alone, for its own code" if guards._fetches(entry["input"]) else "")
+                "never binds: make that call alone, for its own code" if guards._fetches(entry["input"]) else
+                "names a file on this disk by reference, whose bytes a batch never binds: make that call alone, for its own "
+                "code" if guards._file_refs(entry["input"]) else _unspendable(tool, entry["input"]))
     if keys not in ({"channel", "to", "text"}, {"channel", "members", "service", "chat", "text"}) or not (
             isinstance(entry["text"], str) and entry["text"].strip() and isinstance(entry["channel"], str)):
         return f"is {KINDS}"
@@ -569,6 +571,19 @@ def _entry_problem(entry) -> str:
     return "" if isinstance(entry["to"], str) and conversation(entry["to"]) == (entry["channel"], entry["to"]) else (
         "names no conversation in the one form the guard compares, for its channel: facebook.com/messages/t/<id>, "
         "facebook.com/messages/e2ee/t/<id>, messenger.com/t/<id> or messenger.com/e2ee/t/<id>, channel messenger")
+
+
+def _unspendable(tool: str, given: dict) -> str:
+    """Why the send path would hold a connector entry a batch had opened, judged with the principal's settings as it will
+    judge the call: words a rule refuses, or a meeting put on today (review round 1 of 5.27.1, finding 4); "" for none."""
+    from synthesis import guards
+    try:
+        config = paths.config()
+    except paths.Unreadable as exc:
+        return f"cannot be judged, since the guard's settings cannot be read ({exc})"
+    problems, today = guards.message_problems(tool, given, config), guards._invited_today(tool, given, config)
+    return (f"can't go out as written: {'; '.join(problems[:3])}" if problems else today if isinstance(today, str) else
+            "puts a meeting on today, which takes a code of its own" if today else "")
 
 
 def batch_digest(batch: dict) -> str:

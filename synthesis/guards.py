@@ -776,8 +776,8 @@ FETCHES = _Pattern(r"(?i)url|uri|link|path|file|attach|upload|download|media|ima
 def _fetches(value) -> bool:
     """Whether a call's input names, at any depth, something its connector fetches or reads when the call runs: a url,
     a path, an attachment (the review of 5.23.0: a mail's attachment fetched from a url hours after the batch was read)."""
-    if isinstance(value, dict):
-        return any(FETCHES.search(str(k)) or _fetches(v) for k, v in value.items())
+    if isinstance(value, dict):  # a key that names, as `file_name` does, fetches nothing (review round 1 of 5.27.1, finding 3)
+        return any(FETCHES.search(str(k)) and not str(k).lower().endswith("name") or _fetches(v) for k, v in value.items())
     return isinstance(value, list) and any(_fetches(v) for v in value)
 
 
@@ -9725,7 +9725,12 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
 # drive's folder), so it waits for a code naming the file and the folder, wherever its bytes come from. 5.26.1 held by
 # the source, a file on this disk: a private upload waited and inline bytes into a shared folder did not.
 DRIVE_PLACES = {"create_drive_file": "folder_id", "import_to_google_doc": "folder_id", "import_to_google_sheets": "folder_id",
-                "import_to_google_slides": "folder_id", "copy_drive_file": "parent_folder_id"}
+                "import_to_google_slides": "folder_id", "copy_drive_file": "parent_folder_id", "create_doc": "folder_id",
+                "create_spreadsheet": "folder_id", "export_doc_to_pdf": "folder_id", "create_drive_folder": "parent_folder_id"}
+# The Google Drive connector's generic names, each known by a key of its own schema so that another server's tool of the
+# same name is not caught; its folder is `parentId`, and a copy given none lands beside its original, which may be shared
+# (review round 1 of 5.27.1, finding 2).
+DRIVE_PARENTS = {"create_file": "title", "update_file": "fileId", "copy_file": "fileId"}
 
 
 def _hands_over(tool: str, tool_input: dict) -> bool:
@@ -9734,9 +9739,10 @@ def _hands_over(tool: str, tool_input: dict) -> bool:
     a file into a named folder (DRIVE_PLACES); or a Drive update from a file on this disk: its `file_path`."""
     from urllib.parse import urlparse
     name = tool.rsplit("__", 1)[-1]
-    if name in DRIVE_PLACES:  # by where it lands; a folder given as anything but a name is judged as named
-        folder = tool_input.get(DRIVE_PLACES[name]) if isinstance(tool_input, dict) else ""
-        return not (folder is None or isinstance(folder, str) and folder.strip().lower() in ("", "root"))
+    if isinstance(tool_input, dict) and (name in DRIVE_PLACES or DRIVE_PARENTS.get(name, "") in tool_input):
+        folder = tool_input.get(DRIVE_PLACES.get(name, "parentId"))  # by where it lands; anything but a name is named
+        return (folder is None and name == "copy_file") or not (folder is None or isinstance(folder, str) and
+                                                                 folder.strip().lower() in ("", "root"))
     key = FILE_DRIVE_TOOLS.get(name)
     value = tool_input.get(key) if key and isinstance(tool_input, dict) else None
     try:

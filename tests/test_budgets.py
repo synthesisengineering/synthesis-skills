@@ -2941,8 +2941,19 @@ ROOT = Path(__file__).resolve().parents[1]
 # wording 4); the record named once and the typed codes with the card's in their lines. synthesis/sends.py 2: a batch
 # entry the send path never spends (a forward's attachments, a url, a path) is refused as the batch is prepared, its
 # reason in 2 lines of _entry_problem's conditional (the operations seat's report of 2026-11-19, 09:35).
-CORE_BUDGET = 26364
-PLUGIN_BUDGET = 53138
+# Then each 28 more, for review round 1 of 5.27.1 (one grant from text the principal did not type, three holes an honest
+# agent hits). synthesis/approvals.py 7: CARD's comment 2 more (a reply counts alone, and in the record only as its
+# client's message); card_answers 1 more (the whole text one block, in place of the first and last tag); card_codes 1
+# more (a code as typed in the raw block); showing 3 more (the record parsed once, its item's client id, both in the
+# try); _offered's options not a list counts as carrying everything, in its 2 lines. synthesis/guards.py 6:
+# DRIVE_PLACES 1 more line (create_doc, create_spreadsheet, export_doc_to_pdf, create_drive_folder); DRIVE_PARENTS 1
+# with its comment 3 (the Google Drive connector's create_file, update_file and copy_file, each by a key of its own
+# schema); _hands_over 1 more (a copy with no folder lands beside its original); _fetches' named keys in its line.
+# synthesis/sends.py 15: _entry_problem 2 more (a file named by reference refused as the batch is prepared);
+# _unspendable 11 (its line, docstring 2, the import, the settings read in a try 4, the problems and the meeting on
+# today 1, the answer 2) with its 2 blank lines.
+CORE_BUDGET = 26392
+PLUGIN_BUDGET = 53166
 
 
 def _lines(files):
