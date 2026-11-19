@@ -61,6 +61,88 @@ dropped. Binding rules keep their numbers, which the skill's evaluation cases ci
 | Closing pointer: Steps 1 to 6 are in protocol-steps.md | SKILL.md, Which path, first bullet | Reworded as a route |
 | (none) | SKILL.md, Which path | Added (W18): routes the four kinds of request, including a record the user brings |
 
+### references/protocol-steps.md
+
+| 1.2.1 | 1.3.0 | How |
+|---|---|---|
+| Title and opening: "the single-meeting path, as written in 0.14.0"; a ritual sync runs Step 0 in SKILL.md | Title and opening | Reworded; points to declared-window-sweep.md |
+| Contents | Contents | Reworded with the step names |
+| Step 1: take a natural-language meeting reference | Step 1 | Reworded; the example "Monday's PDE sync" is now "Monday's design sync" |
+| Step 1: meeting name from `meeting_patterns`, else `generic_pattern`; date parsed against the system date and checked with `date`; account from `google_account` unless the user names another | Step 1 | Kept |
+| Step 2: Drive search with a `modifiedTime` filter; the typical query | Step 2 | Kept; the query unchanged |
+| Step 2: no match: retry a day wider, then the Gemini email in Gmail, then report and stop; do not guess or fabricate | Step 2, fallbacks 1 to 3 | Reworded: numbered in the order they run; "a guessed or reconstructed doc is never saved" (W12) |
+| Step 2: several match: the doc whose name contains the date, else list them and ask | Step 2 | Kept |
+| Step 3: fetch the whole doc; its two tabs, Notes and Transcript | Step 3 | Kept |
+| Step 3: unwrap every tool-result envelope (`mcp_client.call_tool_text`); an outer or nested error is unknown coverage | Step 3 | Kept |
+| Step 3: select by stable tab ID, never by order or a regular expression over flattened text; a title only when exactly one tab in a complete list carries it; record the ID; workspace-mcp's two tools | Step 3; binding rule 5 | Reworded, the behavior first |
+| Step 3: distinct reasons for the six failures | Step 3 | Kept |
+| Step 3: only a complete tab list establishes `transcript-tab-absent`; an error or a flattened summary never authorizes a no-source marker | Step 3; binding rule 7 | Reworded ("justifies the no-source marker") |
+| Step 3: keep every returned byte and the tab IDs; a connector that cannot list tabs leaves the choice to you | Step 3 | Kept |
+| Email warning: the email is a summary of the summary; saving it is the top way to lose most of the record; the transcript lives only in the Drive doc | "The Gemini email is for discovery only"; binding rule 4 | Reworded (W9: no alarm emoji or capitals) |
+| Email "Rule": find the doc ID (the email's button or Step 2) and fetch the full doc; the email is for discovery only | Same section; binding rule 4 | Reworded |
+| Step 4.5 catches an email saved as a transcript by counting timestamps and speaker lines | Same section | Kept |
+| Step 4: the path and the header block | Step 4 | Kept; the header marked as the exact template (W17) |
+| Step 4: an identical file is "already synced"; a different one is replaced and the old kept as `{path}.old-{timestamp}.md` | Step 4 | Reworded |
+| Step 4.5: verify both halves before declaring a meeting fetched; a summary-only save fails silently and costs hours | Step 4.5; binding rule 6 | Reworded |
+| Step 4.5: the verifier command; repeatable `--file` or `--saved-manifest` with paths and SHA-256 digests; a directory scan cannot substitute; bad paths refuse | Step 4.5 | Kept; what it prints and its exit codes added (format rule 7) |
+| Step 4.5: timestamp counts (5 to 50 against 0 to 2); `INCOMPLETE` means fetch and save again | Step 4.5 | Kept |
+| Step 4.5: reading the summary line (`--only-incomplete`, the `Total:` line, exit 2, `total_files` and `listed_count`) | Step 4.5 | Kept |
+| Step 4.5: the four failures it catches | Step 4.5 | Kept |
+| Step 4.5: "This step is not optional", with the failure that prompted it | Step 4.5 ("so it runs on every save") | Reworded (W9) |
+| Step 4.5: a verifier that will not run is reported as unavailable; a grep threshold proves nothing and moves no watermark | Step 4.5 | Reworded |
+| Step 4.5: the no-source marker when the doc has no transcript, with a one-line explanation; `OK (no-source-transcript)` | Step 4.5; binding rule 7 | Kept |
+| Step 4.5: the three skipped prefixes; rename a file to audit it | Step 4.5 | Kept |
+| Step 4.6 heading | Step 4.6 heading | Kept (`test_the_remainder_points_only_at_files_this_skill_ships` reads it) |
+| Step 4.6: before a meeting record is cited, take the actor from the transcript's speaker line | Step 4.6; binding rule 8 | Kept; adds "the saved file, or transcript lines the user supplies" and "the attribution is settled; write it" (W15, W16: the evaluation's finding) |
+| Step 4.6: a summary, decisions section or action-item list says what happened, never who | Step 4.6; binding rule 8 | Kept |
+| Step 4.6: passive constructions are "attribution vacuums" | Step 4.6 ("have lost their actor") | Reworded |
+| Step 4.6: when the transcript is silent, the passive form or "unknown", never the most salient person | Step 4.6; binding rule 8 | Kept |
+| Step 4.6: the 2026-07-07 incident and the hierarchy are in transcript-primary-and-commit-gate.md | Step 4.6: the hierarchy in that file, the incident in release-notes.md (v0.4.0) | Reworded pointer, since the note moved |
+| Step 4.6: the verifier tells a transcript from a summary; an `INCOMPLETE` file cannot support attribution | Step 4.6 | Kept |
+| Step 4.7 heading "(v0.10.0)" | Step 4.7 heading | Version tag dropped |
+| Step 4.7: verification proves fidelity, not what is owed; run the scanner | Step 4.7 | Reworded; the command unchanged; what it prints and its JSON added |
+| Step 4.7: a Gemini timestamp carries across its block; missing times stay null; the commitment shapes it flags | Step 4.7 | Kept |
+| Step 4.7: present every candidate in the same turn as the filing; neither the scanner nor the agent creates anything from its output alone; an unconfirmed candidate is not an obligation | Step 4.7; binding rule 9 | Kept |
+| (none) | Step 4.7, last sentence: the step governs scanner output; a question about who committed in transcript lines is answered by Step 4.6 | Added (W15), the evaluation's finding |
+| Step 4.8 heading "(v0.11.0)" | Step 4.8 heading | Version tag dropped |
+| Step 4.8: one owning workspace (§3), routed by the ownership rules; the stamp command; `candidate-confirmed`; other seats record nothing; blank owner or unknown rule refused | Step 4.8 | Kept; what it prints and its exit code added |
+| Step 5: add a reference; note the decisions and action items the Notes surfaced | Step 5 | Reworded: actors and owners from the transcript, so the step agrees with binding rule 8 |
+| Step 6: never leave transcripts in `~/Downloads/`; commit with a descriptive message; push when pushed on save | Step 6; binding rule 11 | Reworded, the behavior first; points to the commit gate |
+| Date Verification: two signals of three (system date, `modifiedTime`, the user's date); the Slack sync skill's same check; a cached `currentDate` goes stale | Date Verification; binding rule 10 | Kept; adds the UTC conversion and the date in the doc's name, as rule 10 does |
+| Integration: called from Day-Start Step 2b with the day's calendar meetings, in place of scanning Downloads; the rituals skill holds the contract | Integration | Reworded: the current step names, and the rituals run Step 0 |
+
+### references/transcript-primary-and-commit-gate.md
+
+| 1.2.1 | 1.3.0 | How |
+|---|---|---|
+| Title, opening paragraph and contents | Title, opening paragraph and contents | Reworded: the file states the rules as they stand |
+| v0.4.0 section, whole | release-notes.md, v0.4.0, between v0.5.1 and v0.3.0 as in 0.14.0 | Moved word for word |
+| v0.4.0 item 1: the verbatim transcript is the only primary source; fetch it; a summary-only fetch is incomplete; the rule applies at fetch time | Evidence item 1; binding rule 4 | Restated in the present tense |
+| v0.4.0 item 2: summaries, decisions sections and action-item lists are lossy; keep them as labeled verbatim appendices, for provenance, scanning, the docs with no transcript tab, and error tracing | Evidence item 2 | Restated |
+| v0.4.0 item 3: never derive attribution from a summary; resolve against the transcript before an active-voice sentence enters a context file, plan or draft; passive constructions and the most salient person; the 2026-07-07 incident | Evidence item 3; binding rule 8; the incident in release-notes.md (v0.4.0) | Restated |
+| v0.4.0 item 4: no verbatim transcript: tell the user in the same turn and stamp "⚠️ summary-only — no verbatim transcript exists." | Evidence item 4 | Restated; the stamp kept exactly, as output format (W9) |
+| v0.4.0 item 5: headers and highlights the agent writes come from the transcript | Evidence item 5 | Restated |
+| v0.5.0 section, whole | release-notes.md, v0.5.0, between v0.5.2 and v0.5.1 as in 0.14.0 | Moved word for word |
+| v0.5.0 opening: the gap between the rule and its enforcement, and why a fail-closed gate | release-notes.md (v0.5.0) | Moved; history (format rule 12) |
+| v0.5.0 item 1: install the completeness gate; the hook script; a cheap gate, the verifier as the precise check; the boundary that cannot be bypassed | Gate item 1 | Restated; the script byte-identical |
+| v0.5.0 item 2: the fetch-time rule (never abridged, "omitted for brevity" or paraphrased; summary-only only when the source has no transcript, with the marker and a reason) | Gate item 2; binding rules 4 and 7 | Restated |
+| v0.5.0 item 3: what the hardened verifier recognizes; structure, not counts, tells a transcript from a summary; save real line breaks | Gate item 3 | Restated in the present tense; "now recognizes" and the false positives it fixed stay in the release note |
+
+### Release notes, version and scripts
+
+| 1.2.1 | 1.3.0 | How |
+|---|---|---|
+| release-notes.md opening: the v0.4.0 and v0.5.0 notes are in transcript-primary-and-commit-gate.md | release-notes.md opening | Reworded, since they are back |
+| release-notes.md title and contents | Title and contents | 1.3.0, v0.5.0 and v0.4.0 added, as `test_meeting_version_parity.py` requires |
+| (none) | release-notes.md, 1.3.0 | Added |
+| `SCRIPT_VERSION = "1.2.1"` in `verify_transcripts.py` and `extract_commitments.py` | `"1.3.0"` | Bumped with the skill (the parity tests); nothing else in the scripts changed |
+
+### Files unchanged
+
+`references/setup.md`, `references/earlier-version-history.md`, `optional-workspace-mcp/` (its README and every
+script), `agents/openai.yaml` and every test. In this file, the 0.14.0 map below is kept word for word one heading
+level down; in preserved.md, the M3 sections are kept as they were, after the 1.3.0 section.
+
 ## Coverage map: meeting transcripts 0.14.0 to 1.0.0 (v5)
 
 Read when checking where a rule of the 0.14.0 text lives now (ruling D8). Every part of the earlier 0.14.0 SKILL.md and where it lives now. The prose restructure removed nothing and changed no script; the M3 script pass (below) then applied the code verdicts, and every passage it replaced is verbatim in [preserved.md](preserved.md).
