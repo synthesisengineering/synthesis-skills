@@ -45,10 +45,10 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   workspaces the rituals' config lists, instruction adapters and work under temporary folders.
 - **Repositories:** every checkout one or two folders inside a workspace folder (a worktree's too), and every clone a
   workspace declares wherever it lies, each read by the strand scan's own check on its checked-out branch (as
-  `--discover` reads it), with every uncommitted file listed by `git status` (the scan lists twenty); every repository
-  a workspace declares, not dormant, that has no clone here; and each `.git` git cannot read, found or declared (a
-  dangling link, a worktree's file naming a folder that is gone, a pipe, which is never opened), unknown, said once and
-  never cloned over.
+  `--discover` reads it), with every uncommitted path listed by `git status`, an untracked folder as one (the scan
+  lists twenty); every repository a workspace declares, not dormant, that has no clone here; and each `.git` git cannot
+  read, found or declared (a dangling link, a worktree's file naming a folder that is gone, a pipe, which is never
+  opened), unknown, said once and never cloned over.
 - **Claims:** each session quiet past eight hours that still holds claims and holds no live wait (a seat inside a
   wait is quiet, not gone), and each live seat whose claim covers a repository's uncommitted files, or, where it has
   none, the repository: in a repository many seats share, the seat whose work it is is the one whose claim covers it.
@@ -101,8 +101,9 @@ is wrong. Findings print grouped by severity, worst first, then by area in the o
 The plan numbers each step in the order it runs: the steps for failures first, a stale claim taken over before the
 work under it is committed, a commit before its push. Each step names:
 
-- **do:** the exact command (a commit names its files, never `-A`); for a record, the remedies the context doctor's
-  `--project` command lists.
+- **do:** the exact command (a commit names its paths, never `-A`); for a record, the remedies the context doctor's
+  `--project` command lists. Past 100 paths to commit in one checkout, the step is the principal's: which of them
+  are work (a checkout read on 2026-11-18 held 181,511 uncommitted entries, more than any shell line can name).
 - **who:** `agent` (the agent, with no code), `agent-with-code` (the agent, once the principal types the code the guard
   shows: the onboarding setup, a git step the guard's deciders hold, such as a push to a repository that publishes on
   push or one that may move a gated repository's default branch, and anything else that changes what the guard
@@ -111,8 +112,9 @@ work under it is committed, a commit before its push. Each step names:
 - **fixes:** the findings it addresses.
 
 A quiet seat's claims still block a claim over them, so their step is `synthesis claim <paths> --take`; the board tells
-that seat what was taken and keeps it on its record. Files under a live seat's claim are left out of the commit, and
-that seat gets a board message; where a seat is asked, nothing more than the commit of the other files is planned
+that seat what was taken and keeps it on its record. Paths under a live seat's claim are left out of the commit (an
+untracked folder any live claim reaches into among them), and that seat gets a board message; where a seat is asked,
+nothing more than the commit of the other paths is planned
 there: the push is that seat's, after its own commit. No step runs. Once the principal says go, the steps run in order,
 and `synthesis review` again shows what remains.
 
