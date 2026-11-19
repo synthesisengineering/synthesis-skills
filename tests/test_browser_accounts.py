@@ -120,7 +120,8 @@ def test_what_puts_something_into_a_named_sites_page_waits_until_a_read_shows_th
     assert SITE in reason and "WorkCo" in reason and MINE in reason
     assert "get_page_text" in reason and "read_page" in reason and "find" in reason
     shows(MINE)
-    assert call(tool, given) is None
+    after = call(tool, given)  # an upload then waits for the principal's code for it, as every upload does (A14, 5.26.1)
+    assert after is None if not guards.upload_tool(tool) else "This call uploads a file" in after and MINE not in after, after
 
 
 @pytest.mark.parametrize("tool, given", [("get_page_text", {}), ("read_page", {"filter": "all"}), ("find", {"query": "account menu"}),

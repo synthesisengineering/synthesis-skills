@@ -61,12 +61,23 @@ def _words(name: str) -> list:
     return [w.lower() for w in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", name)]
 
 
+def matches(tool: str, globs) -> bool:
+    """Whether a tool's name fits one of these globs as any harness spells it (A15, 2026-11-18): Codex's hook writes each
+    character of an MCP server's name that is no letter, digit or _ as _ (`mcp__workspace_mcp__send_message`), Claude
+    Code keeps the server's own (`mcp__workspace-mcp__send_message`). Each glob is matched as written against the name
+    and, where its server's part (between `mcp__` and the next `__`) holds `_`, the name with that part's `_` read as `-`
+    (review round 1 of 5.26.1: a glob rewritten for both let `mcp__relay-*` exempt a server named `relay`)."""
+    server, sep, name = tool[len("mcp__"):].partition("__") if tool.startswith("mcp__") else ("", "", "")
+    names = [tool] + ([f"mcp__{server.replace('_', '-')}__{name}"] if sep and "_" in server else [])
+    return any(fnmatch.fnmatchcase(spelled, g) for spelled in names for g in globs)
+
+
 def says(tool: str, config: dict) -> bool:
     """True when a connector tool delivers words to people: a saying verb (send, comment, post...), or a
     writing verb whose object is something people read (create an issue, update a page)."""
-    if any(fnmatch.fnmatchcase(tool, p) for p in NOT_PEOPLE + list(config.get("not_send_tools", []))):
+    if matches(tool, NOT_PEOPLE + list(config.get("not_send_tools", []))):
         return False
-    if any(fnmatch.fnmatchcase(tool, p) for p in ALSO_SENDS + DOCUMENT_EDITS):
+    if matches(tool, ALSO_SENDS + DOCUMENT_EDITS):
         return True
     words = _words(tool.rsplit("__", 1)[-1])
     verbs = [i for i, w in enumerate(words) if w in READS | SAYS | WRITES]
@@ -538,7 +549,7 @@ def _entry_problem(entry) -> str:
         return ("names a tool whose name holds more than letters, digits and _ . : - (the listing prints a name as it is)"
                 if not re.fullmatch(r"[A-Za-z0-9_.:-]+", tool, re.ASCII) else
                 f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
-                or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else
+                or guards.driven_tool(tool) or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else  # a driven browser's too (A14)
                 f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
                 if tool in ("imessage_send", "messages_send") else "")
     if keys not in ({"channel", "to", "text"}, {"channel", "members", "service", "chat", "text"}) or not (

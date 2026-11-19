@@ -48,6 +48,15 @@ those itself.
 | `temporary_addresses` | `{"hosts": ["<more host names>"], "local": true}` (both optional; `{}` turns the rule on). With this key present, a send, a draft, a shell post or typed words that hold an address that can change, or that only this machine or its network answers, are refused before any approval is asked, and starting a quick tunnel waits for a code of its own. Absent means no rule; a value that is not this shape, `null` included, blocks sends. See below. |
 | `preferred_names` | People who go by a name other than their official first name: `[{"official": "Robert", "preferred": "Bob", "identifiers": ["bob@example.test", "U0EXAMPLE"]}]`. Optional; absent means no name check. See below. |
 
+A tool glob in any of these keys (`send_tools`, `not_send_tools`, `message_format.plain_email_tools`,
+`signature.plain_url_tools`, `fresh_calendar.reads`) names the tool as every harness does (5.26.1, A15): Codex's hook
+writes each character of an MCP server's name that is no letter, digit or `_` as `_` (`mcp__workspace_mcp__send_message`),
+Claude Code keeps the server's own name (`mcp__workspace-mcp__send_message`). Each glob is matched as written against
+the tool's name and, where its server's part (between `mcp__` and the next `__`) holds `_`, the name with that part's
+`_` read as `-`; so write a glob with the server's own name, and it matches both. Before, a Chat message signed with the
+plain fallback its config allowed was refused in Codex. Review round 1 of 5.26.1 replaced a first version that rewrote
+each glob, which let `mcp__relay-*` exempt a server named `relay` and widened a `[!-]` bracket.
+
 None of these keys can grant a send: approval is always the principal's, and overrides
 change formatting only. Grounding, register, recipient, branding, threading, approval and
 disclosure requirements stay in force.
@@ -456,7 +465,10 @@ address in its one canonical form (`facebook.com/messages/t/<id>`, `facebook.com
 `messenger.com/t/<id>` or `messenger.com/e2ee/t/<id>`, with nothing before or after it) and the exact text. A send by
 the local messages sender (`messages_send.py`) is the handle `--to` takes and the text, or for `--members` each
 member's handle once, the chat's service and its chat id, as the sender's own approval names them, and the text; a
-connector entry never names the sender's own tools (`imessage_send`, `messages_send`), which would carry its photo. One
+connector entry never names the sender's own tools (`imessage_send`, `messages_send`), which would carry its photo, nor a
+computer-use, driven browser's, shell or file tool (a computer-use call's sends are bound by a Messenger entry or by no
+batch; since 5.26.1 that includes Codex's computer-use REPL, `mcp__cua_repl__js`, which a batch took as a connector
+call, and a driven browser's tool, which the guard judges on its page and never spent an entry for). One
 entry goes to each conversation (an address, a handle, a chat, or for a connector call the recipient fields its input
 names: `to`, `channel_id`, a thread and their kin). Anything else is refused with what is wrong, and so
 are a control character other than a newline, or half of a surrogate pair, anywhere in the file (the review of 5.23.0:
@@ -654,6 +666,74 @@ from any other server whose name says it drives a browser (Playwright, Chrome De
 steps it performs (typing, a key, a click, a form, a page script), on the page that server's own results last showed;
 a click is read by the control the page's snapshot names, not only by the words the agent gives it; and a step that
 may send on a page those results do not show waits for the code.
+
+**Codex's computer-use REPL** (5.26.1, A14). `mcp__cua_repl__js`, and a `js` tool on any server named for computer use,
+runs one JavaScript program a call over tabs and apps bound in earlier calls, with a `title` that says what it does.
+On 2026-11-18 the guard knew no such tool: a chat reply went out through it with no ledger line, under a batch whose
+entry was never spent, and a slide import into a shared deck, an upload and two form saves ran with no code. Now no
+batch takes it (a computer-use call's effect is the screen's when it runs, as for every computer-use tool), and each
+call is read as the actions its program writes out, each said by the title: a click (also by the control a locator
+before it names, `getByRole('button', {name: 'Send message'})`), a key, words typed or set (`typeText`, `paste`, `fill`,
+`setValue`), a file set (`setFiles`, `setInputFiles`), a page script and a request that may write. Since no call shows
+which app or page it acts in, Return, a typed line break and a click with no title wait as in every messaging app, and
+the words it types or sets pass the register scan. A program the guard cannot read (a member named as it runs, `eval`,
+a string never closed) is refused; one that imports a module or reaches the process waits for a code of its own, since
+what it writes or runs is past the reader (two of 199 recorded calls saved a screenshot so); and a send whose words
+the call does not write out is refused, since its approval would never show them. Replayed over those 199 calls, 186
+pass and 13 wait: the send, the import, six uploads, two form saves, the two screenshot saves, and one Return pressed
+in an app the call does not name.
+
+Review round 1 of 5.26.1 replayed 992 recorded REPL calls and read what an honest agent hits. The REPL keeps what earlier
+calls defined, and the guard reads each call alone, so: a call whose title says it sends, uploads, saves, submits or
+edits a document waits even when its code shows no action the guard reads (a helper an earlier call defined); a call of a
+Node module's file or process method (`writeFile`, `execSync`, `spawn` and their kin) waits as reaching past the API,
+since 19 later calls in the records wrote through `fs.writeFile` an earlier call imported; and `global`, a member that
+reaches the process or a module loader, and `eval`, `Function` or `constructor` named anywhere stop a program. A control
+is read where an ordinary spelling names it: a locator bound to a name in the same call, a chain broken over lines,
+`getByTestId`, a `locator()` selector's `aria-label`, `text=`, `:has-text()` or `[name=]`, a selector given to the click,
+`filter({hasText})`, and a key given to `down()` on any receiver; a control it cannot place (a name built or given as a
+pattern) holds when the title says the call acts. A named control is judged on its own words, apart from the title, and a
+routine word (search, filter, look up, sign in) frees a REPL title only where it leads it. Page code run by `evaluateAll`,
+`waitForFunction`, `setContent`, `$eval` or `$$eval` is read as a page script, as `evaluate`'s is, and `$eval` is no
+`eval`. Words the REPL types or sets are scanned as a message only in a call that sends (by its title, or a send it
+writes out), so a multi-line address, CSV rows, code or a search is never refused for its words; words typed from a name
+wait unless the call sends by another sign; `Array(n).fill(0)` is no typing; and a legacy octal escape (`'\12'`) is read
+as Node runs it. Replayed with the principal's config, the 992 calls went from 929 passing, 53 waiting and 10 refused to
+913, 72 and 7: the 17 more holds of module writes, the playlist helper that clicks Save, and one helper titled for a save
+wait; the renames typed from a name wait instead of being refused; and the PDF download, the export choice and a call
+saving evidence titled Saving pass. Tracking the REPL's bindings across calls is on the open list, with the sandbox as
+its lever.
+
+**Uploads, document edits and form saves** (5.26.1, A14), on every computer-use tool. Beside a send, an action waits
+for the principal's code for that exact call, the hold naming what it does, when its summary (or a REPL call's title)
+says it uploads or attaches a file, writes into a document (copies, inserts, imports, pastes, adds, types, edits,
+updates or deletes, with a doc, deck, slide, presentation, sheet, spreadsheet, cell, row, agenda, wiki, notebook or
+canvas named within a few words), or saves (or clicks a control named Save), and when a REPL program sets a file. A
+summary that says it searches or signs in, and every action on the principal's own app on a local host, pass; a
+control's name alone makes no edit (the replay's clicks on Import only opened a file chooser); and a summary's save of a
+download, a screenshot, a proof, an export, a PDF or the REPL's own state or checkpoint is no form save (review round 1
+of 5.26.1), unless the call clicks a control named Save. A send window covers none of these, and each one released is in
+the sends ledger, as a connector's document edit is.
+
+**Uploads through the dedicated tools** (5.26.1, A14), by kind. A tool whose purpose is to hand a file over is one
+whose name says so: `upload` or `attach` among its words, with no verb before that word that only reads
+(`slack_get_file_upload_url` and `download_gmail_attachment` hand nothing over) and no word after it that reports on one
+(`upload_status`), or a browser's `set_input_files`. Until 5.26.1 Claude in Chrome's `file_upload` and `upload_image`
+reached no send rule, Playwright's `browser_file_upload` was read as a read, and a connector's `upload_file` passed as
+another tool. Now each waits for the principal's code for that exact call, the hold naming the file or the image, and
+is in the sends ledger once released: a browser's upload (Claude in Chrome's and the pane's, alone or as a step of a
+`browser_batch`, and a driven browser's) as a computer-use upload, judged on the page it acts on, so the principal's own
+app on a local host asks nothing, and a driven browser's call that names no file, which cancels its file chooser, is
+none; a connector's (Box's `upload_file`, Slack's `slack_complete_file_upload`, which shares the file in a conversation)
+as a send whose hold says what it uploads. A Drive call that has its connector read a file from this disk (`file_path`
+in an import, a `file://` `fileUrl` in `create_drive_file`) is an upload too, where it asked for no code; its code binds
+the file's bytes, and a Drive call that reads no file from this disk still asks for none. Since review round 1 of
+5.26.1, three more routes count: a driven browser's drop (`browser_drop`) of `paths`, a driven browser's own code
+(`browser_run_code_unsafe`) that sets a file input (`setInputFiles`, `setFiles`) or clicks a control named Save, read
+with the REPL's reader, and any connector field given a file by reference (`sha256:<64 hex>:<absolute path>`, as a Drive
+connector tells agents to upload a local file), whose bytes the code binds. No batch takes a browser's tool, driven or
+not, as a connector call, and a connector's upload names a file a batch never binds, so each upload takes a code of its
+own.
 
 **Messaging apps.** Built in: WhatsApp (`net.whatsapp.WhatsApp`, `desktop.WhatsApp`), Messages
 (`com.apple.MobileSMS`), Slack (`com.tinyspeck.slackmacgap`), Signal (`org.whispersystems.signal-desktop`),

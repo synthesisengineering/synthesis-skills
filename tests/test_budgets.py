@@ -2871,8 +2871,65 @@ ROOT = Path(__file__).resolve().parents[1]
 # returned 2, and the answer for the rest 1); _holder 11 (its line and docstring 3, the remote-tracking branches that
 # contain the branch, eight at most, 3, none where git cannot tell 2, the first that is no remote's HEAD 1, two blank
 # lines). The failure turns on `lost`, the warning's line on what is left.
-CORE_BUDGET = 26059
-PLUGIN_BUDGET = 52833
+# 5.26.1 adds 115 to both, for two board reports of 2026-11-18 (BACKLOG A14 and A15). synthesis/guards.py 106 more. A15,
+# 2 fewer: a config's tool globs match a tool as every harness names it (Codex writes each character of an MCP server's
+# name that is no letter, digit or `_` as `_`): is_send_tool none (the import in place of the patterns line),
+# message_problems 3 fewer (breaks_ok, plain_ok and the signature's exemption each a line shorter through sends.matches),
+# _reads_calendar 1 more (the import). A14, 108 more: a send, an upload, a document edit or a form save made through
+# computer use waits for a code that names it, and Codex's computer-use REPL is computer use. The constants 28: their two
+# comments 9, UPLOADS 1, SAVES 2, EDITS 4, DOES 1, REPL_TOOLS and CUA 1, REPL_ACTS 3, REPL_KINDS 4, REPL_OUTSIDE 1,
+# REPL_REQUESTS 1, UNWRITTEN 1. desktop_tool 1 (the REPL's name on a server named for computer use). _desktop_actions 3
+# (the REPL's branch 2, the kinds line split for paste, upload and request 1). _repl_unread 6 (its line and docstring 3,
+# what cannot be read with `import()` read as a module 1, a module or the process 1, the answer 1) and _repl_items 30 (its
+# line and docstring 5, the program and its title 2, each verb and its kind 3, the words and what is not written out 2, a
+# navigate to a javascript: address 3, words typed or set 2, a key 2, a file set or a page script 2, a click with the
+# control its locator names 6, a request that may write 2, the answer 1), with their 4 blank lines. check_desktop 29: the
+# refusal of a program the guard cannot read 5, the hold of one past the REPL's API 10, 7 more where it says what goes
+# (11 lines in place of 4: what an action that sends nothing changes, with its blank line, 5, each action's kind and words
+# 2, the kinds and what is said 1, the form's send 2, unplaced 1), the refusal of words a send does not write out 3, a
+# window that covers only sends 1, and the hold's words by kind 3 more (`sent` 1, its sentences 7 in place of 5).
+# _osa_code 7: a JavaScript string's escapes read as they run. synthesis/sends.py 9: matches 7 (its line and docstring 4,
+# the plain spelling 1, the match in either spelling 2) and its 2 blank lines; says reads its globs through it in its lines.
+# Then each 48 more, all in synthesis/guards.py, for A14's uploads through the dedicated tools, by kind. The comment 3,
+# UPLOAD_WORDS 1, UPLOAD_REPORTS 1, and upload_tool 9 (its line and docstring 4, the import 1, the name's words 1, where
+# `upload` or `attach` stands 1, no reading verb before it and no report after it, or set_input_files, 2), with its 2
+# blank lines. desktop_tool 2 (Claude in Chrome's and the pane's upload tools as computer-use uploads). _browser_item 3
+# (its docstring 1, an upload step as an upload of the files or the image it names 2). check_desktop 1 (an upload said by
+# its files, its words line split in two). driven_tool 2 (a driven browser's upload by kind; its docstring rewrapped in
+# its lines), and DRIVEN none (file_upload out of its reads). _driven_steps 3 (the files an upload names, none when it
+# cancels the chooser). _sends none (the clause on its return line) and _hands_over 12 (its line and docstring 4, the
+# import 1, the Drive tool's key and its value 2, a file_path or a file:// fileUrl, one that cannot be parsed judged as
+# named, 4, or an upload tool that is no browser's 1), with its 2 blank lines. _judged_send 7 (whether it uploads, what it
+# hands over and where, 2 more; the upload's own hold 5). check_upload none (its docstring in its lines). synthesis/sends.py none: the
+# batch's rule names a driven browser's tool in its line.
+# Then each 3 more, all in synthesis/review.py, for the review run as released on the principal's Mac (11 of the 23
+# detached checkouts it failed sat at a commit a remote-tracking branch already holds). repositories 1 (the shared
+# warning names a detached HEAD beside a branch with no upstream, its sentence one line longer); _repository 2 (a
+# detached HEAD asks the holder: the question 1 and the said line kept, the held checkout kept for the shared warning 1,
+# the step only where nothing holds it 1, in place of the two lines it had; `landed` set with the finding's other names,
+# so `lost` keeps one line and loses none for a held detached HEAD); _holder's docstring and its query keep their lines,
+# taking a ref (a branch's, or HEAD) where it took a branch name.
+# Then each 52 more, for review round 1 of 5.26.1 (what an honest agent hits in the REPL, and cheap exact fixes).
+# synthesis/guards.py 50. The constants 6: SAVED_HERE 2 (a download, a screenshot, an export or the REPL's own state
+# saved here), LEADING_ROUTINE 1, REPL_OUTSIDE 3 more (4 in place of 1: global, a member that reaches the process or a
+# module loader, a module's file and process methods); REPL_ACTS and REPL_KINDS take evaluateAll, waitForFunction and
+# setContent in their lines. _publishes 1 (its docstring; a REPL title's routine word only where it leads, in its lines).
+# _repl_unread 3 (its docstring 1, eval, Function or constructor named anywhere 1, the answer over two lines 1).
+# _repl_label 13 (its line and docstring 3, the literal 1, getBy names 1, their texts and a filter's hasText 1, the text
+# found 2, a selector given to locator() or the click 2, its aria-label, has-text, text or name 2, the answer 1), with its
+# 2 blank lines. _repl_items 8 more (its docstring 2, a title that waits for a download 2, no words typed skipped 2 with
+# its kind read after the words in a line moved, the click's statement over lines and a name bound in the call 2 more,
+# 7 lines in place of 5; the title's own click where no action shows on its return line). UNREAD_FORMS none (eval's
+# lookbehind). check_desktop 2 (changes 1 more: the routine word for a REPL title and the save kept here; the unwritten
+# refusal 1 more, only where the call sends by another sign; the scan of typed words, only in a call that sends, and
+# goes' leading routine in their lines). _osa_code none (octal escapes in the escape's two lines). _driven_steps 2 (a
+# drop's paths an upload 1, the server's own code read with the REPL's reader for uploads and named controls 1).
+# _judged_send 5 (a file named by reference, its bytes bound as an attachment's, or refused unread: the loop 1, the hash
+# in a try 3, the refusal 1; the hold names the references in its line). _hands_over none (a reference in its return
+# line) and _file_refs 3 with FILE_REF 1 and their 4 blank lines. synthesis/sends.py 2: matches 2 more (its docstring 2
+# more; the tool's two spellings, each glob as written, in the 3 lines that rewrote the glob).
+CORE_BUDGET = 26277
+PLUGIN_BUDGET = 53051
 
 
 def _lines(files):
