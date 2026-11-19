@@ -2871,8 +2871,27 @@ ROOT = Path(__file__).resolve().parents[1]
 # returned 2, and the answer for the rest 1); _holder 11 (its line and docstring 3, the remote-tracking branches that
 # contain the branch, eight at most, 3, none where git cannot tell 2, the first that is no remote's HEAD 1, two blank
 # lines). The failure turns on `lost`, the warning's line on what is left.
-CORE_BUDGET = 26059
-PLUGIN_BUDGET = 52833
+# 5.26.1 adds 115 to both, for two board reports of 2026-11-18 (BACKLOG A14 and A15). synthesis/guards.py 106 more. A15,
+# 2 fewer: a config's tool globs match a tool as every harness names it (Codex writes each character of an MCP server's
+# name that is no letter, digit or `_` as `_`): is_send_tool none (the import in place of the patterns line),
+# message_problems 3 fewer (breaks_ok, plain_ok and the signature's exemption each a line shorter through sends.matches),
+# _reads_calendar 1 more (the import). A14, 108 more: a send, an upload, a document edit or a form save made through
+# computer use waits for a code that names it, and Codex's computer-use REPL is computer use. The constants 28: their two
+# comments 9, UPLOADS 1, SAVES 2, EDITS 4, DOES 1, REPL_TOOLS and CUA 1, REPL_ACTS 3, REPL_KINDS 4, REPL_OUTSIDE 1,
+# REPL_REQUESTS 1, UNWRITTEN 1. desktop_tool 1 (the REPL's name on a server named for computer use). _desktop_actions 3
+# (the REPL's branch 2, the kinds line split for paste, upload and request 1). _repl_unread 6 (its line and docstring 3,
+# what cannot be read with `import()` read as a module 1, a module or the process 1, the answer 1) and _repl_items 30 (its
+# line and docstring 5, the program and its title 2, each verb and its kind 3, the words and what is not written out 2, a
+# navigate to a javascript: address 3, words typed or set 2, a key 2, a file set or a page script 2, a click with the
+# control its locator names 6, a request that may write 2, the answer 1), with their 4 blank lines. check_desktop 29: the
+# refusal of a program the guard cannot read 5, the hold of one past the REPL's API 10, 7 more where it says what goes
+# (11 lines in place of 4: what an action that sends nothing changes, with its blank line, 5, each action's kind and words
+# 2, the kinds and what is said 1, the form's send 2, unplaced 1), the refusal of words a send does not write out 3, a
+# window that covers only sends 1, and the hold's words by kind 3 more (`sent` 1, its sentences 7 in place of 5).
+# _osa_code 7: a JavaScript string's escapes read as they run. synthesis/sends.py 9: matches 7 (its line and docstring 4,
+# the plain spelling 1, the match in either spelling 2) and its 2 blank lines; says reads its globs through it in its lines.
+CORE_BUDGET = 26174
+PLUGIN_BUDGET = 52948
 
 
 def _lines(files):
