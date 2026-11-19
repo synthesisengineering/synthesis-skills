@@ -142,7 +142,8 @@ dropped. Binding rules keep their numbers, which the skill's evaluation cases ci
 `references/setup.md`, `optional-workspace-mcp/` (its README and every script), `agents/openai.yaml` and every
 test. `references/earlier-version-history.md` keeps every word and gains an opening line and a contents list, since
 it runs past 100 lines (format rule 3). In this file, the 0.14.0 map below is kept word for word one heading
-level down; in preserved.md, the M3 sections are kept as they were, after the 1.3.0 section.
+level down. preserved.md's title and contents list now name both rewrites, and its M3 sections are kept as
+they were, after the 1.3.0 section.
 
 ## Coverage map: meeting transcripts 0.14.0 to 1.0.0 (v5)
 

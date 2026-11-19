@@ -105,15 +105,15 @@ following the skill.
 ## Positive and negative instructions
 
 **W12. Say what to do, then the one failure to avoid.** Lead with the behavior wanted. Follow it with a
-prohibition only for a failure that has happened, naming its specific form: "select the transcript by
-its stable tab ID; position or a regular expression only guesses". Replace a vague prohibition with its
-target (format rule 9). Anthropic
+prohibition only for a failure that has happened, naming its specific form, as the pilot's rule 5 does:
+"record that ID; position or a regular expression only guesses, so neither selects". Replace a vague
+prohibition with its target (format rule 9). Anthropic
 recommends telling Claude what to do instead of what not to do; its Sonnet 5 page finds positive examples
 work better than prohibitions, and its Opus 5.5 page finds that a general instruction to avoid something
 swaps one default for another, while a list of the specific patterns to avoid works.
 
-**W13. Write in the register the output should have.** Plain sentences, short lists, bold only for rule
-heads. A model mirrors the formatting of its prompt (Anthropic: match the prompt's style to the output
+**W13. Write in the register the output should have.** Plain sentences and short lists, with bold kept
+for rule heads and list labels, and no emoji. A model mirrors the formatting of its prompt (Anthropic: match the prompt's style to the output
 wanted), so a skill dense with bold, capitals and emoji produces answers that look the same.
 
 ## Scope, and where a rule stops
