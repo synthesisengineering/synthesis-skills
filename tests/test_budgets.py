@@ -2690,8 +2690,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # docstring 2, the import 1, the log and its list 1, the loop that keeps this Mac's records of the workspace 7, the
 # answer 1) and its 2 blank lines. doctor.py 4, in check_sessions_repos: its docstring 1, the import 1, and the
 # information line for a workspace not held, in place of the warning, 2.
-CORE_BUDGET = 25191
-PLUGIN_BUDGET = 51955
+# Then core 2 and plugin 8, for the same check's second finding (two Macs that close one workspace on one day read the
+# same in `ritual_state.py query summary` whether or not the other Mac's record had arrived). synthesis/rituals.py 2, in
+# read: its docstring 1 (the host each record carries, none for this Mac's log), and the line read into a name and
+# given its host 1; this Mac's log named once keeps its lines. The rituals' ritual_state.py 6: row 2 (each Mac's
+# day-end closes of the workspace 1, the newest of each 1), cmd_query 4 (this Mac's host in the summary and the last
+# view 1, and the closes by host under a row once another Mac's close is read 3).
+CORE_BUDGET = 25193
+PLUGIN_BUDGET = 51963
 
 
 def _lines(files):
