@@ -1521,6 +1521,7 @@ REDIRECTS = OUTPUTS | {"<<<", "<&", "<", ">&"}
 SHIELD = str.maketrans("{},", "\1\2\3")  # a quoted brace or comma takes no part in brace expansion
 UNREAD_INPUT = "\0unread-input"  # stands for a script on a program's input that the guard could not read
 PLAIN = _Pattern(r"[^\s'\"\\`$#;&|()<>]+")
+STACKED = _Pattern(r"~(?:[+-]\d*|\d+)(?=/|$)")  # ~-, ~+, ~N: OLDPWD, PWD or the folder stack, which the lexer marks with a `$`
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
 STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
@@ -1651,7 +1652,7 @@ def _lex(s: str) -> list:
             made = _braces("".join(word))
             if len(made) > 4096:
                 raise Unreadable("a brace list too long to read")
-            tokens.extend(("w", w.translate({1: "{", 2: "}", 3: ","})) for w in made)
+            tokens.extend(("w", "$" * bool(STACKED.match(w)) + w) for w in (m.translate({1: "{", 2: "}", 3: ","}) for m in made))
         word, started = [], False
 
     while i < len(s):
@@ -3730,8 +3731,13 @@ def _landing(words: list[str]) -> list[str]:
     """The words of a command that name what it changes: each operand of a file utility, or of `sed` or `perl`
     editing in place; `dd`'s `of=`; what `sort -o`, `uniq` or an awk program writes; for a copier where the copy
     lands, which is its last operand or the folder `-t` gives, and each source's name inside it in case that is a
-    folder (2026-11-11: `cp -t <folder>`, `dd of=` and `perl -pi` wrote where no check was looking)."""
+    folder (2026-11-11: `cp -t <folder>`, `dd of=` and `perl -pi` wrote where no check was looking). A word the lexer
+    marks as ~-, ~+ or ~N may be any option or a target joined to one, so where a program's words decide what it writes,
+    every operand may change throughout, and for find the folder it stands in (review round 1 of 5.25.2)."""
     head = os.path.basename(words[0])
+    every = [w for w in words[1:] if not w.startswith("-")] + ["."] * (head == "find")  # find's root, should the word be -delete
+    if any(w[:1] == "$" and STACKED.match(w, 1) for w in every) and (head not in READERS or head in READER_WRITES or head in ("git", "uniq")):
+        return every + [w.rstrip("/") + GONE for w in every]
     refs = {i + 1 for i, w in enumerate(words) if w in VALUED.get(head, ())}  # a reference file is only read; a size or a date is no file
     rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]
     whole = head in ("ditto", "mv", "find") or any(re.fullmatch(r"-[A-Za-z]*[rRa][A-Za-z]*|--recursive|--archive", w) for w in words[1:])
@@ -5872,11 +5878,12 @@ def _plist_reads(words: list) -> bool:
     """plutil or defaults in a form that only prints: plutil's -p, -lint (also with no command option) and -help, -type
     and -extract in raw format with no -o, and -extract or -convert with `-o -` (stdout), with no other option but -s, -r,
     -n and -expect; defaults' read and read-type, after -verbose, -currentHost, -host or -container. No read: two command
-    options, an option it does not know, -o naming a file, or a word the shell may still make an option (a substitution,
-    a variable it cannot read, xargs's files, a pattern that may name one or that fnmatch does not read as a shell does)."""
+    options, an option it does not know, -o naming a file, or a word the shell may still make another (a substitution, a
+    variable it cannot read, ~-, ~+ or ~N, xargs's files, a pattern that may name an option or that fnmatch does not read
+    as a shell does), the program's own word among them."""
     head = os.path.basename(words[0]) if words else ""
     if head not in PLISTS or any(re.search(r"[$`\[^#()|<>]|(?<=.)~", w) or (re.search(r"[*?]", w) and any(  # a class, zsh's operators
-            fnmatch.fnmatchcase(o, w) for o in PLIST_WRITES)) for w in words[1:]):
+            fnmatch.fnmatchcase(o, w) for o in PLIST_WRITES)) for w in words):
         return False
     if head == "defaults":
         i = 1
@@ -6407,6 +6414,8 @@ def _unread(words: list, where: str, written: set, line: str, bodies: dict | Non
         inline, reads, _ = _shell_input(words)
         return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) or (
             kind == "file" and _runs_at_start(name, where)) else (head, code(name), True, "")
+    if words[0][:1] in ("$", "`"):  # run from a folder this cannot read (`$X/cat`, `~-/plutil`): known by no name it takes
+        return head, "", False, ""
     if head in AWKS:
         return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):

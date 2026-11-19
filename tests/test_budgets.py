@@ -2692,8 +2692,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # (fills and stood) and _settings_hold keep their lines (a script under either name judged as the script; a form that
 # only prints handed nothing, named by no reading, filling no folder and standing anywhere a reader does; the hold names
 # plutil -p), and so do the docstrings of _named and _unread.
-CORE_BUDGET = 25209
-PLUGIN_BUDGET = 51973
+# Then each 9 more, all in guards.py, for review round 1 of 5.25.2 (bash, macOS /bin/sh and zsh expand a word that begins
+# `~-`, `~+` or `~N` from OLDPWD, PWD or the folder stack, which the guard never read: `OLDPWD=-convert; plutil ~- xml1
+# <agent>` rewrote a launch agent, and `OLDPWD=-o; sort ~- <protected>/x <file>` wrote on main too). STACKED 1 (those
+# forms; _lex marks each such word with a `$`, the guard's spelling of a value it cannot read, in the line that emits
+# its words); _landing 5 (its docstring 2: such a word may be any option or a target joined to one, so where a program's
+# words decide what it writes every operand may change throughout, and for find the folder it stands in; the operands
+# with find's folder 1, the rule 1, the answer 1); _unread 2 (a program run from a folder it cannot read is known by no
+# name: the rule 1, the answer 1); _plist_reads 1 (its docstring names those words and the program's own; its rule reads
+# the program's word in its line).
+CORE_BUDGET = 25218
+PLUGIN_BUDGET = 51982
 
 
 def _lines(files):
