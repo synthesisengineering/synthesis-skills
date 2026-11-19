@@ -239,7 +239,10 @@ def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check
         return Check("fail", name, f"the installed plugin has no v5 runtime package ({_short(plugin_root) if plugin_root else 'no path'})")
     if not runtime:
         return Check("fail", name, "no runtime to compare against (see runtime)")
-    found = install.package_hash(plugin_root)
+    try:
+        found = install.package_hash(plugin_root)
+    except install.Refused as exc:  # its install.py says no readable list of what its runtime carries (A16)
+        return Check("fail", name, f"{exc}; reinstall the plugin in this harness")
     have, offered = install.version(paths.home() / "current"), install.version(plugin_root)
     if found != runtime and have and offered > have:  # a session start never installs it (2026-11-15)
         return Check("warn", name, f"the plugin is synthesis {'.'.join(map(str, offered))}, newer than the runtime "

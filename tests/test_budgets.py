@@ -2701,8 +2701,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # with find's folder 1, the rule 1, the answer 1); _unread 2 (a program run from a folder it cannot read is known by no
 # name: the rule 1, the answer 1); _plist_reads 1 (its docstring names those words and the program's own; its rule reads
 # the program's word in its line).
-CORE_BUDGET = 25218
-PLUGIN_BUDGET = 51982
+# BACKLOG A16 (the release tool runs from the running runtime, so a release that added a skill to what the runtime
+# carries listed, staged and installed it by the running runtime's own list: 5.25.1's runtime came up without
+# synthesis-slack-sync), core 39 more and plugin 43. install.py 36: the import of ast 1; carried_in 22 (its line and
+# docstring 5: the plugin's own install.py, read as data and never run, bound once at the top to a literal tuple of
+# distinct skill folder names; the parse and its refusal 4; every store of the name and the one top-level binding 2;
+# the literal read 4; the check and its refusal 4; the answer 1; two blank lines); carried 7 (its line and docstring 3,
+# the file read 2, two blank lines); _stable_skill_files 1 (its docstring names `carried`, which its loop now reads);
+# takes 1 (its docstring names the skills it is given; `names` replaces the list in its rule); _spend_release 4 (the
+# skills the tag's committed install.py declares, and no spend where it says none). doctor.py 3: check_package's hash
+# in a try that fails the plugin whose install.py says no readable list. release.py 4: runtime_listing's docstring 2
+# (the commit's own declaration, read from the same tree; none for a commit with no runtime package, refused for an
+# unreadable one), the declaration read by its blob from that tree 1 and its names 2, and its walk one line fewer (it
+# builds the tree, which the answer filters).
+CORE_BUDGET = 25257
+PLUGIN_BUDGET = 52025
 
 
 def _lines(files):
