@@ -2890,7 +2890,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # window that covers only sends 1, and the hold's words by kind 3 more (`sent` 1, its sentences 7 in place of 5).
 # _osa_code 7: a JavaScript string's escapes read as they run. synthesis/sends.py 9: matches 7 (its line and docstring 4,
 # the plain spelling 1, the match in either spelling 2) and its 2 blank lines; says reads its globs through it in its lines.
-# Then each 47 more, all in synthesis/guards.py, for A14's uploads through the dedicated tools, by kind. The comment 3,
+# Then each 48 more, all in synthesis/guards.py, for A14's uploads through the dedicated tools, by kind. The comment 3,
 # UPLOAD_WORDS 1, UPLOAD_REPORTS 1, and upload_tool 9 (its line and docstring 4, the import 1, the name's words 1, where
 # `upload` or `attach` stands 1, no reading verb before it and no report after it, or set_input_files, 2), with its 2
 # blank lines. desktop_tool 2 (Claude in Chrome's and the pane's upload tools as computer-use uploads). _browser_item 3
@@ -2899,11 +2899,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # its lines), and DRIVEN none (file_upload out of its reads). _driven_steps 3 (the files an upload names, none when it
 # cancels the chooser). _sends none (the clause on its return line) and _hands_over 12 (its line and docstring 4, the
 # import 1, the Drive tool's key and its value 2, a file_path or a file:// fileUrl, one that cannot be parsed judged as
-# named, 4, or an upload tool that is no browser's 1), with its 2 blank lines. _judged_send 6 (whether it uploads, and
-# what, 1 more; the upload's own hold 5). check_upload none (its docstring in its lines). synthesis/sends.py none: the
+# named, 4, or an upload tool that is no browser's 1), with its 2 blank lines. _judged_send 7 (whether it uploads, what it
+# hands over and where, 2 more; the upload's own hold 5). check_upload none (its docstring in its lines). synthesis/sends.py none: the
 # batch's rule names a driven browser's tool in its line.
-CORE_BUDGET = 26221
-PLUGIN_BUDGET = 52995
+CORE_BUDGET = 26222
+PLUGIN_BUDGET = 52996
 
 
 def _lines(files):

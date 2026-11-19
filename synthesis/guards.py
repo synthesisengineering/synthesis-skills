@@ -741,7 +741,8 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
             _void("send-time", subject)
         return None
     text, upload = " ".join(t for _, t in _strings(tool_input)), _hands_over(tool, tool_input)  # A14: an upload is named as one
-    handed = ", ".join(dict.fromkeys(t for k, t in _strings(tool_input) if FETCHES.search(k) or k.lower().endswith("id")))[:200] or "a file"
+    handed = ((", ".join(dict.fromkeys(t for k, t in _strings(tool_input) if FETCHES.search(k))) or "a file") + "".join(  # where it goes
+        f" to {k} {t}" for k, t in _strings(tool_input) if k.lower().endswith("id") and not FETCHES.search(k)))[:200]
     code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {'uploads ' + handed if upload else text[:120]}")
     reshape = RESHAPE if _reshapes_calendar(tool, tool_input) else ""
     if upload and not others:
