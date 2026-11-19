@@ -2759,8 +2759,58 @@ ROOT = Path(__file__).resolve().parents[1]
 # old else removed it), its 2 blank lines, and live 7 (its line and docstring 2, held asked with the list 2, each record
 # that is over removed 2, the answer 1). The plugin none more: the strand scan's git runs with GIT_OPTIONAL_LOCKS=0 in the
 # lines it had, so `git status` never rewrites an index.
-CORE_BUDGET = 25763
-PLUGIN_BUDGET = 52527
+# Then each 154 more, for review round 1 of C3 (each git step classed by the guard's own deciders; every uncommitted file
+# read and the commit naming its files; what could not be read said as unknown, never as fine). synthesis/review.py 139
+# more: the import of contextlib 1. _Report 12 more: doctor 1 fewer (the doctor's own status, `unknown` among them, where
+# two lines matched a detail's words), guard 9 (its line and docstring 3, what read() answers 2, where it raises an
+# unknown finding for its area with the principal's step 3, the default 1) and its blank line, done 3 more (each git step
+# classed, with no git reaching another repository, 3). _held 17 (its line and docstring 4, the import 1, the home and the
+# gate's setting 1, a deploy the guard's own _targets names 2, the line as its _parse reads it 1, each push its _push
+# finds, with where it runs, 2, none, or no gate, 2, a gate of another shape holding every push 2, the gate's rules 1, any
+# push its _gated_push holds 1) and _offline 13 (its decorator and line 2, its docstring 5, the environment copied 1, git's
+# protocols named as none it has 1, the body 2, the environment back whole 2): the deciders record no request, and no git
+# they start reaches a remote, one at a local path included, or runs the `uploadpack` a repository's own configuration
+# names; a remote they would ask holds the push. _gitdir 15 (its line and docstring 2, a folder 2, a dangling link 2, an
+# entry neither a folder nor a file, a pipe among them, never opened 2, a file's `gitdir:` line, or why it cannot be read,
+# 4, a file naming none 2, the folder it names there or not 1) and _discovered 6 (its line and docstring 4, a row for each
+# folder one or two down with a `.git` of any kind 2): a worktree is read, and a `.git` git cannot read is unknown, its
+# reader never waiting. _split 4 (its line and docstring 2, a subtree 1, its parts 1) and
+# _covered 7 in place of _covers' 6 (its line and docstring 3, the claims that reach the repository at all 1, none of
+# them, or no file, 2, the files they cover 1): each claim split once, and one outside the repository compared with no
+# file. _sessions 16 (its line and docstring 3, the folder and the lists 1, each session file 1, parsed as the board
+# parses one 2, else counted with why 2, the count 1, an unknown finding for the files dropped, with the principal's step,
+# 5, the sessions 1). installed 7 more, each check named and run through guard on its own, so one that raises costs only
+# its own line: the loop 2 more (each answer through guard, a list of lines or one), the names 3 more (a line more for the
+# first four, for home paths to the prompt check, for the sessions repos to browser accounts and for the PR gate with its
+# screened git, a line fewer for the latest release), the prompt check and Codex's config as functions of their own none
+# (prompts' def 1 more, codex's def in place of its two lines 1 fewer), and their 2 blank lines. _screened 6 (its line and
+# docstring 3, the checkout's own git configuration asked of the guard's reader for `log` and `symbolic-ref`, no git run
+# where it names a program, 2, else run 1). workspaces 1 more: a declaration of another shape unknown too (the error's
+# type named, the step on a third line); each workspace's checkouts, found through guard, keep their line. repositories
+# 10 more: its docstring 1 more, a `.git` git cannot read, found or declared, said by its one read and never cloned over 3
+# more, every uncommitted file read where the scan lists any (git's -z status, each by its own name) 4 more, the seats'
+# claims split once 1 more, each repository's findings through guard 1 more. _repository 5 more: its docstring 1 more, a
+# `.git` git cannot read unknown with the principal's step 4, the files, the live seats whose claims cover them and the
+# files none covers, in place of the count, 1 more, the commit naming each of those files after `--` 1 more, and the
+# seats asked, with the commit and their messages alone, 2 fewer (the holders' two lists become the asked list). claims 1
+# more (each quiet seat's claims split once). projects 26 fewer and _root 30 (its line and docstring 2, and projects' 28
+# lines for one root, each `continue` a `return`), so a root that raises costs only itself. main 4 more (the review in a
+# try, and what raises there said on stderr with exit 2, the last resort). review none (its docstring 1 more; the
+# installed side, the board's sessions and the schedules through guard in a line fewer; the other four areas through guard
+# in their lines). And 16 blank lines. synthesis/doctor.py 10 more, for an explicit `unknown` status where a check could
+# not tell, in place of a warning whose words the review matched: the twelve lines that could not tell (the prompt check,
+# a plugin, Codex's nested hooks, Claude Code's fail closed, Muse's approval, Codex's catalog twice, the teardown, the
+# outbox, the latest release, machine security and the judge), check_interpreter (a launcher's Python that does not answer,
+# its message named on the line before the return), and the summary and report, which count it and order it after
+# failures, keep their lines; check_unsaved 1 more (unknown where a repository could not be read), check_security 2 more
+# (its docstring 1, a setting that cannot be told marked so 1; a line all of whose problems could not be told is unknown),
+# and check_pr_gate 7 more (its docstring 1, the checkouts whose git did not run and a blank line 2, each marked 1, a
+# default branch that could not be read said as untold 3; untold makes the line unknown in its lines). synthesis/board.py
+# 5 more: split_overlap 8 (its line and docstring 2, overlaps' body 6), overlaps 5 fewer (that body called with the two
+# claims split), and 2 blank lines. The plugin none more: the directory package's list of the runtime's commands names
+# `review` in its line.
+CORE_BUDGET = 25917
+PLUGIN_BUDGET = 52681
 
 
 def _lines(files):

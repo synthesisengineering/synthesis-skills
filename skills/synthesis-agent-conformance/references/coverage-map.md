@@ -57,7 +57,7 @@ v5 changes: description rewritten to 300 characters and now names Muse; version 
 | Workflow: bundled PyYAML | Retired, [preserved-yaml-runtime.md](preserved-yaml-runtime.md) | Vendored PyYAML REPLACE: core is standard-library only; onboarding's YAML subset reader |
 | 1. Inventory: the `conformance.py` subcommands | [audit.md](audit.md); Procedure 1 and 2 | Reworded: the source lint (`tests/test_source_lint.py`) and `synthesis doctor` |
 | `hook-live` and exact-session receipts; transcript identity validation | Retired | live_receipt and native_transcript_identity REPLACE/CUT: SessionStart output and doctor's self-test; v5 reads the session id from the harness |
-| `--json`; PASS, FAIL, WARN, UNKNOWN, UNSUPPORTED | [audit.md](audit.md#installed-what-doctor-checks) | Reworded: `synthesis doctor --json`; ok, warn, fail, info |
+| `--json`; PASS, FAIL, WARN, UNKNOWN, UNSUPPORTED | [audit.md](audit.md#installed-what-doctor-checks) | Reworded: `synthesis doctor --json`; ok, warn, unknown, fail, info |
 | `--local` (no network, no writes) | [audit.md](audit.md#installed-what-doctor-checks) | Reworded: doctor never writes and makes no network call unless `--latest` |
 | 2. Repair from source (eight rules) | [audit.md](audit.md#repair-from-source); Binding rules 5 and 6 | Verbatim, plus Muse |
 | 3. Activate durable project state (pointer, leases, pending manifests) | [architecture.md](architecture.md#5-durable-project-handoff); `synthesis use` | Reworded: each session's project is in its own board file |

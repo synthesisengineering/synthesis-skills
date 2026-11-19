@@ -43,9 +43,12 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   `com.synthesis.*` launch agent: loaded, and running programs that are there. macOS only.
 - **Workspaces:** every folder `workspace_roots` names (default `~/workspaces/*`), its `.agents/repos.yaml`, the
   workspaces the rituals' config lists, instruction adapters and work under temporary folders.
-- **Repositories:** every clone one or two folders inside a workspace folder, and every clone a workspace declares
-  wherever it lies, each read by the strand scan's own check on its checked-out branch (as `--discover` reads it); and
-  every repository a workspace declares, not dormant, that has no clone here.
+- **Repositories:** every checkout one or two folders inside a workspace folder (a worktree's too), and every clone a
+  workspace declares wherever it lies, each read by the strand scan's own check on its checked-out branch (as
+  `--discover` reads it), with every uncommitted file listed by `git status` (the scan lists twenty); every repository
+  a workspace declares, not dormant, that has no clone here; and each `.git` git cannot read, found or declared (a
+  dangling link, a worktree's file naming a folder that is gone, a pipe, which is never opened), unknown, said once and
+  never cloned over.
 - **Claims:** each session quiet past eight hours that still holds claims and holds no live wait (a seat inside a
   wait is quiet, not gone), and each live seat whose claim covers a repository's uncommitted files, or, where it has
   none, the repository: in a repository many seats share, the seat whose work it is is the one whose claim covers it.
@@ -61,8 +64,15 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   refreshes an index. Before git runs in a repository, the guard's own reader (`guards._git_programs`) is asked whether
   that repository's own configuration names a program git would run for the subcommands the guard lists for the scanner
   (`guards.GIT_SCANNERS`): `core.fsmonitor`, a filter, a hook. Where one does, git never runs there, and the repository
-  is reported unknown, for the principal to look at. The user's system and global git configuration is run as git runs
-  it for every command on the Mac.
+  is reported unknown, for the principal to look at. The doctor's PR-gate check, which reads each gated checkout's
+  history with `git log`, is screened the same way, for `log` (a `gpg.program` runs under it). The user's system and
+  global git configuration is run as git runs it for every command on the Mac.
+- **Classing a step files no request and reaches no other repository.** Each git step is classed by the guard's own
+  deciders (`guards._targets`, `_push`, `_gated_push`), never by its check, which records a request for a code. Git runs
+  inside with `GIT_ALLOW_PROTOCOL` naming no protocol git has, so it reaches no remote, one at a local path included,
+  and runs no program a transport would start from the repository's own configuration (`remote.<name>.uploadpack`,
+  which the screen above does not read, since the scanner's subcommands reach no remote). A push the deciders could
+  settle only by asking a remote which version tags it holds is classed as one the guard holds.
 - **It starts no harness's program and not the hook.** A harness's own listing writes its housekeeping (on 2026-11-18,
   `claude plugin list` rewrote marker files in Claude Code's plugin cache), and the hook writes what it saw. So the
   doctor's checks that start a harness's program, run the hook, try writes or ask a model are not run, and the review
@@ -70,9 +80,10 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   catalog and instruction chain, the hook's self-test and shell names, the turn-end wait check, the plan judge and the
   seal. `synthesis doctor` runs them.
 - **No bytecode.** The two scripts load with bytecode writing off, so nothing is compiled beside them in the release.
-- **It fetches nothing unless `--fetch` is given.** With it, `git fetch --all --prune` writes git's own remote-tracking
-  refs and `FETCH_HEAD` in each repository, as the strand scan's `--fetch` does, and the stable release's manifest is
-  read from GitHub. Nothing else is written.
+- **It fetches nothing unless `--fetch` is given.** With it, each repository is fetched as the strand scan's `--fetch`
+  fetches it (`git fetch --all --prune`): git writes what it brings, its remote-tracking refs and `FETCH_HEAD`, and may
+  start its own maintenance afterwards (`gc.auto`, `maintenance.auto`), as any fetch does; and the stable release's
+  manifest is read from GitHub.
 
 ## The findings and the plan
 
@@ -81,22 +92,28 @@ is wrong. Findings print grouped by severity, worst first, then by area in the o
 
 - **fail:** broken now, or work that can be lost: a part of the guard's install that is down, a branch with no
   upstream or a detached HEAD, a repository the rituals sync (`ritual_sync: yes`) with no clone here, a record defect.
-- **unknown:** a piece that could not run or could not tell, never read as fine.
+- **unknown:** a piece that could not run or could not tell, never read as fine: a doctor line the doctor marks
+  `unknown`, a `.git` git cannot read, a session file the board cannot read, or anything that raised while an area was
+  read. The rest is still read, and exit 2 is the last resort.
 - **warn:** drifting: uncommitted or unpushed work, a branch behind its upstream, another declared repository with no
   clone here, a stale claim, a doctor warning, a root's record warnings.
 
 The plan numbers each step in the order it runs: the steps for failures first, a stale claim taken over before the
 work under it is committed, a commit before its push. Each step names:
 
-- **do:** the exact command; for a record, the remedies the context doctor's `--project` command lists.
+- **do:** the exact command (a commit names its files, never `-A`); for a record, the remedies the context doctor's
+  `--project` command lists.
 - **who:** `agent` (the agent, with no code), `agent-with-code` (the agent, once the principal types the code the guard
-  shows: the onboarding setup, and anything else that changes what the guard trusts) or `principal` (the principal's
-  own hands: macOS settings, `sudo`, an approval inside a harness, a choice only the principal can make).
+  shows: the onboarding setup, a git step the guard's deciders hold, such as a push to a repository that publishes on
+  push or one that may move a gated repository's default branch, and anything else that changes what the guard
+  trusts) or `principal` (the principal's own hands: macOS settings, `sudo`, an approval inside a harness, a choice
+  only the principal can make).
 - **fixes:** the findings it addresses.
 
 A quiet seat's claims still block a claim over them, so their step is `synthesis claim <paths> --take`; the board tells
-that seat what was taken and keeps it on its record. Work under a live seat's claim gets one step, a board message to
-that seat, and nothing else: the work is the seat's. No step runs. Once the principal says go, the steps run in order,
+that seat what was taken and keeps it on its record. Files under a live seat's claim are left out of the commit, and
+that seat gets a board message; where a seat is asked, nothing more than the commit of the other files is planned
+there: the push is that seat's, after its own commit. No step runs. Once the principal says go, the steps run in order,
 and `synthesis review` again shows what remains.
 
 `--json` prints one object: `healthy`, `exit`, `fetched`, `ms`, `counts` (fail, unknown, warn), `read` (what was read,
