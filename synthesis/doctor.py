@@ -2230,12 +2230,12 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         config = {}
     planned = _background(lambda: check_plan_judge(config)) if config.get("judge") not in (None, False) else None  # beside the rest
     repos = workspace_repos(config)
-    from synthesis import board, project
+    from synthesis import board, project, rituals
     sessions = board.sessions()
     checks.append(check_unsaved(config, live_claims(sessions)))
     checks += [check_versions(versions, sessions), check_instruction_adapters(repos),
                check_temporary_work(repos, [s.cwd for s in sessions if not s.stale]),
-               check_home_paths([home / "config.json"]), check_packets(project.roots()),
+               check_home_paths([home / "config.json", *rituals.workspace_files()]), check_packets(project.roots()),
                check_outbox(paths.outbox(), *connector_files()), check_teardown(home / "teardown.jsonl")]
     if config.get("pr_gated") is not None:
         checks.append(check_pr_gate(config["pr_gated"], repos))

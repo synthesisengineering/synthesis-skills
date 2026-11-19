@@ -2928,8 +2928,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # in a try 3, the refusal 1; the hold names the references in its line). _hands_over none (a reference in its return
 # line) and _file_refs 3 with FILE_REF 1 and their 4 blank lines. synthesis/sends.py 2: matches 2 more (its docstring 2
 # more; the tool's two spellings, each glob as written, in the 3 lines that rewrote the glob).
-CORE_BUDGET = 26277
-PLUGIN_BUDGET = 53051
+# Then each 14 more, all in synthesis/rituals.py, for a workspace's own ritual settings carried by git (the principal's
+# question of 2026-11-19: synthesis is for Windows, Linux and Mac in any mix, and iCloud is Mac-only): workspace_files 5
+# (its line, docstring 3, the files that are there 1) with its 2 blank lines; config 7 more (the loop over the files 1,
+# each read in place of the machine's entry in a try 2, the refusal that names it 2, one not an object 2); the doctor
+# and the review read the files' home paths in their lines. The plugin 3 more in skills/synthesis-onboarding/scripts/
+# workspace.py: link_workspace links each config file of the knowledge repository's .agents/ on a new machine, not
+# repos.yaml alone (its docstring 2 more, the loop over the files 1 more, each link named in repos.yaml's lines).
+CORE_BUDGET = 26291
+PLUGIN_BUDGET = 53068
 
 
 def _lines(files):

@@ -94,11 +94,25 @@ def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line 
     return good, len(rows) - len(good)
 
 
+def workspace_files() -> list[Path]:
+    """Each workspace's own ritual settings, `<workspace>/.agents/rituals.json`: kept in that workspace's private
+    repository and linked there as its other manifests are, so they reach every machine by git, on any system (the
+    principal's question of 2026-11-19: iCloud is Mac-only). A link whose repository is not on this machine is none."""
+    return [f for f in sorted((Path.home() / "workspaces").glob("*/.agents/rituals.json")) if f.exists()]
+
+
 def config() -> dict:  # an unreadable file raises: refuse rather than guess
     path = state_dir() / "config.json"
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"workspaces": {}}
     if not isinstance(data, dict) or not isinstance(data.get("workspaces"), dict):
         raise ValueError("ritual config.json has no 'workspaces' mapping")
+    for own in workspace_files():  # each is its workspace's settings, in place of this machine's entry for it
+        try:
+            data["workspaces"][own.parent.parent.name] = loaded = json.loads(own.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"{own} cannot be read: {exc}") from None
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{own}: a workspace's ritual settings must be an object")
     if not all(isinstance(v, dict) or not v for v in (data.get("defaults"), *data["workspaces"].values())):  # nothing set reads as nothing
         raise ValueError("ritual config.json: 'defaults' and each workspace must be an object")  # settings() raised a TypeError on it
     if any(type(v) is not int or v < 1 for v in (settings(data, w).get("quiet_after_days", 1) for w in data["workspaces"])):
