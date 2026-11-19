@@ -1,10 +1,11 @@
-# Release notes: 1.2.1, 1.2.0, 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
+# Release notes: 1.3.0, 1.2.1, 1.2.0, 1.1.1, 1.1.0, 1.0.1, 1.0.0, 0.14.0, 0.13.0, and v0.2.0 to v0.5.3
 
 The earlier release notes and rationale are retained in [earlier-version-history.md](earlier-version-history.md). Unknown authentication, tab enumeration, or archive coverage is a visible gap, never a no-source attestation.
 
 The notes for 1.0.0 and later, newest first, then the release notes that opened the 0.14.0 SKILL.md, in their original order, the v0.5.0 and v0.4.0 notes among them; the rules those two set, as they stand now, are in [transcript-primary-and-commit-gate.md](transcript-primary-and-commit-gate.md). v0.6.0 to v0.11.0 are in [earlier-version-history.md](earlier-version-history.md).
 
 Contents:
+- 1.3.0: the rewrite to the D8 standard; rule 9 covers the scanner's output only
 - 1.2.1: every script runs from the runtime's copy
 - 1.2.0: the mail connector reads the outbox, and runs one release
 - 1.1.1: the second image host
@@ -19,6 +20,19 @@ Contents:
 - v0.4.0: transcript-primary sourcing, summaries never trusted for attribution
 - v0.3.0: mandatory verification and the do-not-extract-from-email rule
 - v0.2.0: workspace-rooted paths
+
+## 1.3.0 — the rewrite to the D8 standard; rule 9 covers the scanner's output only
+
+The skill's instruction text is rewritten to the repository's rewrite standard (`docs/skill-writing.md`), every
+rule kept: the coverage map places each one, and preserved.md holds the 1.2.1 text word for word. With the skill
+loaded, a model asked the user to confirm a commitment it had read straight from transcript lines the user pasted,
+which it did not do without the skill: binding rule 9's "a scanned commitment" meant the scanner's output but read
+as any commitment. Rule 9 now names the commitment scanner and covers its output only, rule 8 says to attribute
+directly when a transcript line names the actor, and Steps 4.6 and 4.7 say the same. The binding rules keep their
+numbers and say what each governs, and a line above them says they hold against a contrary request. Step 0 moves to
+`references/declared-window-sweep.md`, its steps in the order they run, and SKILL.md routes each kind of request to
+its procedure. The evidence reference states its rules in the present tense, and the v0.4.0 and v0.5.0 notes are
+back in this file. The scripts are unchanged but for their version.
 
 ## 1.2.1 — every script runs from the runtime's copy
 

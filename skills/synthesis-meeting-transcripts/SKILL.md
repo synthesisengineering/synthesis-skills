@@ -5,7 +5,7 @@ license: "Apache-2.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "1.2.1"
+  version: "1.3.0"
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
@@ -39,7 +39,7 @@ These rules keep the record honest, so they hold when a request asks otherwise: 
 - [references/protocol-steps.md](references/protocol-steps.md): Steps 1 to 6 for one meeting with every command (`verify_transcripts.py`, `extract_commitments.py`): find, fetch by tab ID, save, verify, attribute, commitments, commit; date checks; the daily-rituals hand-off. Read it before fetching or filing a meeting, and for each member of a sweep.
 - [references/transcript-primary-and-commit-gate.md](references/transcript-primary-and-commit-gate.md): what counts as primary evidence, how summaries are kept, and the transcripts repository's pre-commit gate. Read it before citing a meeting record, and when setting up a transcripts repo.
 - [references/setup.md](references/setup.md): the `.agents/meeting-transcripts.yaml` schema (required: `workspace`, `google_account`, `transcripts_repo`, `transcripts_path`), prerequisites, multi-account options and what `start.sh` sets for the server. Read it when a project has no config, a config is refused, or an account is unreachable.
-- [references/release-notes.md](references/release-notes.md) and [references/earlier-version-history.md](references/earlier-version-history.md): release notes from v0.2.0 to 1.2.1. Read them when a result differs from what an earlier version did.
+- [references/release-notes.md](references/release-notes.md) and [references/earlier-version-history.md](references/earlier-version-history.md): release notes from v0.2.0 to 1.3.0. Read them when a result differs from what an earlier version did.
 - [optional-workspace-mcp/README.md](optional-workspace-mcp/README.md): the optional self-hosted multi-account server: `fetch-meeting.py`, `mcp_client.py`, the service scripts and `doctor.sh`. Read it when the project uses that server.
 - [references/coverage-map.md](references/coverage-map.md): where each rule of 1.2.1, and of 0.14.0, lives now. Read it to check a rewrite.
 - [references/preserved.md](references/preserved.md): text retired in 1.3.0 and in M3, word for word, with reasons. Read it only to review a rewrite.

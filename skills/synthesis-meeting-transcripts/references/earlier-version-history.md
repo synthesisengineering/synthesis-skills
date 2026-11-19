@@ -1,5 +1,17 @@
 # Earlier release notes
 
+The release notes for v0.6.0 to v0.11.0, newest first. Read them when a result differs from what one of those
+versions did.
+
+Contents:
+- v0.11.0: confirmed commitments carry their owning workspace
+- v0.10.0: saved transcripts get read for obligations
+- v0.9.0: the declared set gets an execution path
+- v0.8.0: declared means fetched, no judgment gate before fetching
+- v0.7.0: source grade is now executable
+- v0.6.1: the heartbeat distinguishes absence from invisibility
+- v0.6.0: the optional auto-start service gets a heartbeat
+
 ## v0.11.0 — Confirmed commitments carry their owning workspace
 
 v0.11.0 (2026-09-20) wires §3 ownership into filing: new Step 4.8 stamps
