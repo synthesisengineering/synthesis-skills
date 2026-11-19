@@ -67,14 +67,30 @@ def test_a_helper_whose_title_says_nothing_of_acting_passes(code, title):
 
 
 @pytest.mark.parametrize("code", [
-    "await proofFs.writeFile('/tmp/proof.png', await tab.getScreenshot({emit: false}));",
     "cp.execSync('date');",
-    "fs.mkdirSync('/tmp/proofs', {recursive: true});",
     "await child.spawn('osascript', ['-e', 'beep']);",
-], ids=["fs-writeFile", "child-process-execSync", "fs-mkdirSync", "spawn"])
-def test_a_later_call_that_writes_or_runs_through_a_module_holds(code):
+    "fs.unlinkSync('/tmp/proof.png');",
+    "await proofFs.rm('/tmp/proofs', {recursive: true});",
+    "fs.renameSync('/tmp/a.png', '/tmp/b.png');",
+    "fs.symlinkSync('/tmp/target', '/tmp/link');",
+    "fs.chmodSync('/tmp/proof.png', 0o777);",
+], ids=["child-process-execSync", "spawn", "fs-unlinkSync", "fs-rm", "fs-renameSync", "fs-symlinkSync", "fs-chmodSync"])
+def test_a_later_call_that_runs_deletes_renames_links_or_chmods_through_a_module_holds(code):
     reason = guards.check(REPL, {"code": code, "title": "Keeping a record"}, CONFIG, session=SESSION)
     assert verdict(reason) == "hold" and "outside the computer-use API" in reason, reason
+
+
+@pytest.mark.parametrize("code", [
+    "await proofFs.writeFile('/tmp/proof.png', await tab.getScreenshot({emit: false}));",
+    "fs.mkdirSync('/tmp/proofs', {recursive: true});",
+    "fs.appendFileSync(logPath, line + '\\n');",
+    "await fs.copyFile('/tmp/a.png', '/tmp/proofs/a.png');",
+], ids=["fs-writeFile", "fs-mkdirSync", "fs-appendFileSync", "fs-copyFile"])
+def test_a_later_call_that_writes_a_file_through_a_module_passes(code):
+    """Review round 2 of 5.26.1: holding every write held an honest agent's proofs and step records (198 recorded calls,
+    up to 58 in a day), which the file tools cannot write. A module's import still waits; what the session then writes
+    to this disk is the sandbox's to bound, as the open list says."""
+    assert repl(code, "Saving proof of the step") == "pass", code
 
 
 def test_a_patterns_exec_is_no_process():
