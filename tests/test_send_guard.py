@@ -790,13 +790,14 @@ def test_the_references_list_an_entry_the_connector_would_skip_or_send_changed(s
 # The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
 # and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
 # `file_path`, a path or a file:// URL; create_drive_file takes `fileUrl`, a file on this disk when it is a file://
-# URL. update_drive_file waits for a code, since it changes a document others read; the others ask for none.
+# URL. update_drive_file waits for a code, since it changes a document others read; since 5.26.1 the others wait too when
+# they read a file from this disk (A14: an upload hands the principal's file to a service), and ask for none otherwise.
 
 UPDATE = "mcp__workspace-mcp__update_drive_file"
 DOC_IMPORT = "mcp__workspace-mcp__import_to_google_doc"
 NEW_FILE = "mcp__workspace-mcp__create_drive_file"
-NO_CODE = [(DOC_IMPORT, "file_path"), ("mcp__workspace_mcp__import_to_google_sheets", "file_path"),
-           ("mcp__drive_server__import_to_google_slides", "file_path"), (NEW_FILE, "fileUrl")]
+LOCAL_READS = [(DOC_IMPORT, "file_path"), ("mcp__workspace_mcp__import_to_google_sheets", "file_path"),
+               ("mcp__drive_server__import_to_google_slides", "file_path"), (NEW_FILE, "fileUrl")]
 DRIVE = {"user_google_email": "me@example.com", "file_name": "Plan", "file_id": "1aBcD3fGh1jK"}
 
 
@@ -832,8 +833,8 @@ def test_a_drive_call_that_gives_the_files_content_twice_is_refused_before_any_c
     assert guards.check(NEW_FILE, {**DRIVE, "content": "# Plan", "fileUrl": "https://files.example.com/p.docx"}, CONFIG) is None  # its own rule
 
 
-@pytest.mark.parametrize("tool,key", NO_CODE)
-def test_a_drive_tool_that_asks_for_no_code_is_refused_for_a_file_outside_the_folders_and_goes_once_staged(tool, key, scratch):
+@pytest.mark.parametrize("tool,key", LOCAL_READS)
+def test_a_drive_tool_that_reads_a_local_file_is_refused_for_a_file_outside_the_folders_and_waits_once_staged(tool, key, scratch):
     def named(file) -> str:
         return Path(file).as_uri() if key == "fileUrl" else str(file)
 
@@ -842,12 +843,13 @@ def test_a_drive_tool_that_asks_for_no_code_is_refused_for_a_file_outside_the_fo
     assert f"the file {outside} is outside the folders the connector reads" in reason, reason
     assert f"copy the file into {paths.outbox()}" in reason and f"`{key}`" in reason and "make this call again" in reason
     assert ("after `file://`" in reason) is (key == "fileUrl")
-    staged = shutil.copy(outside, paths.outbox() / "plan.pdf")
-    assert _uploaded(named(staged), tool, key) is None
-    assert guards.check(tool, {**DRIVE, "content": "# Plan"}, CONFIG) is None  # nothing read from this disk
     assert approvals.pending() == []
-    asks = {**CONFIG, "send_tools": [f"mcp__*__{tool.rsplit('__', 1)[-1]}"]}  # where the principal made it wait for a code
-    assert "outside the folders" in _uploaded(named(outside), tool, key, asks) and approvals.pending() == []
+    staged = shutil.copy(outside, paths.outbox() / "plan.pdf")
+    assert "approval" in _uploaded(named(staged), tool, key)  # an upload, since 5.26.1
+    assert guards.check(tool, {**DRIVE, "content": "# Plan"}, CONFIG) is None  # nothing read from this disk
+    waiting = approvals.pending()
+    asks = {**CONFIG, "send_tools": [f"mcp__*__{tool.rsplit('__', 1)[-1]}"]}  # where the principal made it a send by name
+    assert "outside the folders" in _uploaded(named(outside), tool, key, asks) and approvals.pending() == waiting
     assert "approval" in _uploaded(named(staged), tool, key, asks)
 
 
@@ -875,11 +877,11 @@ def test_a_file_url_is_turned_into_a_path_as_the_connector_turns_it(scratch):
                 "file:" + quote(str(spaced)), spaced.as_uri() + "?download=1#page=2"):
         assert "%20" in url and "%25" in url
         assert "approval" in _uploaded(url), url
-        assert _uploaded(url, NEW_FILE, "fileUrl") is None, url
+        assert "approval" in _uploaded(url, NEW_FILE, "fileUrl"), url
     elsewhere = "file://fileserver" + quote(str(spaced))
     for reason in (_uploaded(elsewhere), _uploaded(elsewhere, NEW_FILE, "fileUrl")):
         assert f"the file //fileserver{spaced} does not exist" in reason and "approve" not in reason, reason
-    assert len(approvals.pending()) == 5  # one for each spelling of the staged file's URL in an update
+    assert len(approvals.pending()) == 10  # one for each spelling of the staged file's URL, in an update and in a new file
 
 
 @pytest.mark.parametrize("tool", [UPDATE, DOC_IMPORT])
@@ -897,8 +899,9 @@ def test_a_file_on_this_disk_given_as_file_url_is_refused_since_the_connector_fe
 
 def test_the_rule_is_these_five_tools_and_a_remote_address_or_another_tool_is_as_it_was(scratch):
     outside = scratch / "plan.pdf"
-    for tool in ("mcp__workspace-mcp__get_drive_file_content", "mcp__files__upload_file", "mcp__workspace-mcp__create_drive_folder"):
+    for tool in ("mcp__workspace-mcp__get_drive_file_content", "mcp__workspace-mcp__create_drive_folder"):
         assert guards.check(tool, {**DRIVE, "file_path": str(outside), "fileUrl": outside.as_uri()}, CONFIG) is None, tool
+    assert "approval" in guards.check("mcp__files__upload_file", {**DRIVE, "file_path": str(outside)}, CONFIG)  # an upload (5.26.1)
     edit = {"document_id": "doc-1", "text": "Agenda", "file_path": str(outside)}
     assert "approval" in guards.check("mcp__workspace-mcp__modify_doc_text", edit, CONFIG)
     for remote in ("https://files.example.com/plan.pdf", "http://files.example.com/plan.pdf", str(outside)):
@@ -925,8 +928,8 @@ def test_a_path_holding_a_nul_is_refused_and_nothing_raises(scratch):
 
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file whatever its mode")
-@pytest.mark.parametrize("tool,key", NO_CODE)
-def test_a_drive_tool_that_asks_for_no_code_refuses_a_staged_file_that_cannot_be_read(tool, key, scratch):
+@pytest.mark.parametrize("tool,key", LOCAL_READS)
+def test_a_drive_tool_that_reads_a_local_file_refuses_a_staged_file_that_cannot_be_read(tool, key, scratch):
     """The mail path refused such a file and these passed it, since no hash was asked for and so nothing was read."""
     staged = _staged(scratch)
     named = staged.as_uri() if key == "fileUrl" else str(staged)
@@ -936,7 +939,7 @@ def test_a_drive_tool_that_asks_for_no_code_refuses_a_staged_file_that_cannot_be
         assert f"the file {staged} cannot be read" in reason and "approve" not in reason, reason
     finally:
         staged.chmod(0o600)
-    assert _uploaded(named, tool, key) is None and approvals.pending() == []
+    assert approvals.pending() == [] and "approval" in _uploaded(named, tool, key)
 
 
 # --- the approval binds the bytes of each file the connector reads ---------------------------------------------

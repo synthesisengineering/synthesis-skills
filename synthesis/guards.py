@@ -99,8 +99,8 @@ BLOCK_START = _Pattern(r"\s*(?:[-*•+]\s|\d+[.)]\s|>|\|)")
 
 
 def is_send_tool(tool: str, config: dict) -> bool:
-    patterns = DEFAULT_SEND_TOOLS + list(config.get("send_tools", []))
-    return any(fnmatch.fnmatchcase(tool, p) for p in patterns)
+    from synthesis import sends
+    return sends.matches(tool, DEFAULT_SEND_TOOLS + list(config.get("send_tools", [])))  # as every harness names it (A15)
 
 
 def _strings(value, key: str = "", leave: frozenset = frozenset()):
@@ -281,8 +281,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     change is released only by the principal's approval of the address itself, which the message's own never is."""
     from synthesis import sends
     fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
-    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or any(  # a document's lines are its own
-        fnmatch.fnmatchcase(tool, p) for p in sends.DOCUMENT_EDITS)
+    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or sends.matches(tool, sends.DOCUMENT_EDITS)  # a document's own lines
     strings, html_format = list(_strings(tool_input)), tool_input.get("body_format") == "html"
     texts, html_parts, problems = [], [], []
     for key, text in strings:
@@ -317,8 +316,7 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     html_keys = {k for k, _, _ in html_parts}
     if _is_email(tool, tool_input):
         bodies = [(k, t) for k, t in strings if k in BODY_FIELDS | HTML_FIELDS]
-        plain_ok = fmt.get("default_email_format") == "plain" or any(
-            fnmatch.fnmatchcase(tool, p) for p in fmt.get("plain_email_tools", []))
+        plain_ok = fmt.get("default_email_format") == "plain" or sends.matches(tool, fmt.get("plain_email_tools", []))
         if bodies and not (html_format or html_keys & HTML_FIELDS) and not plain_ok:
             problems.append("email goes out as HTML, never plain text (plain text is hard-wrapped on send): pass the "
                             "body as htmlBody, or body_format html, with each paragraph in <p>")
@@ -337,9 +335,8 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
                      and broken_paragraph(t)]
     signature, raw = config.get("signature") or {}, "\n".join(t for _, t in strings)
     rendered = "\n".join(t for _, t in _strings(tool_input, leave=UNSIGNED))
-    if any(m and m in rendered for m in signature.get("markers", [])) and not any(  # iMessage and typed text carry no named link
-            fnmatch.fnmatchcase(tool, p) for p in ["imessage_send", "messages_send", "desktop_type"]
-            + signature.get("plain_url_tools", [])):
+    if any(m and m in rendered for m in signature.get("markers", [])) and not sends.matches(  # iMessage and typed text carry no
+            tool, ["imessage_send", "messages_send", "desktop_type"] + signature.get("plain_url_tools", [])):  # named link (A15)
         shown = LINKED.sub(" ", rendered)
         exposed = [d for d in signature.get("domains", []) if d and d in shown]
         if exposed:
@@ -679,9 +676,9 @@ def _entry(judge):
 
 
 def check_upload(tool: str, tool_input: dict) -> str | None:
-    """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
-    refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
-    approval binds its bytes."""
+    """A connector's call that asks for no code (since 5.26.1 one that reads no file from this disk: one that does is an
+    upload, A14) is still refused here for a file it names that the connector would not read, as a send's is before its
+    code, and for one it cannot read: its first byte is read, since no approval binds its bytes."""
     unread = _unread_files(tool, tool_input, {}, whole=False)
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
@@ -743,9 +740,16 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
         if timed is not None:
             _void("send-time", subject)
         return None
-    text = " ".join(t for _, t in _strings(tool_input))
-    code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
+    text, upload = " ".join(t for _, t in _strings(tool_input)), _hands_over(tool, tool_input)  # A14: an upload is named as one
+    handed = ((", ".join(dict.fromkeys(t for k, t in _strings(tool_input) if FETCHES.search(k))) or "a file") + "".join(  # where it goes
+        f" to {k} {t}" for k, t in _strings(tool_input) if k.lower().endswith("id") and not FETCHES.search(k)))[:200]
+    code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {'uploads ' + handed if upload else text[:120]}")
     reshape = RESHAPE if _reshapes_calendar(tool, tool_input) else ""
+    if upload and not others:
+        return (f"This call uploads {handed} by {tool}, handing it to that tool's service. It needs the principal's approval of this "
+                f"exact call: show them the file and where it goes, with this code, in one message, and ask them to type "
+                f"{approvals.how(code)}. Then make this identical call again." + reshape + (" The approval covers each file as it "
+                "is now: one changed before the call needs a new code." if files else ""))
     if others:
         what = (f"puts a meeting on today's date and invites {others} other{'' if others == 1 else 's'}" if others > 0
                 else "moves a meeting to today's date (its guests are on the event, not in this call)")
@@ -818,10 +822,11 @@ def _reads_calendar(name: str, reads: list) -> bool:
     """A tool that reads a calendar: one whose name ends as such a read does and says it is a calendar's (a
     workspace server's events are its calendar's), a free-busy query or a suggestion of times, or one the setting
     names by its whole name, a pattern over it, or its end. An error tracker's `search_events` is none."""
+    from synthesis import sends
     short = name.rsplit("__", 1)[-1]
     return not CALENDAR_WRITE.search(short) and bool(  # a write is no read, whatever pattern names its server
         CALENDAR_READ.search(short) and CALENDARS.search(name.lower()) or short in ("query_freebusy", "suggest_time")
-        or any(fnmatch.fnmatchcase(name, known) or known == short for known in reads))
+        or any(sends.matches(name, [known]) or known == short for known in reads))
 
 
 def _calendar_read(transcript: str, reads: list) -> float | None:
@@ -7582,6 +7587,50 @@ SCRIPT_ACTS = _Pattern(r"\.click\s*\(|\.submit\s*\(|requestSubmit|dispatchEvent|
 SCRIPT_SENDS = _Pattern(r"requestSubmit|\.submit\s*\(|dispatchEvent|KeyboardEvent|" + WRITES + "|" + PRESSES_ENTER + r"|^(?=[\s\S]*\.click\s*\()[\s\S]*"
                           r"(?:submit|\bpost|\bsend|publish|repl(?:y|ies)|comment|share|review|rating|tweet|\bdone\b)", re.I)
 SCRIPT_ROUTINE = _Pattern(r"\b(?:search|log-?in|sign-?in|password|query|q)\b", re.I)  # whole words: querySelector is none
+# A14, 2026-11-18: an upload, a document edit and a form save made through computer use wait too, as a connector's do (a
+# slide import into a shared deck, an upload and two form saves went through Codex's computer-use REPL with no code): a
+# file a call sets, or a summary that says it uploads or attaches one, saves (or clicks Save), or writes into a document,
+# except on the principal's own app on a local host or where it searches or signs in. A control's name alone makes no
+# edit: in a replay of the seat's 199 REPL calls, clicks on Import only opened a file chooser.
+UPLOADS = _Pattern(r"^\W*(?:upload|attach)(?:s|es|ed|ing)?\b", re.I)
+SAVES = _Pattern(r"^\W*sav(?:e|es|ed|ing)\b|\b(?:click|press|tap|hit|choose|select)(?:s|es|ed|ing)?\s+(?:on\s+)?(?:the\s+)?(?:[\w'’-]+\s+){0,3}?"
+                 r"[\"'“‘]?save\b", re.I)
+EDITS = _Pattern(r"^\W*(?:cop(?:y|ies|ied|ying)|insert\w*|import\w*|past(?:e|es|ed|ing)|add(?:s|ed|ing)?|append\w*|writ(?:e|es|ing)|wrote|edit\w*"
+                 r"|updat(?:e|es|ed|ing)|chang(?:e|es|ed|ing)|replac(?:e|es|ed|ing)|delet(?:e|es|ed|ing)|remov(?:e|es|ed|ing)|mov(?:e|es|ed|ing)"
+                 r"|renam\w*|typ(?:e|es|ed|ing)|fill(?:s|ed|ing)?|enter(?:s|ed|ing)?|format\w*|duplicat\w*)\b(?:\W+\w+){0,8}?\W+(?:docs?|documents?"
+                 r"|decks?|slides?|presentations?|sheets?|spreadsheets?|workbooks?|cells?|rows?|agendas?|wikis?|notebooks?|canvas(?:es)?)\b", re.I)
+DOES = {"send": "sends", "upload": "uploads a file", "edit": "edits a document", "save": "saves a form"}  # in the hold's first words
+# Codex's computer-use REPL (`mcp__cua_repl__js`, A14): each call one JavaScript program over tabs and apps bound in
+# earlier calls, with a title. It is read as the actions it writes out, each said by the title (a click also by the
+# control its locator names); one the guard cannot read is refused, and one that reaches past the REPL's API (a module,
+# the process) waits for its own code, since two of the replay's proof saves went through Node's file module.
+REPL_TOOLS, CUA = {"js"}, _Pattern(r"(?:^|[_-])cua(?:[_-]|$)", re.I)
+REPL_ACTS = _Pattern(r"\.\s*(click|dblclick|tap|check|uncheck|selectOption|dragTo|drag|performSecondaryAction|dispatchEvent|pressKey|press|down"
+                     r"|typeText|type|pressSequentially|paste|fill|setValue|insertText|setFiles|setInputFiles|evaluate|evaluateHandle|\$\$?eval"
+                     r"|addScriptTag|addInitScript|exposeFunction|exposeBinding|route|goto)\s*\(")
+REPL_KINDS = {**dict.fromkeys(("pressKey", "press", "down"), "key"), **dict.fromkeys(("typeText", "type", "pressSequentially"), "type"),
+              **dict.fromkeys(("paste", "fill", "setValue", "insertText"), "paste"), **dict.fromkeys(("setFiles", "setInputFiles"), "upload"),
+              **dict.fromkeys(("evaluate", "evaluateHandle", "$eval", "$$eval", "addScriptTag", "addInitScript", "exposeFunction",
+                               "exposeBinding", "route"), "script"), "goto": "navigate"}  # every other verb a click
+REPL_OUTSIDE = _Pattern(r"(?<![\w$.])(?:require|process|module|globalThis|Deno|Bun|child_process)\b")  # a module, the process, the globals
+REPL_REQUESTS = _Pattern(r"\.\s*request\s*\.\s*(?:post|put|patch|delete|fetch)\s*\(|\bsendBeacon\b|\bWebSocket\b")
+UNWRITTEN = "\0words the call does not write out\n"  # typed or set from a name: they may hold a line break, and are not shown
+# A tool whose purpose is to hand a file to a page or a service, by kind (A14): Claude in Chrome's file_upload and
+# upload_image were judged by no send rule, a driven browser's file upload was read as a read, and a connector's
+# upload_file passed as another tool. Each now waits for a code naming the upload, as computer use's does.
+UPLOAD_WORDS = {"upload", "uploads", "attach", "attachment", "attachments"}
+UPLOAD_REPORTS = {"status", "progress", "url", "urls", "info", "state", "result", "results", "limit", "limits", "quota", "history"}
+
+
+def upload_tool(tool: str) -> bool:
+    """A tool whose name says it hands a file over: `upload` or `attach` among its words, with no verb before that word
+    that only reads (`slack_get_file_upload_url`, `download_gmail_attachment`) and no word after it that reports on one
+    (`upload_status`), or a browser's way of setting a file input (`set_input_files`)."""
+    from synthesis import sends
+    words = sends._words(tool.rsplit("__", 1)[-1])
+    at = next((i for i, w in enumerate(words) if w in UPLOAD_WORDS), None)
+    return (at is not None and not set(words[:at]) & sends.READS and not set(words[at + 1:]) & UPLOAD_REPORTS
+            or words[-3:] == ["set", "input", "files"])
 
 
 def _publishes(said: str, local: bool) -> bool:
@@ -7613,9 +7662,12 @@ def desktop_tool(tool: str) -> str:
     server, _, name = tool.rpartition("__")
     if tool.startswith("mcp__") and name in BROWSER_STEPS and re.search(r"browser|chrome", server, re.I):
         return BROWSER_STEPS[name]
+    if tool.startswith("mcp__") and re.search(r"claude-in-chrome|claude[_-]browser", server, re.I) and upload_tool(tool):
+        return "browser_upload"  # its file_upload and upload_image, by kind (A14)
     bare = name[len("computer_"):] if name.startswith("computer_") else name
-    linked = "computer" in server.lower() or name.startswith("computer_")
-    return bare if tool.startswith("mcp__") and linked and bare in DESKTOP_TOOLS else ""
+    linked = "computer" in server.lower() or name.startswith("computer_") or bool(CUA.search(server[len("mcp__"):]))
+    found = "repl" if bare in REPL_TOOLS else bare  # a computer-use REPL's program (A14)
+    return found if tool.startswith("mcp__") and linked and bare in DESKTOP_TOOLS | REPL_TOOLS else ""
 
 
 def _desktop_actions(name: str, tool_input: dict) -> list:
@@ -7630,6 +7682,8 @@ def _desktop_actions(name: str, tool_input: dict) -> list:
                  if isinstance(s, dict) else s for s in tool_input.get("actions") or []]
     elif name.startswith("browser"):
         items = [_browser_item(name, tool_input)]
+    elif name == "repl":
+        items = _repl_items(tool_input)
     else:
         items = [{**tool_input, "action": name[4:] if name.startswith("app_") else name}]
     found = []
@@ -7637,21 +7691,65 @@ def _desktop_actions(name: str, tool_input: dict) -> list:
         if not isinstance(item, dict):
             raise ValueError(f"a computer-use action is not an object ({str(item)[:40]})")
         act = str(item.get("action") or "")
-        kind = "click" if act in CLICKS else "key" if act in ("key", "hold_key") else act if act in ("type", "menu", "script") else ""
+        kind = "click" if act in CLICKS else "key" if act in ("key", "hold_key") else act if act in (
+            "type", "menu", "script", "paste", "upload", "request") else ""  # the last three a REPL's (A14)
         value = (" > ".join(str(p) for p in item.get("path") or []) if kind == "menu" else
-                 str(item.get("combo") or item.get("text") or "") if kind in ("key", "type", "script") else "")
-        if kind and (value or kind == "click"):
+                 str(item.get("combo") or item.get("text") or "") if kind in ("key", "type", "script", "paste", "upload") else "")
+        if kind and (value or kind in ("click", "upload", "request")):
             found.append((kind, value, str(item.get("action_summary") or "")))
     return found
+
+
+def _repl_unread(text: str) -> tuple:
+    """(what makes a computer-use REPL's program one the guard cannot read, what takes it past the REPL's API), each in
+    fixed words or "" (A14). A module imported by `import()` is the second, not the first."""
+    code, unread = _script_code(text)[0], _unread_script(re.sub(r"(?<![\w$.])import(\s*\()", r"load\1", text))
+    past = REPL_OUTSIDE.search(code) or re.search(r"(?<![\w$.])import\s*\(", code)
+    return unread, "reaches outside the computer-use API (a module or the process)" * bool(past)
+
+
+def _repl_items(given: dict) -> list:
+    """A computer-use REPL's program as the computer-use actions it writes out (A14), each said by the call's title: a
+    click (with the control a locator before it names), a key, words typed or set (UNWRITTEN where they are not written
+    out), a file set (an upload), a page script, a request that may write and a navigate to a javascript: address.
+    Reading, binding a tab or an app and any other navigate do nothing to anyone."""
+    code, literals, _ = _script_code(str(given.get("code") or ""))
+    title, items = str(given.get("title") or ""), []
+    for found in REPL_ACTS.finditer(code):
+        verb, args = found[1], _bracketed(code, found.end() - 1)
+        kind = "click" if verb == "down" and not re.search(r"\bkeyboard\s*$", code[:found.start()]) else REPL_KINDS.get(verb, "click")
+        bare = re.sub(r"\{[^{}]*\}|\0\d+\0|\b(?:null|undefined|true|false)\b|[\d\s,+.()-]", "", args)
+        words = [literals[int(n)] for n in re.findall(r"\0(\d+)\0", re.sub(r"\{[^{}]*\}", "", args))]
+        if kind == "navigate":
+            script = next((_script_address(w) for w in words if _script_address(w) is not None), None)
+            items += [{"action": "script", "text": script, "action_summary": title}] if script is not None else []
+        elif kind in ("type", "paste"):
+            items.append({"action": kind, "text": "".join(words) if words and not bare else UNWRITTEN, "action_summary": title})
+        elif kind == "key":
+            items.append({"action": "key", "text": words[-1] if words and not bare else "Return", "action_summary": title})
+        elif kind in ("upload", "script"):
+            items.append({"action": kind, "text": re.sub(r"\0(\d+)\0", lambda m: json.dumps(literals[int(m[1])]), args), "action_summary": title})
+        else:
+            chain = code[max(code.rfind(";", 0, found.start()), code.rfind("\n", 0, found.start())) + 1:found.start()]  # its statement
+            label = re.findall(r"getBy(Role|Text|Label|Title|Placeholder|AltText)\s*\(\s*\0(\d+)\0(?:[^()]*?\bname\s*:\s*\0(\d+)\0)?", chain)
+            role, named = (label[-1][0].lower(), literals[int(label[-1][2] or label[-1][1])]) if label else ("", "")
+            said = f'{title}; clicks the "{named}" {literals[int(label[-1][1])] if role == "role" else role}' if named else title
+            items.append({"action": "left_click", "action_summary": said.strip("; ")})
+    if _writes_by_fetch(code, literals) or REPL_REQUESTS.search(code):
+        items.append({"action": "request", "action_summary": title})
+    return items
 
 
 def _browser_item(step: str, given: dict) -> dict:
     """A browser step as a computer-use action: a form's value is text typed into the page, and a page script is a
     script, which reached no send rule until the second review; so is a navigate to a javascript: address, as the
-    code it runs (round 4 of 5.24.0's review, #1). Any other navigate does nothing to anyone."""
+    code it runs (round 4 of 5.24.0's review, #1). Any other navigate does nothing to anyone. An upload step is an
+    upload of the files or the image it names (A14)."""
     if step.endswith("navigate"):
         code = _script_address(str(given.get("url") or ""))
         return {**given, "action": "script", "text": code} if code is not None else {}
+    if upload_tool(step):
+        return {**given, "action": "upload", "text": ", ".join(map(str, given.get("paths") or [])) or str(given.get("imageId") or "")}
     return ({**given, "action": "type", "text": str(given.get("value", ""))} if step.endswith(("form_input", "browser_form"))
             else {**given, "action": "script", "text": str(given.get("text") or "")} if step.endswith(("javascript_tool", "browser_script"))
             else given)
@@ -8423,28 +8521,51 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         refused = step if isinstance(step, str) else _refused_scripts(name, tool, tool_input, session, step)
         if refused or step:
             return refused or _batch_send(tool, tool_input, step, config, session)
+    unread, past = _repl_unread(str(tool_input.get("code") or "")) if name == "repl" else ("", "")
+    if unread:  # A14: the REPL's program is read as the actions it writes out, or not run
+        return (f"This computer-use program {unread}, so the guard cannot read what it does where a click or a key may send in "
+                "the principal's name: write each action out in the REPL's own calls (a click, pressKey, typeText, paste, setFiles, a "
+                "locator's click), with its words written in the call.")
+    if past:  # what it writes or runs there no reader follows: the principal's code for this exact call, logged as the rest
+        subject = {"tool": tool, "input": tool_input}
+        with approvals.alone():
+            if approvals.consume("send", subject, session):
+                _logged("desktop", tool, f"{tool}: a program past the REPL's API: {str(tool_input.get('title') or '')[:150]}", "approval", session)
+                return None
+            code = approvals.request("send", subject, f"{tool}: a computer-use program that {past}: {str(tool_input.get('title') or '')[:150]}")
+        return (f"This computer-use program {past}, where the guard cannot follow what it writes, runs or sends. Show the principal "
+                f"the exact program and ask them to type {approvals.how(code)}; then make this identical call again. A file is written "
+                "with the file tools, and a command run with the shell, where the guard reads them with no code.")
     actions = _desktop_actions(name, tool_input)
     if not actions:
         return None
-    seen = paths.read_json(record) if record else {}
-    unseen = not name.startswith(("app_", "browser")) and "apps" not in seen  # a browser page is no messaging app
+    seen, repl = paths.read_json(record) if record else {}, name == "repl"
+    unseen = not name.startswith(("app_", "browser")) and not repl and "apps" not in seen  # a browser page is no messaging app
     pages, search, local = _pages(name, tool_input, session, tool) if name.startswith("browser") else ({}, False, False)
     reached = ({b: apps[b] for b in [_bundle(tool_input.get("app"), apps)] if b in apps} if name.startswith("app_")
-               else pages if name.startswith("browser") else apps if unseen else {b: apps[b] for b in seen["apps"] if b in apps})
-    typed, subject = [v for kind, v, _ in actions if kind == "type" and v.strip()], {"tool": tool, "input": tool_input}
+               else pages if name.startswith("browser") else apps if unseen or repl else {b: apps[b] for b in seen["apps"] if b in apps})
+    typed, subject = [v for kind, v, _ in actions if kind in ("type", "paste") and v.strip()], {"tool": tool, "input": tool_input}
     said = " ".join(s for _, _, s in actions)  # the second review: words, then Return, Tab and Space or a line break, submit a form
     formed = bool(name.startswith("browser") and typed and not local and NAMES_POST.search(said)
                   and (_submits(actions) or any(k == "type" and re.search(r"[\r\n]", v) for k, v, _ in actions)))
 
     def goes(kind: str, v: str, s: str, pages: dict) -> bool:  # an action that sends, with these messaging pages reached
-        return bool(SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "script" and (
+        return bool(SAYS_SENT.search(s) or kind == "click" and _publishes(s, local) or kind == "request" or kind == "script" and (
             _script_acts(v) if pages else SCRIPT_SENDS.search(v) and not SCRIPT_ROUTINE.search(v) and not local)
             or pages and (kind == "click" and not s.strip() or kind == "menu" and re.search(r"(?:^|> )send\b", v, re.I)
                           or kind == "key" and _sends_key(v, pages) or kind == "type" and re.search(r"[\r\n]", v) and _sends_key("return", pages)))
-    sending = [s or {"type": "a typed line break", "script": "a page script"}.get(kind, f"{kind} {v}".strip()) for kind, v, s in actions
-               if goes(kind, v, s, reached)]
-    sending += ["a key that submits the form after the typed words"] * (formed and not reached and not sending)
-    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) for k, v, s in actions) and bool(
+
+    def changes(kind: str, s: str) -> str:  # what an action that sends nothing does for others to see (A14), or ""
+        if local or kind == "menu" or ROUTINE.search(s) and not MESSAGE_WORDS.search(s) and kind != "upload":
+            return ""
+        return "upload" if kind == "upload" or UPLOADS.search(s) else "edit" if EDITS.search(s) else "save" if SAVES.search(s) else ""
+    does = [("send" if goes(kind, v, s, reached) else changes(kind, s), s or {"type": "a typed line break", "script": "a page script",
+             "upload": f"an upload of {v}" if v else "an upload", "request": "a request that may write"}.get(kind, f"{kind} {v}".strip()))
+            for kind, v, s in actions]
+    kinds, sending = [k for k, _ in does if k], list(dict.fromkeys(p for k, d in does if k for p in d.split("; ")))  # each part once
+    if formed and not reached and not sending:
+        kinds, sending = ["send"], ["a key that submits the form after the typed words"]
+    unplaced = set(reached) == {UNKNOWN_PAGE} and not formed and not any(goes(k, v, s, {}) or changes(k, s) for k, v, s in actions) and bool(
         SHOWS_PAGE.search(tool))  # another browser's results may never show its page: its call keeps the code
     problems = message_problems("desktop_type", {"message_text": "\n\n".join(typed)}, config, {  # a page may be several channels'
         c for chan, _ in reached.values() for c in chan.split("+")}, session) if typed and (reached or sending) else []
@@ -8463,16 +8584,20 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
         return "These words can't go out as written: " + "; ".join(problems[:6]) + "."
     if not sending:
         return None
+    if repl and any(v == UNWRITTEN for k, v, _ in actions):  # A14: a code binds the call as written
+        return ("This call " + " and ".join(DOES[k] for k in DOES if k in kinds) + f" ({'; '.join(sending)[:200]}) with words it does not "
+                "write out (a name an earlier call set), which an approval of it would never show: write the words out in the call.")
     chans = sorted({c for c, _ in reached.values()})
-    chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 else "desktop"
+    chan = "browser" if name.startswith("browser") else chans[0] if len(chans) == 1 and not repl else "desktop"
     where = ((f"the browser ({', '.join(sorted(reached))})" if reached else "the browser") if name.startswith("browser")
-             else "any messaging app" if unseen else ", ".join(sorted(reached)) or "an app")
+             else "the computer-use REPL (any app or page)" if repl else "any messaging app" if unseen else ", ".join(sorted(reached)) or "an app")
     what, earlier = "; ".join(sending)[:200], _released(session, list(reached)) if reached else []
     words, rules = [w for e in earlier for w in e["words"]], problems[:6] + [r for e in earlier for r in e["rules"]]
     subject = {**subject, "earlier": words} if earlier else subject
     summary = f"{tool} in {where}: {what}" + (f"; typed words not stored ({sum(map(len, typed + words))} characters)" if typed or words else "")
     with approvals.alone():  # one send judged at a time, as on the other send paths (review round 3 of the spend order)
-        if not rules and sends.covered(chan, typed, _project(session), config):  # a window never covers words a rule stopped
+        if not rules and set(kinds) == {"send"} and sends.covered(chan, typed, _project(session), config):  # a window never covers
+            # words a rule stopped, nor an upload, an edit or a save (A14)
             mark = sends.log(chan, tool, summary, "window", session)  # counted at once, so no other call takes the same send
             _after(lambda: sends.settle(mark), lambda: sends.undo(mark))
             return None
@@ -8485,14 +8610,17 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
                     "Claude in Chrome or the built-in pane, or a snapshot or a list of pages in a driven browser, so its address shows, then "
                     "make this call again.")
         code = approvals.request("send", subject, summary[:300])
-    return (f"This call sends in {where} ({what})."
+    sent = "send" in kinds
+    return (f"This call {' and '.join(DOES[k] for k in DOES if k in kinds)} in {where} ({what})."
             + (f" Words typed on this page under the code for words that break a rule may go with it: {' / '.join(words)}." if words else "")
             + (f" These words break the principal's rules for messages: {'; '.join(rules)}. The code below waives that for this exact"
-               " call only; a message is better rewritten." if rules else "") + " Sending needs the principal's approval of this exact call: show them "
-            "the exact words and recipient as they will go out (a screenshot of the compose area) and ask them to type "
-            f"{approvals.how(code)}. Then make this identical call again. Typing the words and sending in one call binds "
-            "both to the approval. A Return or click here that does not send (a file picker, a search field): click the "
-            "control it confirms instead, with a summary that says what it does."
+               " call only; a message is better rewritten." if rules else "")
+            + (" Sending needs the principal's approval of this exact call: show them the exact words and recipient as they will go out "
+               "(a screenshot of the compose area)" if sent else " It needs the principal's approval of this exact call: show them what "
+               "it uploads, writes or saves, and where (a screenshot of the page or the document)")
+            + f" and ask them to type {approvals.how(code)}. Then make this identical call again."
+            + (" Typing the words and sending in one call binds both to the approval. A Return or click here that does not send (a file "
+               "picker, a search field): click the control it confirms instead, with a summary that says what it does." if sent else "")
             + (" This session's computer-use grants were asked for before the guard could see them; request_access "
                "naming the apps again tells it which apps this session controls." if unseen else ""))
 
@@ -8618,6 +8746,13 @@ def _osa_code(text: str, jxa: bool) -> tuple:
                     parts.append(re.sub(r"\0(\d+)\0", lambda m: f"\0{int(m[1]) + len(literals)}\0", inner[0]))
                     literals += inner[1]
                     j = k
+                    continue
+                if jxa and text[j] == "\\" and j + 1 < n:  # an escape as it runs (A14: a typed '\n' is a Return)
+                    esc = re.match(r"u\{([0-9a-fA-F]{1,6})\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|[\s\S]", text[j + 1:j + 11])
+                    code_point = int(esc[1] or esc[2] or esc[3] or "-1", 16)
+                    value.append(chr(code_point) if 0 <= code_point <= 0x10FFFF else {"n": "\n", "r": "\r", "t": "\t", "0": "\0", "b": "\b",
+                                                                                      "f": "\f", "v": "\v", "\n": ""}.get(esc[0], esc[0]))
+                    j += 1 + len(esc[0])
                     continue
                 value.append(text[j + 1] if text[j] == "\\" and j + 1 < n else text[j])
                 j += 2 if text[j] == "\\" else 1
@@ -9016,7 +9151,7 @@ DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), 
           **dict.fromkeys(("navigate", "navigate_page", "new_page", "goto", "open", "navigate_back", "go_back", "tabs"), "navigate"),
           **dict.fromkeys(("evaluate", "evaluate_script", "run_code", "run_code_unsafe", "execute_script", "script", "javascript"), "script"),
           **dict.fromkeys(("snapshot", "take_screenshot", "screenshot", "console_messages", "network_requests", "network_request", "wait_for",
-                           "find", "hover", "resize", "close", "emulate_media", "install", "file_upload", "list_pages", "select_page"), "read")}
+                           "find", "hover", "resize", "close", "emulate_media", "install", "list_pages", "select_page"), "read")}
 READ_WORDS = _Pattern(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
                         r"|title|url|cookies|logs?|status|info|search)(?:_|$)")  # an unknown tool that says it only reads
 UNKNOWN_PAGE = "a page the record does not show"
@@ -9026,14 +9161,16 @@ PAGE_MARKS = ("Page URL", "[selected]", "(current)", "Navigated to", "[ref=")
 
 def driven_tool(tool: str) -> str:
     """The step a browser tool from a server not otherwise read performs ("type", "key", "click", "form", "drop",
-    "navigate", "script"), "read" for one that only reads, "unknown" for one the guard does not know, or "" for no
-    browser tool."""
+    "navigate", "script", "upload"), "read" for one that only reads, "unknown" for one the guard does not know, or "" for
+    no browser tool."""
     server, _, name = tool.rpartition("__")
     if not tool.startswith("mcp__") or tool.startswith(BROWSER) or desktop_tool(tool) or re.search(r"claude[_-]browser", server, re.I):
         return ""  # Claude in Chrome's and the browser pane's own tools are read by their own rules
     if not (DRIVERS.search(server) or DRIVERS.search(name.split("_")[0])):
         return ""
     bare = name[len("browser_"):] if name.startswith("browser_") else name  # Playwright's own names; any other server's by its words
+    if upload_tool(bare):  # a file set in the page (A14: Playwright's file_upload was read as a read)
+        return "upload"
     if bare in DRIVEN:
         return DRIVEN[bare]
     if re.search(r"navigate|goto|go_to|open_?url|new_page|new_tab", bare):
@@ -9175,6 +9312,9 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
         steps = [step(action="type", text=t) for t in given] + [step(action="left_click", action_summary="")]
     elif kind == "navigate":  # to a javascript: address, which runs on the page it is on (round 4 of 5.24.0's review, #1)
         steps = [{"name": "navigate", "input": {"url": str(tool_input.get("url") or "")}}]
+    elif kind == "upload":  # the files it names; with none, Playwright's cancels the file chooser (A14)
+        files = [str(f) for k, v in tool_input.items() if re.search(r"path|file", k, re.I) for f in (v if isinstance(v, list) else [v]) if f]
+        steps = [step(action="upload", text=", ".join(files))] if files else []
     else:
         steps = []
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
@@ -9534,7 +9674,21 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
     # A write that emails no one is quiet, unless it moves a meeting to today: its guests' calendars still change.
     quiet = _quiet_calendar_write(tool, tool_input) and _invited_today(tool, tool_input, config) == 0
     return (((is_send_tool(tool, config) or sends.says(tool, config)) and not quiet)
-            or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)))
+            or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)) or _hands_over(tool, tool_input))
+
+
+def _hands_over(tool: str, tool_input: dict) -> bool:
+    """A connector's call that hands a file to its service (A14): a tool whose name says it uploads (no browser's, which
+    the computer-use rules judge on the page it acts on), or a Drive call that has its connector read a file from this
+    disk: any `file_path` it takes, or a file:// `fileUrl` (one that cannot be parsed is judged, and refused, as named)."""
+    from urllib.parse import urlparse
+    key = FILE_DRIVE_TOOLS.get(tool.rsplit("__", 1)[-1])
+    value = tool_input.get(key) if key and isinstance(tool_input, dict) else None
+    try:
+        read = isinstance(value, str) and (key == "file_path" or urlparse(value).scheme == "file")
+    except ValueError:
+        read = True
+    return read or upload_tool(tool) and not desktop_tool(tool) and not driven_tool(tool)
 
 
 def _project(session: dict | None) -> str:
