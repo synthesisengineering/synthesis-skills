@@ -4,6 +4,34 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.26.1] - 2026-11-18
+
+- **The send guard reads Codex's computer-use REPL as computer use** (BACKLOG A14, an operations seat's report of
+  2026-11-18: a chat reply sent through `mcp__cua_repl__js` left no ledger line under a batch whose entry was never
+  spent, and a slide import, uploads and two form saves ran with no code). A REPL call is read as the actions its code
+  writes out, described by the call's title. One that sends, uploads, edits a document or saves a form waits for a code
+  naming it and is logged once released. Return, a typed line break and an untitled click wait, as in any messaging
+  app, since a REPL call never names its app. Code the guard cannot read, or a send whose words are not written into the
+  call, is refused; code that imports a module or reaches the process waits for its own code. No batch takes a REPL
+  call, and a batch an earlier release opened with one no longer counts as open.
+- **Uploads, document edits and form saves wait on every computer-use tool** when the action's summary says so, except
+  on a local app's page; a send window covers only sends.
+- **A file handed to a page or a service waits for a code naming the upload** (A14). By kind: a tool whose name says it
+  uploads or attaches, with no reading verb before that word; a browser's `set_input_files`; Claude in Chrome's
+  `file_upload` and `upload_image` and Playwright's `browser_file_upload`, judged on their page, so a local app asks
+  nothing; and a Drive call that reads a file from this disk (`create_drive_file` and the three imports), which asked
+  for no code, since its destination may be a shared folder. A connector's upload holds as a send that names
+  the file and where it goes. Each released upload is in the sends ledger, and no batch takes a driven browser's tool.
+- **A JavaScript string's escapes are read as they run**, so a typed `'\n'` counts as Return; this closes two
+  page-script spellings on the open list.
+- **A config's tool globs match a tool as every harness names it** (BACKLOG A15). Codex writes a server named
+  `workspace-mcp` as `workspace_mcp`, so a Google Chat message signed with the plain `Ragbot (ragbot.ai)` form its
+  config allows (`signature.plain_url_tools`) was refused there. `send_tools`, `not_send_tools`, the document-edit
+  tools, `plain_email_tools`, `plain_url_tools` and `fresh_calendar.reads` now match both spellings.
+- **The review: a detached HEAD at a commit a remote holds is nothing at risk.** Run as released on the Mac it was built
+  on, 11 of the 23 detached checkouts it failed sat at a published commit. Such a checkout with nothing else to repair
+  joins the shared no-risk warning; one detached at a commit no remote holds still fails.
+
 ## [5.26.0] - 2026-11-18
 
 - **`synthesis review`: the whole Mac in one read, ending in a repair plan** (BACKLOG C3, roadmap FUTURE-01). One
