@@ -491,6 +491,29 @@ def test_a_git_entry_git_cannot_read_is_unknown_and_a_worktree_is_read(machine):
     assert report["exit"] == 2
 
 
+def test_a_git_entry_that_is_a_pipe_is_unknown_and_never_opened(machine):
+    """A `.git` that is neither a folder nor a file (a named pipe) is never opened, since opening a pipe waits for a writer
+    and the review would never end: it is unknown. Should a read wait all the same, the writer here ends it after ten
+    seconds, so the test fails rather than hangs."""
+    import threading
+    (machine.ws / "piped").mkdir()
+    os.mkfifo(machine.ws / "piped" / ".git")
+
+    def writer():
+        try:
+            os.close(os.open(machine.ws / "piped" / ".git", os.O_WRONLY | os.O_NONBLOCK))
+        except OSError:  # nothing waits to read it
+            pass
+    timer = threading.Timer(10, writer)
+    timer.daemon = True
+    timer.start()
+    began = time.time()
+    report = review.review(run=machine.run, platform="darwin")
+    took, _ = time.time() - began, timer.cancel()
+    assert took < 10 and ("unknown", "repositories", "~/workspaces/acme/piped") in _rows(report)
+    assert "neither a folder nor a file" in {f["subject"]: f["detail"] for f in report["findings"]}["~/workspaces/acme/piped"]
+
+
 def test_a_declared_repository_whose_git_cannot_be_read_is_unknown_once_and_never_cloned_over(machine):
     """Finding 3a, declared: a repository the workspace declares, with a `.git` git cannot read, was a repository with no
     clone here, whose step clones into the folder that holds it; one discovery also found was said twice. Each is unknown,
