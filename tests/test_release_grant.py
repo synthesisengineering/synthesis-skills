@@ -74,14 +74,33 @@ def _requests(world) -> list:
     return sorted(folder.glob("*.json")) if folder.is_dir() else []
 
 
-def _clone(world, version: str, name: str = ".clone-1", tag: bool = True, note: str = "", served: bool = True) -> Path:
+LATER = "print('a skill the runtime carries from this tag on')\n"
+
+
+def _carry(plugin: Path, name: str) -> None:
+    """Give a plugin a skill with a script and a test, and declare in its install.py that its runtime carries it."""
+    (plugin / "skills" / name / "scripts").mkdir(parents=True)
+    (plugin / "skills" / name / "scripts" / "later.py").write_text(LATER)
+    (plugin / "skills" / name / "tests").mkdir()
+    (plugin / "skills" / name / "tests" / "test_later.py").write_text("def test_later():\n    pass\n")
+    declared, anchor = plugin / "synthesis" / "install.py", '"synthesis-skills-manager", "synthesis-onboarding")'
+    text = declared.read_text(encoding="utf-8")
+    assert text.count(anchor) == 1, "the declaration this helper extends moved"
+    declared.write_text(text.replace(anchor, anchor[:-1] + f', "{name}")'), encoding="utf-8")
+
+
+def _clone(world, version: str, name: str = ".clone-1", tag: bool = True, note: str = "", served: bool = True,
+           carry: str = "") -> Path:
     """What the release tool's fresh clone holds for a tag: the files the runtime takes, committed, the tag on that
-    commit, in the protected releases folder; with `served`, GitHub's stand-in serves that tag at that commit."""
+    commit, in the protected releases folder; with `served`, GitHub's stand-in serves that tag at that commit; with
+    `carry`, the tag carries one skill more than this tree does."""
     clone = world["v5"] / "releases" / name
     for rel, path in install._files(ROOT):
         (clone / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, clone / rel)
     (clone / "synthesis" / "__init__.py").write_text(f'__version__ = "{version}"\n{note}')
+    if carry:
+        _carry(clone, carry)
 
     def git(*args):
         subprocess.run(["git", "-C", str(clone), *args], check=True, capture_output=True, text=True)
@@ -220,8 +239,20 @@ def test_the_tags_files_a_release_takes_are_the_files_its_install_copies():
     tracked = set(subprocess.run(["git", "-C", str(ROOT), "ls-files", "skills"], capture_output=True, text=True,
                                  check=True).stdout.split())
     copied = {rel for rel, _ in install._stable_skill_files(ROOT)} & tracked  # a fresh clone holds only what git tracks
-    taken = {rel for rel in tracked if install.takes(rel)}
+    taken = {rel for rel in tracked if install.takes(rel, install.carried(ROOT))}
     assert copied == taken, (sorted(copied - taken)[:5], sorted(taken - copied)[:5])
     assert {"skills/synthesis-meeting-transcripts/extract_commitments.py", "skills/synthesis-message-exports/scripts/chat_page.py",
             "skills/synthesis-meeting-transcripts/optional-workspace-mcp/start.sh"} <= taken
     assert not [rel for rel in taken if "/tests/" in rel or rel.rsplit("/", 1)[-1].startswith("test_")]
+
+
+def test_a16_a_tag_that_carries_one_skill_more_installs_it_and_spends_its_grant(world):
+    """A16: the release that adds a skill to what the runtime carries installs it with the running runtime's installer,
+    which reads the list from the tag; the grant is spent for that tag's files, the new skill's script among them."""
+    assert "synthesis-carried-later" not in install.STABLE_SKILL_SCRIPTS  # the running installer's own list lacks it
+    world["judge"](_launcher(world, "--install-only --tag v99.0.0"))
+    assert "synthesis runtime" in install.install(_clone(world, "99.0.0", carry="synthesis-carried-later"))
+    current = Path(os.path.realpath(world["v5"] / "current"))
+    assert (current / "skills" / "synthesis-carried-later" / "scripts" / "later.py").read_text() == LATER
+    assert not (current / "skills" / "synthesis-carried-later" / "tests").exists()
+    assert not _grants(world) and not _requests(world)  # spent, and no code asked for

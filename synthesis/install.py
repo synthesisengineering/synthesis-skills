@@ -22,6 +22,7 @@ changed it since, and removes only files install wrote that are still unedited.
 
 from __future__ import annotations
 
+import ast
 import contextlib
 import fcntl
 import glob
@@ -316,8 +317,12 @@ def _spend_release(home: Path, version: str, plugin_root: Path, staging: Path) -
     named = {ref: oid for oid, _, ref in (row.partition("\t") for row in served.splitlines())}
     if not head or (named.get(tag + "^{}") or named.get(tag)) != head or git("status", "--porcelain", "--untracked-files=no") != "":
         return False
+    try:  # the skills the tag carries, as its own install.py declares them (A16)
+        names = carried_in(git("show", f"{head}:synthesis/install.py") or "", f"v{version}'s synthesis/install.py")
+    except Refused:
+        return False
     tree = {rel: meta.split()[2] for meta, _, rel in (entry.partition("\t") for entry in (git("ls-tree", "-r", "-z", head) or "").split("\0"))
-            if rel and meta.split()[1:2] == ["blob"] and takes(rel)}
+            if rel and meta.split()[1:2] == ["blob"] and takes(rel, names)}
     if not tree or _differences(staging, tree):
         return False
     try:
@@ -354,11 +359,41 @@ def approval(wanted: dict, said: str, session: dict | None) -> None:
 _approve, _released = approval, _spend_release
 
 
+def carried_in(text: str, where: str = "synthesis/install.py") -> tuple:
+    """The skills a plugin's runtime carries, as its install.py binds them to STABLE_SKILL_SCRIPTS, read as data and never
+    run: an install takes what the release it installs declares, not the running installer's own list, which the release
+    tool runs (A16: 5.25.1 carried synthesis-slack-sync, and the 5.25.0 installer that released it left it out). Refused
+    unless the name is bound once, at the top, to a literal tuple of distinct skill folder names."""
+    try:
+        tree = ast.parse(text)
+    except (SyntaxError, ValueError) as exc:
+        raise Refused(f"{where} does not parse ({exc}), so what its runtime carries cannot be read and nothing was installed")
+    stores = [n for n in ast.walk(tree) if isinstance(n, ast.Name) and n.id == "STABLE_SKILL_SCRIPTS" and not isinstance(n.ctx, ast.Load)]
+    top = [n for n in tree.body if isinstance(n, ast.Assign) and len(n.targets) == 1 and n.targets[0] in stores]
+    try:
+        names = ast.literal_eval(top[0].value) if len(stores) == 1 and len(top) == 1 else None
+    except ValueError:
+        names = None
+    if not (isinstance(names, tuple) and names and len(set(names)) == len(names)
+            and all(isinstance(n, str) and re.fullmatch(r"[a-z0-9][a-z0-9-]*", n) for n in names)):
+        raise Refused(f"{where} binds no single literal tuple of skill folder names to STABLE_SKILL_SCRIPTS, so what its "
+                      "runtime carries cannot be read and nothing was installed")
+    return names
+
+
+def carried(plugin_root: Path) -> tuple:
+    """`carried_in` for the install.py of the plugin at `plugin_root`; () where it has none, which is no runtime to install
+    (install refuses it, and the doctor fails it, before anything would be copied)."""
+    source = Path(plugin_root) / "synthesis" / "install.py"
+    return carried_in(_read(source).decode("utf-8", "replace"), str(source)) if source.is_file() else ()
+
+
 def _stable_skill_files(plugin_root: Path):
     """Each carried skill's scripts/ folder, and its Python and shell scripts anywhere else (a skill may keep code beside
     SKILL.md or in a folder of its own, as the meeting skill keeps its fetcher and server kit), never its tests: the
-    copies a skill runs, inside the release the guard trusts (guards._shipped)."""
-    for name in STABLE_SKILL_SCRIPTS:
+    copies a skill runs, inside the release the guard trusts (guards._shipped). The skills are the ones the plugin
+    declares (`carried`)."""
+    for name in carried(plugin_root):
         skill = Path(plugin_root) / "skills" / name
         for path in sorted(skill.rglob("*")) if skill.is_dir() else []:
             parts = path.relative_to(skill).parts
@@ -437,12 +472,13 @@ class Refused(RuntimeError):
     """An install that would put bytes other than the ones expected in the runtime's place, or that nothing could run."""
 
 
-def takes(rel: str) -> bool:
+def takes(rel: str, names: tuple) -> bool:
     """Whether the runtime takes this file of a plugin (by its path in the plugin) when it installs: what `_files` copies,
-    a carried skill's files by the rule `_stable_skill_files` walks them with."""
+    a carried skill's files by the rule `_stable_skill_files` walks them with, of the skills `names` the plugin declares
+    (`carried_in`)."""
     parts, inner = rel.split("/"), rel.split("/")[2:]
     return (parts[0] == "synthesis" and len(parts) > 1 and not any(p == "__pycache__" or p.startswith(".") for p in parts[1:])) or (
-        rel == "CHANGELOG.md") or (bool(inner) and parts[0] == "skills" and parts[1] in STABLE_SKILL_SCRIPTS and not inner[-1].startswith(
+        rel == "CHANGELOG.md") or (bool(inner) and parts[0] == "skills" and parts[1] in names and not inner[-1].startswith(
             "test_") and not {"tests", "__pycache__"} & set(inner) and (inner[0] == "scripts" or Path(inner[-1]).suffix in (".py", ".sh")))
 
 
