@@ -491,10 +491,11 @@ def test_commits_from_before_the_gate_began_do_not_count(repo):
 
 
 def test_history_the_doctor_cannot_read_is_not_reported_clean(repo):
+    """Nor as a warning: what could not be read is unknown, a status of its own (review round 1 of the machine review)."""
     def failing(argv, **kwargs):
         return subprocess.CompletedProcess(argv, 128, "", "fatal: bad object") if "log" in argv else subprocess.run(argv, **kwargs)
     check = doctor.check_pr_gate(GATED["pr_gated"], [repo], run=failing)
-    assert check.status == "warn" and "cannot read" in check.detail and "acme/skills" in check.detail
+    assert check.status == "unknown" and "cannot read" in check.detail and "acme/skills" in check.detail
 
 
 def test_a_checkout_that_records_no_default_branch_is_named(repo):

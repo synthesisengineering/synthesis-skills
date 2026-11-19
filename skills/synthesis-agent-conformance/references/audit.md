@@ -78,8 +78,8 @@ there with no item here fails:
 - `unsaved records`: no file under a live seat's claim has stayed uncommitted, or in a
   commit on the checkout's own branch that no remote holds, longer than the config's `unsaved_hours`
   (24 when absent; false turns the count off, and the line says so), counted per repository
-  with the oldest age, and a claimed checkout git cannot read is named; a warning, never a
-  failure (5.19.0). The weekday evening job shows a fixed banner for one such repository,
+  with the oldest age: a warning, never a failure (5.19.0); a claimed checkout git cannot read is
+  named, and makes the line `unknown`. The weekday evening job shows a fixed banner for one such repository,
   or for more than one, naming none; `synthesis doctor --unsaved` prints that count, or
   `unknown`, running no other check and writing nothing;
 - `sessions repo <ws>`: each workspace's sessions repository is cloned where the config
@@ -92,7 +92,7 @@ there with no item here fails:
 - `<harness> plugin`, `<harness> package`, `<harness> hooks`: per harness, the plugin
   installed and enabled, its code equal to the runtime (never a version label), all four
   events wired to the stable hook. A listing that does not answer within 45 seconds
-  says nothing about the install, and that harness's plugin line warns `cannot tell`.
+  says nothing about the install, and that harness's plugin line is `unknown`: `cannot tell`.
   Codex is asked for the plugin's own marketplace
   (`codex plugin list --json -m synthesis-engineering`), for which it fetches no remote
   catalog. Its whole listing, which fetches one when Codex's copy is over three hours
@@ -108,8 +108,8 @@ there with no item here fails:
   so Claude Code holds a guarded call when the guard times out, crashes or cannot start
   (a hook without it fails the line), and every Claude Code on the Mac (the one on PATH
   and each the desktop app keeps) is 2.1.295 or later, the first that honors it: the
-  oldest is judged, and an older one, or a `claude --version` that names no version,
-  warns and names its path (5.21.0; every install since 5.21.1);
+  oldest is judged, and an older one warns and names its path (5.21.0; every install since 5.21.1),
+  while a `claude --version` that names no version is `unknown` and names it;
 - `codex hooks feature`, `codex instruction bytes`, `codex board access`,
   `codex instruction chain`, `codex hook trust`, `codex skill catalog`: for Codex,
   `[features] hooks = true`, `project_doc_max_bytes` at least 98,304, the board and the
@@ -130,8 +130,8 @@ there with no item here fails:
   (asked of `codex app-server`) within budget with every shipped skill discoverable. The
   budget follows the configured model's context window, from Codex's own cache of its
   models, read by its first whole value (its clients share that file, and one copy
-  written over another can leave a tail after it); a cache with nothing to read is a
-  warning that the budget cannot be told, never a failure;
+  written over another can leave a tail after it); a cache with nothing to read is
+  `unknown`: the budget cannot be told, never a failure;
 - `codex hooks file`: Codex's own `hooks.json` when Codex would read none of it (not JSON,
   a top-level key it does not know, a hook of a type it does not know) and setup's option
   is off: a warning, since the person's own hooks there do not run and no synthesis hook
@@ -145,9 +145,9 @@ there with no item here fails:
   128 MB, stopping at the first proof. The line names the Codex version
   and the date it proves; it warns, never fails, when no refusal inside a script was found
   or the proof is from an older Codex than the newest one that ran a script, and says
-  nothing where no rollout read holds a code-mode script;
+  nothing where no rollout read holds a code-mode script; records that cannot be listed make it `unknown`;
 - `muse hook approval`, `<harness> shell guard`: for Muse, hooks approved, and its shell
-  tool name treated as a shell by the guard. A hook that waits for the person's approval
+  tool name treated as a shell by the guard; a trust state Muse reports none of is `unknown`. A hook that waits for the person's approval
   (Codex's hook trust, Muse's hook approval) does not run, and neither does one a harness
   cannot register, so each run of the doctor writes down what it saw of the four hooks in
   each of the two harnesses (`<synthesis home>/state/harness-approvals.json`; each
@@ -199,19 +199,20 @@ there with no item here fails:
 - `decision packets`: every decision packet and action sheet is its generator's output;
 - `outbox`: the folder agents stage outgoing attachments in is there to write, and a
   mail connector kept running by its auto-start was started with it among
-  `ALLOWED_FILE_DIRS` (one whose start cannot be read is a warning, never a pass);
+  `ALLOWED_FILE_DIRS` (one whose start cannot be read is `unknown`, never a pass);
 - `teardown`: nothing a test set up is left in place. The list is written as each thing is made
   (`<synthesis-agent-guardrails>/scripts/teardown.py add`), and a thing stays until `done` takes it
   off; the check warns with the three oldest and the oldest's age where it has one, and runs nothing a
-  line names;
+  line names; a list that cannot be read is `unknown`;
 - `pr gate`: when `pr_gated` is configured, every commit on a gated repository's default
-  branch since its gate began came through a pull request;
+  branch since its gate began came through a pull request; a gated checkout whose default branch
+  cannot be read (its git would run a program its own configuration names, or failed) makes it `unknown`;
 - `prompt check`: where the day's prompt check is on, by the rituals' config: the workspaces
   whose day does not close while something the principal typed is cited by no record, and
   the ones where it is off. Each workspace's setting is read as its day-end reads it, with
   the config's defaults under it. Information, not a finding: turning it on is each
   workspace's own word. A setting the day-end refuses warns, since no day of that
-  workspace closes until it is mended, and so does a config that cannot be read;
+  workspace closes until it is mended, and a config that cannot be read is `unknown`;
 - `temporary addresses`: when `temporary_addresses` is configured, a quick tunnel's
   address in a message is read as one under the installed config, so such a message is
   refused; a setting that cannot be read fails;
@@ -231,20 +232,22 @@ there with no item here fails:
   A command line too old for a flag, print mode not using the sign-in (as when `-p` runs bare), a
   model the plan does not offer, no verdict, or an answer past the judge's deadline each warns with
   its fix; a judge section that cannot be used, a cloud address off its provider's host among them, is
-  one `judge` warn;
+  one `judge` warn, and a probe that could not be run is one `judge` line, `unknown`;
 - `latest release`: only with `--latest`, whether an installed harness is behind the
-  published release;
+  published release; a release that cannot be read is `unknown`;
 - `git hooks`: the global `core.hooksPath` (report only);
 - `hook interpreter`: the Python the hooks run, read from the hook launcher, and any newer
   final python.org version, up to the newest the checks test, that the installer passed over,
   with why (the guard runs only an interpreter root owns, with every folder above it, that
   this user and its groups cannot write) and the steps that let the next install pin it: `sudo
-  chmod -R go-w` on its folder, then the release launcher's `--install-only` (5.24.1);
+  chmod -R go-w` on its folder, then the release launcher's `--install-only` (5.24.1); a pinned Python that
+  does not answer is `unknown`;
 - `machine security`, `security <name>`: the Mac keeps its files to its own user: the home
   folder and `~/.ssh` open to no other local user, no private key in `~/.ssh` readable by
   one, and on macOS FileVault, the firewall, System Integrity Protection and Gatekeeper on
   (`fdesetup`, `socketfilterfw`, `csrutil` and `spctl`, asked at once). All well is one
-  line; each problem is a warning, never a failure, that names the one step that fixes it.
+  line; each problem is a warning, never a failure, that names the one step that fixes it, and one
+  that cannot be told is `unknown`.
   The doctor runs at each day's start and after every install, so a new Mac's first setup
   runs it too (5.24.1);
 - `sandbox`: the guard's sandbox in one line, for the administrator file of each harness

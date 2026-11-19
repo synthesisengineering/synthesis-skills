@@ -159,7 +159,7 @@ def test_plugin_entry_states(tmp_path):
     assert doctor.check_plugin("claude", None).status == "fail"
     assert doctor.check_plugin("codex", None, "`codex plugin list` gave no JSON").status == "fail"
     slow = doctor.check_plugin("codex", None, "cannot tell: `codex plugin list` did not answer within 45 s; run the doctor again")
-    assert slow.status == "warn" and "did not answer" in slow.detail  # 2026-10-10: slow, not broken
+    assert slow.status == "unknown" and "did not answer" in slow.detail  # 2026-10-10: slow, not broken, and untold
     off = {"enabled": False, "version": "5.0.0", "path": tmp_path}
     assert "disabled" in doctor.check_plugin("muse", off).detail
     on = {**off, "enabled": True}
@@ -239,7 +239,7 @@ def test_the_doctor_fails_a_plugin_whose_guard_lets_a_call_through_when_it_canno
 
 
 @pytest.mark.parametrize("version,status", [("2.1.294", "warn"), ("2.1.30", "warn"), ("2.0.999", "warn"), ("2.1.295", "ok"),
-                                            ("2.1.1000", "ok"), ("3.0", "ok"), ("", "warn")])
+                                            ("2.1.1000", "ok"), ("3.0", "ok"), ("", "unknown")])
 def test_the_doctor_warns_when_claude_code_cannot_honor_the_setting(version, status):
     check = doctor.check_claude_fail_closed(REPO_HOOKS, version)
     assert check.status == status
@@ -916,7 +916,7 @@ def test_unreadable_muse_trust_state_is_cannot_tell_not_a_failed_approval(tmp_pa
     doctor said the plugin registers no hooks; run on the host, all four were approved."""
     unreadable = {**muse_inspect(tmp_path), "runtime_capabilities": []}
     check = doctor.check_muse_approval(unreadable)
-    assert check.status == "warn" and "cannot tell" in check.detail and "4 hooks" in check.detail
+    assert check.status == "unknown" and "cannot tell" in check.detail and "4 hooks" in check.detail
 
 
 def test_muse_manifest_is_wired_to_the_stable_hook(tmp_path):
@@ -1151,7 +1151,7 @@ def test_a_harness_the_run_could_not_look_at_keeps_its_own_date_and_says_nothing
     home = machine[0] / ".synthesis" / "v5"
     _note(machine[0], ago=3600.0, codex=EVENTS, muse=["stop"])
     before = _seen(machine[0])
-    doctor._note_waits(home, [doctor.Check("warn", "muse hook approval", "cannot tell whether Muse approved the 4 hooks")], time.time())
+    doctor._note_waits(home, [doctor.Check("unknown", "muse hook approval", "cannot tell whether Muse approved the 4 hooks")], time.time())
     assert _seen(machine[0]) == before                                           # neither entry changed, neither re-dated
     assert {name: entry["waiting"] for name, entry in paths.waits(home).items()} == {
         "codex hook trust": EVENTS, "muse hook approval": ["stop"]}
@@ -1473,7 +1473,7 @@ def test_the_doctor_says_where_the_days_prompt_check_is_on(machine, capsys):
     assert doctor.check_prompt_check({"workspaces": {"alpha": {"prompt_reconcile": {"records": ["/x"]}}}}).detail == "on for alpha"
     assert doctor.check_prompt_check({"workspaces": {"alpha": {}}}).detail.startswith("on for no workspace; off for alpha")
     unread = doctor.check_prompt_check(None, "not JSON")
-    assert unread.status == "warn" and "cannot tell" in unread.detail and "not JSON" in unread.detail
+    assert unread.status == "unknown" and "cannot tell" in unread.detail and "not JSON" in unread.detail
     home, _, _ = machine
     rituals = home / ".synthesis" / "v5" / "rituals"
     rituals.mkdir(parents=True, exist_ok=True)
@@ -1484,7 +1484,7 @@ def test_the_doctor_says_where_the_days_prompt_check_is_on(machine, capsys):
     (rituals / "config.json").write_text("{not json")
     doctor.main([])
     lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
-    assert len(lines) == 1 and lines[0].split()[0] == "warn"
+    assert len(lines) == 1 and lines[0].split()[0] == "unknown"
 
 
 def test_the_prompt_check_line_reads_the_setting_as_the_day_end_does():
@@ -1517,7 +1517,7 @@ def test_a_rituals_config_whose_workspace_is_no_object_costs_the_doctor_one_line
     (rituals / "config.json").write_text(json.dumps(config))
     doctor.main([])
     lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
-    assert len(lines) == 1 and lines[0].split()[0] == "warn" and "cannot tell" in lines[0] and "object" in lines[0]
+    assert len(lines) == 1 and lines[0].split()[0] == "unknown" and "cannot tell" in lines[0] and "object" in lines[0]
     assert _waiting(home).is_file()                                              # and the run reached its end
 
 
@@ -1611,7 +1611,7 @@ def test_a_listing_that_does_not_answer_is_not_waited_on_a_second_time_and_the_l
     monkeypatch.setattr(doctor, "CLI_TIMEOUT", 2)
     doctor.main([])
     line = codex_lines(capsys)["codex plugin"]
-    assert line.split()[0] == "warn" and "cannot tell" in line and "did not answer within 2 s" in line
+    assert line.split()[0] == "unknown" and "cannot tell" in line and "did not answer within 2 s" in line
     assert log.read_text().splitlines() == [LIMITED]
 
 
@@ -1621,7 +1621,7 @@ def test_a_whole_listing_that_does_not_answer_says_what_lets_it_finish(machine, 
     monkeypatch.setattr(doctor, "CLI_TIMEOUT", 2)
     doctor.main([])
     line = codex_lines(capsys)["codex plugin"]
-    assert line.split()[0] == "warn" and "cannot tell" in line and "`codex plugin list`" in line and "once" in line
+    assert line.split()[0] == "unknown" and "cannot tell" in line and "`codex plugin list`" in line and "once" in line
     assert log.read_text().splitlines() == [LIMITED, WHOLE]
 
 
@@ -1831,7 +1831,7 @@ def test_a_codex_that_answers_nothing_is_named_on_a_machine_with_no_other_harnes
     doctor.main([])
     out = capsys.readouterr().out.splitlines()[1:]
     plugin = [line for line in out if line.split()[1:3] == ["codex", "plugin"]]
-    assert len(plugin) == 1 and plugin[0].split()[0] == "warn" and "cannot tell" in plugin[0] and "did not answer within 2 s" in plugin[0]
+    assert len(plugin) == 1 and plugin[0].split()[0] == "unknown" and "cannot tell" in plugin[0] and "did not answer within 2 s" in plugin[0]
     assert not [line for line in out if line.split()[1] == "harnesses"]
 
 
@@ -1917,7 +1917,7 @@ def test_catalog_check_names_undiscoverable_skills_and_overruns(tmp_path):
     assert doctor.check_codex_catalog(full, "", plugin, {}, tmp_path).status == "ok"
     big = {"data": [{"skills": [_skill(tmp_path / f"p{i}", f"s{i}", description="d" * 1024) for i in range(9)]}]}
     assert doctor.check_codex_catalog(big, "", None, {}, tmp_path).status == "fail"
-    assert doctor.check_codex_catalog(None, "boom", plugin, {}, tmp_path).status == "warn"
+    assert doctor.check_codex_catalog(None, "boom", plugin, {}, tmp_path).status == "unknown"
 
 
 def test_catalog_budget_follows_the_configured_model(tmp_path):
@@ -1943,7 +1943,7 @@ def test_a_model_cache_that_cannot_be_read_is_said_and_fails_no_catalog(tmp_path
     big = {"data": [{"skills": [_skill(tmp_path / f"p{i}", f"s{i}", description="d" * 1024) for i in range(9)]}]}
     (tmp_path / "models_cache.json").write_text('{"models": [{"slug": "m", "context_w')
     check = doctor.check_codex_catalog(big, "", None, {"model": "m"}, tmp_path)
-    assert check.status == "warn" and "cannot tell" in check.detail and "model cache" in check.detail, check
+    assert check.status == "unknown" and "cannot tell" in check.detail and "model cache" in check.detail, check
     (tmp_path / "models_cache.json").unlink()
     assert doctor.check_codex_catalog(big, "", None, {"model": "m"}, tmp_path).status == "fail"
 
@@ -2053,7 +2053,7 @@ def test_latest_release_failure_is_reported_not_hidden():
     def fail(url):
         raise OSError("network down")
     check = doctor.check_latest({"claude": "5.0.0"}, fetch=fail)
-    assert check.status == "warn" and "network down" in check.detail
+    assert check.status == "unknown" and "network down" in check.detail
 
 
 def test_fetch_retries_with_the_system_ca_bundle_only_on_certificate_failures(monkeypatch, tmp_path):
@@ -2191,10 +2191,15 @@ def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     (state / "sync-a.json").write_text(json.dumps({"synced": "2026-10-30T20:00:00Z"}), encoding="utf-8")
     (state / "sync-c.json").write_text(json.dumps({"synced": "2026-10-20T20:00:00Z"}), encoding="utf-8")
     now = time.mktime(time.strptime("2026-10-31", "%Y-%m-%d"))
-    found = {c.name: c for c in doctor.check_sessions_repos({"a": cloned, "b": tmp_path / "missing", "c": cloned}, state, now)}
+    from synthesis import sessions
+    (sessions.root() / "b" / "2026-10" / "codex-s1").mkdir(parents=True)  # this Mac holds a session of b, none of d
+    repos = {"a": cloned, "b": tmp_path / "missing", "c": cloned, "d": tmp_path / "elsewhere"}
+    found = {c.name: c for c in doctor.check_sessions_repos(repos, state, now)}
     assert found["sessions repo a"].status == "ok"
-    assert found["sessions repo b"].status == "warn" and "not cloned" in found["sessions repo b"].detail
+    assert found["sessions repo b"].status == "warn" and "not cloned; clone it there" in found["sessions repo b"].detail
     assert found["sessions repo c"].status == "warn" and "last synced 2026-10-20" in found["sessions repo c"].detail
+    assert found["sessions repo d"].status == "info" and found["sessions repo d"].detail.endswith(  # BACKLOG D5: one config,
+        "is not cloned, and this Mac holds none of its sessions or ritual records, so it needs none")  # every Mac
 
 
 def _schedule(plist: Path, line=None) -> Path:
@@ -2468,7 +2473,7 @@ def test_a_connector_kept_running_must_have_been_started_with_the_outbox(connect
     assert elsewhere.status == "fail" and other in elsewhere.detail
 
 
-def test_a_connector_that_cannot_be_read_is_a_warning_and_never_ok(connector):
+def test_a_connector_that_cannot_be_read_is_unknown_and_never_ok(connector):
     outbox, unit, pid_file = connector
     _installed(*connector)
     pid_file.unlink()
@@ -2476,11 +2481,11 @@ def test_a_connector_that_cannot_be_read_is_a_warning_and_never_ok(connector):
         if written is not None:
             pid_file.write_text(written, encoding="utf-8")
         check = doctor.check_outbox(*connector, _unread)
-        assert check.status == "warn" and "cannot tell" in check.detail, written
+        assert check.status == "unknown" and "cannot tell" in check.detail, written
     pid_file.write_text("4242\n", encoding="utf-8")
     for shown in ({}, {"PATH": "/usr/bin:/bin", "ALLOWED_FILE_DIRS": str(outbox)}):  # nothing shown; not the start script's process
         check = doctor.check_outbox(*connector, lambda pid: shown)
-        assert check.status == "warn" and "cannot tell" in check.detail, shown
+        assert check.status == "unknown" and "cannot tell" in check.detail, shown
 
 
 def test_a_connector_started_by_hand_is_judged_when_it_can_be_read_and_expected_only_when_installed(connector):
@@ -2578,7 +2583,7 @@ def test_what_a_running_process_was_started_with_is_read_from_the_os(connector):
     assert seen.get("WORKSPACE_MCP_PORT") == "8765" and seen.get("ALLOWED_FILE_DIRS") == env["ALLOWED_FILE_DIRS"]
     assert check.status == "ok", check.detail
     stopped = doctor.check_outbox(*connector)
-    assert stopped.status == "warn" and "cannot tell" in stopped.detail
+    assert stopped.status == "unknown" and "cannot tell" in stopped.detail
 
 
 @pytest.mark.parametrize("platform,unit,pid_file", [
@@ -2723,7 +2728,7 @@ def test_the_doctor_warns_while_something_a_test_set_up_is_still_in_place(tmp_pa
     assert "1 thing " in doctor.check_teardown(listed, now).detail and "under an hour" in doctor.check_teardown(listed, now).detail
     listed.unlink()
     listed.mkdir()
-    assert doctor.check_teardown(listed, now).status == "warn"                                               # a list that cannot be read is said
+    assert doctor.check_teardown(listed, now).status == "unknown"                                            # a list that cannot be read is said
 
 
 def test_the_doctor_reads_a_teardown_list_whatever_it_holds(tmp_path):
@@ -2761,7 +2766,7 @@ def test_the_doctor_reads_a_teardown_list_whatever_it_holds(tmp_path):
     assert len(doctor.check_teardown(listed, now).detail) < 600                                              # one long line does not fill the screen
     listed.unlink()
     listed.symlink_to(tmp_path / "gone")
-    assert doctor.check_teardown(listed, now).status == "warn" and "cannot be read" in doctor.check_teardown(listed, now).detail
+    assert doctor.check_teardown(listed, now).status == "unknown" and "cannot be read" in doctor.check_teardown(listed, now).detail
 
 
 # Records that leave this Mac, part 2 (plan item 13.5, 5.19.0). The audit of 2026-11-11 (gap 4): nothing counted
@@ -2875,7 +2880,7 @@ def test_unsaved_reads_every_name_the_checkouts_branch_a_folder_removed_whole_an
     assert doctor.unsaved(claims, 24)[os.path.realpath(repo)][2:] == (1, 1)  # sub/x.md; café.md (f.md is on another branch)
     (repo / ".git" / "index").write_bytes(b"not an index")
     line = doctor.check_unsaved({}, claims)
-    assert line.status == "warn" and "could not read" in line.detail
+    assert line.status == "unknown" and "could not read" in line.detail
 
 
 def test_unsaved_counts_live_seats_claims_alone(tmp_path, capsys):
@@ -3020,3 +3025,39 @@ def test_the_doctor_runs_the_plan_judge_line_only_where_one_is_configured(isolat
     (isolated_home / "config.json").write_text(json.dumps(PLAN), encoding="utf-8")
     assert [c.name for c in doctor.run_checks(find=lambda h: None) if c.name.endswith("plan judge")] == ["codex plan judge"]
     assert seen and seen[0]["judge"] == PLAN["judge"]
+
+
+# ---- a check that could not tell says so in its status (review round 1 of `synthesis review`, finding 3b) -------------
+
+def test_a_check_that_could_not_tell_is_unknown_never_a_warning_or_a_pass(tmp_path, monkeypatch):
+    """Its words once carried it ("cannot tell", "could not be listed", "does not answer"), and a reader matching words
+    missed some. Each such line has the status `unknown`: never a failure, never read as fine."""
+    listed = tmp_path / "teardown.jsonl"
+    listed.mkdir()
+    assert doctor.check_teardown(listed).status == "unknown"
+
+    def offline(url, timeout=5):
+        raise OSError("no network")
+    assert doctor.check_latest({"runtime": "5.0.0"}, "stable", fetch=offline).status == "unknown"
+    home = tmp_path / "home"
+    (home / "bin").mkdir(parents=True)
+    (home / "bin" / "synthesis-hook").write_text("exec /usr/bin/python3 -I -S hook.py\n", encoding="utf-8")
+    monkeypatch.setattr(install, "interpreter_problems", lambda path: [])
+    monkeypatch.setattr(install, "final_version", lambda path: None)  # a pinned Python that does not answer
+    assert doctor.check_interpreter(home).status == "unknown"
+    site = tmp_path / "site"
+    (site / ".git").mkdir(parents=True)
+    (site / ".git" / "config").write_text('[remote "origin"]\n\turl = https://github.com/acme/site.git\n', encoding="utf-8")
+    unread = lambda argv, **kw: subprocess.CompletedProcess(argv, 128, "", "fatal")  # noqa: E731
+    check = doctor.check_pr_gate({"acme/site": {"since": "2026-01-01", "branch": "main"}}, [site], run=unread)
+    assert check.status == "unknown" and "cannot read origin/main" in check.detail
+    missing = doctor.check_pr_gate({"acme/other": {"since": "2026-01-01"}}, [site], run=unread)
+    assert missing.status == "warn" and "no checkout" in missing.detail  # a checkout that is not there is known, not untold
+
+
+def test_the_summary_counts_unknown_and_the_report_puts_it_after_failures():
+    checks = [doctor.Check("ok", "a", "fine"), doctor.Check("warn", "b", "drifting"), doctor.Check("unknown", "c", "cannot tell"),
+              doctor.Check("fail", "d", "broken"), doctor.Check("info", "e", "said")]
+    assert "1 unknown" in doctor.summary(checks, 1.0) and doctor.summary(checks, 1.0).startswith("synthesis doctor: 1 problem")
+    assert [line.split()[0] for line in doctor.report(checks, 1.0).splitlines()[1:]] == ["fail", "unknown", "warn", "info", "ok"]
+    assert doctor.summary([doctor.Check("unknown", "c", "cannot tell")], 1.0).startswith("synthesis doctor: healthy (")

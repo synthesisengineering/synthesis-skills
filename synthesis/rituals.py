@@ -69,10 +69,11 @@ def hosts_folders() -> list[Path]:
 
 
 def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line costs only itself
-    """This Mac's log and every host's file in each sessions repo's `rituals/`, each record once (5.20.0). A file that
-    cannot be read, or a line that is not a record, is counted as malformed; neither costs the rest."""
-    rows, seen = [], set()
-    for path in [state_dir() / "history.jsonl"] + [f for d in hosts_folders() for f in sorted(d.glob("*.jsonl"))]:
+    """This Mac's log and every host's file in each sessions repo's `rituals/`, each record once (5.20.0), each with the
+    `host` whose file it was read from, "" for this Mac's log (BACKLOG D5). A file that cannot be read, or a line that is
+    not a record, is counted as malformed; neither costs the rest."""
+    rows, seen, own = [], set(), state_dir() / "history.jsonl"
+    for path in [own] + [f for d in hosts_folders() for f in sorted(d.glob("*.jsonl"))]:
         try:
             if path.is_symlink() or (path.is_file() and path.stat().st_size > 64 * 1024 * 1024):
                 raise OSError("a link, or over 64 MB: not read")
@@ -85,9 +86,10 @@ def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line 
                 continue
             seen.add(line)
             try:
-                rows.append(json.loads(line.decode("utf-8")))
+                row = json.loads(line.decode("utf-8"))
             except ValueError:  # UnicodeDecodeError is one
-                rows.append(None)
+                row = None
+            rows.append(dict(row, host="" if path == own else path.stem) if isinstance(row, dict) else row)
     good = [r for r in rows if is_record(r)]
     return good, len(rows) - len(good)
 

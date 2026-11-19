@@ -62,9 +62,10 @@ def git(repo, *args):
     return subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True).stdout.strip()
 
 
-def checkout(where, version="5.1.0", runtime=False):
+def checkout(where, version="5.1.0", runtime=False, carry=""):
     """A checkout of the synthesis-skills repository as a release finds it: committed, on main, origin on GitHub.
-    With `runtime`, it carries the runtime package of this tree at `version`, so it installs as a runtime."""
+    With `runtime`, it carries the runtime package of this tree at `version`, so it installs as a runtime; with `carry`
+    too, its install.py declares one carried skill more, whose script and test it holds."""
     repo = where
     for manifest in release.MANIFESTS:
         (repo / manifest).parent.mkdir(parents=True, exist_ok=True)
@@ -82,6 +83,15 @@ def checkout(where, version="5.1.0", runtime=False):
             (repo / "synthesis" / source.name).write_bytes(source.read_bytes())
         init = repo / "synthesis" / "__init__.py"
         init.write_text(re.sub(r'__version__ = "[\d.]+"', f'__version__ = "{version}"', init.read_text()))
+        if carry:
+            (repo / "skills" / carry / "scripts").mkdir(parents=True)
+            (repo / "skills" / carry / "scripts" / "later.py").write_text("print('later')\n")
+            (repo / "skills" / carry / "tests").mkdir()
+            (repo / "skills" / carry / "tests" / "test_later.py").write_text("def test_later():\n    pass\n")
+            anchor = '"synthesis-skills-manager", "synthesis-onboarding")'
+            declared = repo / "synthesis" / "install.py"
+            assert declared.read_text().count(anchor) == 1, "the declaration this helper extends moved"
+            declared.write_text(declared.read_text().replace(anchor, anchor[:-1] + f', "{carry}")'))
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     git(repo, "add", ".")
     git(repo, "commit", "-qm", f"v{version}")
@@ -258,6 +268,29 @@ def test_a_staged_runtime_that_differs_from_the_listing_never_becomes_current(tm
         p for p in (paths.home() / "releases").glob("*") if p.name != ".install.lock"]  # install's own lock stays
     git(source, "checkout", "--", "synthesis/guards.py")
     assert "synthesis runtime" in install.install(source, expected=listing)
+
+
+def test_a16_the_listing_and_the_install_take_the_skills_the_tag_declares(tmp_path):
+    """A16: the release lists, and the running installer stages, the skills the tag's own install.py declares, so a tag
+    that carries one skill more than the running runtime installs it."""
+    assert "synthesis-carried-later" not in install.STABLE_SKILL_SCRIPTS
+    source = checkout(tmp_path / "s", "5.23.1", True, carry="synthesis-carried-later")
+    git(source, "tag", "v5.23.1")
+    listing = release.runtime_listing(source, "v5.23.1")
+    assert "skills/synthesis-carried-later/scripts/later.py" in listing
+    assert not [p for p in listing if "/tests/" in p]
+    assert "synthesis runtime" in install.install(source, expected=listing)
+    current = Path(os.path.realpath(paths.home() / "current"))
+    assert (current / "skills" / "synthesis-carried-later" / "scripts" / "later.py").is_file()
+
+
+def test_a16_a_tag_whose_declaration_cannot_be_read_lists_nothing(tmp_path):
+    source = checkout(tmp_path / "s", "5.23.1", True)
+    (source / "synthesis" / "install.py").write_text("STABLE_SKILL_SCRIPTS = tuple()\n")
+    git(source, "commit", "-qam", "a declaration made at run time")
+    git(source, "tag", "v5.23.1")
+    with pytest.raises(install.Refused, match="STABLE_SKILL_SCRIPTS"):
+        release.runtime_listing(source, "v5.23.1")
 
 
 # --- A2 and A3 by construction: what is pushed and installed comes from a fresh clone of what GitHub serves --------------

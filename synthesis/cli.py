@@ -524,6 +524,11 @@ def cmd_doctor(args) -> int:
     return doctor.main(args.rest)
 
 
+def cmd_review(args) -> int:
+    from synthesis import review
+    return review.main(["--json"] * args.json + ["--fetch"] * args.fetch)
+
+
 def cmd_version(args) -> int:
     print(__version__)
     return 0
@@ -645,6 +650,11 @@ def parser() -> argparse.ArgumentParser:
     s = sub.add_parser("doctor", help="check the runtime, hooks and each harness's install", add_help=False)
     s.add_argument("rest", nargs=argparse.REMAINDER)
     s.set_defaults(fn=cmd_doctor)
+    s = sub.add_parser("review", help="what is wrong on this Mac, in every workspace's repositories, records, claims, schedules and "
+                       "install, with a repair plan; it changes nothing and no step runs")
+    s.add_argument("--json", action="store_true", help="print the review as one JSON object")
+    s.add_argument("--fetch", action="store_true", help="first fetch every repository and read the stable release's version; network")
+    s.set_defaults(fn=cmd_review)
     sub.add_parser("version").set_defaults(fn=cmd_version)
     return p
 

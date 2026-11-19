@@ -48,8 +48,8 @@ instructions small enough for every harness.
    Every failure names the file or skill to fix.
 2. **Installed.** `synthesis doctor` (add `--latest` to compare with the published
    release). The first line says `healthy` or how many problems; each later line is
-   `ok`, `warn`, `fail` or `info`, a check name, and what it found. Fix every `fail`
-   from source, then rerun.
+   `ok`, `warn`, `unknown` (it could not tell, never fine), `fail` or `info`, a check name,
+   and what it found. Fix every `fail` from source, then rerun.
 3. **Live.** Start a fresh session in each harness and confirm its SessionStart context
    names the active project. Ask the person to trust changed hooks in Codex's `/hooks`
    and to run `muse plugins approve synthesis-skills` when doctor lists pending hooks.

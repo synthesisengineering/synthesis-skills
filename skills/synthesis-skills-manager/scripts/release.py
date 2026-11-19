@@ -276,13 +276,17 @@ def on_main(clone: Path, sha: str) -> bool:
 
 
 def runtime_listing(clone: Path, ref: str) -> dict:
-    """{path: blob id} at `ref` for every file the runtime takes from a plugin (`install.takes`)."""
-    listing = {}
+    """{path: blob id} at `ref` for every file the runtime takes from a plugin (`install.takes`), of the skills that commit's
+    own install.py says the runtime carries, read from the same tree, never the running runtime's list (A16): none for a
+    commit with no runtime package, install.Refused for one whose install.py says no readable list."""
+    tree = {}
     for line in filter(None, git(clone, "ls-tree", "-r", "-z", ref, clean=True).stdout.split("\0")):
         meta, path = line.split("\t", 1)
-        if install.takes(path):
-            listing[path] = meta.split()[2]
-    return listing
+        tree[path] = meta.split()[2]
+    declared = git(clone, "cat-file", "blob", tree["synthesis/install.py"], clean=True) if "synthesis/install.py" in tree else None
+    names = () if declared is None else install.carried_in(declared.stdout if declared.returncode == 0 else "",
+                                                             f"{ref}:synthesis/install.py")
+    return {path: blob for path, blob in tree.items() if install.takes(path, names)}
 
 
 def train_path(repo: Path) -> str:

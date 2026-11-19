@@ -46,6 +46,7 @@ metadata:
 - [references/mid-day-and-modes.md](references/mid-day-and-modes.md): mid-day sync, observer and concurrent-sessions modes, audio alerts. Read on a sync request or when a mode applies.
 - [references/weekly-and-longer.md](references/weekly-and-longer.md): the weekly loose-ends review, the lapse register, quarterly and longer reviews. Read when a review is owed.
 - [references/scripts.md](references/scripts.md): each script's command line, output and exit codes. Read before running one.
+- [references/machine-review.md](references/machine-review.md): `synthesis review`, the whole Mac with a repair plan. Read before running it.
 - [references/plan-format.md](references/plan-format.md): the daily plan's structure and the section names the console reads. Read before writing a plan.
 - [references/draft-grounding.md](references/draft-grounding.md): grounding, formatting, numbering and temporal checks for drafts. Read before any draft.
 - [references/sync-watermarks.md](references/sync-watermarks.md): the watermark contract and the Google Chat target set. Read before any sync.

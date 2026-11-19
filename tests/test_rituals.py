@@ -383,3 +383,23 @@ def test_two_macs_of_one_host_name_keep_two_files_and_a_wrong_shaped_or_linked_f
     records, bad = rituals.read()
     assert [r["date"] for r in records] == ["2026-11-12"] and bad == 2  # the wrong-shaped line, and the link not read
     assert rituals.last(records, "alpha")["date"] == "2026-11-12"
+
+
+def test_each_record_carries_the_host_whose_file_it_was_read_from(tmp_path, write_config):
+    """BACKLOG D5 (2026-11-18): a summary that counts each Mac's close needs to know whose file a record came from. One
+    read from this Mac's own log carries no host, its copy in this Mac's synced file included (the log is read first and
+    each record once); one read from another host's synced file carries that file's host."""
+    from synthesis import rituals
+    repo = tmp_path / "sessions-alpha"
+    (repo / "rituals").mkdir(parents=True)
+    write_config({"sessions_repos": {"alpha": str(repo)}})
+    line = lambda r: json.dumps(r, separators=(",", ":"), sort_keys=True)  # noqa: E731
+    mine = {"date": "2026-11-18", "direction": "day-end", "workspace": "alpha", "ts": "2026-11-18T18:00:00-05:00"}
+    theirs = {**mine, "ts": "2026-11-18T19:00:00-05:00"}
+    log = rituals.state_dir() / "history.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(line(mine) + "\n", encoding="utf-8")
+    (repo / "rituals" / "mac-a-1234abcd.jsonl").write_text(line(mine) + "\n", encoding="utf-8")
+    (repo / "rituals" / "mac-b-5678ef90.jsonl").write_text(line(theirs) + "\n", encoding="utf-8")
+    records, bad = rituals.read()
+    assert bad == 0 and sorted((r["ts"], r["host"]) for r in records) == [(mine["ts"], ""), (theirs["ts"], "mac-b-5678ef90")]

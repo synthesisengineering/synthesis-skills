@@ -553,3 +553,28 @@ def test_two_midday_syncs_in_one_day_each_keep_their_own_record(tmp_path: Path, 
     assert alpha["last_midday"]["ts"] == syncs[-1]["ts"] and alpha["last_day_end"] is None
     assert query_json(tmp_path, "open", "--workspace", "alpha", "--today", "2026-09-15")["open_workdays"] == [
         {"workspace": "alpha", "date": "2026-09-14"}]                         # two syncs, and the day is still open
+
+
+def test_the_summary_counts_each_macs_close_and_names_the_one_it_runs_on(tmp_path: Path, monkeypatch) -> None:
+    """BACKLOG D5 (2026-11-18): two Macs that close one workspace on one day read the same in a summary that names only
+    the newest close, so whether the other Mac's record had arrived could not be seen. Each Mac's newest close of the
+    workspace is listed by host, this Mac's own marked; with no other Mac's close read, the words are as they were."""
+    monkeypatch.setenv("SYNTHESIS_HOST", "Mac A")
+    home, repo, state = Path(os.environ["SYNTHESIS_HOME"]), tmp_path / "sessions-alpha", tmp_path / "state"
+    (repo / "rituals").mkdir(parents=True)
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "config.json").write_text(json.dumps({"sessions_repos": {"alpha": str(repo)}}), encoding="utf-8")
+    record(state, "day-end", "alpha", "2026-09-14")
+    alone = run(state, "query", "summary", "--today", "2026-09-14").stdout
+    view = query_json(state, "summary", "--today", "2026-09-14")
+    here = view["host"]
+    assert here.startswith("Mac-A-") and view["workspaces"]["alpha"]["last_day_end_by_host"] == {here: "2026-09-14"}
+    assert "closes by host" not in alone, alone
+    (repo / "rituals" / "Mac-B-0123abcd.jsonl").write_text(json.dumps({"date": "2026-09-11", "direction": "day-end", "workspace": "alpha",
+                                                                       "ts": "2026-09-11T18:00:00-04:00"}) + "\n", encoding="utf-8")
+    view = query_json(state, "summary", "--today", "2026-09-14")
+    assert view["workspaces"]["alpha"]["last_day_end_by_host"] == {here: "2026-09-14", "Mac-B-0123abcd": "2026-09-11"}
+    assert view["workspaces"]["alpha"]["last_day_end"]["date"] == "2026-09-14"
+    shown = run(state, "query", "summary", "--today", "2026-09-14").stdout
+    assert f"closes by host: {here} 2026-09-14 (this Mac), Mac-B-0123abcd 2026-09-11" in shown, shown
+    assert [line for line in shown.splitlines() if "closes by host" not in line] == alone.splitlines()

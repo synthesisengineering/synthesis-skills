@@ -533,10 +533,12 @@ def cmd_record(args) -> int:
     return 0
 
 
-def row(records: list[dict], cfg: dict, workspace: str, today: date) -> dict:
+def row(records: list[dict], cfg: dict, workspace: str, today: date, here: str = "") -> dict:
     end, start = rituals.last(records, workspace), rituals.last(records, workspace, "day-start")
     review, sync = rituals.last(records, workspace, "weekly-review"), rituals.last(records, workspace, "midday")
+    closes = [(r.get("host") or here, r["date"]) for r in records if r.get("workspace") == workspace and r["direction"] == "day-end"]
     return {"last_day_end": {k: end[k] for k in ("date", "mode", "outcome") if k in end} if end else None,
+            "last_day_end_by_host": {host: max(d for h, d in closes if h == host) for host in sorted({h for h, _ in closes})},
             "last_day_start": {k: start[k] for k in ("date", "mode") if k in start} if start else None,
             "last_midday": {k: sync[k] for k in ("date", "ts", "mode", "outcome") if k in sync} if sync else None,
             "streak": rituals.streak(records, cfg, workspace, today),
@@ -570,8 +572,9 @@ def cmd_query(args) -> int:
         out.update({"workspace_inferred": True} if inferred else {})
     else:
         out = {}
-        if args.view in ("summary", "last"):
-            out["workspaces"] = {w: row(records, cfg, w, today) for w in ([workspace] if workspace else named)}
+        if args.view in ("summary", "last"):  # this Mac's name, for the closes each Mac's file holds
+            out["host"] = here = rituals.host()
+            out["workspaces"] = {w: row(records, cfg, w, today, here) for w in ([workspace] if workspace else named)}
         if args.view in ("summary", "open"):
             out["open_workdays"] = [{"workspace": w, "date": d}
                                     for w, d in rituals.open_days(records, today, workspace)]
@@ -590,6 +593,9 @@ def cmd_query(args) -> int:
               f"{'n/a' if view['streak'] is None else view['streak']:<4}  weekly "
               f"{view['last_weekly_review'] or '—'}{'  OWED' if view['weekly_review_owed'] else ''}"
               f"{'' if still is None else f'  QUIET {still} days (worked occasionally)'}")
+        if set(view["last_day_end_by_host"]) - {out["host"]}:  # another Mac's close, read from its synced file
+            print(f"  {'':14} closes by host: " + ", ".join(f"{host} {day}" + " (this Mac)" * (host == out["host"])
+                                                          for host, day in view["last_day_end_by_host"].items()))
     for item in out.get("open_workdays", []):
         print(f"  OPEN  {item['workspace']:14} {item['date']} (started, never closed)")
     for item in out.get("stale_mailboxes", []):

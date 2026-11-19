@@ -4,6 +4,48 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.26.0] - 2026-11-18
+
+- **`synthesis review`: the whole Mac in one read, ending in a repair plan** (BACKLOG C3, roadmap FUTURE-01). One
+  read-only command reads every workspace's checkouts (worktrees included) and declared clones, each project's records,
+  the board's claims, the launchd schedules and the installed side. It prints findings by severity (fail, unknown,
+  warn), then a numbered plan. Each step names its exact command and who may run it: the agent with no code, the agent
+  with the principal's code, or the principal. No step runs. `--json` gives the same as one object; `--fetch` fetches
+  first. Exit 0, 1 for a failure, 2 for anything it could not tell.
+- **A step's class is the guard's own.** Git steps are classed by the guard's deciders, which record no request. A push
+  to a repository that publishes on push, or one that may move a gated default branch, waits for the principal's code.
+  No git they start reaches any remote, so no transport runs a program a repository's configuration names.
+- **The commit names its paths.** Every uncommitted path is read from git's status, an untracked folder as one. The
+  commit names each path no live seat's claim covers, never `git add -A`; that seat gets a board message, and nothing is
+  pushed under it. Past 100 paths, what is work is the principal's to decide.
+- **A branch with no upstream fails only where its commits are at risk.** One whose commits a remote-tracking branch
+  already holds (a worktree whose pull request merged) is nothing at risk: every such checkout shares one warning, naming
+  five, with no step. On the Mac this was built on, that was 86 of the 130 checkouts on a branch with no upstream.
+- **Unknown is never fine.** `synthesis doctor` gives a line that could not tell its own status, `unknown`, counted in its
+  summary and listed after failures. Health still turns on failures only. The review reports an unreadable `.git`, an
+  unreadable board session file and anything an area raises as unknown. A reader of `synthesis doctor --json` that took
+  such a line as `warn` now sees `unknown`.
+- **The strand scan never rewrites an index:** its git runs with `GIT_OPTIONAL_LOCKS=0`.
+- **A release installs the runtime its tag declares** (BACKLOG A16). The release tool runs from the running runtime, and
+  its installer staged the new runtime, and the release listed it, by the running runtime's own list of the skills the
+  runtime carries, so a release that added one installed it short: 5.25.1's runtime came up without
+  synthesis-slack-sync, and the doctor failed its package checks until the tag was installed again. Staging, the
+  release grant's spend and the release's listing now read that list from the plugin being installed: its
+  `synthesis/install.py`, parsed as data and never run, bound once to a literal tuple of distinct skill folder names, or
+  refused. The doctor fails a harness's plugin whose list cannot be read instead of stopping. This release is itself
+  installed by 5.25.2's installer; it adds no carried skill.
+- **A second Mac syncs the workspaces it holds** (BACKLOG D5, the two-Mac check). One config serves every Mac, and a
+  Mac that held only some of the workspaces failed every hourly sessions sync, and so every `synthesis handoff`, for
+  each sessions repository it had not cloned, while the doctor told it to clone them. A repository that is not cloned
+  now fails the sync only while the Mac holds something of that workspace (a session in its archive, a ritual record,
+  or a ritual log it cannot read); otherwise the sync passes it over in a line of its own, and the doctor reports it as
+  information.
+- **The summary shows each Mac's close.** `ritual_state.py query summary` named one close per workspace, so two Macs
+  that closed one workspace on one day read the same whether or not the other's record had arrived. It now lists each
+  Mac's newest day-end close (`closes by host:`; `last_day_end_by_host` in `--json`). A new end-to-end test runs a fresh
+  install, a message carried by `synthesis handoff` and read by `resume` on a second home, and both homes' day-ends
+  counted, each command as its own process through the launchers the install wrote.
+
 ## [5.25.2] - 2026-11-18
 
 - **plutil and defaults read a launch agent with no code** (BACKLOG A13). The guard held `plutil -p` of a launch agent,

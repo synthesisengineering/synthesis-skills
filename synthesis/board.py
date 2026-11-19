@@ -160,7 +160,12 @@ def _segment(x: str, y: str) -> bool:
 
 def overlaps(a: str, b: str) -> bool:
     """Whether some path falls under both claims."""
-    (pa, sa), (pb, sb) = _parts(a), _parts(b)
+    return split_overlap(_parts(a), _parts(b))
+
+
+def split_overlap(a: tuple, b: tuple) -> bool:
+    """`overlaps` for two claims split as `_parts` splits them: a caller comparing many splits each once."""
+    (pa, sa), (pb, sb) = a, b
     if not all(_segment(x, y) for x, y in zip(pa, pb)):
         return False
     if len(pa) == len(pb):

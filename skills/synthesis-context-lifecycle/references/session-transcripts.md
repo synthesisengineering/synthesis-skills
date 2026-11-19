@@ -191,6 +191,13 @@ Another Mac that has cloned a sessions repo reads its sessions with the same com
 `search`); a session this Mac also has is read from the local archive. `synthesis doctor` reports each repo: cloned,
 synced within two days, and a warning at 3 GB, before GitHub's 5 GB advice.
 
+One config serves every Mac, so it may name the sessions repo of a workspace a Mac does not hold. Where that repo is
+not cloned and this Mac holds none of the workspace's sessions (no folder of it in the archive) and none of its ritual
+records, the sync passes it over in a line that says so, and the doctor says so as information. While this Mac holds
+any, or its ritual log cannot be read, the sync fails for that workspace (`FAILED <workspace>: ... clone the
+workspace's sessions repo there`) and the doctor warns. Through 5.25.1 every such workspace failed the sync, so a
+second Mac that held some of the workspaces printed NOT READY at every handoff (BACKLOG D5, 2026-11-18).
+
 A sessions repo belongs to its workspace's deletion unit: deleting the workspace's data deletes the repo and
 `<synthesis home>/sessions/<workspace>/` (see [deletion-units.md](deletion-units.md)).
 
