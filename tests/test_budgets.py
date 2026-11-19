@@ -2952,8 +2952,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # synthesis/sends.py 15: _entry_problem 2 more (a file named by reference refused as the batch is prepared);
 # _unspendable 11 (its line, docstring 2, the import, the settings read in a try 4, the problems and the meeting on
 # today 1, the answer 2) with its 2 blank lines.
-CORE_BUDGET = 26392
-PLUGIN_BUDGET = 53166
+# Then each 7 more, all in synthesis/sends.py: the entries are judged as a batch is read from its file, not each time a
+# stored batch is listed or opened, since the words' check files a request for an address that can change (the full
+# suite's writers test): read_batch 5 more (the batch named, the loop over its entries, the problem, its refusal, the
+# return); _unspendable 2 more (its docstring 1, the settings without the address rule, whose own code is asked as the
+# call goes, 1); sends' read_batch and _unspendable join guards.SYNTHESIS_WRITES in its two lines.
+CORE_BUDGET = 26399
+PLUGIN_BUDGET = 53173
 
 
 def _lines(files):

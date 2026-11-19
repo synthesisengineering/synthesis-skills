@@ -5728,8 +5728,8 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
     ("sandbox", "_append _broker _create _delete _hook _remove _rename probes"),  # the seal check's probes (doctor --seal)
-    ("sends", "_note batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window sender_ticket settle ticket undo "
-              "window_request"),
+    ("sends", "_note _unspendable batch_request batch_spend batch_unspend close_mark close_window filed log open_batch open_window read_batch "
+              "sender_ticket settle ticket undo window_request"),
     ("sessions", "_Session _export _ritual_history _sync_workspace _write_synced _writer behind export export_file fetch lost peek recent searches sync"),
     ("wait", "_watch live main record unread watching"), ("worktree", "create main retire")) for name in names.split())
 GRANTING = frozenset(w for w in SYNTHESIS_WRITES if w.split(".")[0] in ("approvals", "sends", "guards", "hook", "cli", "commit_check",
