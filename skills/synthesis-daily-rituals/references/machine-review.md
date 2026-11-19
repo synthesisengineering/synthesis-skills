@@ -50,7 +50,7 @@ It is a command of the core CLI, `synthesis/review.py`, beside `synthesis doctor
   read, found or declared (a dangling link, a worktree's file naming a folder that is gone, a pipe, which is never
   opened), unknown, said once and never cloned over.
 - **Claims:** each session quiet past eight hours that still holds claims and holds no live wait (a seat inside a
-  wait is quiet, not gone), and each live seat whose claim covers a repository's uncommitted files, or, where it has
+  wait is quiet, not gone), and each live seat whose claim covers a repository's uncommitted paths, or, where it has
   none, the repository: in a repository many seats share, the seat whose work it is is the one whose claim covers it.
 - **Projects:** every knowledge root (`knowledge_roots`, default `~/workspaces/*/ai-knowledge-*`), audited by the
   context doctor's own `audit_root`. A project with defects is one finding; a root's warnings are one finding.
