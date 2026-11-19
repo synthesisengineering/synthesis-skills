@@ -332,7 +332,8 @@ def test_a_quiet_seat_inside_a_live_wait_is_not_taken_over(machine):
 
 def test_a_seat_counts_for_a_repository_only_where_its_claims_cover_the_work(machine):
     """In a repository many seats work in, the seat to ask about uncommitted files is the one whose claim covers them; a
-    live seat that claims another part of it is not asked, and the work outside every live claim is committed."""
+    live seat that claims another part of it is not asked, and the work outside every live claim is committed (an
+    untracked folder named as one path, as git's status lists it)."""
     (machine.current / "notes").mkdir()
     (machine.current / "notes" / "a.md").write_text("a\n", encoding="utf-8")
     report = review.review(run=machine.run, platform="darwin")  # S-live claims the whole repository: it is asked
@@ -341,8 +342,8 @@ def test_a_seat_counts_for_a_repository_only_where_its_claims_cover_the_work(mac
                              claims=[os.path.realpath(machine.current / "docs") + "/**"]))
     report = review.review(run=machine.run, platform="darwin")
     assert [(s["who"], s["do"]) for s in report["plan"]] == [
-        ("agent", "git -C ~/workspaces/acme/current add -- notes/a.md && git -C ~/workspaces/acme/current commit -m 'Commit work "
-                  "left uncommitted' -- notes/a.md"),
+        ("agent", "git -C ~/workspaces/acme/current add -- notes/ && git -C ~/workspaces/acme/current commit -m 'Commit work "
+                  "left uncommitted' -- notes/"),
         ("agent", "git -C ~/workspaces/acme/current push")]
     assert board.short_name("S-live") not in report["findings"][0]["detail"]
 
@@ -469,7 +470,29 @@ def test_a_live_seats_file_past_the_scans_first_twenty_is_left_out_of_the_commit
     commit, ask = [(s["who"], s["do"]) for s in report["plan"]]
     assert commit == ("agent", f"git -C {where} add -- {files} && git -C {where} commit -m 'Commit work left uncommitted' -- {files}")
     assert ask[0] == "agent" and ask[1].startswith("synthesis msg S-live ")
-    assert "26 uncommitted files" in report["findings"][0]["detail"] and board.short_name("S-live") in report["findings"][0]["detail"]
+    assert "25 uncommitted files and 1 untracked folder" in report["findings"][0]["detail"]
+    assert board.short_name("S-live") in report["findings"][0]["detail"]
+
+
+def test_more_uncommitted_paths_than_one_step_names_are_the_principals_to_sort(machine):
+    """A checkout on this Mac held 181,511 uncommitted entries, and the plan's commit named each twice: 71 MB, past what
+    a shell takes. An untracked folder is one path, as git's status lists it, and past the most one step names the
+    principal decides what is work there; below it the commit names each path."""
+    heap, tidy = _published(machine.remotes, machine.ws / "heap", "heap"), _published(machine.remotes, machine.ws / "tidy", "tidy")
+    for n in range(review.NAMED):
+        (heap / f"n{n:03d}.md").write_text("n\n", encoding="utf-8")
+    for folder in (heap / "big", tidy / "data"):
+        folder.mkdir()
+        for n in range(300):
+            (folder / f"d{n:03d}.md").write_text("d\n", encoding="utf-8")
+    for name in ("a.md", "b.md"):
+        (tidy / name).write_text("t\n", encoding="utf-8")
+    report = review.review(run=machine.run, platform="darwin")
+    said, steps = {f["subject"]: f["detail"] for f in report["findings"]}, [(s["who"], s["do"]) for s in report["plan"]]
+    assert f"{review.NAMED} uncommitted files and 1 untracked folder" in said["~/workspaces/acme/heap"]
+    assert [who for who, do in steps if "acme/heap" in do] == ["principal"] and not any(" add -- " in do for _, do in steps if "acme/heap" in do)
+    assert ("agent", "git -C ~/workspaces/acme/tidy add -- a.md b.md data/ && git -C ~/workspaces/acme/tidy commit -m 'Commit work left "
+                     "uncommitted' -- a.md b.md data/") in steps
 
 
 def test_a_git_entry_git_cannot_read_is_unknown_and_a_worktree_is_read(machine):
