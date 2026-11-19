@@ -209,8 +209,8 @@ def test_no_words_of_the_withdrawn_rule_remain_and_a_refusal_quotes_no_placehold
 
 # --- 12, 13: the open list: each spelling made to beat the reader, expected to fail until it is closed ---------------
 
-OPEN = {"escaped-name": "document.querySelector('b')['\\u0063lick']()", "escaped-hex": "document.querySelector('b')['\\x63lick']()",
-        "parenthesized": "(document.querySelector('b').click)()", "template-tag": "document.querySelector('b').click``",
+CLOSED = {"escaped-name": "document.querySelector('b')['\\u0063lick']()", "escaped-hex": "document.querySelector('b')['\\x63lick']()"}
+OPEN = {"parenthesized": "(document.querySelector('b').click)()", "template-tag": "document.querySelector('b').click``",
         "alias": "const el = document.querySelector('b'); el.x = el['cli' + 'ck']; el.x()",
         "foreach-call": "[document.querySelector('b')].forEach(Function.prototype.call, HTMLElement.prototype.click)",
         "getter": "const el = document.querySelector('b'); Object.defineProperty(el, 'x', {get: el['cli' + 'ck']}); el.x",
@@ -220,6 +220,12 @@ OPEN = {"escaped-name": "document.querySelector('b')['\\u0063lick']()", "escaped
         "encoded-html": "document.body.insertAdjacentHTML('beforeend', atob('PGltZyBzcmM9eCBvbmVycm9yPWdvKCk+'))",
         "html-comment": "const b = document.querySelector('b');\n<!-- '\nb['cli' + 'ck']()\n// '",
         "object-division": "var x = {} / document.querySelector('b')['cli' + 'ck']() / 1"}
+
+
+@pytest.mark.parametrize("name", sorted(CLOSED))
+def test_a_member_named_by_an_escaped_string_is_read_as_it_runs(tmp_path, name):
+    """Closed in 5.26.1 (A14): a JavaScript string's escapes are read as they run, so `['\\u0063lick']` is `.click`."""
+    assert _stopped(_check(SCRIPT, _script(CLOSED[name], tab=5), _session(tmp_path, SITES["slack"], tab=5))), name
 
 
 @pytest.mark.xfail(strict=True, reason="on the open list in docs/runtime-integration.md: a spelling made to beat the reader")

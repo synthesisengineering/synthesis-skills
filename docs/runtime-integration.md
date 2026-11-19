@@ -752,14 +752,14 @@ harness that gives no transcript cannot carry approved sends or deploys until it
   marked to fail until it is closed.
 - **Spellings made to beat that reader** (review round 1 of 5.23.1, #13), each a case of
   `test_open_a_spelling_made_to_beat_the_reader` or `test_open_a_blob_document_made_on_the_sites_own_origin`, expected to
-  fail until closed: a member named by an escaped string (`el['\u0063lick']()`, `el['\x63lick']()`); a method called in
-  parentheses (`(el.click)()`); a plain name as a template tag (`` el.click`` ``); an alias of a built name; a call by
-  `forEach(Function.prototype.call, ...)`; a getter; an indirect `eval` (`(0, eval)(...)`); a timer given a string in a
+  fail until closed: a method called in parentheses (`(el.click)()`); a plain name as a template tag (`` el.click`` ``);
+  an alias of a built name; a call by `forEach(Function.prototype.call, ...)`; a getter; an indirect `eval` (`(0, eval)(...)`); a timer given a string in a
   variable; `open` through a window alias (`const w = window; w.open(...)`); HTML decoded at run time
   (`insertAdjacentHTML(..., atob(...))`); a `blob:` document made on the site's own origin and then navigated to; an
   HTML-like comment (`<!-- '`), whose quote the reader takes for a string; and an object divided (`{} / x / 1`), whose
   `/` the reader takes for a pattern. A batch whose `javascript:` navigate moves the tab was closed by reading the page
-  after it as unknown.
+  after it as unknown, and a member named by an escaped string (`el['\u0063lick']()`, `el['\x63lick']()`) in 5.26.1, since
+  a JavaScript string's escapes are now read as they run (A14).
 - **Two more spellings** (review round 2 of 5.23.1, #5 and #6), cases of
   `test_open_a_fetch_or_a_method_reached_under_another_name`, expected to fail until closed: `fetch` reached under
   another name with its method quoted (`const {fetch: f} = window` or `const f = window.fetch`, then
