@@ -37,6 +37,7 @@ SKILLS = Path(__file__).resolve().parents[1] / "skills"  # this release's own: t
 EXPORT, NUDGE, CONNECTOR = "com.synthesis.sessions-export", "com.synthesis.day-end-nudge", "com.synthesis.workspace-mcp"
 DORMANT = {"dormant", "archived", "retired"}  # a declared repository the onboarding's workspace step does not clone
 COMMIT = "Commit work left uncommitted"
+NAMED = 100  # the most paths one commit in the plan names; past it, what is work there is the principal's to decide
 LIVE = "Your claim covers {}, which holds uncommitted or unpushed work: commit and push it, or reply with what it is."
 APPROVE = {"codex": "approve the synthesis hooks inside Codex: run `/hooks` there and trust each one",
            "muse": f"run `muse plugins approve {doctor.PLUGIN}`, then approve each hook Muse names"}
@@ -255,12 +256,12 @@ def _split(claim: str) -> tuple:
 
 
 def _covered(claims: list, real: str, files: list) -> list:
-    """The files of a repository at `real` these split claims cover; with no file, [""] where one covers any part of it. A
-    claim outside the repository is passed over before any file is compared with it."""
+    """The paths of a repository at `real` these split claims cover, an untracked folder ("dir/") as all beneath it; with
+    no path, [""] where one covers any part of it. A claim outside the repository is compared with none of its paths."""
     near = [c for c in claims if board.split_overlap(c, (Path(real).parts, True))]
     if not near or not files:
         return [""] if near else []
-    return [f for f in files if any(board.split_overlap(c, (Path(real, f).parts, False)) for c in near)]
+    return [f for f in files if any(board.split_overlap(c, (Path(real, f).parts, f.endswith("/"))) for c in near)]
 
 
 def _claimed(claim: str) -> str:
@@ -444,8 +445,8 @@ def repositories(report, scan, spaces: list, sessions: list, fetch: bool) -> lis
         try:
             named = _programs(Path(row["path"]), subs)
             found = {"programs": named} if named else scan.check(row, fetch, False)
-            if found.get("dirty"):  # the scan lists twenty: every file, each by its own name, as git's status gives them
-                listed = scan.git(Path(row["path"]), "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+            if found.get("dirty"):  # the scan lists twenty: every path by its own name, an untracked folder as one
+                listed = scan.git(Path(row["path"]), "status", "--porcelain=v1", "-z", "--untracked-files=normal", "--no-renames")
                 found["files"] = [entry[3:] for entry in listed.split("\0") if len(entry) > 3]
             return found
         except Exception as exc:  # what cannot be read is never read as fine
@@ -463,9 +464,10 @@ def repositories(report, scan, spaces: list, sessions: list, fetch: bool) -> lis
 
 
 def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: bool) -> None:
-    """One repository's finding, with its steps in the order they run: back on a branch, the commit of the files no live
-    claim covers, then the upstream or the integration. A live seat whose claim covers work here is asked about it, and
-    with a seat asked nothing more than the commit is planned: the push is that seat's, after its own commit."""
+    """One repository's finding, with its steps in the order they run: back on a branch, the commit of the paths no live
+    claim covers (past NAMED of them, the principal's choice of what is work), then the upstream or the integration. A
+    live seat whose claim covers work here is asked about it, and with a seat asked nothing more than the commit is
+    planned: the push is that seat's, after its own commit."""
     path = Path(row["path"])
     where, short, real = _arg(path), doctor._short(path), os.path.realpath(path)
     if found is None:
@@ -491,7 +493,8 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
         return
     files = found.get("files", [])
     asked = [(s, mine) for s, claims in live for mine in [_covered(claims, real, files)] if mine]
-    unclaimed = [f for f in files if not any(f in mine for _, mine in asked)]
+    taken = {f for _, mine in asked for f in mine}
+    unclaimed = [f for f in files if f not in taken]
     if state == "UNREACHABLE":
         said.append(f"git cannot read it: {found.get('reason', '')}")
         steps.append(("principal", f"`git -C {where} fetch --all --prune` fails ({found.get('reason', '')}): restore its remote's sign-in "
@@ -501,10 +504,14 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
         said.append("HEAD is detached: commits made here are on no branch")
         steps.append(_onto_branch(scan, path, where))
     if files:
-        said.append(f"{len(files)} uncommitted file{'s' * (len(files) != 1)} (" + ", ".join(files[:3]) + (", ..." if len(files) > 3 else "") + ")")
+        folders = sum(f.endswith("/") for f in files)
+        said.append(f"{len(files) - folders} uncommitted file{'s' * (len(files) - folders != 1)}" + (f" and {folders} untracked folder"
+                    f"{'s' * (folders != 1)}" if folders else "") + " (" + ", ".join(files[:3]) + (", ..." if len(files) > 3 else "") + ")")
     commit = [("agent", f"git -C {where} add -- {' '.join(map(shlex.quote, unclaimed))} && git -C {where} commit -m {shlex.quote(COMMIT)} "
-               f"-- {' '.join(map(shlex.quote, unclaimed))}")] if unclaimed else []
-    steps += commit
+               f"-- {' '.join(map(shlex.quote, unclaimed))}")] if 0 < len(unclaimed) <= NAMED else []
+    sort = [("principal", f"decide which of the {len(unclaimed)} uncommitted paths in {short} are work, and commit those (`git -C {where} "
+             f"status` lists them): more than the {NAMED} one step of this plan names")] if len(unclaimed) > NAMED else []
+    steps += commit + sort
     for item in items:
         branch, upstream = item["branch"], item.get("upstream", "")
         if item["state"] == "BLIND":
@@ -521,7 +528,7 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
     said += [f"live session {s.short} claims " + (f"{len(mine)} of them" if mine != [""] else "it") for s, mine in asked] + [
         f"under the claim of session {s.short}, quiet {int((time.time() - s.seen) / 3600)} h" for s, claims in quiet if _covered(claims, real, files)]
     if asked:
-        steps = commit + [("agent", f"synthesis msg {shlex.quote(s.session)} {shlex.quote(LIVE.format(short))}") for s, _ in asked]
+        steps = commit + sort + [("agent", f"synthesis msg {shlex.quote(s.session)} {shlex.quote(LIVE.format(short))}") for s, _ in asked]
     report.add("fail" if state in ("UNREACHABLE", "BLIND") else "warn", "repositories", short, "; ".join(said), *steps)
 
 
