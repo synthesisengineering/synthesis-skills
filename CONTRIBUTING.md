@@ -90,6 +90,9 @@ skills/skill-name/
   prints.
 - Write the text for how current models read it: rules 8 to 22 of the format,
   each with its reason.
+- Rewrite an existing skill by [docs/skill-writing.md](docs/skill-writing.md):
+  its writing rules, the coverage map and preserved file, and the evaluation
+  gate a rewrite passes before it ships.
 - Keep the skill standalone. Public skills cannot depend on personal agent
   instructions or private configuration.
 

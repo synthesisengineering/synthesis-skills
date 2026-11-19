@@ -3,7 +3,9 @@
 Every skill is written so a current model (Opus 5.5, Sonnet 5.5, GPT-6 class)
 reads all of it that matters and applies it, even when the skill is long and
 even after the harness compacts its context. `tests/test_skill_format.py`
-enforces the checkable parts on every skill marked `format: v5`.
+enforces the checkable parts on every skill marked `format: v5`. A skill is
+rewritten to these rules by [skill-writing.md](skill-writing.md): its writing
+rules (W1 to W19) and the rewrite step by step, through the evaluation gate.
 
 Contents: Why these rules · Rules 1 to 7, structure and size · Writing for
 current models, rules 8 to 22 · Where these rules come from.
