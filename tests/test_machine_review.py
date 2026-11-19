@@ -222,7 +222,8 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
     assert (who, fixes) == ("agent", ["F7"]) and do.startswith("synthesis msg S-live ") and "&&" not in do
     assert steps[7:] == [
         ("agent", "git -C ~/workspaces/acme/behind merge --ff-only origin/main", ["F8"]),
-        ("agent", "git -C ~/workspaces/acme/dirty add -A && git -C ~/workspaces/acme/dirty commit -m 'Commit work left uncommitted'", ["F9"]),
+        ("agent", "git -C ~/workspaces/acme/dirty add -- README.md && git -C ~/workspaces/acme/dirty commit -m 'Commit work left "
+                  "uncommitted' -- README.md", ["F9"]),  # the files by name, never -A (round 1, finding 2)
         ("agent", "git -C ~/workspaces/acme/dirty push", ["F9"]),
     ]
     assert [s["step"] for s in report["plan"]] == list(range(1, 11))
@@ -340,7 +341,8 @@ def test_a_seat_counts_for_a_repository_only_where_its_claims_cover_the_work(mac
                              claims=[os.path.realpath(machine.current / "docs") + "/**"]))
     report = review.review(run=machine.run, platform="darwin")
     assert [(s["who"], s["do"]) for s in report["plan"]] == [
-        ("agent", "git -C ~/workspaces/acme/current add -A && git -C ~/workspaces/acme/current commit -m 'Commit work left uncommitted'"),
+        ("agent", "git -C ~/workspaces/acme/current add -- notes/a.md && git -C ~/workspaces/acme/current commit -m 'Commit work "
+                  "left uncommitted' -- notes/a.md"),
         ("agent", "git -C ~/workspaces/acme/current push")]
     assert board.short_name("S-live") not in report["findings"][0]["detail"]
 
@@ -402,3 +404,149 @@ def test_every_doctor_check_is_run_here_or_named_as_not_run():
     assert ran and not ran & set(review.NOT_RUN), ran & set(review.NOT_RUN)
     assert sorted(checks - ran - set(review.NOT_RUN)) == [] and sorted((ran | set(review.NOT_RUN)) - checks) == []
     assert all(isinstance(why, str) and len(why.split()) >= 3 for why in review.NOT_RUN.values())
+
+
+# ---- review round 1 --------------------------------------------------------------------------------------------------
+
+def _guard(command: str, cwd: Path):
+    """What the guard's own check answers for one step of the plan, as a session's shell would meet it: None runs it."""
+    from synthesis import guards
+    return guards.check("Bash", {"command": command}, paths.config(), str(cwd), None)
+
+
+def test_every_agent_step_runs_with_no_code_where_pushes_publish_or_are_gated(machine, write_config):
+    """Finding 1: a push the guard holds (to a repository that publishes on push, or to a gated repository's default
+    branch) was classed `agent`. Every git step is classed by the guard's own deciders, which record no request: what they
+    hold waits for the principal's code, and every step left to the agent runs with none."""
+    _break(machine)
+    write_config({"knowledge_roots": ["~/workspaces/acme/ai-knowledge-acme"],
+                  "push_deploys": ["~/workspaces/acme/blind", "~/workspaces/acme/dirty"],
+                  "pr_gated": {"remotes/blind": {"since": "2026-01-01"}}})
+    before = _snapshot(paths.approvals())
+    report = review.review(run=machine.run, platform="darwin")
+    assert _snapshot(paths.approvals()) == before  # classing a step filed no request for a code
+    who = {s["do"]: s["who"] for s in report["plan"]}
+    assert who["git -C ~/workspaces/acme/blind push -u origin feature"] == "agent-with-code"
+    assert who["git -C ~/workspaces/acme/dirty push"] == "agent-with-code"
+    agent = [do for do, by in who.items() if by == "agent" and do.split()[0] in ("git", "synthesis")]
+    assert len(agent) >= 5 and {do: _guard(do, machine.home) for do in agent} == dict.fromkeys(agent)
+
+
+def test_a_live_seats_file_past_the_scans_first_twenty_is_left_out_of_the_commit_and_its_seat_asked(machine):
+    """Finding 2: the strand scan lists twenty uncommitted files, so a live seat's file after them was committed with
+    `git add -A`, then pushed, and the seat was never asked. The whole list is read: the commit names each file no live
+    claim covers, the seat whose claim covers the rest is asked, and nothing is pushed under a seat at work."""
+    names = [f"a{n:02d}.md" for n in range(25)]
+    for name in names:
+        (machine.current / name).write_text("a\n", encoding="utf-8")
+    (machine.current / "zz").mkdir()
+    (machine.current / "zz" / "theirs.md").write_text("theirs\n", encoding="utf-8")
+    board.save(board.Session(session="S-live", harness="claude-code", project="alpha", started=machine.now - 60, seen=machine.now,
+                             claims=[os.path.realpath(machine.current / "zz") + "/**"]))
+    report = review.review(run=machine.run, platform="darwin")
+    files, where = " ".join(names), "~/workspaces/acme/current"
+    commit, ask = [(s["who"], s["do"]) for s in report["plan"]]
+    assert commit == ("agent", f"git -C {where} add -- {files} && git -C {where} commit -m 'Commit work left uncommitted' -- {files}")
+    assert ask[0] == "agent" and ask[1].startswith("synthesis msg S-live ")
+    assert "26 uncommitted files" in report["findings"][0]["detail"] and board.short_name("S-live") in report["findings"][0]["detail"]
+
+
+def test_a_git_entry_git_cannot_read_is_unknown_and_a_worktree_is_read(machine):
+    """Finding 3a: discovery kept only a `.git` that is a folder, so a dangling link and a worktree's file naming a folder
+    that is gone were passed over, and a live worktree's uncommitted work was never read."""
+    ghost, broken, tree = machine.ws / "ghost", machine.ws / "broken", machine.ws / "current-wt"
+    for folder in (ghost, broken):
+        folder.mkdir()
+    (ghost / ".git").symlink_to(machine.tmp / "nowhere" / ".git")
+    (broken / ".git").write_text(f"gitdir: {machine.tmp / 'gone' / '.git' / 'worktrees' / 'broken'}\n", encoding="utf-8")
+    git(machine.current, "worktree", "add", "-q", "-b", "wt", str(tree))
+    (tree / "work.md").write_text("unsaved\n", encoding="utf-8")
+    report = review.review(run=machine.run, platform="darwin")
+    rows, said = _rows(report), {f["subject"]: f["detail"] for f in report["findings"]}
+    assert {("unknown", "repositories", "~/workspaces/acme/broken"), ("unknown", "repositories", "~/workspaces/acme/ghost")} <= set(rows)
+    assert "not there" in said["~/workspaces/acme/ghost"] and "not there" in said["~/workspaces/acme/broken"]
+    assert ("fail", "repositories", "~/workspaces/acme/current-wt") in rows
+    assert "1 uncommitted file" in said["~/workspaces/acme/current-wt"] and "branch wt has no upstream" in said["~/workspaces/acme/current-wt"]
+    assert report["exit"] == 2
+
+
+def test_a_doctor_line_that_could_not_tell_is_unknown(machine):
+    """Finding 3b: the doctor's could-not-tell lines came through as warnings, by the words they began with. The doctor
+    gives them a status of their own, which the review keeps."""
+    (machine.synthesis / "teardown.jsonl").mkdir()
+    report = review.review(run=machine.run, platform="darwin")
+    assert _rows(report) == [("unknown", "installed", "teardown")] and report["exit"] == 2 and report["healthy"] is False
+
+
+def test_a_declaration_of_another_shape_is_unknown_and_the_review_still_reports(machine, monkeypatch, capsys):
+    """Finding 3c: a repos.yaml whose repositories are bare names raised in the strand scan's reader and ended the review
+    with exit 1 and no report. What raises in an area is an unknown finding for it; exit 2 is the last resort."""
+    (machine.ws / ".agents" / "repos.yaml").write_text("workspace: acme\nrepos:\n  - current\n  - old\n", encoding="utf-8")
+    report = review.review(run=machine.run, platform="darwin")
+    assert _rows(report) == [("unknown", "workspaces", "~/workspaces/acme/.agents/repos.yaml")] and report["exit"] == 2
+    monkeypatch.setattr(review, "review", lambda **kw: 1 / 0)
+    assert review.main(["--json"]) == 2 and "ZeroDivisionError" in capsys.readouterr().err
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root reads a file no one may read")
+def test_a_session_file_that_cannot_be_opened_is_unknown_and_the_review_still_reports(machine):
+    """Finding 3c: a board session file no one may read raised PermissionError and ended the review."""
+    locked = paths.board() / "sessions" / "S-locked.json"
+    locked.write_text("{}", encoding="utf-8")
+    locked.chmod(0)
+    try:
+        report = review.review(run=machine.run, platform="darwin")
+    finally:
+        locked.chmod(0o644)
+    assert _rows(report) == [("unknown", "claims", "board")] and "S-locked.json" in report["findings"][0]["detail"]
+    assert report["exit"] == 2
+
+
+def test_a_session_file_the_board_cannot_parse_is_counted_and_unknown(machine):
+    """Finding 3d: board.sessions() passes over a file it cannot parse, and the review passed it over in silence."""
+    (paths.board() / "sessions" / "S-bad.json").write_text("{not json", encoding="utf-8")
+    report = review.review(run=machine.run, platform="darwin")
+    assert _rows(report) == [("unknown", "claims", "board")] and "S-bad.json" in report["findings"][0]["detail"]
+    assert report["read"]["sessions"] == 2 and report["exit"] == 2
+
+
+def test_each_claim_is_normalized_once_however_many_repositories_and_files(machine, monkeypatch):
+    """From the open list: each claim was normalized again for every repository and every uncommitted file (583,803
+    calls and 17.5 s on a machine the size of the principal's). A claim is normalized once, as its session is read, and a
+    claim outside a repository is passed over before any file is compared."""
+    for n in range(4):
+        repo = _published(machine.remotes, machine.ws / f"r{n}", f"r{n}")
+        for k in range(25):
+            (repo / f"f{k}.md").write_text("x\n", encoding="utf-8")
+    for s in range(20):
+        board.save(board.Session(session=f"S-{s:02d}", harness="codex", project="p", started=machine.now - 50000, seen=machine.now - 36000,
+                                 claims=[os.path.realpath(machine.ws / f"r{s % 4}") + f"/sub{k}/**" for k in range(3)]))
+    calls = []
+    normalize = board.normalize
+    monkeypatch.setattr(board, "normalize", lambda claim: calls.append(claim) or normalize(claim))
+    report = review.review(run=machine.run, platform="darwin")
+    assert len([f for f in report["findings"] if f["area"] == "claims"]) == 20
+    assert len(calls) == 20 * 3 + 1, len(calls)  # each stale seat's three claims and the live seat's one, read once
+
+
+def test_the_pr_gate_check_runs_no_git_where_a_gated_checkout_names_a_program(machine, write_config):
+    """Found with round 1 (the reviewer's probe): the doctor's PR-gate check, which the review runs, read a gated
+    checkout's history with `git log`, which ran the program its own configuration names (gpg.program, with
+    log.showSignature). That checkout's git is screened like any other: the check cannot read it, and says so."""
+    gated = _published(machine.remotes, machine.ws / "gated", "gated")
+    head, tree = git(gated, "rev-parse", "HEAD"), git(gated, "rev-parse", "HEAD^{tree}")
+    signed = subprocess.run(["git", "-C", str(gated), "hash-object", "-t", "commit", "-w", "--stdin"], check=True, capture_output=True,
+                            text=True, input=f"tree {tree}\nparent {head}\nauthor t <t@e> 1763400000 +0000\ncommitter t <t@e> 1763400000 "
+                            "+0000\ngpgsig -----BEGIN PGP SIGNATURE-----\n \n abc\n -----END PGP SIGNATURE-----\n\nSigned\n").stdout.strip()
+    git(gated, "update-ref", "refs/heads/main", signed)  # a signature, which `git log` hands its gpg.program to check
+    git(gated, "push", "-q", "origin", "main")
+    git(gated, "remote", "set-head", "origin", "--auto")
+    ran, program = machine.tmp / "gpg-ran", machine.tmp / "gpg.sh"
+    program.write_text(f"#!/bin/sh\ntouch {shlex.quote(str(ran))}\nexit 1\n", encoding="utf-8")
+    program.chmod(0o755)
+    git(gated, "config", "log.showSignature", "true")
+    git(gated, "config", "gpg.program", str(program))
+    write_config({"knowledge_roots": ["~/workspaces/acme/ai-knowledge-acme"], "pr_gated": {"remotes/gated": {"since": "2020-01-01"}}})
+    report = review.review(run=machine.run, platform="darwin")
+    assert not ran.exists()
+    assert {("unknown", "installed", "pr gate"), ("unknown", "repositories", "~/workspaces/acme/gated")} <= set(_rows(report))
