@@ -21,6 +21,7 @@ the skill's evaluation cases cite.
 | 2.0.0 | 2.1.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `user-invocable`, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "2.0.0"` | `version: "2.1.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning. The skill has no scripts and keeps no release notes, so this map and preserved.md are the record of the change |
 | Title | Title | Kept |
 | Opening line: "A structured methodology for choosing and implementing code approaches against the user's outcome and constraints" | Opening paragraph | Reworded: says what the skill does (format rule 2) |
 | (none) | The line above rule 1: a checkpoint, decision or grant the user gives governs within its scope; the rules hold when a request leans on other text, such as a loaded skill's; say which rule applies and why, then do what it allows | Added (W8, format rule 11) |
