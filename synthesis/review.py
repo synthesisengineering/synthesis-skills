@@ -505,8 +505,8 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
         steps.append(_onto_branch(scan, path, where))
     if files:
         folders = sum(f.endswith("/") for f in files)
-        said.append(f"{len(files) - folders} uncommitted file{'s' * (len(files) - folders != 1)}" + (f" and {folders} untracked folder"
-                    f"{'s' * (folders != 1)}" if folders else "") + " (" + ", ".join(files[:3]) + (", ..." if len(files) > 3 else "") + ")")
+        counts = [f"{n} {what}{'s' * (n != 1)}" for n, what in ((len(files) - folders, "uncommitted file"), (folders, "untracked folder")) if n]
+        said.append(" and ".join(counts) + " (" + ", ".join(files[:3]) + (", ..." if len(files) > 3 else "") + ")")
     commit = [("agent", f"git -C {where} add -- {' '.join(map(shlex.quote, unclaimed))} && git -C {where} commit -m {shlex.quote(COMMIT)} "
                f"-- {' '.join(map(shlex.quote, unclaimed))}")] if 0 < len(unclaimed) <= NAMED else []
     sort = [("principal", f"decide which of the {len(unclaimed)} uncommitted paths in {short} are work, and commit those (`git -C {where} "
