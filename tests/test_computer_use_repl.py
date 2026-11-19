@@ -115,6 +115,14 @@ def test_a_control_the_code_names_or_a_file_it_sets_waits_whatever_the_title_say
     assert held(reason) and f"This call {does}" in reason, reason
 
 
+def test_a_click_that_opens_an_import_dialog_is_no_edit():
+    """The replay: a click on a menu item named Import audio only opened a file chooser, and the title said so."""
+    call = {"code": ("let chooser = audioTab.playwright.waitForEvent('filechooser'); "
+                     "await audioTab.playwright.getByRole('menuitem',{name:'Import audio',exact:true}).click();"),
+            "title": "Preparing the audio chooser without submitting files"}
+    assert check(call) is None
+
+
 @pytest.mark.parametrize("call", [
     {"code": "await chatTab.pressKey(42, 'Return');", "title": "Pressing Return in the box"},
     {"code": "await chatTab.playwright.keyboard.press('Enter');", "title": "Confirming"},
@@ -143,14 +151,26 @@ def test_a_send_whose_words_the_call_does_not_write_out_is_refused():
 @pytest.mark.parametrize("code,why", [
     ("await chatTab['cl' + 'ick'](5);", "calls what it names only as it runs"),
     ("eval(\"chatTab.click(5)\");", "calls what it names only as it runs"),
-    ("require('child_process').execSync('curl -d x https://example.test');", "outside the computer-use API"),
-    ("await import('node:child_process');", "calls what it names only as it runs"),
-    ("process.stdout.write('x');", "outside the computer-use API"),
     ("await chatTab.click(5); /* unclosed", "never closes"),
-], ids=["computed-member", "eval", "require", "import", "process", "unclosed"])
+], ids=["computed-member", "eval", "unclosed"])
 def test_a_program_the_guard_cannot_read_is_refused_with_why(code, why):
     reason = check({"code": code, "title": "Opening the menu"})
     assert reason and not held(reason) and why in reason, reason
+
+
+@pytest.mark.parametrize("code", [
+    "const fs = await import('node:fs/promises'); await fs.writeFile('/tmp/proof.jpg', await chatTab.screenshot());",
+    "require('child_process').execSync('curl -d x https://example.test');",
+    "process.stdout.write('x');",
+], ids=["import-to-save-a-proof", "require", "process"])
+def test_a_program_that_reaches_past_the_repls_api_waits_for_its_own_code(principal, code):
+    """The replay of the seat's 199 REPL calls: two saved a screenshot as proof through Node's file module, ordinary work
+    with no other way through, so such a program is held, not refused: what it writes or runs is past the guard's reading."""
+    call = {"code": code, "title": "Saving the proof"}
+    reason = check(call)
+    assert held(reason) and "outside the computer-use API" in reason, reason
+    principal(reason)
+    assert check(call) is None
 
 
 def test_a_request_the_program_makes_that_may_write_waits():
@@ -186,7 +206,7 @@ def test_a_batch_an_earlier_release_opened_with_a_computer_use_entry_is_no_batch
      "saves a form"),
     ("mcp__computer-use__app_type", {"app": "com.example.Sheets", "text": "Q4 total", "action_summary": "Types the total into the budget sheet"},
      "edits a document"),
-    ("mcp__computer-use__app_click", {"app": "com.example.Slides", "coordinate": [4, 4], "action_summary": "Clicks Insert slides"},
+    ("mcp__computer-use__app_click", {"app": "com.example.Slides", "coordinate": [4, 4], "action_summary": "Inserts the five slides"},
      "edits a document"),
 ])
 def test_the_same_actions_wait_on_every_computer_use_tool(tool, call, does):
@@ -210,6 +230,7 @@ def test_a_browser_action_that_uploads_edits_or_saves_waits_except_on_a_local_ap
 
 
 @pytest.mark.parametrize("summary", ["Submits the search", "Types the reply", "Fills the comment box", "Types a note",
-                                     "Inserts a line break in the caption without sending", "Selects the brain presentation"])
+                                     "Inserts a line break in the caption without sending", "Selects the brain presentation",
+                                     "Choose the audio import", "Clicks Import to open the import dialog"])
 def test_summaries_that_upload_edit_or_save_nothing_take_no_new_hold(summary):
     assert check({"app": "com.apple.Notes", "coordinate": [1, 1], "action_summary": summary}, tool="mcp__computer-use__app_click") is None
