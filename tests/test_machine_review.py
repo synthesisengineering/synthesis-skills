@@ -338,6 +338,7 @@ def test_a_seat_counts_for_a_repository_only_where_its_claims_cover_the_work(mac
     (machine.current / "notes" / "a.md").write_text("a\n", encoding="utf-8")
     report = review.review(run=machine.run, platform="darwin")  # S-live claims the whole repository: it is asked
     assert [(s["who"], s["do"].split()[:3]) for s in report["plan"]] == [("agent", ["synthesis", "msg", "S-live"])]
+    assert report["findings"][0]["detail"].startswith("1 untracked folder (notes/); live session ")  # never "0 uncommitted files"
     board.save(board.Session(session="S-live", harness="claude-code", project="alpha", started=machine.now - 60, seen=machine.now,
                              claims=[os.path.realpath(machine.current / "docs") + "/**"]))
     report = review.review(run=machine.run, platform="darwin")
