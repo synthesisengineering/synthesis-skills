@@ -107,10 +107,11 @@ The 1.x ledger's attestations, now the agent's own check before showing the prin
 | A source that names no file it can read: a `file_path` or `fileUrl` that cannot be parsed as a path or a URL, or a path holding a NUL | The same tools | ``... `<key>` <source> cannot be parsed as a path or a URL (<why>), so the connector would refuse the call ...``, `the attachment '<path>' holds a NUL character, which names no file ...` |
 | A file the call names that cannot be read when the call is made, or that the guard cannot hash in 2 seconds | The same tools | `the attachment <path> cannot be read (<why>)`, for a Drive tool `the file <path> cannot be read (<why>)` |
 
-Since 5.26.1 a Drive call that has its connector read a file from this disk (the three imports and `create_drive_file`
-as well as `update_drive_file`) is an upload: refused as above before any code, then held for the principal's code,
-which binds the file's bytes, with a hold that says what it uploads (A14). One that reads no file from this disk asks
-for none and is refused the same way, after `This call can't go as written:`.
+A Drive call that makes or copies a file waits by where the file lands (5.27.1): in a named folder, which may be shared,
+it is held for the principal's code, which binds a file from this disk byte for byte, with a hold that says what it
+uploads and where; in the principal's own My Drive (no folder, or `root`) it asks for none. `update_drive_file` waits
+as an edit of a file others may read. A file the connector would not read is refused as above before any code, after
+`This call can't go as written:` where the call asks none. (5.26.1 judged these by the source, a file on this disk.)
 
 Blank lines separate paragraphs. A line starting a list item (`-`, `*`, `•`, `+`, `1.`),
 a quote (`>`) or a table row (`|`) starts its own line, and fenced code keeps its lines.

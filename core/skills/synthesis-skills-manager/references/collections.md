@@ -131,7 +131,7 @@ that commit. A defect prints `refused: N problems; nothing written`, then each p
 and exits 1; what cannot be read prints `cannot continue: <why>` and exits 2. It reads
 files with `build_directory_package.py`'s code and runs on Python 3.9. CI runs the same
 checks on every pull request, in
-[tests/test_skills_manager_collections.py](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.0/skills/synthesis-skills-manager/tests/test_skills_manager_collections.py).
+[tests/test_skills_manager_collections.py](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.1/skills/synthesis-skills-manager/tests/test_skills_manager_collections.py).
 
 ## What fails the check
 
