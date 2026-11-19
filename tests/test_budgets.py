@@ -2902,8 +2902,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # named, 4, or an upload tool that is no browser's 1), with its 2 blank lines. _judged_send 7 (whether it uploads, what it
 # hands over and where, 2 more; the upload's own hold 5). check_upload none (its docstring in its lines). synthesis/sends.py none: the
 # batch's rule names a driven browser's tool in its line.
-CORE_BUDGET = 26222
-PLUGIN_BUDGET = 52996
+# Then each 3 more, all in synthesis/review.py, for the review run as released on the principal's Mac (11 of the 23
+# detached checkouts it failed sat at a commit a remote-tracking branch already holds). repositories 1 (the shared
+# warning names a detached HEAD beside a branch with no upstream, its sentence one line longer); _repository 2 (a
+# detached HEAD asks the holder: the question 1 and the said line kept, the held checkout kept for the shared warning 1,
+# the step only where nothing holds it 1, in place of the two lines it had; `landed` set with the finding's other names,
+# so `lost` keeps one line and loses none for a held detached HEAD); _holder's docstring and its query keep their lines,
+# taking a ref (a branch's, or HEAD) where it took a branch name.
+CORE_BUDGET = 26225
+PLUGIN_BUDGET = 52999
 
 
 def _lines(files):

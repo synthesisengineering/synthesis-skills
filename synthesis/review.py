@@ -459,8 +459,9 @@ def repositories(report, scan, spaces: list, sessions: list, fetch: bool) -> lis
     landed = [kept for real, found in zip(order, results) for kept in [report.guard("repositories", doctor._short(real), lambda
               real=real, found=found: _repository(report, scan, entries[real], found, live, quiet, fetch))] if kept]
     if landed:  # one line for them all, and no step: what a worktree whose work merged needs is the principal's tidying
-        report.add("warn", "repositories", f"{len(landed)} checkout{'s' * (len(landed) != 1)}", "each on a branch with no upstream "
-                   "whose commits a remote already holds, so nothing in them is at risk; one whose work is done can be removed: "
+        report.add("warn", "repositories", f"{len(landed)} checkout{'s' * (len(landed) != 1)}", "each on a branch with no upstream, or "
+                   "a detached HEAD, whose commits a remote already holds, so nothing in them is at risk; one whose work is done "
+                   "can be removed: "
                    + ", ".join(f"{short} ({branch})" for short, branch in landed[:5]) + (", ..." if len(landed) > 5 else ""))
     report.read["repositories"] = len(order)
     return [(real, found) for real, found in zip(order, results) if found is not None]
@@ -492,7 +493,7 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
                    ("principal", f"look at what {named[0]} names and take it out unless the principal put it there{show}" if named else
                     f"look at {short}'s git repository by hand"))
         return
-    state, items, said, steps = found["state"], found["branches"], [], []
+    state, items, said, steps, landed = found["state"], found["branches"], [], [], []
     if state in ("CURRENT", "CACHED", "EXCLUDED"):
         return
     files = found.get("files", [])
@@ -505,8 +506,10 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
                       "or the network, then run it again" if fetch else f"`git -C {where} status` fails ({found.get('reason', '')}): mend "
                       "the repository by hand"))
     elif state == "BLIND" and not items:
-        said.append("HEAD is detached: commits made here are on no branch")
-        steps.append(_onto_branch(scan, path, where))
+        held = _holder(scan, path, "HEAD")
+        said.append(f"HEAD is detached at a commit {held} holds" if held else "HEAD is detached: commits made here are on no branch")
+        landed += [f"detached, on {held}"] if held else []
+        steps += [] if held else [_onto_branch(scan, path, where)]
     if files:
         folders = sum(f.endswith("/") for f in files)
         counts = [f"{n} {what}{'s' * (n != 1)}" for n, what in ((len(files) - folders, "uncommitted file"), (folders, "untracked folder")) if n]
@@ -516,10 +519,10 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
     sort = [("principal", f"decide which of the {len(unclaimed)} uncommitted paths in {short} are work, and commit those (`git -C {where} "
              f"status` lists them): more than the {NAMED} one step of this plan names")] if len(unclaimed) > NAMED else []
     steps += commit + sort
-    landed, lost = [], state == "UNREACHABLE" or (state == "BLIND" and not items)
+    lost = state == "UNREACHABLE" or (state == "BLIND" and not items and not landed)
     for item in items:
         branch, upstream = item["branch"], item.get("upstream", "")
-        held = _holder(scan, path, branch) if item["state"] == "BLIND" else ""
+        held = _holder(scan, path, f"refs/heads/{branch}") if item["state"] == "BLIND" else ""
         if held:  # a worktree whose work merged, or a branch pushed under another name: nothing in it is at risk
             said.append(f"branch {branch} has no upstream; {held} holds its commits")
             landed.append(f"{branch}, on {held}")
@@ -546,11 +549,11 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
     return None
 
 
-def _holder(scan, path: Path, branch: str) -> str:
-    """The first remote-tracking branch that holds every commit of `branch`, a remote's HEAD left out; '' where none does,
-    or git cannot tell."""
+def _holder(scan, path: Path, ref: str) -> str:
+    """The first remote-tracking branch that holds every commit of `ref` (a branch's ref, or HEAD), a remote's HEAD left
+    out; '' where none does, or git cannot tell."""
     try:
-        listed = scan.git(path, "for-each-ref", "--contains", f"refs/heads/{branch}", "--count=8", "--format=%(refname:short)",
+        listed = scan.git(path, "for-each-ref", "--contains", ref, "--count=8", "--format=%(refname:short)",
                           "refs/remotes").split()
     except (RuntimeError, OSError, subprocess.SubprocessError):
         return ""

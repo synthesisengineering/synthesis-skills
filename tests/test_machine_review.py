@@ -140,7 +140,12 @@ def _break(m) -> None:
     git(blind, "add", "-A")
     git(blind, "commit", "-q", "-m", "Unpushed")
     detached = _published(remotes, ws / "detached", "detached")
-    git(detached, "switch", "-q", "--detach")
+    git(detached, "switch", "-q", "--detach")  # at a commit origin/main holds: nothing at risk
+    loose = _published(remotes, ws / "loose", "loose")
+    git(loose, "switch", "-q", "--detach")
+    (loose / "loose.md").write_text("on no branch\n", encoding="utf-8")  # a commit made detached, which no remote holds
+    git(loose, "add", "-A")
+    git(loose, "commit", "-q", "-m", "On no branch")
     dirty = _published(remotes, ws / "dirty", "dirty")
     (dirty / "README.md").write_text("changed\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remotes / "missing.git")], check=True)
@@ -190,7 +195,7 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
     alpha = "~/workspaces/acme/ai-knowledge-acme/projects/alpha"
     assert _rows(report) == [
         ("fail", "repositories", "~/workspaces/acme/blind"),
-        ("fail", "repositories", "~/workspaces/acme/detached"),
+        ("fail", "repositories", "~/workspaces/acme/loose"),
         ("fail", "repositories", "~/workspaces/acme/missing"),
         ("fail", "projects", alpha),
         ("warn", "schedules", EXPORT),
@@ -198,11 +203,13 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
         ("warn", "repositories", "~/workspaces/acme/ahead"),
         ("warn", "repositories", "~/workspaces/acme/behind"),
         ("warn", "repositories", "~/workspaces/acme/dirty"),
+        ("warn", "repositories", "1 checkout"),
     ]
-    assert [f["id"] for f in report["findings"]] == [f"F{n}" for n in range(1, 10)]
+    assert [f["id"] for f in report["findings"]] == [f"F{n}" for n in range(1, 11)]
     said = {f["subject"]: f["detail"] for f in report["findings"]}
     assert "feature" in said["~/workspaces/acme/blind"] and "no upstream" in said["~/workspaces/acme/blind"]
-    assert "detached" in said["~/workspaces/acme/detached"]
+    assert "detached" in said["~/workspaces/acme/loose"] and "no branch" in said["~/workspaces/acme/loose"]
+    assert "~/workspaces/acme/detached (detached, on origin/main)" in said["1 checkout"]
     assert "repos.yaml" in said["~/workspaces/acme/missing"] and "no clone" in said["~/workspaces/acme/missing"]
     assert "freshness" in said[alpha] and "2026-11-10" in said[alpha]
     assert "not scheduled" in said[EXPORT]
@@ -215,7 +222,9 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
     steps = _steps(report)
     assert steps[:5] == [
         ("agent", "git -C ~/workspaces/acme/blind push -u origin feature", ["F1"]),
-        ("agent", "git -C ~/workspaces/acme/detached switch main", ["F2"]),
+        ("principal", "put HEAD back on a branch: `git -C ~/workspaces/acme/loose switch -c <a new branch>` keeps what was "
+                      "committed while detached; `git -C ~/workspaces/acme/loose branch --contains HEAD` names the branches "
+                      "that already hold it", ["F2"]),
         ("agent", f"git clone {machine.remotes / 'missing.git'} ~/workspaces/acme/missing", ["F3"]),
         ("agent", f"make the remedies `{records}` lists (freshness)", ["F4"]),
         ("agent-with-code", f"python3 -s {runtime / 'synthesis-onboarding' / 'scripts' / 'setup.py'} plugin --sessions-export", ["F5"]),
@@ -230,7 +239,7 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
         ("agent", "git -C ~/workspaces/acme/dirty push", ["F9"]),
     ]
     assert [s["step"] for s in report["plan"]] == list(range(1, 11))
-    assert report["counts"] == {"fail": 4, "unknown": 0, "warn": 5} and report["exit"] == 1 and report["healthy"] is False
+    assert report["counts"] == {"fail": 4, "unknown": 0, "warn": 6} and report["exit"] == 1 and report["healthy"] is False
 
 
 def test_a_branch_with_no_upstream_whose_commits_a_remote_holds_is_nothing_at_risk(machine):
@@ -258,7 +267,7 @@ def test_the_text_groups_the_findings_by_severity_and_numbers_the_plan(machine):
     _break(machine)
     text = review.render(review.review(run=machine.run, platform="darwin"))
     lines = text.splitlines()
-    assert lines[0].startswith("synthesis review: 4 fail, 0 unknown, 5 warn") and "nothing was changed" in lines[0]
+    assert lines[0].startswith("synthesis review: 4 fail, 0 unknown, 6 warn") and "nothing was changed" in lines[0]
     heads = [line for line in lines if line in ("FAIL", "UNKNOWN", "WARN")]
     assert heads == ["FAIL", "WARN"]
     assert lines.index("FAIL") < lines.index("WARN") < next(i for i, line in enumerate(lines) if line.startswith("Repair plan"))
