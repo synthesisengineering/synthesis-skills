@@ -103,6 +103,9 @@ TARGETS = {  # (the line, as above)
     "a write after cd ~-": ("cd {state} && cd {work} && cd ~- && echo x > grant.json", "refused"),
     "plutil run from the folder a cd left": ("~-/plutil -p {agent}", "held"),
     "plutil run from a folder in a variable the guard cannot read": ("$A13_UNSET/plutil -p {agent}", "held"),
+    "plutil run from the folder a cd left, inside the state folder": ("cd {state} && ~-/plutil -p job.plist", "refused"),
+    "cat run from the folder a cd left": ("~-/cat {agent}", "held"),
+    "cat run from a folder in a variable the guard cannot read": ("$A13_UNSET/cat {agent}", "held"),
 }
 
 
