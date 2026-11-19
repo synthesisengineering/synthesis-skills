@@ -685,12 +685,16 @@ def check_claude_fail_closed(hooks: dict, version: str, where: str = "") -> Chec
 
 def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
     """Each workspace's sessions repo (R10.2): cloned where config `sessions_repos` says, synced within two days,
-    and small enough to clone (GitHub advises under 5 GB; this warns at 3 GB)."""
+    and small enough to clone (GitHub advises under 5 GB; this warns at 3 GB). A workspace this Mac holds nothing of
+    needs no clone here, since one config serves every Mac (BACKLOG D5)."""
+    from synthesis import sessions
     found = []
     for ws, repo in sorted(repos.items()):
         if not (repo / ".git").is_dir():
             found.append(Check("warn", f"sessions repo {ws}", f"{_short(repo)} is not cloned; clone it there, then run "
-                               "`synthesis sessions sync`"))
+                               "`synthesis sessions sync`") if sessions.held(ws) else
+                         Check("info", f"sessions repo {ws}", f"{_short(repo)} is not cloned, and this Mac holds none of its "
+                               "sessions or ritual records, so it needs none"))
             continue
         synced = paths.read_json(state / f"sync-{ws}.json").get("synced", "")
         size = sum(f.stat().st_size for f in (repo / ".git").rglob("*") if f.is_file())

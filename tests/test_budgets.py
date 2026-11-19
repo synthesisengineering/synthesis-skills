@@ -2681,8 +2681,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # _unread_line 1 fewer than the _too_deep it replaces (its docstring 1 more; the wait's words, now the caller's reason
 # and hint, 2 fewer). _shell_writes, which names what a pattern target matches, and _self_grant, whose write targets
 # are read so, keep their lines.
-CORE_BUDGET = 25170
-PLUGIN_BUDGET = 51934
+# BACKLOG D5 (the two-Mac check, 2026-11-18: one config serves every Mac, and a second Mac that held some of the
+# workspaces failed every sessions sync, and so every handoff, for each workspace it does not hold), each 21 more, in
+# synthesis/. sessions.py 17: held 8 (its line and docstring 4; a folder of the workspace in the archive or a ritual
+# record of it in this Mac's log, and a log that cannot be read counting as one, 4) and its 2 blank lines;
+# _sync_workspace 1 (a repo not cloned fails the sync only while the workspace is held, and is otherwise passed over in
+# a line of its own); _ritual_history 8 fewer (its reading of this Mac's log moved out); _own_records 12 (its line and
+# docstring 2, the import 1, the log and its list 1, the loop that keeps this Mac's records of the workspace 7, the
+# answer 1) and its 2 blank lines. doctor.py 4, in check_sessions_repos: its docstring 1, the import 1, and the
+# information line for a workspace not held, in place of the warning, 2.
+CORE_BUDGET = 25191
+PLUGIN_BUDGET = 51955
 
 
 def _lines(files):

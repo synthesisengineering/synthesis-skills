@@ -1503,9 +1503,20 @@ def sync(workspace: str = "", push: bool = True) -> list:
         return [line for ws, repo in sorted(targets.items()) for line in _sync_workspace(ws, repo, push)]
 
 
+def held(ws: str) -> bool:
+    """Whether this Mac holds anything of the workspace that a sync carries: a session in its archive, or a ritual record
+    in its log. One config serves every Mac and may name workspaces a Mac does not hold (BACKLOG D5); a log that cannot be
+    read counts as holding one, so a sync that cannot tell still fails."""
+    try:
+        return os.path.lexists(root() / ws) or bool(_own_records(ws))
+    except (OSError, ValueError):
+        return True
+
+
 def _sync_workspace(ws: str, repo: Path, push: bool) -> list:
     if not (repo / ".git").exists():
-        return [f"FAILED {ws}: {repo} is not a git checkout; clone the workspace's sessions repo there"]
+        return [f"FAILED {ws}: {repo} is not a git checkout; clone the workspace's sessions repo there" if held(ws) else
+                f"{ws}: {repo} is not cloned on this Mac, which holds none of its sessions or ritual records; nothing to carry"]
     state_file = root() / ".state" / f"sync-{ws}.json"
     state = paths.read_json(state_file)
     done, months, lines = dict(state.get("sessions", {})), collections.Counter(), []
@@ -1560,15 +1571,7 @@ def _ritual_history(ws: str, repo: Path) -> str:
     from synthesis import rituals
     rel = f"rituals/{rituals.host()}.jsonl"
     try:
-        log = rituals.state_dir() / "history.jsonl"
-        mine = []
-        for line in (raw.strip() for raw in (log.read_bytes().splitlines() if log.is_file() else [])):
-            try:
-                record = json.loads(line.decode("utf-8")) if line else None
-            except ValueError:
-                continue
-            if rituals.is_record(record) and record.get("workspace") == ws:
-                mine.append(line)
+        mine = _own_records(ws)
         data = b"".join(line + b"\n" for line in mine)
         if not mine or ((repo / rel).is_file() and (repo / rel).read_bytes() == data):
             return ""
@@ -1586,6 +1589,20 @@ def _ritual_history(ws: str, repo: Path) -> str:
         (repo / rel).unlink(missing_ok=True)
     return (f"{ws}: ritual history not carried, its commit refused ({(made.stdout + made.stderr).strip()[-300:]}); "
             "the transcripts are synced")
+
+
+def _own_records(ws: str) -> list:
+    """This Mac's ritual records of the workspace, each line as its log holds it, of the shape every view reads."""
+    from synthesis import rituals
+    log, mine = rituals.state_dir() / "history.jsonl", []
+    for line in (raw.strip() for raw in (log.read_bytes().splitlines() if log.is_file() else [])):
+        try:
+            record = json.loads(line.decode("utf-8")) if line else None
+        except ValueError:
+            continue
+        if rituals.is_record(record) and record.get("workspace") == ws:
+            mine.append(line)
+    return mine
 
 
 def _pulled(ws: str, repo: Path) -> str:
