@@ -22,6 +22,7 @@ skill's evaluation cases cite.
 | 3.1.0 | 3.2.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "3.1.0"` | `version: "3.2.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning. The skill has no scripts that print its version and keeps no release notes, so this map and preserved.md are the record of the change |
 | Title | Title | Kept |
 | Opening paragraph: "A five-mode thinking methodology with a pre-response protocol. Use it to choose an approach that serves the user's actual outcome." | Opening paragraph, first sentence | Reworded: one sentence, "for choosing" for "Use it to choose" |
 | Opening paragraph: "Its depth follows uncertainty, consequences and the cost of being wrong." | Rule 1 | Merged: rule 1 says it (format rule 11) |
