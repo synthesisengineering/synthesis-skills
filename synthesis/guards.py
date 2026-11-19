@@ -9719,12 +9719,25 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
             or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)) or _hands_over(tool, tool_input))
 
 
+# Where a Drive call puts content decides whether it waits (5.27.1; the principal's question of 2026-11-19): a gate exists
+# because content reaches people in his name. A file made in his own My Drive (no folder, or `root`) reaches no one; one
+# made in a named folder, or copied into one, may land where others open it (11-11: 34 knowledge files into a shared
+# drive's folder), so it waits for a code naming the file and the folder, wherever its bytes come from. 5.26.1 held by
+# the source, a file on this disk: a private upload waited and inline bytes into a shared folder did not.
+DRIVE_PLACES = {"create_drive_file": "folder_id", "import_to_google_doc": "folder_id", "import_to_google_sheets": "folder_id",
+                "import_to_google_slides": "folder_id", "copy_drive_file": "parent_folder_id"}
+
+
 def _hands_over(tool: str, tool_input: dict) -> bool:
-    """A connector's call that hands a file to its service (A14): a tool whose name says it uploads (no browser's, which
-    the computer-use rules judge on the page it acts on), or a Drive call that has its connector read a file from this
-    disk: any `file_path` it takes, or a file:// `fileUrl` (one that cannot be parsed is judged, and refused, as named)."""
+    """A connector's call that hands content to its service where others may read it (A14): a tool whose name says it
+    uploads (no browser's, which the computer-use rules judge on the page it acts on); a Drive call that makes or copies
+    a file into a named folder (DRIVE_PLACES); or a Drive update from a file on this disk: its `file_path`."""
     from urllib.parse import urlparse
-    key = FILE_DRIVE_TOOLS.get(tool.rsplit("__", 1)[-1])
+    name = tool.rsplit("__", 1)[-1]
+    if name in DRIVE_PLACES:  # by where it lands; a folder given as anything but a name is judged as named
+        folder = tool_input.get(DRIVE_PLACES[name]) if isinstance(tool_input, dict) else ""
+        return not (folder is None or isinstance(folder, str) and folder.strip().lower() in ("", "root"))
+    key = FILE_DRIVE_TOOLS.get(name)
     value = tool_input.get(key) if key and isinstance(tool_input, dict) else None
     try:
         read = isinstance(value, str) and (key == "file_path" or urlparse(value).scheme == "file")

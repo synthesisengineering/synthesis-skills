@@ -243,22 +243,27 @@ def user_prompt_submit(payload):
 
     prompt = str(payload.get("prompt") or payload.get("user_prompt") or "")
     approvals.remember(paths.session_id(payload), str(payload.get("transcript_path") or ""))  # where the CLI finds it later
-    waiting, muse = set(approvals.pending()), paths.harness(payload) == "muse"
+    waiting, muse, record = set(approvals.pending()), paths.harness(payload) == "muse", approvals.transcript(payload)
     notes = [] if muse else [f"Approved by the principal: {s}" for s in approvals.grant_from_prompt(
-        prompt, approvals.transcript(payload), paths.session_id(payload))]
+        prompt, record, paths.session_id(payload))]
     notes += [f"Not granted: {MUSE}"] if muse and approvals.typed_codes(prompt) else []
     try:  # where the harness recorded the prompt before this hook ran; else at the turn's next tool call or its end
         notes += [f"Took effect: {s}" for s in apply_effects(payload)]
     except Exception:
         pass
     # A typed code that matched nothing is said aloud, so no one assumes it took (2026-10-13)
-    typed = [] if muse else approvals.typed_codes(prompt)
+    typed = [] if muse else list(dict.fromkeys(approvals.typed_codes(prompt) + approvals.card_codes(prompt, record)))
     notes += [f"Not granted: no pending request has the code {c}; it may have expired (15 minutes), been used, or "
               "been mistyped. Run the call again for a new code." for c in typed if c not in waiting]
     # So is a pending code that is in the message and was not approved (2026-11-11: eight of nine were passed over)
-    notes += [f"Not granted: the pending code {c} is in the message, but not in a list right after the word approve on "
-              "its line in the principal's own words (a new line, another word, a negation or a tagged block came "
-              "between). If the principal meant it, ask them to type the word and the code together."
+    carded = {c for _, _, said in approvals.card_answers(prompt) for c in approvals.mentioned(said)}
+    notes += [(f"Not granted: the pending code {c} is in the message, but not in a list right after the word approve on "
+               "its line in the principal's own words (a new line, another word, a negation or a tagged block came "
+               "between). If the principal meant it, ask them to type the word and the code together.") if c not in carded
+              else (f"Not granted: the pending code {c} is in a question card's answer, but it counts there only typed by the "
+                    "principal right after the word approve, in an answer to a card this session's record shows asking, none "
+                    "of whose options carries the code (a picked option is the agent's words). Ask them to type the word "
+                    "and the code in the card's answer or the main chat.")
               for c in ([] if muse else approvals.mentioned(prompt)) if c in waiting and c not in typed]
     session_id = paths.session_id(payload)
     if session_id:

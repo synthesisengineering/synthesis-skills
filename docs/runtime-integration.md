@@ -1085,8 +1085,8 @@ stay open, and no hook running as that same user can close them:
   spelling. Tracking the REPL's bindings per session would close the first class; the operating-system sandbox closes
   the adversarial ones, since a Node REPL cannot be made safe by parsing.
 - **Uploads the guard does not bind byte for byte** (the same review). A connector's upload outside the Drive tools
-  (Box's `upload_file`) binds the path its approval names, not the file's bytes, and bytes passed inline to a Drive
-  folder that may be shared (`base64_content`) need no code.
+  (Box's `upload_file`) binds the path its approval names, not the file's bytes. Bytes passed inline to a Drive folder
+  that may be shared (`base64_content`) needed no code until 5.27.1, which judges a Drive file by the folder it lands in.
 
 Closing these needs isolation the hooks do not have: the agent under its own OS user
 or sandbox, or approvals signed by something outside the agent's reach.
@@ -1170,7 +1170,15 @@ as one; Codex's records show hooks refusing such nested calls inside the scripts
   wait for a code naming the upload: a browser's on the page it acts on, so a local app's page asks nothing, and a
   connector's as a send. Claude in Chrome's `file_upload` and `upload_image` had reached no send rule, and Playwright's
   `browser_file_upload` was read as a read. A drop of `paths`, a driven browser's own `setInputFiles`, and a
-  `sha256:<hex>:<path>` file reference count too (review round 1 of 5.26.1).
+  `sha256:<hex>:<path>` file reference count too (review round 1 of 5.26.1). Since 5.27.1 a Drive call that makes or
+  copies a file waits by where it lands, not where its bytes come from: nothing in the principal's own My Drive, a code
+  for any named folder.
+- **A code typed into a Codex question card's answer counts** (5.27.1, the principal's direction of 2026-11-19). The
+  client wraps a card's reply in one block, a JSON list of question and answer, which the parser had dropped whole as
+  harness text. Now each answer is read alone: a code in it counts when the session's record shows the card's asking
+  call and none of the options that call offered carries the code, since a picked option is the agent's words. The
+  question never counts. A replay of the 66 card answers in this Mac's 1,003 Codex rollouts found three carrying a code,
+  the three the principal typed, and all three count.
 - **The doctor proves that Codex still runs hooks on nested calls.** Its `codex nested hooks`
   line reads Codex's newest rollouts for a hook's refusal in a script's result, which only
   a hook run on a nested call makes, and names the Codex version and the date it proves:

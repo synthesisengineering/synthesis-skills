@@ -551,7 +551,9 @@ def _entry_problem(entry) -> str:
                 f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
                 or guards.driven_tool(tool) or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else  # a driven browser's too (A14)
                 f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
-                if tool in ("imessage_send", "messages_send") else "")
+                if tool in ("imessage_send", "messages_send") else  # the send path takes no such call from a batch (2026-11-19)
+                "carries what its connector fetches or reads as the call runs (a url, a path, an attachment), which a batch "
+                "never binds: make that call alone, for its own code" if guards._fetches(entry["input"]) else "")
     if keys not in ({"channel", "to", "text"}, {"channel", "members", "service", "chat", "text"}) or not (
             isinstance(entry["text"], str) and entry["text"].strip() and isinstance(entry["channel"], str)):
         return f"is {KINDS}"

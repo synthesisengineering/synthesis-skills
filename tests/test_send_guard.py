@@ -790,8 +790,9 @@ def test_the_references_list_an_entry_the_connector_would_skip_or_send_changed(s
 # The same connector reads a local file for five Drive tools, under the same folder rule (2.1.0: drive_tools.py
 # and drive_helpers._resolve_import_media). update_drive_file and import_to_google_doc, _sheets and _slides take
 # `file_path`, a path or a file:// URL; create_drive_file takes `fileUrl`, a file on this disk when it is a file://
-# URL. update_drive_file waits for a code, since it changes a document others read; since 5.26.1 the others wait too when
-# they read a file from this disk (A14: an upload hands the principal's file to a service), and ask for none otherwise.
+# URL. update_drive_file waits for a code, since it changes a document others read; since 5.27.1 the others wait when they
+# put the file in a named folder, whatever its source, and ask for none in the principal's own My Drive (5.26.1 held them
+# by the source, a file from this disk).
 
 UPDATE = "mcp__workspace-mcp__update_drive_file"
 DOC_IMPORT = "mcp__workspace-mcp__import_to_google_doc"
@@ -845,8 +846,10 @@ def test_a_drive_tool_that_reads_a_local_file_is_refused_for_a_file_outside_the_
     assert ("after `file://`" in reason) is (key == "fileUrl")
     assert approvals.pending() == []
     staged = shutil.copy(outside, paths.outbox() / "plan.pdf")
-    assert "approval" in _uploaded(named(staged), tool, key)  # an upload, since 5.26.1
-    assert guards.check(tool, {**DRIVE, "content": "# Plan"}, CONFIG) is None  # nothing read from this disk
+    assert _uploaded(named(staged), tool, key) is None  # into the principal's own My Drive (5.27.1)
+    assert "approval" in guards.check(tool, {**DRIVE, key: named(staged), "folder_id": "1sharedFolderId"}, CONFIG)
+    assert guards.check(tool, {**DRIVE, "content": "# Plan"}, CONFIG) is None
+    assert "approval" in guards.check(tool, {**DRIVE, "content": "# Plan", "folder_id": "1sharedFolderId"}, CONFIG)
     waiting = approvals.pending()
     asks = {**CONFIG, "send_tools": [f"mcp__*__{tool.rsplit('__', 1)[-1]}"]}  # where the principal made it a send by name
     assert "outside the folders" in _uploaded(named(outside), tool, key, asks) and approvals.pending() == waiting
@@ -877,7 +880,7 @@ def test_a_file_url_is_turned_into_a_path_as_the_connector_turns_it(scratch):
                 "file:" + quote(str(spaced)), spaced.as_uri() + "?download=1#page=2"):
         assert "%20" in url and "%25" in url
         assert "approval" in _uploaded(url), url
-        assert "approval" in _uploaded(url, NEW_FILE, "fileUrl"), url
+        assert "approval" in guards.check(NEW_FILE, {**DRIVE, "fileUrl": url, "folder_id": "1sharedFolderId"}, CONFIG), url
     elsewhere = "file://fileserver" + quote(str(spaced))
     for reason in (_uploaded(elsewhere), _uploaded(elsewhere, NEW_FILE, "fileUrl")):
         assert f"the file //fileserver{spaced} does not exist" in reason and "approve" not in reason, reason
@@ -939,7 +942,7 @@ def test_a_drive_tool_that_reads_a_local_file_refuses_a_staged_file_that_cannot_
         assert f"the file {staged} cannot be read" in reason and "approve" not in reason, reason
     finally:
         staged.chmod(0o600)
-    assert approvals.pending() == [] and "approval" in _uploaded(named, tool, key)
+    assert approvals.pending() == [] and "approval" in guards.check(tool, {**DRIVE, key: named, "folder_id": "1sharedFolderId"}, CONFIG)
 
 
 # --- the approval binds the bytes of each file the connector reads ---------------------------------------------

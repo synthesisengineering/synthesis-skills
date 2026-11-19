@@ -502,7 +502,9 @@ send. A connector entry binds the whole call, every field of its input, compared
 whose input names anything its connector fetches, reads or carries when it runs (a key naming a url, a uri, a link, a
 path, a file, an attachment, an upload, a download, media, an image, a photo, a picture, video, audio, a voice clip, a
 blob, a sticker, a thumbnail or an avatar) is never covered, since a batch binds words, not what a url, a path or a
-file holds when the call runs. A messages entry binds what the sender's own approval binds; a photo beside it
+file holds when the call runs. Since 5.27.1 such an entry is refused as the batch is prepared, with that reason, so the
+principal is never asked to open a batch whose entry can never go (2026-11-19: a forward carrying the original's
+attachments was opened and could not be spent); make that call alone, for its own code. A messages entry binds what the sender's own approval binds; a photo beside it
 is outside every batch. A Messenger entry is sent in one step, a single `browser_batch` (the review's third round: a
 check read in one call and a Return pressed in another left room between them for a page script that rewrote what the
 check reported, a typist the guard could not see, and another session):
@@ -725,9 +727,12 @@ is in the sends ledger once released: a browser's upload (Claude in Chrome's and
 `browser_batch`, and a driven browser's) as a computer-use upload, judged on the page it acts on, so the principal's own
 app on a local host asks nothing, and a driven browser's call that names no file, which cancels its file chooser, is
 none; a connector's (Box's `upload_file`, Slack's `slack_complete_file_upload`, which shares the file in a conversation)
-as a send whose hold says what it uploads. A Drive call that has its connector read a file from this disk (`file_path`
-in an import, a `file://` `fileUrl` in `create_drive_file`) is an upload too, where it asked for no code; its code binds
-the file's bytes, and a Drive call that reads no file from this disk still asks for none. Since review round 1 of
+as a send whose hold says what it uploads. A Drive call that makes or copies a file waits by where the file lands
+(5.27.1): `create_drive_file`, the three imports and `copy_drive_file` ask nothing in the principal's own My Drive (no
+folder, or `root`) and wait for a code naming the file and the folder in any named folder, which may be shared, whatever
+the bytes' source (a file on this disk, a url or inline); a code for a file from this disk binds its bytes, and reading
+Drive never asks. Until 5.27.1 the rule went by the source: a private upload waited and inline bytes into a shared folder
+did not. `update_drive_file` writes into a file others may read and waits as a document edit. Since review round 1 of
 5.26.1, three more routes count: a driven browser's drop (`browser_drop`) of `paths`, a driven browser's own code
 (`browser_run_code_unsafe`) that sets a file input (`setInputFiles`, `setFiles`) or clicks a control named Save, read
 with the REPL's reader, and any connector field given a file by reference (`sha256:<64 hex>:<absolute path>`, as a Drive

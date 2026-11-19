@@ -2928,8 +2928,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # in a try 3, the refusal 1; the hold names the references in its line). _hands_over none (a reference in its return
 # line) and _file_refs 3 with FILE_REF 1 and their 4 blank lines. synthesis/sends.py 2: matches 2 more (its docstring 2
 # more; the tool's two spellings, each glob as written, in the 3 lines that rewrote the glob).
-CORE_BUDGET = 26277
-PLUGIN_BUDGET = 53051
+# 5.27.1 adds 87 to both, for three of the principal's asks of 2026-11-19. synthesis/approvals.py 67: a code he types
+# into a Codex question card's answer counts (his direction through the operations seat): the module's docstring 1 (what
+# a card's reply counts as); CARD's comment 5 with its three constants 3 and 2 blank lines; card_answers 21 (the client's
+# block read as one JSON list, each item's asking call, place and answer, any other shape none), _offered 14 (the options
+# the asking call offered, read back from the record's end), card_codes 15 (a code from an answer the record shows asked,
+# none of whose options carries it, read once per prompt and record), each with its 2 blank lines; grant_from_prompt and
+# showing read card answers in their lines. synthesis/guards.py 13: a Drive call that makes or copies a file waits by
+# where it lands, not by where its bytes come from (his question why an import asked a code): DRIVE_PLACES 2 with its
+# comment 5 and 2 blank lines; _hands_over 4 more (the tool's name once, the destination in 3). synthesis/hook.py 5: the
+# prompt hook's note for a pending code in a card's answer that did not count (the codes in answers 1, the note's other
+# wording 4); the record named once and the typed codes with the card's in their lines. synthesis/sends.py 2: a batch
+# entry the send path never spends (a forward's attachments, a url, a path) is refused as the batch is prepared, its
+# reason in 2 lines of _entry_problem's conditional (the operations seat's report of 2026-11-19, 09:35).
+CORE_BUDGET = 26364
+PLUGIN_BUDGET = 53138
 
 
 def _lines(files):
