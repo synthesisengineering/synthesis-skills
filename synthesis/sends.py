@@ -64,10 +64,12 @@ def _words(name: str) -> list:
 def matches(tool: str, globs) -> bool:
     """Whether a tool's name fits one of these globs as any harness spells it (A15, 2026-11-18): Codex's hook writes each
     character of an MCP server's name that is no letter, digit or _ as _ (`mcp__workspace_mcp__send_message`), Claude
-    Code keeps the server's own (`mcp__workspace-mcp__send_message`), so a hyphen outside a glob's brackets is either."""
-    plain = tool.replace("-", "_")
-    return any(fnmatch.fnmatchcase(tool, g) or fnmatch.fnmatchcase(plain, re.sub(r"\[[^\]]*\]|-", lambda m: "_" if m[0] == "-" else m[0], g))
-               for g in globs)
+    Code keeps the server's own (`mcp__workspace-mcp__send_message`). Each glob is matched as written against the name
+    and, where its server's part (between `mcp__` and the next `__`) holds `_`, the name with that part's `_` read as `-`
+    (review round 1 of 5.26.1: a glob rewritten for both let `mcp__relay-*` exempt a server named `relay`)."""
+    server, sep, name = tool[len("mcp__"):].partition("__") if tool.startswith("mcp__") else ("", "", "")
+    names = [tool] + ([f"mcp__{server.replace('_', '-')}__{name}"] if sep and "_" in server else [])
+    return any(fnmatch.fnmatchcase(spelled, g) for spelled in names for g in globs)
 
 
 def says(tool: str, config: dict) -> bool:
