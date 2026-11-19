@@ -136,6 +136,9 @@ def _break(m) -> None:
     git(behind, "fetch", "-q")
     blind = _published(remotes, ws / "blind", "blind")
     git(blind, "switch", "-q", "-c", "feature")
+    (blind / "feature.md").write_text("unpushed\n", encoding="utf-8")  # a commit no remote holds
+    git(blind, "add", "-A")
+    git(blind, "commit", "-q", "-m", "Unpushed")
     detached = _published(remotes, ws / "detached", "detached")
     git(detached, "switch", "-q", "--detach")
     dirty = _published(remotes, ws / "dirty", "dirty")
@@ -228,6 +231,27 @@ def test_a_machine_with_one_of_each_problem_yields_its_findings_and_its_plan(mac
     ]
     assert [s["step"] for s in report["plan"]] == list(range(1, 11))
     assert report["counts"] == {"fail": 4, "unknown": 0, "warn": 5} and report["exit"] == 1 and report["healthy"] is False
+
+
+def test_a_branch_with_no_upstream_whose_commits_a_remote_holds_is_nothing_at_risk(machine):
+    """On the principal's Mac, 86 of the 130 checkouts on a branch with no upstream held commits a remote already had (a
+    worktree whose pull request merged), and each was a failure with a push in the plan. Such a checkout with nothing
+    else to repair is now one warning for them all, with no step; one whose commits no remote holds still fails."""
+    for name, branch in (("landed", "merged-work"), ("landed-too", "done")):
+        git(_published(machine.remotes, machine.ws / name, name), "switch", "-q", "-c", branch)  # origin/main holds it
+    lost = _published(machine.remotes, machine.ws / "lost", "lost")
+    git(lost, "switch", "-q", "-c", "unpushed")
+    (lost / "work.md").write_text("only here\n", encoding="utf-8")
+    git(lost, "add", "-A")
+    git(lost, "commit", "-q", "-m", "Only here")
+    report = review.review(run=machine.run, platform="darwin")
+    assert _rows(report) == [("fail", "repositories", "~/workspaces/acme/lost"), ("warn", "repositories", "2 checkouts")]
+    said = {f["subject"]: f["detail"] for f in report["findings"]}
+    assert "no remote" in said["~/workspaces/acme/lost"]
+    assert "~/workspaces/acme/landed (merged-work, on origin/main)" in said["2 checkouts"]
+    assert "~/workspaces/acme/landed-too (done, on origin/main)" in said["2 checkouts"]
+    assert _steps(report) == [("agent", "git -C ~/workspaces/acme/lost push -u origin unpushed", ["F1"])]
+    assert report["counts"] == {"fail": 1, "unknown": 0, "warn": 1}
 
 
 def test_the_text_groups_the_findings_by_severity_and_numbers_the_plan(machine):
