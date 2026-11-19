@@ -4,6 +4,56 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.27.1] - 2026-11-19
+
+- **An approval code the principal types into a Codex question card's answer counts** (BACKLOG A18, the principal's
+  direction of 2026-11-19, with his yes in chat). Codex wraps a card's reply in one block, a JSON list of question and
+  answer, which the parser had dropped whole as harness text, so `approve <code>` typed into a card did not count. Each
+  answer is now read alone, and its code counts only when the whole prompt is that one block, the session's record holds
+  it as a message its client sent, the record shows the card's asking call, none of the options that call offered
+  carries the code (a picked option is the agent's words), and the code appears in the block as typed. The question
+  never counts, nor does a block inside other text: Codex also records an automation's heartbeat, whose words an agent
+  sets, as the user's message (review round 1). A replay of every card reply on one Mac counted the three codes the
+  principal typed and nothing else.
+- **A Drive call that makes, copies or moves a file waits by where it lands, not where its bytes come from** (BACKLOG
+  A19, the principal's question why a Drive import asked a code). The workspace connector's `create_drive_file`, the
+  three imports, `copy_drive_file`, `create_doc`, `create_spreadsheet`, `export_doc_to_pdf` and `create_drive_folder`,
+  and the Google Drive connector's `create_file`, `copy_file` and `update_file` (known by keys of that connector's own
+  schema, so another server's tool of the same name is not caught) ask nothing in the principal's own My Drive (no
+  folder, or `root`) and wait for a code naming the file and the folder in any named folder, which may be shared; a copy
+  given no folder lands beside its original and waits too. A file's content is read as a document's own lines, not as
+  a message's line breaks. 5.26.1 judged by the source: an upload to a private My Drive waited, and bytes passed inline
+  into a shared folder did not. Reading Drive never asks.
+- **A batch refuses, as it is read from its file, an entry the send path would never spend** (BACKLOG A20, an
+  operations seat's report of 2026-11-19, and review round 1): one whose input names what its connector fetches or reads
+  as the call runs (a forward that carries the original's attachments had been put to the principal, opened, and never
+  spent), one that names a file by `sha256:<hex>:<path>` reference, one whose words the principal's settings refuse, and
+  one that puts a meeting on today. A key that only names a file, such as `file_name`, no longer counts as fetched, so
+  several Drive files into a named folder go on one batch code. A stored batch is not judged again when it is listed or
+  opened.
+- **A workspace's ritual settings can live in its own repository** (BACKLOG C7, the principal's question of 2026-11-19:
+  synthesis is meant for Windows, Linux and Mac in any mix, and the sync folder that carried the ritual config between
+  Macs is iCloud). `~/workspaces/<W>/.agents/rituals.json`, linked from the workspace's private repository as its
+  `repos.yaml` and `mailboxes.yaml` are, takes the place of that workspace's entry in the machine's ritual
+  `config.json`, which keeps the defaults; git carries it to every machine. A link whose repository is not on a machine
+  is skipped there; a file that cannot be read, or is not an object, stops the rituals and names itself. The doctor's
+  `home paths` line reads these files too. Setup on a new machine now links every `*.yaml` and `*.json` in a
+  workspace's repository's `.agents/`, not `repos.yaml` alone: until now only the Mac-only mac-sync linked the rest.
+
+## [5.27.0] - 2026-11-19
+
+- **A standard for writing skills, measured before release** (`docs/skill-writing.md`, BACKLOG B1). A binding rule
+  says what to do, when, and why, in its own words, so an agent can apply it without opening another file; a rule
+  that was only a link is now complete. Passages move into references word for word, and each rewrite passes the
+  evaluation gate on two models at six repetitions with no rule weaker before it merges.
+- **synthesis-meeting-transcripts 1.3.0.** Its eleven rules are stated whole; Step 0, the declared-window sweep,
+  moves into `references/declared-window-sweep.md` word for word, and the earlier text stays verbatim in
+  `references/preserved.md`. Gate: Opus 137 of 138 against 137 of 138, Sonnet 136 against 132, no rule weaker.
+- **synthesis-code-planning 2.1.0.** Its eight rules are stated whole (rule 1, a bare link to the decision-ownership
+  contract, now says what the contract requires of code work, and still links it); the procedure moves into
+  `references/process.md` word for word. Gate: Opus 95% against 87%, Sonnet 92% against 87%; rule 1 rose from 5 of
+  12 to 8 of 12 on Opus and from 3 of 12 to 7 of 12 on Sonnet, and no rule is weaker.
+
 ## [5.26.1] - 2026-11-18
 
 - **The send guard reads Codex's computer-use REPL as computer use** (BACKLOG A14, an operations seat's report of

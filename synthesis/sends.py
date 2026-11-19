@@ -467,7 +467,12 @@ def read_batch(file: str) -> dict:
     try:
         if len(text) > 1_048_576:
             raise ValueError("it is larger than 1 MB")
-        return checked(json.loads(text, object_pairs_hook=_unique, parse_constant=_no_number))
+        batch = checked(json.loads(text, object_pairs_hook=_unique, parse_constant=_no_number))
+        for n, entry in enumerate(batch["entries"], 1):  # as it is put to the principal; an opened one is not judged again
+            problem = _unspendable(entry["tool"], entry["input"]) if "tool" in entry else ""
+            if problem:
+                raise ValueError(f"entry {n} {problem}")
+        return batch
     except ValueError as exc:
         raise ValueError(f"{_shown(file)} is no batch: {exc}") from None
 
@@ -551,7 +556,11 @@ def _entry_problem(entry) -> str:
                 f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
                 or guards.driven_tool(tool) or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else  # a driven browser's too (A14)
                 f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
-                if tool in ("imessage_send", "messages_send") else "")
+                if tool in ("imessage_send", "messages_send") else  # the send path takes no such call from a batch (2026-11-19)
+                "carries what its connector fetches or reads as the call runs (a url, a path, an attachment), which a batch "
+                "never binds: make that call alone, for its own code" if guards._fetches(entry["input"]) else
+                "names a file on this disk by reference, whose bytes a batch never binds: make that call alone, for its own "
+                "code" if guards._file_refs(entry["input"]) else "")
     if keys not in ({"channel", "to", "text"}, {"channel", "members", "service", "chat", "text"}) or not (
             isinstance(entry["text"], str) and entry["text"].strip() and isinstance(entry["channel"], str)):
         return f"is {KINDS}"
@@ -567,6 +576,21 @@ def _entry_problem(entry) -> str:
     return "" if isinstance(entry["to"], str) and conversation(entry["to"]) == (entry["channel"], entry["to"]) else (
         "names no conversation in the one form the guard compares, for its channel: facebook.com/messages/t/<id>, "
         "facebook.com/messages/e2ee/t/<id>, messenger.com/t/<id> or messenger.com/e2ee/t/<id>, channel messenger")
+
+
+def _unspendable(tool: str, given: dict) -> str:
+    """Why the send path would hold a connector entry a batch had opened, judged with the principal's settings as it will
+    judge the call: words a rule refuses, or a meeting put on today (review round 1 of 5.27.1, finding 4); "" for none.
+    Asked as a batch is read from its file, so no listing or opening of a stored batch files a request."""
+    from synthesis import guards
+    try:
+        config = paths.config()
+    except paths.Unreadable as exc:
+        return f"cannot be judged, since the guard's settings cannot be read ({exc})"
+    words = {k: v for k, v in config.items() if k != "temporary_addresses"}  # an address's own code is asked as it goes
+    problems, today = guards.message_problems(tool, given, words), guards._invited_today(tool, given, config)
+    return (f"can't go out as written: {'; '.join(problems[:3])}" if problems else today if isinstance(today, str) else
+            "puts a meeting on today, which takes a code of its own" if today else "")
 
 
 def batch_digest(batch: dict) -> str:

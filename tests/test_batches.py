@@ -159,6 +159,12 @@ def test_the_digest_binds_every_field_and_not_the_files_layout():
     ({"batch": "b", "project": PROJECT, "entries": [{"tool": "mcp__claude-in-chrome__computer", "input": {"action": "key"}}]},
      "entry 1"),
     ({"batch": "b", "project": PROJECT, "entries": [CALL, TEXT, CALL]}, "entry 3 repeats entry 1"),
+    # 2026-11-19: a forward that carries the original's attachments was put to the principal, opened, and never spendable
+    ({"batch": "b", "project": PROJECT, "entries": [{"tool": "mcp__workspace-mcp__send_gmail_message", "input": {
+        "to": "pat@example.com", "subject": "Fwd: plan", "body": "Here it is.", "forward_message_id": "18c0ffee",
+        "include_forwarded_attachments": True}}]}, "entry 1 carries what its connector fetches"),
+    ({"batch": "b", "project": PROJECT, "entries": [{"tool": "mcp__workspace-mcp__create_drive_file", "input": {
+        "file_name": "Plan", "fileUrl": "https://files.example.com/plan.docx", "folder_id": "1shared"}}]}, "make that call alone"),
 ])
 def test_a_batch_file_of_another_shape_is_refused_with_what_is_wrong(batch, says):
     file = FOLDER / "batch.json"
@@ -401,10 +407,16 @@ def test_a_messages_entry_binds_the_senders_recipient_chat_service_and_text():
 
 @pytest.mark.parametrize("attachment", [{"path": "plan.pdf"}, {"url": "https://files.example.com/shared/plan.pdf", "filename": "plan.pdf"}])
 def test_a_call_the_connector_fetches_or_reads_a_file_for_is_never_covered(attachment):
-    """Review #16: a file fetched from a url when the call runs, up to 12 hours after the principal read the batch."""
+    """Review #16: a file fetched from a url when the call runs, up to 12 hours after the principal read the batch. Since
+    2026-11-19 such an entry is refused as the batch is prepared, so no one is asked to open what can never be spent;
+    a batch opened by other means still covers nothing."""
     mail = {"to": "pat@example.com", "subject": "Plan", "body": "<p>The plan is attached.</p>", "body_format": "html",
             "attachments": [attachment]}
-    granted([{"tool": MAIL, "input": mail}])
+    with pytest.raises(ValueError, match="fetches or reads"):
+        sends.read_batch(str(batch_file([{"tool": MAIL, "input": mail}])))
+    unchecked = {"batch": "replies-1", "project": PROJECT, "entries": [{"tool": MAIL, "input": mail}]}
+    APPROVE(held_in_record(sends.batch_request(unchecked, "unchecked.json")))
+    applied()
     assert guards.check_send(MAIL, mail, CONFIG, SESSION)  # its own code, or refused outright as no full path
     assert not any(e["how"].startswith("batch") for e in today())
 
@@ -1206,8 +1218,12 @@ def test_a_photo_or_a_file_carrying_field_is_never_covered_and_connector_entries
     for field in ("photo", "picture", "video", "audio", "voice", "blob", "sticker", "thumbnail", "avatar"):
         sends.close_mark()
         given = {"channel_id": f"D-{field}", "message": REPLY, field: photo}
-        granted([{"tool": SLACK, "input": given}], name=f"carry-{field}")
-        assert held(guards.check(SLACK, given, CONFIG, session=SESSION)), field
+        with pytest.raises(ValueError, match="fetches or reads"):  # refused as the batch is prepared (2026-11-19)
+            sends.read_batch(str(batch_file([{"tool": SLACK, "input": given}], f"carry-{field}")))
+        unchecked = {"batch": f"carry-{field}", "project": PROJECT, "entries": [{"tool": SLACK, "input": given}]}
+        APPROVE(held_in_record(sends.batch_request(unchecked, "unchecked.json")))
+        applied()
+        assert held(guards.check(SLACK, given, CONFIG, session=SESSION)), field  # and one opened by other means covers nothing
 
 
 def test_every_invisible_or_variation_character_is_shown_as_its_code():
@@ -2097,3 +2113,53 @@ def test_a_sender_run_beside_a_git_command_whose_repository_names_a_program_stil
     line = f"python3 -s {SENDER} {' '.join(TO_A)} && git -C {repo} status"
     assert guards.check("Bash", {"command": line}, CONFIG, cwd=str(FOLDER), session=me) is None
     assert guards.check_send("imessage_send", {"to": "+15550100", "text": REPLY}, CONFIG, run=_run(*TO_A)) is None
+
+
+# --- review round 1 of 5.27.1 -------------------------------------------------------------------------------------------
+
+DRIVE = "mcp__workspace-mcp__create_drive_file"
+
+
+def test_files_made_inline_in_a_named_folder_go_on_one_batch_code():
+    """Finding 3: `file_name` read as a fetched file, so no batch could take a Drive file and each asked a code of its own."""
+    entries = [{"tool": DRIVE, "input": {"user_google_email": "me@example.com", "file_name": f"Note {n}", "content": f"# Note {n}",
+                                         "folder_id": "1sharedFolderId"}} for n in range(3)]
+    granted(entries)
+    for entry in entries:
+        assert guards.check_send(DRIVE, entry["input"], CONFIG, SESSION) is None
+    assert all(e["how"].startswith("batch") for e in today()[-3:])
+
+
+def _settings(**given):
+    paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    paths.config_file().write_text(json.dumps({**CONFIG, **given}), encoding="utf-8")
+
+
+def test_an_entry_the_send_path_would_hold_is_refused_as_the_batch_is_prepared(tmp_path, monkeypatch):
+    """Finding 4: a file named by reference, words a rule refuses, and a meeting on today were put to the principal,
+    opened, and never spent."""
+    staged = tmp_path / "plan.md"
+    staged.write_text("# Plan\n", encoding="utf-8")
+    ref = f"sha256:{hashlib.sha256(staged.read_bytes()).hexdigest()}:{staged}"
+    with pytest.raises(ValueError, match="entry 1 names a file on this disk by reference"):
+        sends.read_batch(str(batch_file([{"tool": "mcp__google__create_file", "input": {"title": "Plan", "base64Content": ref}}])))
+    _settings()
+    with pytest.raises(ValueError, match="entry 2 can't go out as written: .*delay"):
+        sends.read_batch(str(batch_file([CALL, {"tool": SLACK, "input": {"channel_id": "D0456", "message": "Sorry for the delay, Tuesday works."}}])))
+    monkeypatch.setattr(guards, "_today", lambda: date(2026, 11, 9))
+    _settings(same_day_meetings={"exempt": []})
+    invite = {"summary": "Follow-up", "start_time": "2026-11-09T15:00:00", "end_time": "2026-11-09T15:30:00",
+              "attendees": ["a@example.com"], "user_google_email": "me@example.com"}
+    with pytest.raises(ValueError, match="entry 1 puts a meeting on today"):
+        sends.read_batch(str(batch_file([{"tool": EVENT, "input": invite}])))
+    assert sends.read_batch(str(batch_file([{"tool": EVENT, "input": {**invite, "start_time": "2026-11-10T15:00:00",
+                                                                     "end_time": "2026-11-10T15:30:00"}}])))
+
+
+def test_files_of_several_lines_into_a_named_folder_go_in_a_batch():
+    """Review round 2 of 5.27.1, finding A: the batch refused them at preparation for their own lines."""
+    _settings(message_format={"allow_line_breaks_in_paragraphs": False})
+    entries = [{"tool": DRIVE, "input": {"user_google_email": "me@example.com", "file_name": f"Note {n}",
+                                         "content": f"# Note {n}\nline one\nline two\n", "folder_id": "1sharedFolderId"}} for n in range(2)]
+    assert sends.read_batch(str(batch_file(entries)))
+
