@@ -4,6 +4,16 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.27.2] - 2026-11-19
+
+- **synthesis-thinking-framework 3.2.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole: what to do, when and why. Rule 7 (judge every promised outcome in its own terms, and name before
+  implementing the observation that tells a useful result from a plausible wrong one) now covers the plan and the report
+  of done, and counts the request's stated goal as an outcome. The Pre-Response Protocol, Depth Calibration, and Decision
+  ownership and execution sections move word for word into `references/protocol.md`; the 3.1.0 text stays verbatim in
+  `references/preserved.md`. Gate at six repetitions against the pinned earlier text, nothing weaker on either model:
+  Opus 94% against 92% (rule 7 36 of 36 against 28), Sonnet 93% against 88% (rule 7 34 of 36 against 22).
+
 ## [5.27.1] - 2026-11-19
 
 - **An approval code the principal types into a Codex question card's answer counts** (BACKLOG A18, the principal's
