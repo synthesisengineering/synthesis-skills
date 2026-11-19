@@ -37,7 +37,7 @@ thinking about.
 
 ## Preconditions
 
-Apply [decision ownership](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.1/skills/synthesis-thinking-framework/references/decision-ownership.md).
+Apply [decision ownership](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.2/skills/synthesis-thinking-framework/references/decision-ownership.md).
 Carry the plan's mode, controlling instruction, delegated scope and actual
 approval gates. In delegated work, technical decisions and completed commit
 cycles continue without renewed permission. In supervised work, honor the

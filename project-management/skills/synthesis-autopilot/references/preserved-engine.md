@@ -327,7 +327,7 @@ review instead of replacing it with a generic process result. Read
 
 The `record` kinds `uncertainty`, `uncertainty_observe` and
 `uncertainty_revise` use the thinking framework's
-[decisive-uncertainty contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.1/skills/synthesis-thinking-framework/references/decisive-uncertainty.md).
+[decisive-uncertainty contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.27.2/skills/synthesis-thinking-framework/references/decisive-uncertainty.md).
 `coverage.decision_uncertainty` reports current open/resolved questions, exact
 source evidence and affected criteria. `next` suggests the declared cheapest
 credible observations before dependent task work. The same current-evidence
