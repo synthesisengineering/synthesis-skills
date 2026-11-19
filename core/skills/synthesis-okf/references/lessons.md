@@ -34,5 +34,5 @@ Moved verbatim from the 1.1.0 SKILL.md; only link paths changed. Read it before 
   hygiene for running this conversion at scale (one sub-agent per repo).
 - [`synthesis-kb-edit`](../../synthesis-kb-edit/SKILL.md) — config-driven editing
   and shipping; this skill owns its format and consistency gates.
-- [`synthesis-knowledge-capture`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.0/skills/synthesis-knowledge-capture/SKILL.md) —
+- [`synthesis-knowledge-capture`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.1/skills/synthesis-knowledge-capture/SKILL.md) —
   durable fact extraction and in-place reconciliation before validation.

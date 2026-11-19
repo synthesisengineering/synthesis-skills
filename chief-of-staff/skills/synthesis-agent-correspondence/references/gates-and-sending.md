@@ -113,15 +113,15 @@ The same rule holds for the connector's Drive tools that read a local file.
 `update_drive_file`, `import_to_google_doc`, `import_to_google_sheets` and
 `import_to_google_slides` take it as `file_path`, a full path or a `file://` URL;
 `create_drive_file` takes it as `fileUrl` when that is a `file://` URL.
-`update_drive_file` waits for a code and is refused before one is issued; the others ask
-for none and are refused before the call is made: ``the file <path> is outside the
+Each waits for a code and is refused before one is issued (the imports and
+`create_drive_file` asked for none until 5.26.1, when an upload of a file from this disk
+became one that waits, A14): ``the file <path> is outside the
 folders the connector reads: copy the file into <outbox> (make the folder if it is
 missing), give that copy's full path as `file_path` and make this call again``. Their
 `file_url` is fetched over http or https and never read from this disk, so a `file://`
 URL or a path there is refused with `file_path` named. A source that cannot be parsed as a
 path or a URL, or a path holding a NUL, is refused with its field named; and a staged file
-the connector could not read is refused for the tools that ask for no code too (the guard
-reads its first byte), as it is for a send.
+the connector could not read is refused before any code, as it is for a send.
 
 - Give the path whole, under the key `path`, the one the connector reads. It resolves
   a relative path in its own folder, expands no `~`, follows links, and then compares
@@ -159,8 +159,8 @@ reads its first byte), as it is for a send.
 ## Related
 
 - [`synthesis-message-guard`](../../synthesis-message-guard/SKILL.md) — the mechanical enforcement layer: a fail-closed pre-send hook that blocks a send until the text passes the register and format scan and the principal approves that exact call. This skill states the conventions; message-guard makes the scan and the approval impossible to skip, and the gates above remain the composing agent's to run.
-- [`synthesis-content-quality`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.0/skills/synthesis-content-quality/SKILL.md) and [`synthesis-writing-pitfalls`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.0/skills/synthesis-writing-pitfalls/SKILL.md) — the detection catalogs behind the compose-time voice gate.
-- [`synthesis-writing-craft`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.0/skills/synthesis-writing-craft/SKILL.md) — the positive craft principles underneath any drafted correspondence.
-- [`synthesis-disclosure-policy`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.0/skills/synthesis-disclosure-policy/SKILL.md) — a sibling config-driven pattern (a published-precedent ledger instead of a persona registry) for the adjacent question of what may be said about real parties, rather than who's speaking.
+- [`synthesis-content-quality`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.1/skills/synthesis-content-quality/SKILL.md) and [`synthesis-writing-pitfalls`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.1/skills/synthesis-writing-pitfalls/SKILL.md) — the detection catalogs behind the compose-time voice gate.
+- [`synthesis-writing-craft`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.1/skills/synthesis-writing-craft/SKILL.md) — the positive craft principles underneath any drafted correspondence.
+- [`synthesis-disclosure-policy`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.26.1/skills/synthesis-disclosure-policy/SKILL.md) — a sibling config-driven pattern (a published-precedent ledger instead of a persona registry) for the adjacent question of what may be said about real parties, rather than who's speaking.
 
 A private companion configuration — the user's actual persona registry, exact signature wording, and any organization-specific rules layered on top (assignment routing, approval-phase state, team-specific content limits) — belongs in their private skill collection. This public skill carries the mechanism only.
