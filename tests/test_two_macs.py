@@ -205,3 +205,45 @@ def test_a_durable_message_handed_off_on_one_mac_is_read_quoted_once_on_the_othe
     assert shown[1:] == [f"    > {text}"], shown
     assert b.synthesis("inbox", session="S-B").stdout == ""  # shown once on this Mac
 
+
+def test_each_macs_day_end_is_counted_on_both_once_each_has_synced_after_it(macs, remotes):
+    a, b = macs
+    today = date.today().isoformat()
+
+    def close(mac: Mac, session: str) -> None:  # the day-end's record step, as day-end.md has it run
+        said = mac.script("synthesis-daily-rituals", "ritual_state.py", "record", "--direction", "day-end", "--workspace", WORKSPACE,
+                          "--date", today, "--session", session).stdout
+        assert f"recorded day-end {WORKSPACE} {today} (clean)" in said and "`synthesis sessions sync` carries it to" in said, said
+
+    def hourly(mac: Mac) -> str:
+        said = mac.hourly().stdout
+        assert "FAILED" not in said and f"{WORKSPACE}: ai-sessions-{WORKSPACE} up to date" in said, said
+        return said
+
+    def closes(mac: Mac) -> tuple:  # this Mac's name, and each Mac's newest close of the workspace, as its summary reads them
+        view = json.loads(mac.script("synthesis-daily-rituals", "ritual_state.py", "query", "summary", "--json").stdout)
+        assert view["workspaces"][WORKSPACE]["last_day_end"]["date"] == today
+        return view["host"], view["workspaces"][WORKSPACE]["last_day_end_by_host"]
+
+    close(a, "S-A")
+    assert f"{WORKSPACE}: ritual history: 1 record(s) of this Mac committed" in hourly(a)
+    close(b, "S-B")
+    said = hourly(b)  # it pulls Mac A's file before it writes its own
+    assert f"{WORKSPACE}: ritual history: 1 record(s) of this Mac committed" in said
+    assert f"{OTHER}: " in said and "holds none of its sessions or ritual records" in said, said  # not this Mac's workspace
+    b.synthesis("claim", str(b.kb / "projects" / "alpha"), "--project", "alpha", "--goal", "close the day", session="S-B")
+    (b.kb / "projects" / "alpha" / "sessions").mkdir()
+    (b.kb / "projects" / "alpha" / "sessions" / "2026-11.md").write_text("# November\n\n### 2026-11-18: closed on Mac B\n",
+                                                                         encoding="utf-8")
+    handed = b.synthesis("handoff", "-m", "Close the day", session="S-B").stdout  # the day-end's last step on this Mac
+    assert handed.rstrip().splitlines()[-1].startswith("READY"), handed
+    (host_a, seen_a), (host_b, seen_b) = closes(a), closes(b)
+    assert host_a != host_b
+    assert seen_b == {host_a: today, host_b: today}  # the Mac whose sync ran last counts both closes
+    assert seen_a == {host_a: today}  # and the other counts its own until its next sync
+    hourly(a)
+    assert closes(a) == (host_a, {host_a: today, host_b: today})
+    assert sorted(git("-C", str(remotes["sessions"]), "ls-tree", "--name-only", "main", "rituals/").splitlines()) == sorted(
+        [f"rituals/{host_a}.jsonl", f"rituals/{host_b}.jsonl"])  # each Mac wrote its own file, and only its own
+    shown = a.script("synthesis-daily-rituals", "ritual_state.py", "query", "summary").stdout  # what the principal reads
+    assert f"closes by host: {host_a} {today} (this Mac), {host_b} {today}" in shown, shown
