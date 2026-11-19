@@ -18,6 +18,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   (a substitution, a variable it cannot read, xargs's files, a pattern that may name one). A script under either name is
   judged as the script it is, and a settings hold names `plutil -p` among the reads that need no code.
 
+- **A word beginning `~-`, `~+` or `~N` is a value the guard cannot read** (review round 1 of 5.25.2). bash, macOS
+  /bin/sh and zsh expand it from OLDPWD, PWD or the folder stack, which a line may set where no word shows, and the guard
+  read it as written: `OLDPWD=-convert; plutil ~- xml1 <agent>` rewrote a launch agent while the guard saw a lint, and
+  `OLDPWD=-o; sort ~- <protected>/x <file>` wrote a protected file in 5.25.1 too. A write target or folder spelled so is
+  now one the guard cannot place; where a program's words decide what it writes (a writer, a reader whose options write,
+  git, find, sed, uniq, xxd, plutil, defaults, or a program it does not know) the word may be any option or a target
+  joined to one, so every operand may change; and a program run from a folder the guard cannot read, `~-/…` or `$X/…`, is
+  known by no name. Plain `~`, `~/…` and `~user` read as before, and readers such as cat, grep and ls take such a word
+  with no code.
+
 ## [5.25.1] - 2026-11-18
 
 What the principal's operations seats met in ordinary work on 2026-11-18 (BACKLOG A10, A11 and A12), each fixed tests
