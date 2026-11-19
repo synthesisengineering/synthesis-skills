@@ -2934,3 +2934,36 @@ def test_a_refused_or_impossible_history_commit_never_holds_the_transcripts_back
     (repo / "rituals").write_text("a file where the folder belongs\n", encoding="utf-8")
     report = sessions.sync("alpha")  # no exception: the line says what could not be done
     assert any("ritual history not carried" in line for line in report), report
+
+
+def test_a_workspace_this_mac_holds_nothing_of_is_passed_over_and_one_it_holds_something_of_still_fails(
+        tmp_path, write_config, monkeypatch):
+    """BACKLOG D5 (2026-11-18): one config serves every Mac and names the sessions repo of each workspace the principal
+    works in, so a second Mac that holds some of them failed every sync, and so every handoff, for each workspace it
+    does not hold, with nothing of theirs to carry. A repo not cloned here fails the sync only while this Mac holds
+    something a sync would carry: a session in its archive, a ritual record in its log, or a log it cannot read."""
+    from synthesis import rituals
+    repo, _ = _cloned(tmp_path, "sessions-alpha")
+    missing = tmp_path / "workspaces" / "client" / "ai-sessions-client"
+    write_config({"sessions_repos": {"alpha": str(repo), "client": str(missing)}})
+    passed = f"client: {missing} is not cloned on this Mac, which holds none of its sessions or ritual records; nothing to carry"
+    failed = f"FAILED client: {missing} is not a git checkout; clone the workspace's sessions repo there"
+    report = sessions.sync()
+    assert passed in report and "alpha: sessions-alpha up to date" in report, report
+    assert not any(line.startswith("FAILED") for line in report), report
+    log = rituals.state_dir() / "history.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(json.dumps({"date": "2026-11-18", "direction": "day-end", "workspace": "client"}) + "\n", encoding="utf-8")
+    assert failed in sessions.sync()  # a record of it on this Mac: the sync must carry it
+    log.unlink()
+    (sessions.root() / "client" / "2026-11" / "claude-code-c9").mkdir(parents=True)
+    assert failed in sessions.sync()  # a session of it in the archive
+    (sessions.root() / "client" / "2026-11" / "claude-code-c9").rmdir()
+    (sessions.root() / "client" / "2026-11").rmdir()
+    (sessions.root() / "client").rmdir()
+    assert passed in sessions.sync()
+
+    def unreadable(ws):
+        raise PermissionError(13, "Permission denied")
+    monkeypatch.setattr(sessions, "_own_records", unreadable)
+    assert failed in sessions.sync()  # a log that cannot be read cannot say this Mac holds nothing

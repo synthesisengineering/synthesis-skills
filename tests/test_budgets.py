@@ -2714,8 +2714,23 @@ ROOT = Path(__file__).resolve().parents[1]
 # (the commit's own declaration, read from the same tree; none for a commit with no runtime package, refused for an
 # unreadable one), the declaration read by its blob from that tree 1 and its names 2, and its walk one line fewer (it
 # builds the tree, which the answer filters).
-CORE_BUDGET = 25257
-PLUGIN_BUDGET = 52025
+# BACKLOG D5 (the two-Mac check, 2026-11-18: one config serves every Mac, and a second Mac that held some of the
+# workspaces failed every sessions sync, and so every handoff, for each workspace it does not hold), each 21 more, in
+# synthesis/. sessions.py 17: held 8 (its line and docstring 4; a folder of the workspace in the archive or a ritual
+# record of it in this Mac's log, and a log that cannot be read counting as one, 4) and its 2 blank lines;
+# _sync_workspace 1 (a repo not cloned fails the sync only while the workspace is held, and is otherwise passed over in
+# a line of its own); _ritual_history 8 fewer (its reading of this Mac's log moved out); _own_records 12 (its line and
+# docstring 2, the import 1, the log and its list 1, the loop that keeps this Mac's records of the workspace 7, the
+# answer 1) and its 2 blank lines. doctor.py 4, in check_sessions_repos: its docstring 1, the import 1, and the
+# information line for a workspace not held, in place of the warning, 2.
+# Then core 2 and plugin 8, for the same check's second finding (two Macs that close one workspace on one day read the
+# same in `ritual_state.py query summary` whether or not the other Mac's record had arrived). synthesis/rituals.py 2, in
+# read: its docstring 1 (the host each record carries, none for this Mac's log), and the line read into a name and
+# given its host 1; this Mac's log named once keeps its lines. The rituals' ritual_state.py 6: row 2 (each Mac's
+# day-end closes of the workspace 1, the newest of each 1), cmd_query 4 (this Mac's host in the summary and the last
+# view 1, and the closes by host under a row once another Mac's close is read 3).
+CORE_BUDGET = 25280
+PLUGIN_BUDGET = 52054
 
 
 def _lines(files):

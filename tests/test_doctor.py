@@ -2191,10 +2191,15 @@ def test_each_sessions_repo_is_checked_for_clone_recent_sync_and_size(tmp_path):
     (state / "sync-a.json").write_text(json.dumps({"synced": "2026-10-30T20:00:00Z"}), encoding="utf-8")
     (state / "sync-c.json").write_text(json.dumps({"synced": "2026-10-20T20:00:00Z"}), encoding="utf-8")
     now = time.mktime(time.strptime("2026-10-31", "%Y-%m-%d"))
-    found = {c.name: c for c in doctor.check_sessions_repos({"a": cloned, "b": tmp_path / "missing", "c": cloned}, state, now)}
+    from synthesis import sessions
+    (sessions.root() / "b" / "2026-10" / "codex-s1").mkdir(parents=True)  # this Mac holds a session of b, none of d
+    repos = {"a": cloned, "b": tmp_path / "missing", "c": cloned, "d": tmp_path / "elsewhere"}
+    found = {c.name: c for c in doctor.check_sessions_repos(repos, state, now)}
     assert found["sessions repo a"].status == "ok"
-    assert found["sessions repo b"].status == "warn" and "not cloned" in found["sessions repo b"].detail
+    assert found["sessions repo b"].status == "warn" and "not cloned; clone it there" in found["sessions repo b"].detail
     assert found["sessions repo c"].status == "warn" and "last synced 2026-10-20" in found["sessions repo c"].detail
+    assert found["sessions repo d"].status == "info" and found["sessions repo d"].detail.endswith(  # BACKLOG D5: one config,
+        "is not cloned, and this Mac holds none of its sessions or ritual records, so it needs none")  # every Mac
 
 
 def _schedule(plist: Path, line=None) -> Path:
