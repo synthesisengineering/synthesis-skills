@@ -10,6 +10,8 @@ send rule, Playwright's `browser_file_upload` was read as a read, a connector's 
 a Drive import of a local file asked for no code.
 """
 
+from __future__ import annotations
+
 import json
 import time
 from datetime import datetime, timezone
@@ -46,9 +48,9 @@ def _record(path: Path, name: str, given: dict, said: str) -> dict:
     return {**SESSION, "transcript_path": str(path)}
 
 
-def on_tab(tmp_path, url: str) -> dict:
-    """A session whose newest Claude in Chrome result shows tab 7 on this page."""
-    return _record(tmp_path / "chrome.jsonl", "mcp__claude-in-chrome__computer", {"action": "screenshot", "tabId": 7},
+def on_tab(tmp_path, url: str, record: Path | None = None) -> dict:
+    """A session whose newest Claude in Chrome result shows tab 7 on this page (in the principal's own record, if named)."""
+    return _record(record or tmp_path / "chrome.jsonl", "mcp__claude-in-chrome__computer", {"action": "screenshot", "tabId": 7},
                    f"Done\n\nTab Context:\n- Executed on tabId: 7\n- Available tabs:\n  • tabId 7: \"App\" (\"{url}\")")
 
 
@@ -77,7 +79,7 @@ def test_a_tool_that_reads_or_names_no_upload_is_none(tool):
     (CHROME_IMAGE, {"imageId": "shot-1", "ref": "ref_4", "tabId": 7}, "shot-1"),
 ], ids=["file-upload", "upload-image"])
 def test_a_chrome_upload_waits_for_a_code_naming_it_and_is_logged(principal, tmp_path, tool, given, named):
-    session = on_tab(tmp_path, "https://app.example.com/expenses/1")
+    session = on_tab(tmp_path, "https://app.example.com/expenses/1", principal.transcript)
     reason = guards.check(tool, given, CONFIG, session=session)
     assert held(reason) and "This call uploads a file" in reason and named in reason, reason
     principal(reason)
@@ -146,3 +148,14 @@ def test_one_code_releases_one_upload(principal):
     principal(reason)
     assert guards.check("mcp__box__upload_file", {"file_path": "/tmp/a.pdf", "folder_id": "1"}, CONFIG, session=SESSION) is None
     assert held(guards.check("mcp__box__upload_file", {"file_path": "/tmp/a.pdf", "folder_id": "1"}, CONFIG, session=SESSION))
+
+
+@pytest.mark.parametrize("tool", [CHROME_FILE, PLAYWRIGHT + "browser_file_upload", PLAYWRIGHT + "browser_click"])
+def test_a_batch_takes_no_browser_tool_as_a_connector_call(tmp_path, tool):
+    """The computer-use rules judge a browser's call on its page and never spend a batch's entry for it, so a batch that
+    named one would bind nothing: it is refused before any code, as a computer-use call is."""
+    file = tmp_path / "batch.json"
+    file.write_text(json.dumps({"batch": "b", "project": "ops", "entries": [{"tool": tool, "input": {"paths": ["/tmp/a.pdf"]}}]}),
+                    encoding="utf-8")
+    with pytest.raises(ValueError, match=r"entry 1 names"):
+        sends.read_batch(str(file))
