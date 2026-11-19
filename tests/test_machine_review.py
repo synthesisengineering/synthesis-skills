@@ -432,6 +432,27 @@ def test_every_agent_step_runs_with_no_code_where_pushes_publish_or_are_gated(ma
     assert len(agent) >= 5 and {do: _guard(do, machine.home) for do in agent} == dict.fromkeys(agent)
 
 
+def test_classing_a_push_reaches_no_other_repository_and_runs_no_program_its_configuration_names(machine, write_config):
+    """The push decider asks a remote which version tags it holds when a push may carry one. Classing reaches no other
+    repository, a local path included, so an `uploadpack` the repository's own configuration names never runs (a fetch
+    is not among the subcommands its git was screened for), and the push the decider could settle only by asking is
+    held for the principal's code."""
+    tagged, ran = _published(machine.remotes, machine.ws / "tagged", "tagged"), machine.tmp / "uploadpack-ran"
+    git(tagged, "switch", "-q", "-c", "feature")
+    git(tagged, "push", "-q", "-u", "origin", "feature")
+    git(tagged, "tag", "-a", "v1.0.0", "-m", "One")
+    (tagged / "next.md").write_text("next\n", encoding="utf-8")
+    git(tagged, "add", "next.md")
+    git(tagged, "commit", "-q", "-m", "Next")
+    git(tagged, "config", "push.followTags", "true")
+    git(tagged, "config", "remote.origin.uploadpack", f"touch {ran} && git-upload-pack")
+    write_config({"knowledge_roots": ["~/workspaces/acme/ai-knowledge-acme"],
+                  "pr_gated": {"remotes/tagged": {"since": "2026-01-01", "branch": "main"}}})
+    report = review.review(run=machine.run, platform="darwin")
+    assert {s["do"]: s["who"] for s in report["plan"]}["git -C ~/workspaces/acme/tagged push"] == "agent-with-code"
+    assert not ran.exists()
+
+
 def test_a_live_seats_file_past_the_scans_first_twenty_is_left_out_of_the_commit_and_its_seat_asked(machine):
     """Finding 2: the strand scan lists twenty uncommitted files, so a live seat's file after them was committed with
     `git add -A`, then pushed, and the seat was never asked. The whole list is read: the commit names each file no live
