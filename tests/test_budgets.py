@@ -2957,8 +2957,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # suite's writers test): read_batch 5 more (the batch named, the loop over its entries, the problem, its refusal, the
 # return); _unspendable 2 more (its docstring 1, the settings without the address rule, whose own code is asked as the
 # call goes, 1); sends' read_batch and _unspendable join guards.SYNTHESIS_WRITES in its two lines.
-CORE_BUDGET = 26399
-PLUGIN_BUDGET = 53173
+# Then each 1 more, in synthesis/guards.py, for review round 2 of 5.27.1 (finding A, what an honest agent hits): message_problems
+# reads a Drive file's content as a document's own lines, its breaks_ok over 2 lines; _hands_over's empty-key fix in its line.
+CORE_BUDGET = 26400
+PLUGIN_BUDGET = 53174
 
 
 def _lines(files):

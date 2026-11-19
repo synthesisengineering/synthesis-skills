@@ -99,3 +99,26 @@ def test_a_file_made_moved_or_copied_into_a_named_folder_by_any_drive_tool_waits
 def test_the_same_tools_into_the_principals_own_my_drive_or_another_servers_tools_ask_nothing(tool, given):
     assert guards.check(tool, given, CONFIG, session=SESSION) is None, tool
 
+
+# --- review round 2 of 5.27.1 -----------------------------------------------------------------------------------------
+
+LINES = "# Plan\nFirst step.\nSecond step.\n"
+WITH_LINES = [("mcp__workspace-mcp__create_drive_file", {**ME, "content": LINES, "folder_id": "1sharedFolderId"}),
+              ("mcp__workspace-mcp__create_doc", {**ME, "title": "Plan", "content": LINES, "folder_id": "1sharedFolderId"}),
+              ("mcp__workspace-mcp__import_to_google_sheets", {**ME, "content": "a,b\n1,2\n3,4\n", "folder_id": "1sharedFolderId"})]
+ONE_LINE_RULE = {**CONFIG, "message_format": {"allow_line_breaks_in_paragraphs": False}}
+
+
+@pytest.mark.parametrize("tool,given", WITH_LINES)
+def test_a_file_of_several_lines_into_a_named_folder_waits_for_a_code_and_is_not_refused_as_a_message(tool, given):
+    """Finding A: a file's own lines read as a message's line breaks, refused before any code was offered."""
+    reason = guards.check(tool, given, ONE_LINE_RULE, session=SESSION)
+    assert held(reason) and "line break" not in reason, reason
+
+
+def test_an_empty_key_does_not_carry_an_upload_past_the_drive_rule():
+    """Open list 1: an input with a key named "" took any tool into the Drive branch, past the upload checks after it."""
+    given = {"file_path": "/tmp/a.pdf", "folder_id": "1"}
+    assert held(guards.check("mcp__box__upload_file", given, CONFIG, session=SESSION))
+    assert held(guards.check("mcp__box__upload_file", {**given, "": ""}, CONFIG, session=SESSION))
+

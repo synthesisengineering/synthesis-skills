@@ -2155,3 +2155,11 @@ def test_an_entry_the_send_path_would_hold_is_refused_as_the_batch_is_prepared(t
     assert sends.read_batch(str(batch_file([{"tool": EVENT, "input": {**invite, "start_time": "2026-11-10T15:00:00",
                                                                      "end_time": "2026-11-10T15:30:00"}}])))
 
+
+def test_files_of_several_lines_into_a_named_folder_go_in_a_batch():
+    """Review round 2 of 5.27.1, finding A: the batch refused them at preparation for their own lines."""
+    _settings(message_format={"allow_line_breaks_in_paragraphs": False})
+    entries = [{"tool": DRIVE, "input": {"user_google_email": "me@example.com", "file_name": f"Note {n}",
+                                         "content": f"# Note {n}\nline one\nline two\n", "folder_id": "1sharedFolderId"}} for n in range(2)]
+    assert sends.read_batch(str(batch_file(entries)))
+

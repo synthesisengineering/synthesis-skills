@@ -281,7 +281,8 @@ def message_problems(tool: str, tool_input: dict, config: dict, chans: set | Non
     change is released only by the principal's approval of the address itself, which the message's own never is."""
     from synthesis import sends
     fmt, chans = config.get("message_format") or {}, chans or {sends.channel(tool, tool_input)}
-    breaks_ok = bool(fmt.get("allow_line_breaks_in_paragraphs")) or sends.matches(tool, sends.DOCUMENT_EDITS)  # a document's own lines
+    breaks_ok = (bool(fmt.get("allow_line_breaks_in_paragraphs")) or sends.matches(tool, sends.DOCUMENT_EDITS)  # a document's own
+                 or tool.rsplit("__", 1)[-1] in DRIVE_PLACES)  # lines, a Drive file's too (review round 2 of 5.27.1, finding A)
     strings, html_format = list(_strings(tool_input)), tool_input.get("body_format") == "html"
     texts, html_parts, problems = [], [], []
     for key, text in strings:
@@ -9739,7 +9740,7 @@ def _hands_over(tool: str, tool_input: dict) -> bool:
     a file into a named folder (DRIVE_PLACES); or a Drive update from a file on this disk: its `file_path`."""
     from urllib.parse import urlparse
     name = tool.rsplit("__", 1)[-1]
-    if isinstance(tool_input, dict) and (name in DRIVE_PLACES or DRIVE_PARENTS.get(name, "") in tool_input):
+    if isinstance(tool_input, dict) and (name in DRIVE_PLACES or name in DRIVE_PARENTS and DRIVE_PARENTS[name] in tool_input):
         folder = tool_input.get(DRIVE_PLACES.get(name, "parentId"))  # by where it lands; anything but a name is named
         return (folder is None and name == "copy_file") or not (folder is None or isinstance(folder, str) and
                                                                  folder.strip().lower() in ("", "root"))
