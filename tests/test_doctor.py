@@ -159,7 +159,7 @@ def test_plugin_entry_states(tmp_path):
     assert doctor.check_plugin("claude", None).status == "fail"
     assert doctor.check_plugin("codex", None, "`codex plugin list` gave no JSON").status == "fail"
     slow = doctor.check_plugin("codex", None, "cannot tell: `codex plugin list` did not answer within 45 s; run the doctor again")
-    assert slow.status == "warn" and "did not answer" in slow.detail  # 2026-10-10: slow, not broken
+    assert slow.status == "unknown" and "did not answer" in slow.detail  # 2026-10-10: slow, not broken, and untold
     off = {"enabled": False, "version": "5.0.0", "path": tmp_path}
     assert "disabled" in doctor.check_plugin("muse", off).detail
     on = {**off, "enabled": True}
@@ -239,7 +239,7 @@ def test_the_doctor_fails_a_plugin_whose_guard_lets_a_call_through_when_it_canno
 
 
 @pytest.mark.parametrize("version,status", [("2.1.294", "warn"), ("2.1.30", "warn"), ("2.0.999", "warn"), ("2.1.295", "ok"),
-                                            ("2.1.1000", "ok"), ("3.0", "ok"), ("", "warn")])
+                                            ("2.1.1000", "ok"), ("3.0", "ok"), ("", "unknown")])
 def test_the_doctor_warns_when_claude_code_cannot_honor_the_setting(version, status):
     check = doctor.check_claude_fail_closed(REPO_HOOKS, version)
     assert check.status == status
@@ -1484,7 +1484,7 @@ def test_the_doctor_says_where_the_days_prompt_check_is_on(machine, capsys):
     (rituals / "config.json").write_text("{not json")
     doctor.main([])
     lines = [line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["prompt", "check"]]
-    assert len(lines) == 1 and lines[0].split()[0] == "warn"
+    assert len(lines) == 1 and lines[0].split()[0] == "unknown"
 
 
 def test_the_prompt_check_line_reads_the_setting_as_the_day_end_does():
@@ -1917,7 +1917,7 @@ def test_catalog_check_names_undiscoverable_skills_and_overruns(tmp_path):
     assert doctor.check_codex_catalog(full, "", plugin, {}, tmp_path).status == "ok"
     big = {"data": [{"skills": [_skill(tmp_path / f"p{i}", f"s{i}", description="d" * 1024) for i in range(9)]}]}
     assert doctor.check_codex_catalog(big, "", None, {}, tmp_path).status == "fail"
-    assert doctor.check_codex_catalog(None, "boom", plugin, {}, tmp_path).status == "warn"
+    assert doctor.check_codex_catalog(None, "boom", plugin, {}, tmp_path).status == "unknown"
 
 
 def test_catalog_budget_follows_the_configured_model(tmp_path):
@@ -2053,7 +2053,7 @@ def test_latest_release_failure_is_reported_not_hidden():
     def fail(url):
         raise OSError("network down")
     check = doctor.check_latest({"claude": "5.0.0"}, fetch=fail)
-    assert check.status == "warn" and "network down" in check.detail
+    assert check.status == "unknown" and "network down" in check.detail
 
 
 def test_fetch_retries_with_the_system_ca_bundle_only_on_certificate_failures(monkeypatch, tmp_path):
@@ -2723,7 +2723,7 @@ def test_the_doctor_warns_while_something_a_test_set_up_is_still_in_place(tmp_pa
     assert "1 thing " in doctor.check_teardown(listed, now).detail and "under an hour" in doctor.check_teardown(listed, now).detail
     listed.unlink()
     listed.mkdir()
-    assert doctor.check_teardown(listed, now).status == "warn"                                               # a list that cannot be read is said
+    assert doctor.check_teardown(listed, now).status == "unknown"                                            # a list that cannot be read is said
 
 
 def test_the_doctor_reads_a_teardown_list_whatever_it_holds(tmp_path):
@@ -2761,7 +2761,7 @@ def test_the_doctor_reads_a_teardown_list_whatever_it_holds(tmp_path):
     assert len(doctor.check_teardown(listed, now).detail) < 600                                              # one long line does not fill the screen
     listed.unlink()
     listed.symlink_to(tmp_path / "gone")
-    assert doctor.check_teardown(listed, now).status == "warn" and "cannot be read" in doctor.check_teardown(listed, now).detail
+    assert doctor.check_teardown(listed, now).status == "unknown" and "cannot be read" in doctor.check_teardown(listed, now).detail
 
 
 # Records that leave this Mac, part 2 (plan item 13.5, 5.19.0). The audit of 2026-11-11 (gap 4): nothing counted
