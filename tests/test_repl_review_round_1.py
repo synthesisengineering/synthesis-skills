@@ -211,7 +211,9 @@ def test_an_octal_escape_is_read_as_its_character():
      "Searching the mailbox for the vendor's note"),
 ], ids=["address", "csv-rows", "code-cell", "mail-search"])
 def test_text_typed_in_a_call_that_sends_nothing_is_never_scanned_as_a_message(code, title):
-    assert repl(code, title) == "pass", (code, title)
+    """Never refused with no code possible; rows pasted into a sheet and a code cell written are document edits by their
+    titles, and wait for a code as edits do."""
+    assert repl(code, title) == ("hold" if "sheet" in title or "cell" in title else "pass"), (code, title)
 
 
 def test_words_a_sending_call_types_still_pass_the_register_scan_first():
