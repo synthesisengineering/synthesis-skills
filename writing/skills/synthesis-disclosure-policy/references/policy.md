@@ -95,7 +95,7 @@ OSS repository is not a place for anyone's biography.
 | `public-surface` | Author-published sites | always | on | Class-P names allowed |
 | `strict` | Client, multi-tenant, public OSS | always | on | none |
 
-The companion [`synthesis-git-hooks`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.1/skills/synthesis-git-hooks/SKILL.md)
+The companion [`synthesis-git-hooks`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.25.2/skills/synthesis-git-hooks/SKILL.md)
 engine implements these classes: `strict_repo_patterns` pins repositories
 strict regardless of remotes (any-match), `public_surface_patterns`
 declares author-published surfaces (all-remotes match), and
