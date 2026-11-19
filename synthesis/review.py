@@ -11,6 +11,7 @@ references/machine-review.md says how.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.util
 import json
 import os
@@ -36,7 +37,7 @@ SKILLS = Path(__file__).resolve().parents[1] / "skills"  # this release's own: t
 EXPORT, NUDGE, CONNECTOR = "com.synthesis.sessions-export", "com.synthesis.day-end-nudge", "com.synthesis.workspace-mcp"
 DORMANT = {"dormant", "archived", "retired"}  # a declared repository the onboarding's workspace step does not clone
 COMMIT = "Commit work left uncommitted"
-LIVE ="Your claim covers {}, which holds uncommitted or unpushed work: commit and push it, or reply with what it is."
+LIVE = "Your claim covers {}, which holds uncommitted or unpushed work: commit and push it, or reply with what it is."
 APPROVE = {"codex": "approve the synthesis hooks inside Codex: run `/hooks` there and trust each one",
            "muse": f"run `muse plugins approve {doctor.PLUGIN}`, then approve each hook Muse names"}
 AGENT_FIXES = {"instruction adapters": "give each folder one set of instructions, `AGENTS.md` with a `CLAUDE.md` of the one "
@@ -70,21 +71,33 @@ class _Report:
         self.steps += [(len(self.findings) - 1, who, do) for who, do in steps]
 
     def doctor(self, check, area: str, subject: str = "") -> None:
-        """A doctor line as a finding, with the step that fixes it; a line that is well, or only reports, is none. A line
-        that could not tell is unknown, never fine."""
+        """A doctor line as a finding, with the step that fixes it, by the doctor's own status: a line that is well, or only
+        reports, is none, and one that could not tell is unknown, never fine."""
         self.read["doctor checks"] += 1
-        if check.status in ("fail", "warn"):
-            unknown = check.detail.startswith(("cannot tell", "could not read"))
-            self.add("unknown" if unknown else check.status, area, subject or check.name, check.detail, _fix(check))
+        if check.status in SEVERITY:
+            self.add(check.status, area, subject or check.name, check.detail, _fix(check))
 
-    def done(self, fetched: bool, began: float) -> dict:
+    def guard(self, area: str, subject: str, read, default=None):
+        """What read() answers, or, where it raises, an unknown finding for its area: a part that cannot run is never read
+        as fine, and never ends the rest of the review."""
+        try:
+            return read()
+        except Exception as exc:
+            self.add("unknown", area, subject, f"the review could not read it ({type(exc).__name__}: {exc})", (
+                "principal", f"look at {subject} by hand: what stopped the review there is named above"))
+            return default
+
+    def done(self, fetched: bool, began: float, config) -> dict:
         """Findings by severity, then area, then the order they were read; the plan in the order of what each step fixes,
-        a step that one command makes said once, with every finding it fixes."""
+        a step that one command makes said once, with every finding it fixes, and each git step classed by the guard."""
         rank = {i: (SEVERITY.index(f["severity"]), AREAS.index(f["area"]), i) for i, f in enumerate(self.findings)}
         order = sorted(rank, key=rank.get)
         ids = {i: f"F{n}" for n, i in enumerate(order, 1)}
         plan, said = [], {}
-        for _, (i, who, do) in sorted(enumerate(self.steps), key=lambda step: (rank[step[1][0]], step[0])):
+        with _offline():
+            steps = [(i, "agent-with-code" if who == "agent" and do.startswith("git ") and _held(do, config) else who, do)
+                     for i, who, do in self.steps]
+        for _, (i, who, do) in sorted(enumerate(steps), key=lambda step: (rank[step[1][0]], step[0])):
             if do not in said:
                 said[do] = {"step": len(plan) + 1, "who": who, "do": do, "fixes": []}
                 plan.append(said[do])
@@ -95,7 +108,7 @@ class _Report:
                 "read": self.read, "not_run": NOT_SAID, "findings": [{"id": ids[i], **self.findings[i]} for i in order], "plan": plan}
 
 
-# ---- how a step names a path, a script and the runtime's own install ------------------------------------------------
+# ---- how a step names a path, a script and the runtime's own install, and whom the guard asks for a code ---------------
 
 def _arg(path) -> str:
     """A path as a command line takes it: `~` for the home folder where the rest needs no quotes, else quoted whole."""
@@ -144,6 +157,40 @@ def _fix(check) -> tuple:
     return "principal", detail
 
 
+def _held(do: str, config: dict) -> bool:
+    """Whether the guard holds this git step for the principal's code, asked of its own deciders, which record no request:
+    a deploy it makes (a repository that publishes on push: push_deploys, deploy_remotes, deploy_patterns), or a push that
+    may move a gated repository's default branch (pr_gated), a setting the guard cannot read holding every push."""
+    from synthesis import guards
+    cwd, gated = str(Path.home()), config.get("pr_gated")
+    if guards._targets(do, config, cwd):
+        return True
+    commands, readable = guards._parse(do, cwd)
+    pushes = [(found, where) for words, at in commands for where in [guards._git(words, at)[1]] for found in [guards._push(words, where)]
+              if found]
+    if not pushes or gated is None:
+        return False
+    if not isinstance(gated, dict) or not all(isinstance(k, str) and "/" in k for k in gated):
+        return True
+    rules = {k.lower(): rule for k, rule in gated.items()}
+    return any(guards._gated_push(found[0], where, rules, readable and found[1], None, do, {where}) for found, where in pushes)
+
+
+@contextlib.contextmanager
+def _offline():
+    """No git started inside reaches another repository, one at a local path included: nothing is fetched without --fetch,
+    and a transport runs what the repository's own configuration names (`remote.<name>.uploadpack`), which the screen for
+    the scanner's subcommands does not read. The push decider may ask a remote which version tags it holds; one it cannot
+    ask holds the push, which the plan then says. The environment comes back whole, as it was."""
+    before = os.environ.copy()
+    os.environ.update(GIT_ALLOW_PROTOCOL="none")  # a list of no protocol git has: `file`, a local path's, refused with the rest
+    try:
+        yield
+    finally:
+        os.environ.clear()
+        os.environ.update(before)
+
+
 # ---- what is read, and how without a write -------------------------------------------------------------------------
 
 def _load(skill: str, script: str):
@@ -176,12 +223,44 @@ def _present(harness: str) -> bool:
     return any(p and os.path.isfile(os.path.expanduser(p)) and os.access(os.path.expanduser(p), os.X_OK) for p in places)
 
 
-def _covers(claims: list, real: str, found: dict) -> bool:
-    """Whether these claims cover a repository's uncommitted files (the first twenty the scan lists), or, with none, any
-    part of it: in a repository many seats share, the seat whose work it is is the one whose claim covers it."""
-    files = [os.path.join(real, line[3:].split(" -> ")[-1].strip('"')) for line in found.get("dirty", []) if not line.startswith("... ")]
-    spots = [f + "**" if f.endswith("/") else f for f in files] or [real + "/**"]  # an untracked folder: what is beneath it
-    return any(board.overlaps(c, spot) for c in claims for spot in spots)
+def _gitdir(dot: Path) -> str:
+    """'' for a `.git` git can read: a folder, or a file naming a folder that is there (a worktree's); else why not."""
+    if dot.is_dir():
+        return ""
+    if dot.is_symlink() and not dot.exists():
+        return f"it is a link to {os.readlink(dot)}, which is not there"
+    if not dot.is_file():  # a pipe, never opened: it waits for a writer
+        return "it is neither a folder nor a file"
+    try:
+        named = re.match(r"gitdir:\s*(.+)", dot.read_text(encoding="utf-8", errors="replace").strip())
+    except OSError as exc:
+        return f"it cannot be read ({exc.strerror})"
+    if not named:
+        return "it is a file that names no git folder"
+    return "" if (dot.parent / named[1].strip()).is_dir() else f"it names {named[1].strip()}, which is not there"
+
+
+def _discovered(folder: Path) -> list:
+    """A row for each folder one or two inside a workspace folder that holds a `.git` of any kind, as the strand scan's
+    discovery makes one: a worktree's file, and a dangling link, which a glob for `.git` itself finds or not by the Python
+    running it, and whose repository's one read says it is unknown."""
+    return [{"name": str(spot.relative_to(folder)), "path": spot, "excluded": False, "branches": None} for spot in sorted(
+        p for depth in ("*", "*/*") for p in folder.glob(depth) if os.path.lexists(p / ".git"))]
+
+
+def _split(claim: str) -> tuple:
+    """A claim as the board holds it (normalized when its session was read), split once, as `board._parts` splits one."""
+    subtree = claim.endswith("/**")
+    return Path(claim[:-3] if subtree else claim).parts, subtree
+
+
+def _covered(claims: list, real: str, files: list) -> list:
+    """The files of a repository at `real` these split claims cover; with no file, [""] where one covers any part of it. A
+    claim outside the repository is passed over before any file is compared with it."""
+    near = [c for c in claims if board.split_overlap(c, (Path(real).parts, True))]
+    if not near or not files:
+        return [""] if near else []
+    return [f for f in files if any(board.split_overlap(c, (Path(real, f).parts, False)) for c in near)]
 
 
 def _claimed(claim: str) -> str:
@@ -190,42 +269,75 @@ def _claimed(claim: str) -> str:
     return _arg(folder if folder and os.path.isdir(folder) else claim)
 
 
+def _sessions(report) -> list:
+    """The board's sessions, each file read on its own: one that cannot be opened or parsed is counted and reported, and
+    costs only itself (board.sessions() passes over one it cannot parse, and stops at one it cannot open)."""
+    folder, found, dropped = paths.board() / "sessions", [], []
+    for file in sorted(folder.glob("*.json")) if folder.is_dir() else []:
+        try:
+            found.append(board._session(json.loads(file.read_text(encoding="utf-8"))))
+        except Exception as exc:
+            dropped.append(f"{file.name} ({type(exc).__name__})")
+    report.read["sessions"] = len(found) + len(dropped)
+    if dropped:
+        report.add("unknown", "claims", "board", f"{len(dropped)} session file{'s' * (len(dropped) != 1)} cannot be read, so the "
+                   f"claims {'it holds are' if len(dropped) == 1 else 'they hold are'} not known, and a step below may touch work "
+                   f"claimed there: {', '.join(dropped[:5])}", ("principal", f"mend or archive each in {doctor._short(folder)}: a "
+                                                                             "session file is one JSON object the board wrote"))
+    return found
+
+
 # ---- the installed side and the schedules ----------------------------------------------------------------------------
 
 def installed(report, config, home: Path, fetch: bool) -> None:
-    """Each doctor check that only reads; what the doctor last saw of each harness's hook approval; with fetch, the
-    stable release's version."""
+    """Each doctor check that only reads, one at a time, so one that raises costs only its own line; what the doctor last
+    saw of each harness's hook approval; with fetch, the stable release's version."""
     from synthesis import project, rituals, sessions
-    checks = [doctor.check_runtime(home), doctor.check_config(home), doctor.check_board(home), doctor.check_approvals_layout(home)]
-    if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime's line says so
-        checks += [doctor.check_hook_script(home), doctor.check_interpreter(home)]
-    checks += [doctor.check_home_paths([home / "config.json"]), doctor.check_outbox(paths.outbox(), *doctor.connector_files()),
-               doctor.check_teardown(home / "teardown.jsonl"), doctor.check_sandbox([h for h in doctor.HARNESSES if _present(h)])]
-    checks += doctor.check_security(paths.account_home())
-    try:
-        checks.append(doctor.check_prompt_check(rituals.config()))
-    except (OSError, ValueError) as exc:
-        checks.append(doctor.check_prompt_check(None, str(exc)[:120]))
-    if config is not None:
-        checks += doctor.check_sessions_repos(sessions.repos(), home / "sessions" / ".state") + [doctor.check_packets(project.roots()),
-                   doctor.check_browser_accounts(config, paths.read_json(paths.approvals() / "browser-accounts.json"))]
-        checks += [doctor.check_pr_gate(config["pr_gated"], doctor.workspace_repos(config))] if config.get("pr_gated") is not None else []
-        checks += [doctor.check_temporary_addresses(config)] if "temporary_addresses" in config else []
-    if _present("codex"):  # its own config file, read as the doctor reads it
-        codex = paths.codex_home()
+
+    def prompts():
         try:
-            toml = doctor.read_toml((codex / "config.toml").read_text(encoding="utf-8"))
+            return doctor.check_prompt_check(rituals.config())
+        except (OSError, ValueError) as exc:
+            return doctor.check_prompt_check(None, str(exc)[:120])
+
+    def codex():  # its own config file, read as the doctor reads it
+        try:
+            toml = doctor.read_toml((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             toml = {}
-        checks += [doctor.check_codex_features(toml), doctor.check_codex_doc_bytes(toml), doctor.check_codex_board(
-            toml, home / "board", home / "approvals", home / "outbox"), doctor.check_codex_hooks_file(codex), doctor.check_codex_nested_hooks(codex)]
-    if _present("claude"):
-        checks.append(doctor.check_claude_retention(paths.transcript_roots()["claude-code"].parent / "settings.json"))
-    if fetch:
-        checks.append(doctor.check_latest({"runtime": _version(home)}, "stable"))
-    for check in (c for c in checks if c):  # a check with nothing to say answers None
-        report.doctor(check, "installed")
+        return [doctor.check_codex_features(toml), doctor.check_codex_doc_bytes(toml), doctor.check_codex_board(toml, home / "board",
+                home / "approvals", home / "outbox"), doctor.check_codex_hooks_file(paths.codex_home()), doctor.check_codex_nested_hooks(paths.codex_home())]
+    checks = [("runtime", lambda: doctor.check_runtime(home)), ("config", lambda: doctor.check_config(home)),
+              ("board", lambda: doctor.check_board(home)), ("approvals", lambda: doctor.check_approvals_layout(home))]
+    if (home / "bin" / "synthesis-hook").is_file():  # when it is missing, the runtime's line says so
+        checks += [("hook script", lambda: doctor.check_hook_script(home)), ("hook interpreter", lambda: doctor.check_interpreter(home))]
+    checks += [("home paths", lambda: doctor.check_home_paths([home / "config.json"])), ("outbox", lambda: doctor.check_outbox(
+        paths.outbox(), *doctor.connector_files())), ("teardown", lambda: doctor.check_teardown(home / "teardown.jsonl")), (
+        "sandbox", lambda: doctor.check_sandbox([h for h in doctor.HARNESSES if _present(h)])), ("machine security", lambda: doctor.check_security(
+            paths.account_home())), ("prompt check", prompts)]
+    if config is not None:
+        checks += [("sessions repos", lambda: doctor.check_sessions_repos(sessions.repos(), home / "sessions" / ".state")), (
+            "decision packets", lambda: doctor.check_packets(project.roots())), ("browser accounts", lambda: doctor.check_browser_accounts(
+                config, paths.read_json(paths.approvals() / "browser-accounts.json")))]
+        checks += [("pr gate", lambda: doctor.check_pr_gate(config["pr_gated"], doctor.workspace_repos(config), run=_screened))] if config.get(
+            "pr_gated") is not None else []
+        checks += [("temporary addresses", lambda: doctor.check_temporary_addresses(config))] if "temporary_addresses" in config else []
+    checks += [("codex", codex)] * _present("codex") + [("claude transcripts", lambda: doctor.check_claude_retention(
+        paths.transcript_roots()["claude-code"].parent / "settings.json"))] * _present("claude")
+    checks += [("latest release", lambda: doctor.check_latest({"runtime": _version(home)}, "stable"))] if fetch else []
+    for name, read in checks:
+        found = report.guard("installed", name, read, [])
+        for check in (c for c in (found if isinstance(found, list) else [found]) if c):  # a check with nothing to say answers None
+            report.doctor(check, "installed")
     _approvals(report)
+
+
+def _screened(argv: list, **how):
+    """The PR-gate check's git, run only where the repository's own configuration names no program git would run for it
+    (gpg.program, with log.showSignature, runs under `git log`); elsewhere it is not run, and the check cannot read there."""
+    if _programs(Path(argv[argv.index("-C") + 1]), ("log", "symbolic-ref")):
+        raise subprocess.SubprocessError("its own git configuration names a program")
+    return subprocess.run(argv, **how)
 
 
 def _approvals(report) -> None:
@@ -278,7 +390,7 @@ def schedules(report, home: Path, config, run, platform: str) -> None:
 # ---- workspaces, repositories and claims -----------------------------------------------------------------------------
 
 def workspaces(report, scan, config: dict, sessions: list) -> list:
-    """Each workspace folder, with its clones and what its .agents/repos.yaml declares (never what is dormant); each
+    """Each workspace folder, with its checkouts and what its .agents/repos.yaml declares (never what is dormant); each
     workspace the rituals' config lists with no folder here; and the doctor's two checks over the workspaces' clones."""
     from synthesis import rituals
     from synthesis import sessions as archive
@@ -290,10 +402,11 @@ def workspaces(report, scan, config: dict, sessions: list) -> list:
             try:
                 rows, status = scan.declared(folder), str((load(manifest.read_text(encoding="utf-8")) or {}).get("status") or "")
                 declared = [r for r in rows if not {status.lower(), str(r.get("status") or "").lower()} & DORMANT]
-            except (OSError, ValueError) as exc:
-                report.add("unknown", "workspaces", doctor._short(manifest), f"cannot be read ({exc}), so what the workspace declares "
-                           "is not known", ("principal", f"mend {doctor._short(manifest)}: its repos are a list, each with its own name"))
-        spaces.append((folder, scan.discovered(folder) if scan else [], declared))
+            except Exception as exc:  # a declaration of another shape too: what cannot be read is never an empty list
+                report.add("unknown", "workspaces", doctor._short(manifest), f"cannot be read ({type(exc).__name__}: {exc}), so what "
+                           "the workspace declares is not known", ("principal", f"mend {doctor._short(manifest)}: its repos are a list "
+                                                                                "of repositories, each with its own name"))
+        spaces.append((folder, report.guard("workspaces", doctor._short(folder), lambda folder=folder: _discovered(folder), []), declared))
     report.read["workspaces"] = len(spaces)
     try:
         listed = sorted(set(rituals.config()["workspaces"]) - {folder.name for folder, _, _ in spaces})
@@ -310,9 +423,10 @@ def workspaces(report, scan, config: dict, sessions: list) -> list:
 
 
 def repositories(report, scan, spaces: list, sessions: list, fetch: bool) -> list:
-    """Every clone in each workspace folder, read by the strand scan's own check on its checked-out branch (as --discover
-    reads it), and each repository a workspace declares with no clone here. Git runs only where the repository's own
-    configuration names no program. Returns (path, what the scan found) for each clone read."""
+    """Every checkout in each workspace folder, read by the strand scan's own check on its checked-out branch (as --discover
+    reads it), with every uncommitted file listed, each `.git` git cannot read, and each repository a workspace declares
+    with no clone here. Git runs only where the repository's own configuration names no program. Returns (path, what was
+    read) for each checkout read."""
     from synthesis import guards
     entries = {}
     for _, found, declared in spaces:  # a declared clone, read as a found one is, wherever it lies
@@ -322,47 +436,62 @@ def repositories(report, scan, spaces: list, sessions: list, fetch: bool) -> lis
 
     def read(real: str):
         row = entries[real]
-        if not os.path.exists(Path(row["path"]) / ".git"):
+        if not os.path.lexists(Path(row["path"]) / ".git"):
             return None  # declared, with no clone here
+        why = _gitdir(Path(row["path"]) / ".git")
+        if why:  # found or declared, said once, and never cloned over
+            return {"unread": why}
         try:
             named = _programs(Path(row["path"]), subs)
-            return {"programs": named} if named else scan.check(row, fetch, False)
+            found = {"programs": named} if named else scan.check(row, fetch, False)
+            if found.get("dirty"):  # the scan lists twenty: every file, each by its own name, as git's status gives them
+                listed = scan.git(Path(row["path"]), "status", "--porcelain=v1", "-z", "--untracked-files=all", "--no-renames")
+                found["files"] = [entry[3:] for entry in listed.split("\0") if len(entry) > 3]
+            return found
         except Exception as exc:  # what cannot be read is never read as fine
             return {"error": str(exc) or type(exc).__name__}
     with ThreadPoolExecutor(max_workers=8) as pool:
         results = list(pool.map(read, order))
     own = paths.session_id()  # this session's own claims hold its own work, which it repairs itself
-    live, quiet = [s for s in sessions if s.claims and not s.stale and s.session != own], [s for s in sessions if s.claims and s.stale]
+    live = [(s, [_split(c) for c in s.claims]) for s in sessions if s.claims and not s.stale and s.session != own]
+    quiet = [(s, [_split(c) for c in s.claims]) for s in sessions if s.claims and s.stale]
     for real, found in zip(order, results):
-        _repository(report, scan, entries[real], found, live, quiet, fetch)
+        report.guard("repositories", doctor._short(real), lambda real=real, found=found: _repository(
+            report, scan, entries[real], found, live, quiet, fetch))
     report.read["repositories"] = len(order)
     return [(real, found) for real, found in zip(order, results) if found is not None]
 
 
 def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: bool) -> None:
-    """One repository's finding, with its steps in the order they run: back on a branch, the commit, then the upstream or
-    the integration. Work under a live seat's claim is that seat's: one message to it is the only step."""
+    """One repository's finding, with its steps in the order they run: back on a branch, the commit of the files no live
+    claim covers, then the upstream or the integration. A live seat whose claim covers work here is asked about it, and
+    with a seat asked nothing more than the commit is planned: the push is that seat's, after its own commit."""
     path = Path(row["path"])
-    where, short = _arg(path), doctor._short(path)
+    where, short, real = _arg(path), doctor._short(path), os.path.realpath(path)
     if found is None:
         origin = str((row.get("remotes") or {}).get("origin") or "")
         report.add("fail" if row.get("ritual_sync") is True else "warn", "repositories", short, "declared in .agents/repos.yaml, with "
                    "no clone here", ("agent", f"git clone {_arg(origin)} {where}") if origin else ("principal", f"clone it to {where}: "
                                                                                                     "its workspace declares no origin for it"))
         return
+    if "unread" in found:
+        report.add("unknown", "repositories", short, f"its .git is no git folder git can read: {found['unread']}", (
+            "principal", f"look at {doctor._short(path / '.git')}: restore what it names, or move the folder away"))
+        return
     if "programs" in found or "error" in found:
         named = found.get("programs") or []
         show = f" (`git -C {where} config --show-origin --get-all {named[0]}` shows it)" if named and re.fullmatch(r"[\w.-]+", named[0]) else ""
         report.add("unknown", "repositories", short, f"its own git configuration names a program git would run here ({', '.join(named)}), "
-                   "so the review ran no git in it" if named else f"whether git may run here cannot be told ({found['error']})",
+                   "so the review ran no git in it" if named else f"the review could not read it ({found['error']})",
                    ("principal", f"look at what {named[0]} names and take it out unless the principal put it there{show}" if named else
-                    f"look at {short}'s git configuration by hand"))
+                    f"look at {short}'s git repository by hand"))
         return
     state, items, said, steps = found["state"], found["branches"], [], []
     if state in ("CURRENT", "CACHED", "EXCLUDED"):
         return
-    dirty = found.get("dirty", [])
-    files = sum(1 for line in dirty if not line.startswith("... ")) + sum(int(n) for line in dirty for n in re.findall(r"^\.\.\. (\d+) more$", line))
+    files = found.get("files", [])
+    asked = [(s, mine) for s, claims in live for mine in [_covered(claims, real, files)] if mine]
+    unclaimed = [f for f in files if not any(f in mine for _, mine in asked)]
     if state == "UNREACHABLE":
         said.append(f"git cannot read it: {found.get('reason', '')}")
         steps.append(("principal", f"`git -C {where} fetch --all --prune` fails ({found.get('reason', '')}): restore its remote's sign-in "
@@ -372,9 +501,10 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
         said.append("HEAD is detached: commits made here are on no branch")
         steps.append(_onto_branch(scan, path, where))
     if files:
-        said.append(f"{files} uncommitted file{'s' * (files != 1)} (" + ", ".join(line.strip() for line in dirty[:3] if not line.startswith(
-            "... ")) + (", ..." if files > 3 else "") + ")")
-        steps.append(("agent", f"git -C {where} add -A && git -C {where} commit -m {shlex.quote(COMMIT)}"))
+        said.append(f"{len(files)} uncommitted file{'s' * (len(files) != 1)} (" + ", ".join(files[:3]) + (", ..." if len(files) > 3 else "") + ")")
+    commit = [("agent", f"git -C {where} add -- {' '.join(map(shlex.quote, unclaimed))} && git -C {where} commit -m {shlex.quote(COMMIT)} "
+               f"-- {' '.join(map(shlex.quote, unclaimed))}")] if unclaimed else []
+    steps += commit
     for item in items:
         branch, upstream = item["branch"], item.get("upstream", "")
         if item["state"] == "BLIND":
@@ -384,16 +514,14 @@ def _repository(report, scan, row: dict, found, live: list, quiet: list, fetch: 
         ahead, behind = item.get("ahead", 0), item.get("behind", 0)
         said += [f"{branch} and {upstream} have diverged: {ahead} commit{'s' * (ahead != 1)} here, {behind} there"] if ahead and behind else [
             f"{branch} is {n} commit{'s' * (n != 1)} {how} {upstream}" for n, how in ((ahead, "ahead of"), (behind, "behind")) if n]
-        ahead += bool(files)  # the commit above is one more for its upstream
+        ahead += bool(commit)  # the commit above is one more for its upstream
         steps += [("principal", f"rebase onto {upstream} (`git -C {where} pull --rebase`) or merge it (`git -C {where} pull --no-rebase`), "
                    f"then `git -C {where} push`")] if ahead and behind else [("agent", f"git -C {where} push")] if ahead else [
             ("agent", f"git -C {where} merge --ff-only {shlex.quote(upstream)}")] if behind else []
-    real = os.path.realpath(path)
-    holders, resting = [s for s in live if _covers(s.claims, real, found)], [s for s in quiet if _covers(s.claims, real, found)]
-    said += [f"live session {s.short} claims it" for s in holders] + [
-        f"under the claim of session {s.short}, quiet {int((time.time() - s.seen) / 3600)} h" for s in resting]
-    if holders:
-        steps = [("agent", f"synthesis msg {shlex.quote(s.session)} {shlex.quote(LIVE.format(short))}") for s in holders]
+    said += [f"live session {s.short} claims " + (f"{len(mine)} of them" if mine != [""] else "it") for s, mine in asked] + [
+        f"under the claim of session {s.short}, quiet {int((time.time() - s.seen) / 3600)} h" for s, claims in quiet if _covered(claims, real, files)]
+    if asked:
+        steps = commit + [("agent", f"synthesis msg {shlex.quote(s.session)} {shlex.quote(LIVE.format(short))}") for s, _ in asked]
     report.add("fail" if state in ("UNREACHABLE", "BLIND") else "warn", "repositories", short, "; ".join(said), *steps)
 
 
@@ -437,7 +565,8 @@ def claims(report, sessions: list, scanned: list) -> None:
     for s in sorted(sessions, key=lambda s: s.session):
         if not (s.stale and s.claims) or wait.held(s.session):
             continue
-        under, n = [doctor._short(p) for p, found in scanned if found.get("dirty") and _covers(s.claims, p, found)], len(s.claims)
+        split = [_split(c) for c in s.claims]
+        under, n = [doctor._short(p) for p, found in scanned if found.get("files") and _covered(split, p, found["files"])], len(s.claims)
         report.add("warn", "claims", s.session, f"session {s.short} ({s.harness or 'harness not recorded'}, project {s.project or '-'}) "
                    f"has been quiet {int((now - s.seen) / 3600)} h and holds {n} claim{'s' * (n != 1)}: {doctor._short(s.claims[0])}"
                    + (f" and {n - 1} more" if n > 1 else "") + (f"; uncommitted work under {'it' if n == 1 else 'them'} in "
@@ -480,40 +609,47 @@ def projects(report, config: dict, scanned: list) -> None:
         results = list(pool.map(audit, roots))
     held = [real for real, _ in scanned]
     for root, (kind, value) in zip(roots, results):
-        short = doctor._short(root)
-        if kind == "absent":  # a root found by the default pattern always has one: only a configured root can lack it
-            if config.get("knowledge_roots"):
-                report.add("warn", "projects", short, "the config names this knowledge root, and it has no projects/ folder here", (
-                    "principal", f"bring its workspace onto this Mac, or take it out of knowledge_roots in "
-                    f"{doctor._short(paths.config_file())} (`synthesis config apply <file>` takes the principal's code)"))
-            continue
-        if kind != "read":
-            report.add("unknown", "projects", short, f"{value}, so its records were not read", ("principal", f"look at {short}'s git "
-                                                                                                "repository by hand"))
-            continue
-        audits, source = value
-        report.read["projects"] += len(audits)
-        for audit_ in audits:
-            defects = [f for f in audit_.findings if f.severity == "defect"]
-            if defects:
-                checks = ", ".join(sorted({f.check for f in defects}))
-                report.add("fail", "projects", doctor._short(audit_.path), f"{len(defects)} defect{'s' * (len(defects) != 1)} ({checks}): "
-                           f"{defects[0].message}", ("agent", f"make the remedies `{command} --project {_arg(audit_.path)}` lists ({checks})"))
-        warned = [f for a in audits if not any(f.severity == "defect" for f in a.findings) for f in a.findings]
-        if warned:
-            kinds, many = Counter(f.check for f in warned), len({f.project for f in warned})
-            report.add("warn", "projects", short, f"{many} project{'s' * (many != 1)} with warnings only, {len(warned)} in all: " + ", ".join(
-                f"{k} {n}" for k, n in sorted(kinds.items())), ("agent", f"make the remedies `{command} --root {_arg(root)}` lists for them"))
-        mine = any(paths.inside(os.path.realpath(root), real) for real in held)  # its repository's state is said with the rest
-        for f in (f for f in source if not (mine and f.check in ("unpushed-context", "uncommitted-context"))):
-            report.add("fail" if f.severity == "defect" else "warn", "projects", short, f"{f.project}: {f.message}", (
-                "agent", f"synthesis index set {shlex.quote(f.project)} status archived") if f.check == "context-present" else ("agent", f.remedy))
+        report.guard("projects", doctor._short(root), lambda root=root, kind=kind, value=value: _root(report, config, held, command, root,
+                                                                                                    kind, value))
+
+
+def _root(report, config: dict, held: list, command: str, root: Path, kind: str, value) -> None:
+    """One knowledge root's findings, from what its audit found."""
+    short = doctor._short(root)
+    if kind == "absent":  # a root found by the default pattern always has one: only a configured root can lack it
+        if config.get("knowledge_roots"):
+            report.add("warn", "projects", short, "the config names this knowledge root, and it has no projects/ folder here", (
+                "principal", f"bring its workspace onto this Mac, or take it out of knowledge_roots in "
+                f"{doctor._short(paths.config_file())} (`synthesis config apply <file>` takes the principal's code)"))
+        return
+    if kind != "read":
+        report.add("unknown", "projects", short, f"{value}, so its records were not read", ("principal", f"look at {short}'s git "
+                                                                                            "repository by hand"))
+        return
+    audits, source = value
+    report.read["projects"] += len(audits)
+    for audit_ in audits:
+        defects = [f for f in audit_.findings if f.severity == "defect"]
+        if defects:
+            checks = ", ".join(sorted({f.check for f in defects}))
+            report.add("fail", "projects", doctor._short(audit_.path), f"{len(defects)} defect{'s' * (len(defects) != 1)} ({checks}): "
+                       f"{defects[0].message}", ("agent", f"make the remedies `{command} --project {_arg(audit_.path)}` lists ({checks})"))
+    warned = [f for a in audits if not any(f.severity == "defect" for f in a.findings) for f in a.findings]
+    if warned:
+        kinds, many = Counter(f.check for f in warned), len({f.project for f in warned})
+        report.add("warn", "projects", short, f"{many} project{'s' * (many != 1)} with warnings only, {len(warned)} in all: " + ", ".join(
+            f"{k} {n}" for k, n in sorted(kinds.items())), ("agent", f"make the remedies `{command} --root {_arg(root)}` lists for them"))
+    mine = any(paths.inside(os.path.realpath(root), real) for real in held)  # its repository's state is said with the rest
+    for f in (f for f in source if not (mine and f.check in ("unpushed-context", "uncommitted-context"))):
+        report.add("fail" if f.severity == "defect" else "warn", "projects", short, f"{f.project}: {f.message}", (
+            "agent", f"synthesis index set {shlex.quote(f.project)} status archived") if f.check == "context-present" else ("agent", f.remedy))
 
 
 # ---- the whole review ----------------------------------------------------------------------------------------------
 
 def review(fetch: bool = False, run=subprocess.run, platform: str = sys.platform) -> dict:
-    """What is wrong on this Mac, by severity, and the repair plan; nothing is written. `run` asks launchd, and only that."""
+    """What is wrong on this Mac, by severity, and the repair plan; nothing is written. `run` asks launchd, and only that.
+    Each area runs guarded: what raises in one is an unknown finding for it, and the rest is still read."""
     began, home, report = time.time(), paths.home(), _Report()
     try:
         config = paths.config()
@@ -522,10 +658,9 @@ def review(fetch: bool = False, run=subprocess.run, platform: str = sys.platform
         report.add("unknown", "workspaces", doctor._short(paths.config_file()), f"cannot be read ({exc}), so the workspaces, knowledge "
                    "roots and sessions repos it names are not known, and none was read", ("principal", f"make {doctor._short(paths.config_file())} "
                    "one JSON object of settings again (it is sealed: `synthesis config apply <file>` takes the principal's code)"))
-    installed(report, config, home, fetch)
-    sessions = board.sessions()
-    report.read["sessions"] = len(sessions)
-    schedules(report, home, config, run, platform)
+    report.guard("installed", "installed side", lambda: installed(report, config, home, fetch))
+    sessions = report.guard("claims", "board", lambda: _sessions(report), [])
+    report.guard("schedules", "schedules", lambda: schedules(report, home, config, run, platform))
     scanned = []
     if config is not None:
         try:
@@ -534,11 +669,11 @@ def review(fetch: bool = False, run=subprocess.run, platform: str = sys.platform
             scan = None
             report.add("unknown", "repositories", "strand scan", f"{doctor._short(SKILLS / 'synthesis-daily-rituals' / 'scripts' / 'repo_state.py')} "
                        f"cannot be loaded ({exc}), so no repository was read", _reinstall(home))
-        spaces = workspaces(report, scan, config, sessions)
-        scanned = repositories(report, scan, spaces, sessions, fetch) if scan else []
-        projects(report, config, scanned)
-    claims(report, sessions, scanned)
-    return report.done(fetch, began)
+        spaces = report.guard("workspaces", "workspaces", lambda: workspaces(report, scan, config, sessions), [])
+        scanned = report.guard("repositories", "repositories", lambda: repositories(report, scan, spaces, sessions, fetch), []) if scan else []
+        report.guard("projects", "projects", lambda: projects(report, config, scanned))
+    report.guard("claims", "claims", lambda: claims(report, sessions, scanned))
+    return report.done(fetch, began, config or {})
 
 
 def render(report: dict) -> str:
@@ -564,10 +699,14 @@ def main(argv=None) -> int:
                                      "project records, claims, schedules and install, with the exact steps that would fix it. It "
                                      "changes nothing, and no step runs.")
     parser.add_argument("--json", action="store_true", help="print the review as one JSON object")
-    parser.add_argument("--fetch", action="store_true", help="first fetch every repository (git writes its remote-tracking refs) "
-                        "and read the stable release's version from GitHub; network")
+    parser.add_argument("--fetch", action="store_true", help="first fetch every repository (git writes what it brings and its "
+                        "remote-tracking refs) and read the stable release's version from GitHub; network")
     args = parser.parse_args(list(argv or []))
     sys.dont_write_bytecode = True  # nothing compiled into the release beside a script it loads
-    report = review(fetch=args.fetch)
+    try:
+        report = review(fetch=args.fetch)
+    except Exception as exc:  # the last resort: a review that could not finish is never read as one that found nothing
+        print(f"synthesis review could not finish ({type(exc).__name__}: {exc}), so nothing is known of this Mac", file=sys.stderr)
+        return 2
     print(json.dumps(report, indent=1) if args.json else render(report))
     return report["exit"]
