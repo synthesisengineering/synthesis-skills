@@ -7621,9 +7621,9 @@ REPL_KINDS = {**dict.fromkeys(("pressKey", "press", "down"), "key"), **dict.from
               **dict.fromkeys(("evaluate", "evaluateHandle", "evaluateAll", "waitForFunction", "setContent", "$eval", "$$eval", "addScriptTag",
                                "addInitScript", "exposeFunction", "exposeBinding", "route"), "script"), "goto": "navigate"}  # every other verb a click
 REPL_OUTSIDE = _Pattern(r"(?<![\w$.])(?:require|process|module|globalThis|global|Deno|Bun|child_process)\b|\.\s*(?:process|require|mainModule"
-                        r"|getBuiltinModule|binding|dlopen)\b|\.\s*(?:writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|copyFile"
-                        r"|copyFileSync|cp|cpSync|rename|renameSync|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|mkdir|mkdirSync|symlink|symlinkSync"
-                        r"|chmod|chmodSync|execSync|execFile|execFileSync|spawn|spawnSync|fork)\s*\(")  # a module, the process, a module's writes
+                        r"|getBuiltinModule|binding|dlopen)\b|\.\s*(?:rename|renameSync|unlink|unlinkSync|rm|rmSync|rmdir|rmdirSync|symlink|symlinkSync"
+                        r"|chmod|chmodSync|execSync|execFile|execFileSync|spawn|spawnSync|fork)\s*\(")  # a module, the process, a module's
+# deletes, renames, links and permissions; its writes pass (review round 2 of 5.26.1: an honest agent's proofs), the import waits
 REPL_REQUESTS = _Pattern(r"\.\s*request\s*\.\s*(?:post|put|patch|delete|fetch)\s*\(|\bsendBeacon\b|\bWebSocket\b")
 UNWRITTEN = "\0words the call does not write out\n"  # typed or set from a name: they may hold a line break, and are not shown
 # A tool whose purpose is to hand a file to a page or a service, by kind (A14): Claude in Chrome's file_upload and

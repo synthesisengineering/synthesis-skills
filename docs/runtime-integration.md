@@ -1074,8 +1074,10 @@ stay open, and no hook running as that same user can close them:
 
 - **The computer-use REPL across calls** (review round 1 of 5.26.1). Codex's REPL keeps its state between calls and
   the guard reads each call alone: a helper, a bound locator, an imported module or a request's options one call made act
-  in a later call. A title that says the call acts holds such a call, and a module's file and process methods hold by
-  name, but a later call whose title says nothing and that calls an earlier call's helper passes (311 of 992 recorded
+  in a later call. A title that says the call acts holds such a call, and a module's process methods and its deletes,
+  renames, links and permission changes hold by name. A module's writes pass once its import is approved, so a session
+  that imported a file module may write anywhere this user can, a protected folder included, until the guard's sandbox
+  bounds it (review round 2). A later call whose title says nothing and that calls an earlier call's helper passes (311 of 992 recorded
   calls call a function an earlier call defined), and so do `const f = fetch` before a write, a Node reach by a further
   spelling than the guard names (an alias of a built name, a constructor reached through another object), a title in
   words the send and upload vocabularies lack ("Messaging Pat the deck link"), a save by `cmd+s`, a REPL tool named
@@ -1160,8 +1162,9 @@ as one; Codex's records show hooks refusing such nested calls inside the scripts
   refused, and one that imports a module or reaches the process waits for its own code. The message guard's config
   reference has the detail, with the replay of 199 recorded calls it was measured on, and review round 1's replay of
   992: a title that says the call acts holds a call that shows no action (the REPL keeps what earlier calls defined), a
-  module's file or process methods hold, ordinary locator spellings and page-function verbs are read, and words a call
-  only types are no message.
+  module's process methods, deletes, renames, links and permission changes hold while its writes pass (review round 2,
+  6,708 recorded calls), ordinary locator spellings and page-function verbs are read, and words a call only types are no
+  message.
 - **Uploads are judged by kind in every harness** (5.26.1, A14). A tool whose name says it uploads or attaches a file
   (no reading verb before that word), a browser's `set_input_files`, and a Drive call that reads a file from this disk
   wait for a code naming the upload: a browser's on the page it acts on, so a local app's page asks nothing, and a

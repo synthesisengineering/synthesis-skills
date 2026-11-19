@@ -17,8 +17,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   Return, a typed line break and an untitled click wait, as in any messaging app, since a REPL call never names its app.
   Typed words are scanned as a message only in a call that sends, so an address, CSV rows, code or a search is never
   refused for its words. Code the guard cannot read, `eval`, `Function` or `constructor` named anywhere, or a send whose
-  words are not written into the call, is refused; code that imports a module, reaches the process or calls a module's
-  file or process methods (`writeFile`, `execSync`) waits for its own code. No batch takes a REPL call, and a batch an
+  words are not written into the call, is refused; code that imports a module, reaches the process, or calls a module's
+  process methods or its deletes, renames, links or permission changes (`execSync`, `unlink`, `symlink`, `chmod`) waits
+  for its own code. Writing and creating files through an imported module passes (review round 2: holding them held an
+  honest agent's proofs and step records, up to 58 in a day). No batch takes a REPL call, and a batch an
   earlier release opened with one no longer counts as open.
 - **Uploads, document edits and form saves wait on every computer-use tool** when the action's summary says so, except
   on a local app's page; a save of a download, a screenshot, an export or the REPL's own state is no form save, and a
