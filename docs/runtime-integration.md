@@ -283,7 +283,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      quoted for where they land (quoting starts over inside `$( )` and backticks); a
      script that gives them its own values (`set --`, `shift`, a function) is left as
      written. `$PWD` and `$OLDPWD` are the folder each command is in and the one it was in
-     before, in its own words and targets; a script it hands a shell puts its own. `~` and
+     before, in its own words and targets; a script it hands a shell puts its own. A word
+     that begins `~-`, `~+` or `~N` (OLDPWD, PWD or the folder stack, which a line may set
+     where no word shows) is a value the guard cannot read: a write target or folder spelled
+     so is one it cannot place, a program run from one is known by no name, and where a
+     program's words decide what it writes it may be any option or a target joined to one
+     (review round 1 of 5.25.2). `~` and
      `$HOME` are the home a command gives itself when it sets `HOME`; a line that gives
      `HOME` a value the guard does not read (`read`, `printf -v`, a loop over it, a
      parameter that assigns) and then uses it waits, but text it only prints or hands a
