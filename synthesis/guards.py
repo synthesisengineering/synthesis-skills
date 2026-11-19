@@ -676,9 +676,9 @@ def _entry(judge):
 
 
 def check_upload(tool: str, tool_input: dict) -> str | None:
-    """A Drive upload that asks for no code still names a file the connector must read: one it would not read is
-    refused here, as a send's is before its code, and so is one it cannot read: its first byte is read, since no
-    approval binds its bytes."""
+    """A connector's call that asks for no code (since 5.26.1 one that reads no file from this disk: one that does is an
+    upload, A14) is still refused here for a file it names that the connector would not read, as a send's is before its
+    code, and for one it cannot read: its first byte is read, since no approval binds its bytes."""
     unread = _unread_files(tool, tool_input, {}, whole=False)
     return "This call can't go as written: " + "; ".join(unread) + "." if unread else None
 
@@ -740,9 +740,15 @@ def _judged_send(tool: str, tool_input: dict, config: dict, session: dict | None
         if timed is not None:
             _void("send-time", subject)
         return None
-    text = " ".join(t for _, t in _strings(tool_input))
-    code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {text[:120]}")
+    text, upload = " ".join(t for _, t in _strings(tool_input)), _hands_over(tool, tool_input)  # A14: an upload is named as one
+    handed = ", ".join(dict.fromkeys(t for k, t in _strings(tool_input) if FETCHES.search(k) or k.lower().endswith("id")))[:200] or "a file"
+    code = approvals.request(kind, subject, f"{'SAME-DAY meeting' if others else tool}: {'uploads ' + handed if upload else text[:120]}")
     reshape = RESHAPE if _reshapes_calendar(tool, tool_input) else ""
+    if upload and not others:
+        return (f"This call uploads {handed} by {tool}, handing it to that tool's service. It needs the principal's approval of this "
+                f"exact call: show them the file and where it goes, with this code, in one message, and ask them to type "
+                f"{approvals.how(code)}. Then make this identical call again." + reshape + (" The approval covers each file as it "
+                "is now: one changed before the call needs a new code." if files else ""))
     if others:
         what = (f"puts a meeting on today's date and invites {others} other{'' if others == 1 else 's'}" if others > 0
                 else "moves a meeting to today's date (its guests are on the event, not in this call)")
@@ -7608,6 +7614,22 @@ REPL_KINDS = {**dict.fromkeys(("pressKey", "press", "down"), "key"), **dict.from
 REPL_OUTSIDE = _Pattern(r"(?<![\w$.])(?:require|process|module|globalThis|Deno|Bun|child_process)\b")  # a module, the process, the globals
 REPL_REQUESTS = _Pattern(r"\.\s*request\s*\.\s*(?:post|put|patch|delete|fetch)\s*\(|\bsendBeacon\b|\bWebSocket\b")
 UNWRITTEN = "\0words the call does not write out\n"  # typed or set from a name: they may hold a line break, and are not shown
+# A tool whose purpose is to hand a file to a page or a service, by kind (A14): Claude in Chrome's file_upload and
+# upload_image were judged by no send rule, a driven browser's file upload was read as a read, and a connector's
+# upload_file passed as another tool. Each now waits for a code naming the upload, as computer use's does.
+UPLOAD_WORDS = {"upload", "uploads", "attach", "attachment", "attachments"}
+UPLOAD_REPORTS = {"status", "progress", "url", "urls", "info", "state", "result", "results", "limit", "limits", "quota", "history"}
+
+
+def upload_tool(tool: str) -> bool:
+    """A tool whose name says it hands a file over: `upload` or `attach` among its words, with no verb before that word
+    that only reads (`slack_get_file_upload_url`, `download_gmail_attachment`) and no word after it that reports on one
+    (`upload_status`), or a browser's way of setting a file input (`set_input_files`)."""
+    from synthesis import sends
+    words = sends._words(tool.rsplit("__", 1)[-1])
+    at = next((i for i, w in enumerate(words) if w in UPLOAD_WORDS), None)
+    return (at is not None and not set(words[:at]) & sends.READS and not set(words[at + 1:]) & UPLOAD_REPORTS
+            or words[-3:] == ["set", "input", "files"])
 
 
 def _publishes(said: str, local: bool) -> bool:
@@ -7639,6 +7661,8 @@ def desktop_tool(tool: str) -> str:
     server, _, name = tool.rpartition("__")
     if tool.startswith("mcp__") and name in BROWSER_STEPS and re.search(r"browser|chrome", server, re.I):
         return BROWSER_STEPS[name]
+    if tool.startswith("mcp__") and re.search(r"claude-in-chrome|claude[_-]browser", server, re.I) and upload_tool(tool):
+        return "browser_upload"  # its file_upload and upload_image, by kind (A14)
     bare = name[len("computer_"):] if name.startswith("computer_") else name
     linked = "computer" in server.lower() or name.startswith("computer_") or bool(CUA.search(server[len("mcp__"):]))
     found = "repl" if bare in REPL_TOOLS else bare  # a computer-use REPL's program (A14)
@@ -7718,10 +7742,13 @@ def _repl_items(given: dict) -> list:
 def _browser_item(step: str, given: dict) -> dict:
     """A browser step as a computer-use action: a form's value is text typed into the page, and a page script is a
     script, which reached no send rule until the second review; so is a navigate to a javascript: address, as the
-    code it runs (round 4 of 5.24.0's review, #1). Any other navigate does nothing to anyone."""
+    code it runs (round 4 of 5.24.0's review, #1). Any other navigate does nothing to anyone. An upload step is an
+    upload of the files or the image it names (A14)."""
     if step.endswith("navigate"):
         code = _script_address(str(given.get("url") or ""))
         return {**given, "action": "script", "text": code} if code is not None else {}
+    if upload_tool(step):
+        return {**given, "action": "upload", "text": ", ".join(map(str, given.get("paths") or [])) or str(given.get("imageId") or "")}
     return ({**given, "action": "type", "text": str(given.get("value", ""))} if step.endswith(("form_input", "browser_form"))
             else {**given, "action": "script", "text": str(given.get("text") or "")} if step.endswith(("javascript_tool", "browser_script"))
             else given)
@@ -8532,7 +8559,8 @@ def check_desktop(name: str, tool: str, tool_input: dict, config: dict, session:
             return ""
         return "upload" if kind == "upload" or UPLOADS.search(s) else "edit" if EDITS.search(s) else "save" if SAVES.search(s) else ""
     does = [("send" if goes(kind, v, s, reached) else changes(kind, s), s or {"type": "a typed line break", "script": "a page script",
-             "upload": "a file set in the page", "request": "a request that may write"}.get(kind, f"{kind} {v}".strip())) for kind, v, s in actions]
+             "upload": f"an upload of {v}" if v else "an upload", "request": "a request that may write"}.get(kind, f"{kind} {v}".strip()))
+            for kind, v, s in actions]
     kinds, sending = [k for k, _ in does if k], list(dict.fromkeys(p for k, d in does if k for p in d.split("; ")))  # each part once
     if formed and not reached and not sending:
         kinds, sending = ["send"], ["a key that submits the form after the typed words"]
@@ -9122,7 +9150,7 @@ DRIVEN = {**dict.fromkeys(("type", "fill", "type_text", "fill_input"), "type"), 
           **dict.fromkeys(("navigate", "navigate_page", "new_page", "goto", "open", "navigate_back", "go_back", "tabs"), "navigate"),
           **dict.fromkeys(("evaluate", "evaluate_script", "run_code", "run_code_unsafe", "execute_script", "script", "javascript"), "script"),
           **dict.fromkeys(("snapshot", "take_screenshot", "screenshot", "console_messages", "network_requests", "network_request", "wait_for",
-                           "find", "hover", "resize", "close", "emulate_media", "install", "file_upload", "list_pages", "select_page"), "read")}
+                           "find", "hover", "resize", "close", "emulate_media", "install", "list_pages", "select_page"), "read")}
 READ_WORDS = _Pattern(r"(?:^|_)(?:get|read|list|snapshot|screenshot|console|wait|find|query|scroll|hover|resize|close|history|content|text"
                         r"|title|url|cookies|logs?|status|info|search)(?:_|$)")  # an unknown tool that says it only reads
 UNKNOWN_PAGE = "a page the record does not show"
@@ -9132,14 +9160,16 @@ PAGE_MARKS = ("Page URL", "[selected]", "(current)", "Navigated to", "[ref=")
 
 def driven_tool(tool: str) -> str:
     """The step a browser tool from a server not otherwise read performs ("type", "key", "click", "form", "drop",
-    "navigate", "script"), "read" for one that only reads, "unknown" for one the guard does not know, or "" for no
-    browser tool."""
+    "navigate", "script", "upload"), "read" for one that only reads, "unknown" for one the guard does not know, or "" for
+    no browser tool."""
     server, _, name = tool.rpartition("__")
     if not tool.startswith("mcp__") or tool.startswith(BROWSER) or desktop_tool(tool) or re.search(r"claude[_-]browser", server, re.I):
         return ""  # Claude in Chrome's and the browser pane's own tools are read by their own rules
     if not (DRIVERS.search(server) or DRIVERS.search(name.split("_")[0])):
         return ""
     bare = name[len("browser_"):] if name.startswith("browser_") else name  # Playwright's own names; any other server's by its words
+    if upload_tool(bare):  # a file set in the page (A14: Playwright's file_upload was read as a read)
+        return "upload"
     if bare in DRIVEN:
         return DRIVEN[bare]
     if re.search(r"navigate|goto|go_to|open_?url|new_page|new_tab", bare):
@@ -9281,6 +9311,9 @@ def _driven_steps(kind: str, tool: str, tool_input: dict, session: dict | None) 
         steps = [step(action="type", text=t) for t in given] + [step(action="left_click", action_summary="")]
     elif kind == "navigate":  # to a javascript: address, which runs on the page it is on (round 4 of 5.24.0's review, #1)
         steps = [{"name": "navigate", "input": {"url": str(tool_input.get("url") or "")}}]
+    elif kind == "upload":  # the files it names; with none, Playwright's cancels the file chooser (A14)
+        files = [str(f) for k, v in tool_input.items() if re.search(r"path|file", k, re.I) for f in (v if isinstance(v, list) else [v]) if f]
+        steps = [step(action="upload", text=", ".join(files))] if files else []
     else:
         steps = []
     return [{"name": "navigate", "input": {"url": page, "exact": True}}] + steps if steps else []
@@ -9640,7 +9673,21 @@ def _sends(tool: str, tool_input: dict, config: dict) -> bool:
     # A write that emails no one is quiet, unless it moves a meeting to today: its guests' calendars still change.
     quiet = _quiet_calendar_write(tool, tool_input) and _invited_today(tool, tool_input, config) == 0
     return (((is_send_tool(tool, config) or sends.says(tool, config)) and not quiet)
-            or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)))
+            or (tool.rsplit("__", 1)[-1] == "send_message" and routed(tool, tool_input)) or _hands_over(tool, tool_input))
+
+
+def _hands_over(tool: str, tool_input: dict) -> bool:
+    """A connector's call that hands a file to its service (A14): a tool whose name says it uploads (no browser's, which
+    the computer-use rules judge on the page it acts on), or a Drive call that has its connector read a file from this
+    disk: any `file_path` it takes, or a file:// `fileUrl` (one that cannot be parsed is judged, and refused, as named)."""
+    from urllib.parse import urlparse
+    key = FILE_DRIVE_TOOLS.get(tool.rsplit("__", 1)[-1])
+    value = tool_input.get(key) if key and isinstance(tool_input, dict) else None
+    try:
+        read = isinstance(value, str) and (key == "file_path" or urlparse(value).scheme == "file")
+    except ValueError:
+        read = True
+    return read or upload_tool(tool) and not desktop_tool(tool) and not driven_tool(tool)
 
 
 def _project(session: dict | None) -> str:

@@ -547,7 +547,7 @@ def _entry_problem(entry) -> str:
         return ("names a tool whose name holds more than letters, digits and _ . : - (the listing prints a name as it is)"
                 if not re.fullmatch(r"[A-Za-z0-9_.:-]+", tool, re.ASCII) else
                 f"names {tool}, whose sends a batch binds as a browser entry or not at all" if guards.desktop_tool(tool)
-                or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else
+                or guards.driven_tool(tool) or guards.shell_tool(tool) or tool in guards.FILE_TOOLS else  # a driven browser's too (A14)
                 f"names {tool}, the messages sender's: its sends take the messages kinds, which no photo goes with"
                 if tool in ("imessage_send", "messages_send") else "")
     if keys not in ({"channel", "to", "text"}, {"channel", "members", "service", "chat", "text"}) or not (
