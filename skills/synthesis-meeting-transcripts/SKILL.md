@@ -14,59 +14,39 @@ metadata:
 
 # Synthesis Meeting Transcripts
 
-A protocol for fetching AI-generated meeting transcripts from the user's Gmail and Google Drive into a local markdown archive. Designed for teams where Google Meet + Gemini (or equivalents) produce meeting notes + word-for-word transcripts that live in Google Docs, and the user wants them mirrored locally alongside their project context.
+Keeps meeting records usable as evidence. It fetches a meeting's AI notes and its verbatim transcript (Google Meet with Gemini notes in Google Docs, through whatever Gmail and Drive tools the session has, or another recorder's export) into the project's transcripts repository, verifies each saved file, takes who said, decided or owns what from the transcript's speaker lines, and puts the commitments its scanner flags before the principal.
 
 ## Binding rules
 
-1. **Declared means fetched.** A ritual sync runs Step 0 below: enumerate the declared set, fetch every member, and account for each as fetched or as an unclosed gap. Relevance is judged after fetching, never before.
-2. **Unknown coverage is a visible gap.** Unknown authentication, tab enumeration or archive coverage never becomes a no-source attestation, and the meetings watermark never moves past an unsaved doc or a meeting that may still be under way.
-3. **A Drive search listing cannot prove a window complete,** because it omits the provider completeness flag. A full page, a next-page token, an incompleteSearch warning or a failed search leaves the window open; say so in the report.
-4. **The verbatim transcript is the only primary source.** Fetch it in full whenever the source has one. The Gemini email is for discovery only, never for content.
-5. **Select the transcript by the document's stable tab ID,** never by order or a regular expression; a title only when exactly one tab in a complete tab list carries it. Only a complete tab list establishes `transcript-tab-absent`.
-6. **Verify both halves landed** with `verify_transcripts.py --file <exact saved file> --json` before calling a meeting fetched. A directory scan does not substitute.
-7. **Use the `<!-- VERIFIER: no-source-transcript -->` marker only when the source truly has no transcript,** with a one-line reason beside it.
-8. **Never derive attribution from a tool summary.** Who warned, decided, approved or owns comes from the verbatim transcript; if it does not say, keep the passive form.
-9. **A scanned commitment is a candidate until the principal confirms it** in the same turn. Stamp each confirmed one with exactly one owner; nothing is created from scanner output alone.
-10. **Cross-check every date against at least two independent signals** before writing a dated file.
-11. **Never leave transcripts in `~/Downloads/`.** Commit them to `transcripts_repo`, whose pre-commit gate refuses a summary saved as a transcript.
+These rules keep the record honest, so they hold when a request asks otherwise: say which rule applies and why, then do what it allows.
+
+1. **Fetch every declared meeting in a ritual sync.** In a day-start, mid-day or day-end sync, run Step 0: fetch each member of the declared set, report each as fetched or as an open gap, and judge relevance only after fetching, from content, since a title is no evidence of what a meeting held. A meeting the user names is fetched alone (Steps 1 to 6).
+2. **Report unknown coverage as an open gap.** When sign-in, the tab list or archive coverage is unknown, the meeting stays an open gap (never a no-source marker) and the meetings watermark stays before it. The watermark also stays before any unsaved doc and any meeting that may still be under way, so never later than two hours before the check.
+3. **Leave the window open when a Drive listing is bounded.** A Drive search returns no completeness flag, so a full page, a next-page token, an `incompleteSearch` warning or a failed search means more docs may exist: read every page, and report the window as unproven until then.
+4. **Save the verbatim transcript in full whenever the source has one.** It is the only primary source; its length is no reason to abridge it. Use the Gemini email only to find the doc, never as content: it is a summary of the summary.
+5. **Select the transcript by the document's stable tab ID** from a complete tab list, and record that ID; position or a regular expression only guesses, so neither selects. A title selects only when exactly one tab in a complete list carries it. Only a complete tab list establishes `transcript-tab-absent`.
+6. **Verify the exact saved file before calling a meeting fetched:** `verify_transcripts.py --file <saved file> --json` must show both halves landed. A directory scan reports on the corpus, not on this file.
+7. **Add the `<!-- VERIFIER: no-source-transcript -->` marker only when the source has no transcript,** as a complete tab list or the doc itself shows, with a one-line reason beside it. A failed or partial fetch is an open gap (rule 2), not a missing transcript.
+8. **Take who acted from the verbatim transcript.** Who decided, warned, approved, asked, promised or owns an action comes from the transcript's speaker lines, whether fetched or pasted by the user; when a line names the actor, attribute directly. A tool summary, decisions section or action-item list says what happened, never who did or owns it, because the summarizer drops the actor: if the transcript is silent, keep the passive form or say the actor is unknown.
+9. **Confirm scanner candidates with the principal.** Lines the commitment scanner (`extract_commitments.py`) flags are candidates, since it matches phrasing, not obligations: show each (timestamp, speaker, quote) for the principal to confirm in the same turn, create nothing from scanner output alone, and stamp each confirmed one with exactly one owner. This rule covers scanner output only; a commitment read from transcript lines to say who owns what is attribution (rule 8) and needs no confirmation.
+10. **Cross-check every date against at least two independent signals** before writing a dated file, such as the system `date`, the doc's `modifiedTime` (in UTC) and a date the user or the doc's name states; a session's cached date goes stale across midnight.
+11. **Commit transcripts to `transcripts_repo`, never leave them in `~/Downloads/`;** its pre-commit gate refuses a summary saved as a transcript.
 
 ## Contents
 
-- [references/protocol-steps.md](references/protocol-steps.md): Steps 1 to 6 with every command (`verify_transcripts.py`, `extract_commitments.py`), the email warning, the no-source marker, the attribution rule, date verification and the daily-rituals integration. Read it before fetching a meeting, and for each member of a Step 0 sweep.
-- [references/transcript-primary-and-commit-gate.md](references/transcript-primary-and-commit-gate.md): the v0.4.0 hierarchy of evidence and the v0.5.0 pre-commit gate. Read it before citing anything from a meeting record, and when setting up a transcripts repo.
+- Which path: below. Read it first.
+- [references/declared-window-sweep.md](references/declared-window-sweep.md): Step 0, the ritual sync: inventory the window (`fetch-meeting.py --window`), fetch and account for every declared member, advance the meetings watermark (`sync_watermark.py advance`). Read it at the start of every ritual sync.
+- [references/protocol-steps.md](references/protocol-steps.md): Steps 1 to 6 for one meeting with every command (`verify_transcripts.py`, `extract_commitments.py`): find, fetch by tab ID, save, verify, attribute, commitments, commit; date checks; the daily-rituals hand-off. Read it before fetching or filing a meeting, and for each member of a sweep.
+- [references/transcript-primary-and-commit-gate.md](references/transcript-primary-and-commit-gate.md): what counts as primary evidence, how summaries are kept, and the transcripts repository's pre-commit gate. Read it before citing a meeting record, and when setting up a transcripts repo.
 - [references/setup.md](references/setup.md): the `.agents/meeting-transcripts.yaml` schema (required: `workspace`, `google_account`, `transcripts_repo`, `transcripts_path`), prerequisites, multi-account options and what `start.sh` sets for the server. Read it when a project has no config, a config is refused, or an account is unreachable.
 - [references/release-notes.md](references/release-notes.md) and [references/earlier-version-history.md](references/earlier-version-history.md): release notes from v0.2.0 to 1.2.1. Read them when a result differs from what an earlier version did.
-- [optional-workspace-mcp/README.md](optional-workspace-mcp/README.md): the optional self-hosted multi-account server helper: `fetch-meeting.py` (one meeting, or `--window FROM THROUGH` for saved and unsaved docs), `mcp_client.py`, the service scripts and `doctor.sh`.
-- [references/coverage-map.md](references/coverage-map.md): where each part of the earlier 0.14.0 text now lives, and the M3 script changes.
-- [references/preserved.md](references/preserved.md): the retired acquisition and attribution-receipt text, verbatim. Read it only to review the cut.
-- Protocol, Step 0: below.
+- [optional-workspace-mcp/README.md](optional-workspace-mcp/README.md): the optional self-hosted multi-account server: `fetch-meeting.py`, `mcp_client.py`, the service scripts and `doctor.sh`. Read it when the project uses that server.
+- [references/coverage-map.md](references/coverage-map.md): where each rule of 1.2.1, and of 0.14.0, lives now. Read it to check a rewrite.
+- [references/preserved.md](references/preserved.md): text retired in 1.3.0 and in M3, word for word, with reasons. Read it only to review a rewrite.
 
-## Protocol
+## Which path
 
-### Step 0: Declared-window sweep (v0.9.0 — how "declared means fetched" executes)
-
-The agent does not get a vote on which declared items are interesting. Relevance is judged after fetching, never before. Every declared item is fetched or retained as an unclosed gap.
-
-Inventory the window first: with the optional workspace-mcp helper, `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" --window FROM THROUGH` lists every doc the declared patterns find, each marked saved or unsaved, and the moment the watermark may advance to; its `scope` names the only patterns searched, and `undeclared` lists Gemini notes docs no declared pattern finds (declare a recurring one to cover it). With hosted connectors, run the same Drive search per declared pattern with the window's `modifiedTime` bounds, follow every page, and compare each doc ID with the IDs the saved files name: a `**Source ID:**` header, a Google Doc link, or the first backticked ID on a `> Source:` line (`` > Source: Gemini doc `<id>` ``), the three forms `--window` reads.
-
-HTTP health alone is not sign-in: a read as the declared account shows which account answers. Never filter by meeting title or perceived relevance. Then advance with `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" advance --workspace <W> --surface meetings --through <T>`, where T, written with its offset, is the earliest of the window's end (Drive reads its days as UTC), two hours before the check ran (a meeting under way may have no doc yet) and one second before each unsaved doc was created. A failed search, a full page, a next-page token, Drive's incompleteSearch warning or an unknown tab list keeps the watermark where it is.
-
-The single-meeting path below serves an explicit user request. A ritual sync
-(Day-Start 3c, Day-End Step 1) runs this sweep instead, because the policy
-above has to have an execution path or it is prose:
-
-1. **Enumerate the declared set** for the window from
-   `.agents/meeting-transcripts.yaml`: every declared meeting pattern crossed
-   with every occurrence that ended inside the window. The enumeration is the
-   complete decision — no per-item judgment about which meetings look
-   interesting stands between the list and the fetch.
-2. **Run Steps 2–5 for every member.** Relevance is judged after fetching,
-   from content.
-3. **Account for every member.** The sync report carries one line per
-   declared member: fetched (with path), or an **unclosed gap** naming the
-   member, the window, and the failure ("no doc found", "fetch failed",
-   "verbatim half missing"). A member missing from the report is the defect
-   this step exists to prevent; a gap is closed this run or carried as a
-   blocking item, never dropped.
-
-Steps 1 to 6, the single-meeting path whose Steps 2 to 5 the sweep runs for every member, are in [references/protocol-steps.md](references/protocol-steps.md).
+- **The user names one meeting** ("pull today's design review"): Steps 1 to 6 in [references/protocol-steps.md](references/protocol-steps.md), for that meeting only.
+- **A ritual sync** (day-start 3c, the mid-day sync, day-end step 1): Step 0 in [references/declared-window-sweep.md](references/declared-window-sweep.md), which runs Steps 2 to 5 for every declared member.
+- **The user brings a record** (pasted lines, a saved file, a download): answer from it by rules 4 and 8; to file a download, save, verify and commit it by Steps 4 to 6.
+- **No config, a refused config, an unreachable account:** [references/setup.md](references/setup.md).

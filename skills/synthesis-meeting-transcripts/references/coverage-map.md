@@ -1,8 +1,71 @@
-# Coverage map: meeting transcripts 0.14.0 to 1.0.0 (v5)
+# Coverage maps: meeting transcripts
+
+Read when checking where a rule of an earlier text lives now (ruling D8). Two rewrites, newest first: 1.2.1 to
+1.3.0, the rewrite to the repository's standard (`docs/skill-writing.md`), then 0.14.0 to 1.0.0, the v5
+restructure and the M3 script pass, kept word for word one heading level down.
+
+Contents:
+- 1.2.1 to 1.3.0: SKILL.md; references/protocol-steps.md; references/transcript-primary-and-commit-gate.md;
+  release notes, version and scripts; files unchanged
+- 0.14.0 to 1.0.0 (v5): version; section map; pointers from scripts; scripts in v5 (M3); edge cases; lines the
+  coverage check reports; frontmatter before v5
+
+## 1.2.1 to 1.3.0: the rewrite to the D8 standard
+
+Every rule and requirement of the 1.2.1 text, in its order, and where it lives in 1.3.0. **Kept**: the same
+words in the same file. **Moved**: the same words in another file. **Reworded**: the same rule in new words,
+with the old words in [preserved.md](preserved.md). **Added**: a new sentence, with its reason. Nothing was
+dropped. Binding rules keep their numbers, which the skill's evaluation cases cite.
+
+### SKILL.md
+
+| 1.2.1 | 1.3.0 | How |
+|---|---|---|
+| Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "1.2.1"` | `version: "1.3.0"`, with both scripts' `SCRIPT_VERSION` | Bumped: a minor version, since every rule and script interface is kept |
+| Title | Title | Kept |
+| Opening paragraph: a protocol for fetching Gemini meeting notes and transcripts from Gmail and Drive into a local archive, "or equivalents" | Opening paragraph | Reworded: adds verification, attribution and the scanner's candidates; "or equivalents" became "another recorder's export" |
+| (none) | The line above rule 1: the rules hold against a contrary request; say which rule and why, then do what it allows | Added (W8, format rule 11): every evaluation case with a contrary request expects the rule to hold |
+| Rule 1: a ritual sync runs Step 0, enumerating the declared set, fetching every member and accounting for each as fetched or an unclosed gap; relevance judged after fetching, never before | Rule 1 | Reworded (W5). Names the day-start, mid-day and day-end syncs; "open gap" for "unclosed gap"; the reason, "a title is no evidence", from the v0.8.0 note; "a meeting the user names is fetched alone" from Step 0's "the single-meeting path serves an explicit user request" |
+| Rule 2: unknown authentication, tab enumeration or archive coverage never becomes a no-source attestation; the watermark never passes an unsaved doc or a meeting that may still be under way | Rule 2 | Reworded: "the no-source marker" for "no-source attestation"; "sign-in" for "authentication"; adds the two-hour bound from Step 0's watermark rule (W2) |
+| Rule 3: a Drive search listing cannot prove a window complete (no completeness flag); a full page, a next-page token, an `incompleteSearch` warning or a failed search leaves the window open; say so in the report | Rule 3 | Reworded as an action; adds "read every page" from Step 0 |
+| Rule 4: the verbatim transcript is the only primary source; fetch it in full whenever the source has one; the Gemini email is for discovery only | Rule 4 | Reworded; adds "its length is no reason to abridge it" (v0.5.0 fetch-time rule) and the reason, "a summary of the summary" (the email warning) |
+| Rule 5: select by stable tab ID, never by order or a regular expression; a title only when exactly one tab in a complete list carries it; only a complete list establishes `transcript-tab-absent` | Rule 5 | Reworded, the behavior first (W12); adds "record that ID" from Step 3 |
+| Rule 6: verify both halves with `verify_transcripts.py --file <exact saved file> --json` before calling a meeting fetched; a directory scan does not substitute | Rule 6 | Reworded; adds the reason (a scan reports on the corpus) |
+| Rule 7: the no-source marker only when the source truly has no transcript, with a one-line reason | Rule 7 | Reworded; names the evidence (a complete tab list or the doc itself) and the failed-fetch case from Step 3 |
+| Rule 8: never derive attribution from a tool summary; who warned, decided, approved or owns comes from the verbatim transcript; if it does not say, keep the passive form | Rule 8 | Reworded, the behavior first. Adds "asked" and "promised" (v0.4.0 note), "whether fetched or pasted by the user" (W16), "when a line names the actor, attribute directly" (W15: the evaluation's finding), the reason, and "say the actor is unknown" (Step 4.6) |
+| Rule 9: a scanned commitment is a candidate until the principal confirms it in the same turn; stamp each confirmed one with exactly one owner; nothing created from scanner output alone | Rule 9 | Reworded to fix the evaluation's finding (W7, W14): names the commitment scanner (`extract_commitments.py`), says what to show (timestamp, speaker, quote, from Step 4.7), adds the reason, and limits the rule to scanner output, with commitments read from transcript lines left to rule 8. Same turn, one owner and "nothing created from scanner output alone" kept |
+| Rule 10: cross-check every date against at least two independent signals before writing a dated file | Rule 10 | Reworded; names example signals from Date Verification, with `modifiedTime` in UTC and the date in the doc's name (Step 2 prefers the doc whose name contains the date); adds the reason |
+| Rule 11: never leave transcripts in `~/Downloads/`; commit them to `transcripts_repo`, whose pre-commit gate refuses a summary saved as a transcript | Rule 11 | Reworded, the behavior first |
+| Contents: protocol-steps.md line | Contents | Reworded for the steps it now lists |
+| Contents: transcript-primary-and-commit-gate.md line ("the v0.4.0 hierarchy ... and the v0.5.0 pre-commit gate") | Contents | Reworded: the file now holds the rules as they stand |
+| Contents: setup.md line | Contents | Kept |
+| Contents: release notes line | Contents | Kept, the range now to 1.3.0 |
+| Contents: optional-workspace-mcp/README.md line | Contents | Reworded, with when to read it |
+| Contents: coverage-map.md and preserved.md lines | Contents | Reworded for both rewrites |
+| Contents: "Protocol, Step 0: below." | Contents: "Which path: below" and the declared-window-sweep.md line | Reworded |
+| Protocol heading; "Step 0: Declared-window sweep (v0.9.0 — how ... executes)" | references/declared-window-sweep.md, title | Reworded; the version tag went to the release notes |
+| "The agent does not get a vote on which declared items are interesting." | declared-window-sweep.md, second paragraph | Reworded: "no judgment about which meetings look interesting stands between the list and the fetch" |
+| "Relevance is judged after fetching, never before." | declared-window-sweep.md, second paragraph; rule 1 | Kept in substance |
+| "Every declared item is fetched or retained as an unclosed gap." | declared-window-sweep.md, second paragraph | Reworded ("open gap") |
+| Inventory with `fetch-meeting.py --window FROM THROUGH`: docs saved or unsaved, the watermark moment, `scope`, `undeclared` (declare a recurring one) | declared-window-sweep.md, step 1 | Kept, with what the command prints and its exit codes added (format rule 7) |
+| With hosted connectors: one Drive search per declared pattern with `modifiedTime` bounds, every page followed, doc IDs compared in the three forms `--window` reads | declared-window-sweep.md, step 1 | Kept |
+| "HTTP health alone is not sign-in: a read as the declared account shows which account answers." | declared-window-sweep.md, step 1, first paragraph | Reworded, and placed first, where the work starts |
+| "Never filter by meeting title or perceived relevance." | declared-window-sweep.md, step 1, last paragraph | Reworded |
+| Advance with `sync_watermark.py advance --workspace <W> --surface meetings --through <T>`; T with its offset, the earliest of the window's end (UTC), two hours before the check and one second before each unsaved doc was created | declared-window-sweep.md, step 5; the two-hour bound also in rule 2 | Kept; moved after the fetch and the report, where it runs |
+| A failed search, a full page, a next-page token, the `incompleteSearch` warning or an unknown tab list keeps the watermark where it is | declared-window-sweep.md, step 5; rules 2 and 3 | Kept |
+| The single-meeting path serves an explicit request; a ritual sync (Day-Start 3c, Day-End Step 1) runs the sweep instead, because the policy needs an execution path | declared-window-sweep.md, opening paragraph; SKILL.md, Which path | Reworded; adds the mid-day sync, which synthesis-daily-rituals also runs |
+| Step 0.1: enumerate the declared set (patterns crossed with occurrences that ended in the window); the enumeration is the complete decision | declared-window-sweep.md, step 2 | Kept |
+| Step 0.2: run Steps 2 to 5 for every member; relevance judged after fetching, from content | declared-window-sweep.md, step 3 | Kept |
+| Step 0.3: one report line per member, fetched (with path) or an unclosed gap naming member, window and failure; a missing member is the defect; a gap is closed this run or carried as blocking, never dropped | declared-window-sweep.md, step 4 | Kept ("open gap") |
+| Closing pointer: Steps 1 to 6 are in protocol-steps.md | SKILL.md, Which path, first bullet | Reworded as a route |
+| (none) | SKILL.md, Which path | Added (W18): routes the four kinds of request, including a record the user brings |
+
+## Coverage map: meeting transcripts 0.14.0 to 1.0.0 (v5)
 
 Read when checking where a rule of the 0.14.0 text lives now (ruling D8). Every part of the earlier 0.14.0 SKILL.md and where it lives now. The prose restructure removed nothing and changed no script; the M3 script pass (below) then applied the code verdicts, and every passage it replaced is verbatim in [preserved.md](preserved.md).
 
-## Version
+### Version
 
 The prose restructure kept `version: "0.14.0"` because `verify_transcripts.py` and `extract_commitments.py` (and the cut `transcript_primary.py`) carried `SCRIPT_VERSION = "0.14.0"` and three tests required parity. In M3 the skill and both remaining scripts moved to 1.0.0 together; `tests/test_meeting_version_parity.py` and the version check in `tests/test_meeting_verify_transcripts.py` hold the parity.
 
@@ -28,13 +91,13 @@ The prose restructure kept `version: "0.14.0"` because `verify_transcripts.py` a
 | Why Tool-Agnostic Matters | references/setup.md (verbatim) |
 | references/earlier-version-history.md | Unchanged (119 lines, so no contents list was needed) |
 
-## Pointers from scripts
+### Pointers from scripts
 
 - `optional-workspace-mcp/fetch-meeting.py` now points at `synthesis-meeting-transcripts/references/setup.md` for the schema (it said SKILL.md).
 - A comment in `verify_transcripts.py` asks for "a matching entry to SKILL.md's changelog" when output changes. The release notes live in references/release-notes.md and references/earlier-version-history.md.
 - `verify_transcripts.py`'s unverified remainder still said "use transcript_primary.py" after M3 cut that script. Since 2026-10-07 it points at the reading rule that replaced it, protocol-steps.md Step 4.6; `test_the_remainder_points_only_at_files_this_skill_ships` holds every file it names to one the skill ships.
 
-## Scripts in v5 (M3)
+### Scripts in v5 (M3)
 
 Verdicts from the v5 code evaluation (tool scripts, meeting transcripts). Line counts are `wc -l`.
 
@@ -50,7 +113,7 @@ Verdicts from the v5 code evaluation (tool scripts, meeting transcripts). Line c
 | `start.sh`, `stop.sh`, `install-autostart.sh`, `uninstall-autostart.sh`, `doctor.sh` | KEEP, generic launchd label | Kept; label `com.synthesis.workspace-mcp`; doctor's account line no longer names the cut acquisition route |
 | Tests (3,600 lines) | Kept where they test kept code | `tests/test_meeting_verify_transcripts.py`, `tests/test_meeting_extract_commitments.py`, `tests/test_meeting_version_parity.py`, `tests/test_workspace_mcp_doctor.py`, `tests/test_workspace_mcp_fetch.py`; the four `test_acquisition_*.py` files and `test_transcript_primary.py` went with the cut code |
 
-## Edge cases and where each is held
+### Edge cases and where each is held
 
 | Scenario | Test (in `tests/`) or rule |
 |---|---|
@@ -70,13 +133,13 @@ Verdicts from the v5 code evaluation (tool scripts, meeting transcripts). Line c
 | E28 the bookmark suggestion is never later than two hours before the run (a meeting under way may have no doc yet), stops one second before an unsaved doc was created, and carries its offset (2026-10-08: a run at 11:23 offered 23:59:59 while two 11:00 meetings ran) | `test_workspace_mcp_fetch.py::test_e28_*` |
 | E29 every `--window` run names the only patterns it searched, and lists the Gemini notes docs no declared pattern finds as `undeclared` without holding the bookmark | `test_workspace_mcp_fetch.py::test_e29_*` |
 
-## Lines the coverage check reports
+### Lines the coverage check reports
 
 `v5-skill-coverage-check.py` reports no lines: every non-blank line of the 0.14.0 Markdown appears verbatim in SKILL.md or a reference file. None of the moved text had a relative link, so no link paths changed.
 
 Since M3 the check reports two lines, deliberately: references/earlier-version-history.md, the v0.10.0 entry, the sentence about the spoken "of course" that sat in a filed transcript. The 0.14.0 lines named a private person and a personal event; this is a public repository (requirement R7.4, and section 5 item 7 of the tool-scripts evaluation), so the sentence now says "the principal's" and "a friend's memorial service" and the old lines are not quoted anywhere in the skill. They are readable with `git show origin/main:skills/synthesis-meeting-transcripts/SKILL.md` (the v0.10.0 note).
 
-## Frontmatter before v5 (verbatim)
+### Frontmatter before v5 (verbatim)
 
 The 0.14.0 frontmatter, kept whole so the old description stays on record.
 

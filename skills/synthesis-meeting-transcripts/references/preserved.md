@@ -1,12 +1,132 @@
-# Preserved text: meeting transcripts, retired in milestone M3
+# Preserved text: meeting transcripts, retired in milestone M3 and in 1.3.0
 
 Read this only to review what was cut. The passages below are no longer
 instructions; they are kept verbatim so the reasoning stays readable (ruling D8).
 
 Contents:
-- Why the scripts were cut or slimmed
-- Replaced passages, file by file (verbatim)
-- Test fixtures of the cut transcript_primary.py (verbatim)
+- Retired in 1.3.0, the rewrite to the D8 standard: why each part changed, then the
+  1.2.1 text verbatim (SKILL.md first)
+- Why the scripts were cut or slimmed (M3)
+- Replaced passages, file by file (verbatim, M3)
+- Test fixtures of the cut transcript_primary.py (verbatim, M3)
+
+## Retired in 1.3.0: the rewrite to the D8 standard
+
+1.3.0 rewrote the skill's instruction text to the repository's rewrite standard,
+`docs/skill-writing.md` (writing rules W1 to W19). Every rule's new place is in
+[coverage-map.md](coverage-map.md). A passage moved word for word to another file is
+recorded there and not repeated here.
+
+### SKILL.md
+
+Why each part changed:
+
+- **Opening paragraph.** It described only the fetch. The skill also verifies each saved
+  file, takes attribution from the transcript and puts scanner candidates before the
+  principal, so the paragraph now says all four (format rule 2).
+- **Binding rules 1 to 11.** Rewritten to W5 (the action as the bold head, then the scope
+  and the reason) and W14 (each rule names what it governs), and made complete on their
+  own (W2): rule 2 took the two-hour bound and rule 3 the "read every page" step from
+  Step 0, rule 4 the length point from the v0.5.0 fetch-time rule, rule 5 the recorded
+  tab ID and rule 7 the failed-fetch case from Step 3, and rule 8 "asked" and "promised"
+  from the v0.4.0 note and "say the actor is unknown" from Step 4.6. Rules 9 and 8 carry
+  the fix for the defect the skill's evaluation found: with the skill loaded, a model
+  asked the user to confirm a commitment it had read directly from transcript lines the
+  user pasted, which it did not do without the skill. Rule 9's "A scanned commitment"
+  meant scanner output but read as any commitment; it now names the commitment scanner
+  and says it covers scanner output only, and rule 8 says to attribute directly when a
+  transcript line names the actor. "Unclosed gap" became "open gap" and "no-source
+  attestation" the no-source marker, one name for each (format rule 11).
+- **The line above rule 1.** New: it says the rules hold against a contrary request and
+  how to answer one (W8, format rule 11).
+- **Contents.** Lists the new Step 0 reference, describes the evidence reference by what
+  it now holds, and says when to read the coverage map and this file.
+- **Protocol, Step 0.** Moved to references/declared-window-sweep.md and rewritten (W18:
+  a procedure for one kind of request lives in its own reference, and SKILL.md routes to
+  it). Its steps now run in the order the work does: inventory, enumerate, fetch, account,
+  and only then advance the watermark, which the old text placed before the steps. The
+  heading's version tag went to the release notes, and "does not get a vote" became the
+  plain rule it stood for. It had stayed in SKILL.md because a daily-rituals test read
+  its phrases there; that test stopped reading them on 2026-10-05.
+- **The closing pointer to Steps 1 to 6.** Replaced by "Which path", which routes each
+  kind of request to its procedure (W18).
+
+The 1.2.1 SKILL.md, verbatim:
+
+````markdown
+---
+name: synthesis-meeting-transcripts
+description: "Fetch AI-generated meeting notes and full transcripts into local markdown, and verify an artifact is primary before it supports attribution. Tool-agnostic: Gmail/Drive MCPs or local exports. Use to fetch, pull, sync, download, import, classify or verify a meeting transcript."
+license: "Apache-2.0"
+depends_on: []
+metadata:
+  author: "Rajiv Pant"
+  version: "1.2.1"
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
+  format: v5
+  category: chief-of-staff
+---
+
+# Synthesis Meeting Transcripts
+
+A protocol for fetching AI-generated meeting transcripts from the user's Gmail and Google Drive into a local markdown archive. Designed for teams where Google Meet + Gemini (or equivalents) produce meeting notes + word-for-word transcripts that live in Google Docs, and the user wants them mirrored locally alongside their project context.
+
+## Binding rules
+
+1. **Declared means fetched.** A ritual sync runs Step 0 below: enumerate the declared set, fetch every member, and account for each as fetched or as an unclosed gap. Relevance is judged after fetching, never before.
+2. **Unknown coverage is a visible gap.** Unknown authentication, tab enumeration or archive coverage never becomes a no-source attestation, and the meetings watermark never moves past an unsaved doc or a meeting that may still be under way.
+3. **A Drive search listing cannot prove a window complete,** because it omits the provider completeness flag. A full page, a next-page token, an incompleteSearch warning or a failed search leaves the window open; say so in the report.
+4. **The verbatim transcript is the only primary source.** Fetch it in full whenever the source has one. The Gemini email is for discovery only, never for content.
+5. **Select the transcript by the document's stable tab ID,** never by order or a regular expression; a title only when exactly one tab in a complete tab list carries it. Only a complete tab list establishes `transcript-tab-absent`.
+6. **Verify both halves landed** with `verify_transcripts.py --file <exact saved file> --json` before calling a meeting fetched. A directory scan does not substitute.
+7. **Use the `<!-- VERIFIER: no-source-transcript -->` marker only when the source truly has no transcript,** with a one-line reason beside it.
+8. **Never derive attribution from a tool summary.** Who warned, decided, approved or owns comes from the verbatim transcript; if it does not say, keep the passive form.
+9. **A scanned commitment is a candidate until the principal confirms it** in the same turn. Stamp each confirmed one with exactly one owner; nothing is created from scanner output alone.
+10. **Cross-check every date against at least two independent signals** before writing a dated file.
+11. **Never leave transcripts in `~/Downloads/`.** Commit them to `transcripts_repo`, whose pre-commit gate refuses a summary saved as a transcript.
+
+## Contents
+
+- [references/protocol-steps.md](references/protocol-steps.md): Steps 1 to 6 with every command (`verify_transcripts.py`, `extract_commitments.py`), the email warning, the no-source marker, the attribution rule, date verification and the daily-rituals integration. Read it before fetching a meeting, and for each member of a Step 0 sweep.
+- [references/transcript-primary-and-commit-gate.md](references/transcript-primary-and-commit-gate.md): the v0.4.0 hierarchy of evidence and the v0.5.0 pre-commit gate. Read it before citing anything from a meeting record, and when setting up a transcripts repo.
+- [references/setup.md](references/setup.md): the `.agents/meeting-transcripts.yaml` schema (required: `workspace`, `google_account`, `transcripts_repo`, `transcripts_path`), prerequisites, multi-account options and what `start.sh` sets for the server. Read it when a project has no config, a config is refused, or an account is unreachable.
+- [references/release-notes.md](references/release-notes.md) and [references/earlier-version-history.md](references/earlier-version-history.md): release notes from v0.2.0 to 1.2.1. Read them when a result differs from what an earlier version did.
+- [optional-workspace-mcp/README.md](optional-workspace-mcp/README.md): the optional self-hosted multi-account server helper: `fetch-meeting.py` (one meeting, or `--window FROM THROUGH` for saved and unsaved docs), `mcp_client.py`, the service scripts and `doctor.sh`.
+- [references/coverage-map.md](references/coverage-map.md): where each part of the earlier 0.14.0 text now lives, and the M3 script changes.
+- [references/preserved.md](references/preserved.md): the retired acquisition and attribution-receipt text, verbatim. Read it only to review the cut.
+- Protocol, Step 0: below.
+
+## Protocol
+
+### Step 0: Declared-window sweep (v0.9.0 — how "declared means fetched" executes)
+
+The agent does not get a vote on which declared items are interesting. Relevance is judged after fetching, never before. Every declared item is fetched or retained as an unclosed gap.
+
+Inventory the window first: with the optional workspace-mcp helper, `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-meeting-transcripts/optional-workspace-mcp/fetch-meeting.py" --window FROM THROUGH` lists every doc the declared patterns find, each marked saved or unsaved, and the moment the watermark may advance to; its `scope` names the only patterns searched, and `undeclared` lists Gemini notes docs no declared pattern finds (declare a recurring one to cover it). With hosted connectors, run the same Drive search per declared pattern with the window's `modifiedTime` bounds, follow every page, and compare each doc ID with the IDs the saved files name: a `**Source ID:**` header, a Google Doc link, or the first backticked ID on a `> Source:` line (`` > Source: Gemini doc `<id>` ``), the three forms `--window` reads.
+
+HTTP health alone is not sign-in: a read as the declared account shows which account answers. Never filter by meeting title or perceived relevance. Then advance with `python3 -s "$HOME/.synthesis/v5/current/skills/synthesis-daily-rituals/scripts/sync_watermark.py" advance --workspace <W> --surface meetings --through <T>`, where T, written with its offset, is the earliest of the window's end (Drive reads its days as UTC), two hours before the check ran (a meeting under way may have no doc yet) and one second before each unsaved doc was created. A failed search, a full page, a next-page token, Drive's incompleteSearch warning or an unknown tab list keeps the watermark where it is.
+
+The single-meeting path below serves an explicit user request. A ritual sync
+(Day-Start 3c, Day-End Step 1) runs this sweep instead, because the policy
+above has to have an execution path or it is prose:
+
+1. **Enumerate the declared set** for the window from
+   `.agents/meeting-transcripts.yaml`: every declared meeting pattern crossed
+   with every occurrence that ended inside the window. The enumeration is the
+   complete decision — no per-item judgment about which meetings look
+   interesting stands between the list and the fetch.
+2. **Run Steps 2–5 for every member.** Relevance is judged after fetching,
+   from content.
+3. **Account for every member.** The sync report carries one line per
+   declared member: fetched (with path), or an **unclosed gap** naming the
+   member, the window, and the failure ("no doc found", "fetch failed",
+   "verbatim half missing"). A member missing from the report is the defect
+   this step exists to prevent; a gap is closed this run or carried as a
+   blocking item, never dropped.
+
+Steps 1 to 6, the single-meeting path whose Steps 2 to 5 the sweep runs for every member, are in [references/protocol-steps.md](references/protocol-steps.md).
+````
 
 ## Why the scripts were cut or slimmed
 
