@@ -55,7 +55,7 @@ MANIFEST = ".codex-plugin/plugin.json"  # the repository's, for its version; and
 ACTS = r"(?:\w+\s+)?(?:refus(?:e|es|ed)|block(?:s|ed)?|den(?:y|ies|ied)|enforc(?:e|es|ed)|re-injects?)\b"
 BY = r"\b(?:refused|blocked|denied|enforced)\s+(?:\w+\s+)?by\s+(?:the|an?|its|each|every)\s+(?:[\w-]+\s+)?"
 COMMANDS = ("claim|release|journal|index|who|msg|worktree|inbox|wait|sends|use|brief|resume|handoff|sessions|searches"
-            "|approvals|config|install|uninstall|doctor|version")  # the subcommands of synthesis/cli.py
+            "|approvals|config|install|uninstall|doctor|review|version")  # the subcommands of synthesis/cli.py
 CLAIMS = tuple((kind, re.compile(pattern)) for kind, pattern in (
     ("a hook claim",
      r"(?i)\b(?:PreToolUse|SessionStart|UserPromptSubmit)\b|\bhooks\.json\b|core\.hooksPath"

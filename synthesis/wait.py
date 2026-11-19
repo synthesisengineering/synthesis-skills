@@ -76,19 +76,29 @@ def _alive(pid: int) -> bool:
     return True
 
 
-def live(session_id: str = "") -> list[dict]:
+def held(session_id: str = "", over: list | None = None) -> list[dict]:
     """The waits still held, of one session or of all: inside their bound and, where a process watches, that process
-    alive. A record alone proves nothing, and one that is over is removed. Each carries its file, as `record`."""
+    alive. A record alone proves nothing. Read only: the file of each one that is over is added to `over`. Each carries
+    its file, as `record`."""
     root = _folder(session_id) if session_id else paths.board() / "waits"
     found = []
     for file in sorted(root.rglob("*.json")) if root.is_dir() else []:
-        held = paths.read_json(file)
-        if session_id and held.get("session", session_id) != session_id:
+        entry = paths.read_json(file)
+        if session_id and entry.get("session", session_id) != session_id:
             continue  # another session's, whose id shares this folder's name: not this one's to count or to remove
-        if held.get("until", 0) > time.time() and (not held.get("pid") or _alive(int(held["pid"]))):
-            found.append({**held, "record": file})
-        else:
-            file.unlink(missing_ok=True)
+        if entry.get("until", 0) > time.time() and (not entry.get("pid") or _alive(int(entry["pid"]))):
+            found.append({**entry, "record": file})
+        elif over is not None:
+            over.append(file)
+    return found
+
+
+def live(session_id: str = "") -> list[dict]:
+    """`held`, with each record that is over removed."""
+    over: list = []
+    found = held(session_id, over)
+    for file in over:
+        file.unlink(missing_ok=True)
     return found
 
 

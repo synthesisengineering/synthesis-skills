@@ -54,7 +54,7 @@ SELF_TEST = {"tool_name": "Bash", "tool_input": {"command": "rm -rf ~"}}
 
 
 class Check(NamedTuple):
-    status: str  # ok, warn, fail; info is report-only and never affects health
+    status: str  # ok, warn, fail; unknown where the check could not tell (never fine, never a failure); info only reports
     name: str
     detail: str
 
@@ -182,7 +182,7 @@ def check_prompt_check(cfg: dict | None, error: str = "") -> Check | None:
     is each workspace's own word (measured 2026-11-13: on for one workspace of three; 8 of 267 session entries
     cited a record)."""
     if cfg is None:
-        return Check("warn", "prompt check", f"cannot tell: the rituals' config cannot be read ({error})")
+        return Check("unknown", "prompt check", f"cannot tell: the rituals' config cannot be read ({error})")
     from synthesis import rituals
     on, off, refused = [], [], []
     unlisted = [""] if "prompt_reconcile" in (cfg.get("defaults") or {}) else []  # a workspace the config does not list reads the defaults
@@ -223,7 +223,7 @@ def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) ->
 def check_plugin(harness: str, entry: dict | None, error: str = "") -> Check:
     """entry: {"enabled": bool, "version": str, "path": Path | None, "problem": str}."""
     if entry is None:  # a CLI that never answered says nothing about the install: warn, never pass or fail
-        return Check("warn" if error.startswith("cannot tell") else "fail", f"{harness} plugin", error or f"{PLUGIN} is not installed")
+        return Check("unknown" if error.startswith("cannot tell") else "fail", f"{harness} plugin", error or f"{PLUGIN} is not installed")
     if entry.get("problem"):
         return Check("fail", f"{harness} plugin", entry["problem"])
     if not entry.get("enabled"):
@@ -511,7 +511,7 @@ def check_codex_nested_hooks(codex_home: Path, files: int = NESTED_FILES, now: f
     try:
         listed = list(root.rglob("rollout-*.jsonl")) if root.is_dir() else []
     except OSError as exc:
-        return Check("warn", name, f"Codex's records could not be listed ({exc}): that Codex runs hooks on nested calls is unproven")
+        return Check("unknown", name, f"Codex's records could not be listed ({exc}): that Codex runs hooks on nested calls is unproven")
     found = sorted(((s.st_mtime, p) for p, s in ((p, _lstat(p)) for p in listed) if s and stat.S_ISREG(s.st_mode)), reverse=True)
     read, scanned, newest, proof = 0, 0, "", None
     for mtime, path in found[:files]:
@@ -677,7 +677,7 @@ def check_claude_fail_closed(hooks: dict, version: str, where: str = "") -> Chec
                      "guard that times out or crashes lets the call through: update the plugin")
     at = f" ({where})" if where else ""
     if not version:
-        return Check("warn", "claude fail closed", f"cannot tell which Claude Code this is{at}, so whether it holds a "
+        return Check("unknown", "claude fail closed", f"cannot tell which Claude Code this is{at}, so whether it holds a "
                      "guarded call when the guard times out or crashes")
     if tuple(int(n) for n in version.split(".")) < CLAUDE_ON_FAILURE:
         return Check("warn", "claude fail closed", f"Claude Code {version}{at} ignores onFailure (2.1.295 or later honors "
@@ -837,7 +837,8 @@ def check_unsaved(config: dict, claims: list, now: float = 0) -> Check:
     found = unsaved(claims, hours, now)
     if not found:
         return Check("warn" if note else "ok", "unsaved records", f"nothing under a claim unsaved past {hours:g} h{note}")
-    return Check("warn", "unsaved records", f"{len(found)} {'repository holds' if len(found) == 1 else 'repositories hold'} "
+    return Check("unknown" if any(isinstance(c, str) for c in found.values()) else "warn", "unsaved records", f"{len(found)} "
+                 f"{'repository holds' if len(found) == 1 else 'repositories hold'} "
                  f"claimed records unsaved past {hours:g} h, or could not be read{note}: " + "; ".join(
                      f"{_short(Path(repo))}: could not read it ({counts})" if isinstance(counts, str) else
                      f"{_short(Path(repo))}: {counts[0]} file(s), the oldest {counts[1]:.0f} h ({counts[2]} uncommitted, "
@@ -1008,7 +1009,7 @@ def check_muse_approval(inspect: dict) -> Check:
     if not hooks:
         declared = ((inspect.get("plugin") or {}).get("capabilities") or {}).get("hooks") or []
         if declared:  # the manifest has hooks but Muse reported no trust state: unreadable here, not unapproved
-            return Check("warn", "muse hook approval", f"cannot tell whether Muse approved the {len(declared)} hooks: it "
+            return Check("unknown", "muse hook approval", f"cannot tell whether Muse approved the {len(declared)} hooks: it "
                          "reported no trust state, which happens when its state cannot be read from here (in a sandbox, for example)")
         return Check("fail", "muse hook approval", "the installed plugin registers no hooks")
     pending = [f"{c['candidate'].get('capability_id', '?')} ({c.get('status', 'unknown')})"
@@ -1187,7 +1188,7 @@ def _context_window(config: dict, codex_home: Path) -> int | None:
 
 def check_codex_catalog(result, error: str, plugin_root: Path | None, config: dict, codex_home: Path) -> Check:
     if result is None:
-        return Check("warn", "codex skill catalog", f"could not ask Codex for its catalog ({error})")
+        return Check("unknown", "codex skill catalog", f"could not ask Codex for its catalog ({error})")
     rows = [r for r in result.get("data") or [] if isinstance(r, dict)]
     skills = [s for r in rows for s in r.get("skills") or [] if isinstance(s, dict) and s.get("enabled", True)]
     names = {str(s.get("name", "")).split(":")[-1] for s in skills}
@@ -1196,7 +1197,7 @@ def check_codex_catalog(result, error: str, plugin_root: Path | None, config: di
     cost, budget = catalog_cost(skills, _context_window(config, codex_home))
     errors = [str(e) for r in rows for e in r.get("errors") or []]
     if cost > budget and not (missing or errors) and _model_cache(codex_home) is None:
-        return Check("warn", "codex skill catalog", f"cannot tell its budget: Codex's model cache ({_short(codex_home / 'models_cache.json')}) "
+        return Check("unknown", "codex skill catalog", f"cannot tell its budget: Codex's model cache ({_short(codex_home / 'models_cache.json')}) "
                      f"holds nothing that can be read, and {cost:,} tokens is over the {budget:,} Codex gives a model it does not know; "
                      "Codex writes the cache again when it next lists its models")
     if missing or errors or cost > budget:
@@ -1415,7 +1416,7 @@ def check_teardown(listed: Path, now: float = 0) -> Check:
             with open(listed, encoding="utf-8-sig", errors="replace") as source:  # a byte that is no text is read as a mark
                 lines = source.read().split("\n")
         except OSError as exc:
-            return Check("warn", "teardown", f"{_short(listed)} cannot be read ({exc.strerror}), so what a test left in place is not known")
+            return Check("unknown", "teardown", f"{_short(listed)} cannot be read ({exc.strerror}), so what a test left in place is not known")
     items, closed, other = {}, set(), 0
     for line in lines:
         try:
@@ -1503,7 +1504,7 @@ def check_outbox(outbox: Path, unit: Path, pid_file: Path, started=started_with)
     if "WORKSPACE_MCP_PORT" not in env and not unit.is_file():  # start.sh always sets it: nothing of its starting was read
         return Check("ok", "outbox", f"{where} is there to write; no mail connector auto-start is installed here")
     if "WORKSPACE_MCP_PORT" not in env:
-        return Check("warn", "outbox", f"cannot tell whether the running mail connector reads {where}: what it was "
+        return Check("unknown", "outbox", f"cannot tell whether the running mail connector reads {where}: what it was "
                      "started with could not be read (it is not running, or this process may not see it)")
     if env.get("WORKSPACE_MCP_DISABLE_LOCAL_FILES", "").strip().lower() == "true":  # the connector's own reading of it
         return Check("fail", "outbox", "the running mail connector was started with WORKSPACE_MCP_DISABLE_LOCAL_FILES=true, so "
@@ -1547,7 +1548,7 @@ def check_latest(installed: dict, ref: str = "stable", fetch=fetch_text) -> Chec
     try:
         latest = json.loads(fetch(RELEASE_MANIFEST.format(ref=ref))).get("version", "")
     except (OSError, ValueError) as exc:
-        return Check("warn", "latest release", f"could not read the {ref} release: {exc}")
+        return Check("unknown", "latest release", f"could not read the {ref} release: {exc}")
     behind = [f"{h} {v}" for h, v in sorted(installed.items()) if install.version_tuple(v) < install.version_tuple(latest)]
     if behind:
         return Check("warn", "latest release", f"{ref} is {latest}; behind: {', '.join(behind)} "
@@ -1669,7 +1670,8 @@ def _private_group(gid: int) -> bool:
 def check_security(home: Path, run=subprocess.run, platform: str = sys.platform) -> list:
     """Every Mac keeps its files to its own user (A8, the principal, 2026-11-17): the home folder and ~/.ssh open to no
     other local user, no private key in ~/.ssh readable by one, and on macOS FileVault, the firewall, System Integrity
-    Protection and Gatekeeper on. Each problem is a warning naming the one step that fixes it; all well is one line."""
+    Protection and Gatekeeper on. Each problem is a warning naming the one step that fixes it, unknown where nothing of
+    that line could be told; all well is one line."""
     problems, ssh, open_ssh = [], home / ".ssh", False
     for folder, name in ((home, "home folder"), (ssh, "~/.ssh")):
         try:
@@ -1677,11 +1679,11 @@ def check_security(home: Path, run=subprocess.run, platform: str = sys.platform)
         except FileNotFoundError:
             continue
         except OSError as exc:
-            problems.append((name, f"{_short(folder)} cannot be read ({exc.strerror})", f"check {_short(folder)}'s owner"))
+            problems.append((name, f"{_short(folder)} cannot be read ({exc.strerror})", f"check {_short(folder)}'s owner", True))
             continue
         if found.st_mode & (0o007 if _private_group(found.st_gid) else 0o077):
             problems.append((name, f"{_short(folder)} is {stat.filemode(found.st_mode)}: other local users can open it",
-                             f"run `chmod 700 {_short(folder)}`"))
+                             f"run `chmod 700 {_short(folder)}`", False))
             open_ssh = open_ssh or folder == ssh
     try:  # a file in a ~/.ssh no one else can open is read by no one else, whatever its own mode
         keys = [p for p in sorted(ssh.iterdir()) if not p.name.endswith(".pub") and p.name not in SSH_SHARED
@@ -1690,7 +1692,7 @@ def check_security(home: Path, run=subprocess.run, platform: str = sys.platform)
         keys = []
     if keys:
         problems.append(("~/.ssh", ", ".join(_short(p) for p in keys[:4]) + " can be read by other local users",
-                         "run `chmod 600` on each file named"))
+                         "run `chmod 600` on each file named", False))
     if platform == "darwin":
         def ask(argv):
             try:
@@ -1703,15 +1705,16 @@ def check_security(home: Path, run=subprocess.run, platform: str = sys.platform)
             said = list(pool.map(ask, [p[1] for p in PROTECTIONS]))
         for (name, _, off, on, fix), out in zip(PROTECTIONS, said):
             if re.search(off, out) or not re.search(on, out):
-                problems.append((name, "is off" if re.search(off, out) else f"cannot be told ({' '.join(out.split())[:80]})", fix))
+                told = bool(re.search(off, out))
+                problems.append((name, "is off" if told else f"cannot be told ({' '.join(out.split())[:80]})", fix, not told))
     if not problems:
         return [Check("ok", "machine security", "the home folder and ~/.ssh are private" + (
             "; FileVault, the firewall, System Integrity Protection and Gatekeeper are on" if platform == "darwin" else ""))]
     merged = {}
-    for name, what, fix in problems:  # one line for each thing, its findings together
-        merged.setdefault(name, []).append((what, fix))
-    return [Check("warn", f"security {name}", "; ".join(w for w, _ in found) + "; to fix it, " + ", and ".join(
-        dict.fromkeys(f for _, f in found))) for name, found in merged.items()]
+    for name, what, fix, untold in problems:  # one line for each thing, its findings together
+        merged.setdefault(name, []).append((what, fix, untold))
+    return [Check("unknown" if all(u for _, _, u in found) else "warn", f"security {name}", "; ".join(w for w, _, _ in found)
+                  + "; to fix it, " + ", and ".join(dict.fromkeys(f for _, f, _ in found))) for name, found in merged.items()]
 
 
 # ---- the guard's sandbox (design note 22.9; the principal's rulings of 2026-11-15) -----------------------------------
@@ -1776,9 +1779,9 @@ def check_interpreter(home: Path) -> Check:
     pinned = next((w for w in _text(home / "bin" / "synthesis-hook").split() if w.startswith("/") and "/python" in w), "")
     wrong = install.interpreter_problems(pinned) if pinned else ["the hook launcher names no Python"]
     have = None if wrong else install.final_version(pinned)  # never run one this user can change (review round 2 of 5.24.1)
-    if not have:
-        return Check("warn", "hook interpreter", f"{(wrong or ['the hook launcher' + chr(39) + 's Python does not answer'])[0]}; "
-                     "run the plugin's install again")
+    if not have:  # one that does not answer cannot be told, never fine
+        said = wrong[0] if wrong else "the hook launcher's Python does not answer"
+        return Check("warn" if wrong else "unknown", "hook interpreter", f"{said}; run the plugin's install again")
     passed = []
     for path in sorted(glob.glob(install.FRAMEWORKS)):  # each version read from its folder's name, never by running it
         named = re.fullmatch(r"(\d+)\.(\d+)", Path(path).parents[1].name)
@@ -1811,20 +1814,24 @@ def check_git_hooks_path(value: str, expected: Path) -> Check:
 def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
     """Commits on a gated repository's default branch that came through no pull request: a push made where the
     guard cannot see it (another Mac, a script, a harness without the hook). Merge commits and GitHub's squash
-    subjects ("... (#12)") came through one; `direct_ok` lists the commits the principal let through."""
+    subjects ("... (#12)") came through one; `direct_ok` lists the commits the principal let through. A checkout whose
+    git could not be run (`run` raised) is one it cannot read, never one that records nothing."""
     if not isinstance(gated, dict) or not all(isinstance(rule, dict) and rule.get("since") for rule in gated.values()):
         return Check("fail", "pr gate", 'pr_gated needs {"owner/repo": {"since": "YYYY-MM-DD"}} for every repository, '
                      "and one has no since date")
+
+    unrun = set()
 
     def git(repo: Path, *args: str):
         """The command's output, or None when it failed: history that cannot be read is never an empty history."""
         try:
             done = run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=20, stdin=subprocess.DEVNULL)
         except (OSError, subprocess.SubprocessError):
+            unrun.add(repo)
             return None
         return done.stdout if done.returncode == 0 else None
 
-    problems, missing = [], []
+    problems, missing, untold = [], [], []
     for name, rule in gated.items():
         remote = re.compile(rf"[/:]{re.escape(name)}(?:\.git)?\s*$", re.I | re.M)
         home = next((r for r in repos if (r / ".git" / "config").is_file()
@@ -1833,13 +1840,16 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
             missing.append(f"no checkout of {name} under the workspace folders")
             continue
         ref = f"origin/{rule['branch']}" if rule.get("branch") else (git(home, "symbolic-ref", "--short", "refs/remotes/origin/HEAD") or "").strip()
+        if not ref and home in unrun:
+            untold.append(f"cannot read the default branch of the checkout of {name}")
+            continue
         if not ref:  # the guard then holds every branch push from this checkout
             missing.append(f"the checkout of {name} records no default branch, so every branch push from it is held (run "
                            "`git remote set-head origin --auto` there, or name it as \"branch\" under pr_gated)")
             continue
         log = git(home, "log", "--first-parent", "--no-merges", f"--since={rule['since']}T00:00:00", "--format=%h%x09%s", ref)
         if log is None:
-            missing.append(f"cannot read {ref} in the checkout of {name}")
+            untold.append(f"cannot read {ref} in the checkout of {name}")
             continue
         direct = [commit for commit, _, subject in (line.partition("\t") for line in log.splitlines())
                   if not re.search(r"\(#\d+\)$", subject.strip())
@@ -1850,8 +1860,8 @@ def check_pr_gate(gated, repos: list, run=subprocess.run) -> Check:
     if problems:
         return Check("fail", "pr gate", "; ".join(problems) + ". Revert each, or list it under that repository's "
                      "direct_ok with the principal's yes")
-    if missing:
-        return Check("warn", "pr gate", "; ".join(missing) + ": its default branch was not checked here")
+    if missing or untold:  # what could not be read leaves the answer untold
+        return Check("unknown" if untold else "warn", "pr gate", "; ".join(missing + untold) + ": its default branch was not checked here")
     return Check("ok", "pr gate", f"{len(gated)} gated repositor{'y' if len(gated) == 1 else 'ies'}: every commit on a "
                  "default branch since its gate began came through a pull request")
 
@@ -2247,18 +2257,18 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         value = ""
     checks.append(check_git_hooks_path(value, home / "git-hooks"))
     found, error = security()
-    checks += found if found is not None else [Check("warn", "machine security", f"cannot tell ({error})")]
+    checks += found if found is not None else [Check("unknown", "machine security", f"cannot tell ({error})")]
     if planned:
         lines, error = planned()
-        checks += lines if lines is not None else [Check("warn", "judge", f"cannot tell whether the plan judge answers ({error})")]
+        checks += lines if lines is not None else [Check("unknown", "judge", f"cannot tell whether the plan judge answers ({error})")]
     _note_waits(home, checks, began)
     return checks
 
 
 def summary(checks: list, ms: float) -> str:
-    counts = {s: sum(c.status == s for c in checks) for s in ("ok", "warn", "fail", "info")}
+    counts = {s: sum(c.status == s for c in checks) for s in ("ok", "warn", "unknown", "fail", "info")}
     state = "healthy" if not counts["fail"] else f"{counts['fail']} problem{'s' * (counts['fail'] != 1)}"
-    return (f"synthesis doctor: {state} ({counts['ok']} ok, {counts['warn']} warn, {counts['fail']} fail, "
+    return (f"synthesis doctor: {state} ({counts['ok']} ok, {counts['warn']} warn, {counts['unknown']} unknown, {counts['fail']} fail, "
             f"{counts['info']} info) in {ms:.0f} ms")
 
 
@@ -2318,8 +2328,8 @@ def _note_waits(home: Path, checks: list, began: float) -> None:
 
 def report(checks: list, ms: float) -> str:
     """The summary line, then every check, failures first."""
-    rows = sorted(checks, key=lambda c: ("fail", "warn", "info", "ok").index(c.status))
-    return "\n".join([summary(checks, ms)] + [f"  {c.status:<5} {c.name:<24} {c.detail}" for c in rows])
+    rows = sorted(checks, key=lambda c: ("fail", "unknown", "warn", "info", "ok").index(c.status))
+    return "\n".join([summary(checks, ms)] + [f"  {c.status:<7} {c.name:<24} {c.detail}" for c in rows])
 
 
 def main(argv=None) -> int:

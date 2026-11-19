@@ -77,13 +77,13 @@ def test_each_macos_protection_that_is_off_warns_with_the_one_step_that_turns_it
     assert "System Settings" in checks[0].detail and "Recovery" in checks[2].detail
 
 
-def test_an_answer_that_cannot_be_read_warns_rather_than_passing(tmp_path):
+def test_an_answer_that_cannot_be_read_is_unknown_rather_than_passing(tmp_path):
     def run(argv, **kwargs):
         if argv[0] == "spctl":
             raise FileNotFoundError(argv[0])
         return _mac()(argv, **kwargs)
     checks = doctor.check_security(_home(tmp_path), run=run, platform="darwin")
-    assert [(c.status, c.name) for c in checks] == [("warn", "security Gatekeeper")]
+    assert [(c.status, c.name) for c in checks] == [("unknown", "security Gatekeeper")]
     assert "cannot be told" in checks[0].detail
 
 

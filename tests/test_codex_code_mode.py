@@ -285,14 +285,14 @@ def test_a_proof_from_an_older_codex_does_not_cover_a_newer_one():
     assert check.status == "warn" and "0.167.0-alpha.4.1" in check.detail and "0.169.0-alpha.11.1" in check.detail, check
 
 
-def test_records_that_cannot_be_listed_warn_rather_than_stop_the_doctor(monkeypatch):
+def test_records_that_cannot_be_listed_are_unknown_rather_than_stop_the_doctor(monkeypatch):
     paths.transcript_roots()["codex"].mkdir(parents=True, exist_ok=True)
 
     def refused(self, pattern):
         raise PermissionError(13, "Permission denied")
     monkeypatch.setattr(Path, "rglob", refused)
     check = doctor.check_codex_nested_hooks(paths.codex_home())
-    assert check.status == "warn" and "could not be listed" in check.detail, check
+    assert check.status == "unknown" and "could not be listed" in check.detail, check
 
 
 def test_a_link_named_as_a_rollout_is_never_followed(tmp_path):
