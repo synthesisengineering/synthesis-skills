@@ -1521,6 +1521,7 @@ REDIRECTS = OUTPUTS | {"<<<", "<&", "<", ">&"}
 SHIELD = str.maketrans("{},", "\1\2\3")  # a quoted brace or comma takes no part in brace expansion
 UNREAD_INPUT = "\0unread-input"  # stands for a script on a program's input that the guard could not read
 PLAIN = _Pattern(r"[^\s'\"\\`$#;&|()<>]+")
+STACKED = _Pattern(r"~(?:[+-]\d*|\d+)(?=/|$)")  # ~-, ~+, ~N: OLDPWD, PWD or the folder stack, which the lexer marks with a `$`
 SHELLS = ("sh", "bash", "zsh", "dash", "ksh")
 HANDED = "$(xargs)"  # stands for the files xargs hands a command; the lexer never yields this as a word
 STDIN = frozenset({"/dev/stdin", "/dev/fd/0", "/proc/self/fd/0", "-"})
@@ -1651,7 +1652,7 @@ def _lex(s: str) -> list:
             made = _braces("".join(word))
             if len(made) > 4096:
                 raise Unreadable("a brace list too long to read")
-            tokens.extend(("w", w.translate({1: "{", 2: "}", 3: ","})) for w in made)
+            tokens.extend(("w", "$" * bool(STACKED.match(w)) + w) for w in (m.translate({1: "{", 2: "}", 3: ","}) for m in made))
         word, started = [], False
 
     while i < len(s):
@@ -2021,7 +2022,7 @@ def _trusted(name: str) -> bool:
     """A command the guard judges by its name: a shell, an interpreter, a reader, a file utility, a wrapper, an editor,
     an unpacker, or a program with rules of its own."""
     return (name in SHELLS or name in READERS or name in WRITERS or name in OWN_RULES or name in EDITORS or name in WRAPPERS
-            or name in EXTRACTS or name in ("gsed", "open", "script", "launchctl")
+            or name in EXTRACTS or name in ("gsed", "open", "script", "launchctl", *PLISTS)
             or bool(SCRIPT.match(name) or UNREAD.match(name) or INTERPRETER.match(name)))
 
 
@@ -3730,8 +3731,13 @@ def _landing(words: list[str]) -> list[str]:
     """The words of a command that name what it changes: each operand of a file utility, or of `sed` or `perl`
     editing in place; `dd`'s `of=`; what `sort -o`, `uniq` or an awk program writes; for a copier where the copy
     lands, which is its last operand or the folder `-t` gives, and each source's name inside it in case that is a
-    folder (2026-11-11: `cp -t <folder>`, `dd of=` and `perl -pi` wrote where no check was looking)."""
+    folder (2026-11-11: `cp -t <folder>`, `dd of=` and `perl -pi` wrote where no check was looking). A word the lexer
+    marks as ~-, ~+ or ~N may be any option or a target joined to one, so where a program's words decide what it writes,
+    every operand may change throughout, and for find the folder it stands in (review round 1 of 5.25.2)."""
     head = os.path.basename(words[0])
+    every = [w for w in words[1:] if not w.startswith("-")] + ["."] * (head == "find")  # find's root, should the word be -delete
+    if any(w[:1] == "$" and STACKED.match(w, 1) for w in every) and (head not in READERS or head in READER_WRITES or head in ("git", "uniq")):
+        return every + [w.rstrip("/") + GONE for w in every]
     refs = {i + 1 for i, w in enumerate(words) if w in VALUED.get(head, ())}  # a reference file is only read; a size or a date is no file
     rest = [w for i, w in enumerate(words) if i and i not in refs and not w.startswith("-")]
     whole = head in ("ditto", "mv", "find") or any(re.fullmatch(r"-[A-Za-z]*[rRa][A-Za-z]*|--recursive|--archive", w) for w in words[1:])
@@ -3833,12 +3839,12 @@ def _string_writes(command: str) -> list[str]:
 
 
 def _named(words: list[str]) -> list[str]:
-    """Every path a command hands a program the guard does not know: not a reader, not a file utility whose writes
-    `_landing` reads, not an interpreter or a shell. A word is taken whole, after its `=`, and for an option from
-    its first `/` or `~`, so `-C <folder>`, `--output=<file>` and `-o<file>` are all seen. The caller keeps the
-    ones that are paths."""
+    """Every path a command hands a program the guard does not know: not a reader (plutil and defaults are, in a form
+    that only prints), not a file utility whose writes `_landing` reads, not an interpreter or a shell. A word is taken
+    whole, after its `=`, and for an option from its first `/` or `~`, so `-C <folder>`, `--output=<file>` and
+    `-o<file>` are all seen. The caller keeps the ones that are paths."""
     head = os.path.basename(words[0])
-    if "/" in words[0] or head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head):
+    if "/" in words[0] or head in READERS or head in WRITERS or head in OWN_RULES or head in SHELLS or SCRIPT.match(head) or _plist_reads(words):
         return []  # a program run by its path is a script the guard cannot read, like one run by its shell
     inner = [path for w in words[1:] for path in re.findall(r"[~/][\w./~+@%-]*", w)] if head in OPAQUE else []  # each path its program names
     told = [w for at, w in enumerate(words) if at and not (w.startswith("-") and MESSAGE.fullmatch(w.split("=", 1)[0]))
@@ -5859,6 +5865,46 @@ def _git_reads(words: list) -> bool:
         GIT_RUNS.fullmatch(w) for w in rest)
 
 
+# plutil and defaults read a property list in some forms and write it in others (A13, 2026-11-18: `plutil -p` of a launch
+# agent was held as a change of a harness's settings). Each form was run on a copy on the principal's Mac and read in
+# plutil's help and manual: -type writes where -o names a file, -extract in any format but raw rewrites the file it reads
+# unless -o names another, and -convert rewrites it in place, beside it (-e) or where -o says.
+PLISTS = ("plutil", "defaults")
+PLIST_TAKES = {"-type": 1, "-extract": 2, "-convert": 1, "-expect": 1, "-o": 1}  # plutil's options that take words, and how many
+PLIST_WRITES = ("-convert", "-insert", "-replace", "-remove", "-extract", "-create", "-o", "-e", "-header")  # what a * or ? may become
+
+
+def _plist_reads(words: list) -> bool:
+    """plutil or defaults in a form that only prints: plutil's -p, -lint (also with no command option) and -help, -type
+    and -extract in raw format with no -o, and -extract or -convert with `-o -` (stdout), with no other option but -s, -r,
+    -n and -expect; defaults' read and read-type, after -verbose, -currentHost, -host or -container. No read: two command
+    options, an option it does not know, -o naming a file, or a word the shell may still make another (a substitution, a
+    variable it cannot read, ~-, ~+ or ~N, xargs's files, a pattern that may name an option or that fnmatch does not read
+    as a shell does), the program's own word among them."""
+    head = os.path.basename(words[0]) if words else ""
+    if head not in PLISTS or any(re.search(r"[$`\[^#()|<>]|(?<=.)~", w) or (re.search(r"[*?]", w) and any(  # a class, zsh's operators
+            fnmatch.fnmatchcase(o, w) for o in PLIST_WRITES)) for w in words):
+        return False
+    if head == "defaults":
+        i = 1
+        while words[i:i + 1] in (["-verbose"], ["-currentHost"], ["-host"], ["-container"]):
+            i += 1 + (words[i] in ("-host", "-container"))
+        given = len(words[i + 1:]) - (words[i + 1:i + 2] == ["-app"])  # `-app <name>` names one domain
+        return (words[i:i + 1] == ["read"] and given <= 2) or (words[i:i + 1] == ["read-type"] and given == 2)
+    verbs, outs, i = [], [], 1
+    while i < len(words) and words[i] != "--":  # past `--`, every word is a file
+        word, takes = words[i], PLIST_TAKES.get(words[i], 0)
+        taken = words[i + 1:i + 1 + takes]
+        if word[:1] == "-" and word != "-" and (word not in (*PLIST_TAKES, "-p", "-lint", "-help", "-s", "-r", "-n")
+                                                or len(taken) < takes or any(t[:1] == "-" for t in taken if word != "-o")):
+            return False
+        verbs += [[word, *taken]] if word in ("-p", "-lint", "-help", "-type", "-extract", "-convert") else []
+        outs += taken if word == "-o" else []
+        i += 1 + takes
+    verb = (verbs or [["-lint"]])[0]
+    return len(verbs) <= 1 and outs in ([], ["-"]) and (verb[0] not in ("-extract", "-convert") or outs == ["-"] or verb[2:] == ["raw"])
+
+
 def _isolated(words: list) -> bool:
     """Python told to leave the folders of its user out of its module path: -I, or -P with -E (finding 7)."""
     flags = "".join(w[1:] for w in words[1:_program(words)[1]] if w[:1] == "-" and w[:2] != "--")
@@ -6340,9 +6386,9 @@ def _answers_help(path: str) -> bool:
 def _unread(words: list, where: str, written: set, line: str, bodies: dict | None = None) -> tuple:
     """(the program a command runs that the guard cannot prove only reads, the text of the script file it runs, whether
     its words carry program text, the file of a module run with -m from the folder that holds it), or ("", "", False,
-    "") for a known reader: a program on the READERS list with none of
-    its own options that write or run, git with a read subcommand and none of its writing or running options, find
-    (each command it runs is judged as one, what it removes where it lands), a hex dump with one file, an awk or sed
+    "") for a known reader: a program on the READERS list with none of its own options that write or run, git with a
+    read subcommand and none of its writing or running options, find (each command it runs is judged as one, what it
+    removes where it lands), a hex dump with one file, plutil or defaults in a form that only prints, an awk or sed
     program read with certainty that writes nothing and runs nothing, a shell's script on the line or its input (each
     command is judged). Python is named whatever its program, which its reader proves or not where it is read. Any
     other program is named, wherever it sits (review of 5.22.1: a list of the programs that write never ends). A script
@@ -6368,6 +6414,8 @@ def _unread(words: list, where: str, written: set, line: str, bodies: dict | Non
         inline, reads, _ = _shell_input(words)
         return ("", "", False, "") if inline is not None or reads or (head in SHELLS and _no_exec(words[1:at])) or (
             kind == "file" and _runs_at_start(name, where)) else (head, code(name), True, "")
+    if words[0][:1] in ("$", "`"):  # run from a folder this cannot read (`$X/cat`, `~-/plutil`): known by no name it takes
+        return head, "", False, ""
     if head in AWKS:
         return ("", "", False, "") if _awk_reads(words) else (head, files(), True, "")
     if head in ("sed", "gsed"):
@@ -6378,7 +6426,7 @@ def _unread(words: list, where: str, written: set, line: str, bodies: dict | Non
     if head == "git" or head in READERS:
         known = _git_reads(words) if head == "git" else not any(re.fullmatch(READER_WRITES.get(head, "(?!)"), w) for w in words[1:])
         return ("", "", False, "") if known else (head, "", False, "")
-    if head in ("find", "eval") or (head == "xxd" and len([w for w in words[1:] if w[:1] != "-"]) <= 1):
+    if head in ("find", "eval") or (head == "xxd" and len([w for w in words[1:] if w[:1] != "-"]) <= 1) or _plist_reads(words):
         return "", "", False, ""
     if head == "open":  # it runs a script it is handed (in Terminal): what it opens is read as one (finding 5)
         return head, "\n".join(code(w) for w in words[1:] if w[:1] != "-"), True, ""
@@ -7210,7 +7258,7 @@ def _settings_hold(command: str, cwd: str, also: str | None, session: dict | Non
             "waits for the principal: show them this exact command and what it writes there (the file it copies, the text it "
             f"puts in), and ask them to type {approvals.how(code)}; then run the identical command again from {cwd}. The code "
             "binds the command, the folder it runs in and each file it names as it stands now, so a file changed after the "
-            "approval makes it a new command. Reading these files needs no code (cat, head, grep, jq).")
+            "approval makes it a new command. Reading these files needs no code (cat, head, grep, jq, plutil -p).")
 
 
 def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: int = 0) -> str | None:
@@ -7253,7 +7301,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
     written = {_real(os.path.join(w, os.path.expanduser(t))) for t, w in redirects} | {  # a script the line writes
         _real(os.path.join(where, os.path.expanduser(t))) for words, where in found for t in _landing(words)}
     fills = [w for w, _ in found if os.path.basename(w[0]) not in (READERS | WRITERS) - PACKERS - {"git", "synthesis"} and not (
-        os.path.basename(w[0]) == "git" and _git_reads(w))]  # a program that may fill a folder where this guard does not look
+        os.path.basename(w[0]) == "git" and _git_reads(w) or _plist_reads(w))]  # a program that may fill a folder where this guard does not look
     for (words, where), fed in [((words, spot), fed) for (words, where), fed in zip(found, feeds + [""] * len(found))
                                 for spot in spots(where)]:  # each command, where it runs, with what it reads on its own stdin
         others = any(w is not words for w in fills)  # another such program on the line (review round 3 of 22.21)
@@ -7395,7 +7443,7 @@ def _self_grant(command: str, text: str, cwd: str, config: dict | None, depth: i
         reads = sub is None or sub in GIT_READS or (sub == "remote" and words[words.index(sub) + 1:words.index(sub) + 2] in (
             [], ["-v"], ["get-url"], ["show"])) or any(w.startswith(("$", "`")) for w in words[1:words.index(sub)])
         stood = any(paths.inside(_real(acts), _real(str(r))) for r in (paths.state(), paths.board(), paths.sessions(), paths.approvals(), paths.install_dir()))
-        if stood and readable and not quoted and not ((head in READERS and reads) or head in WRITERS or head in OWN_RULES or (
+        if stood and readable and not quoted and not ((head in READERS and reads) or _plist_reads(words) or head in WRITERS or head in OWN_RULES or (
                 (SCRIPT.match(head) or head in SHELLS) and (source or not _ran(words)))):  # it names nothing, yet may write where it stands
             why = why or (f"runs `{head}` inside the synthesis state folder, its board or the session archive, where a "
                           "program this guard cannot read may write without naming a file (run it from another folder)")

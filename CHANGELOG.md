@@ -4,6 +4,30 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.25.2] - 2026-11-18
+
+- **plutil and defaults read a launch agent with no code** (BACKLOG A13). The guard held `plutil -p` of a launch agent,
+  piped to grep, as a possible change of a harness's settings, and `defaults read` of it the same way: neither was a
+  program it knew. Both now read a property list as cat does in the forms that only print, each run on a copy and read in
+  plutil's help and manual: plutil's `-p`, `-lint` (its default) and `-help`, `-type` and `-extract … raw` with no `-o`,
+  and `-extract` or `-convert` with `-o -`; defaults' `read` and `read-type`. Every form that writes still waits for the
+  principal's code: `-convert` in place, beside the file (`-e`) or into a protected folder (`-o`), `-insert`, `-replace`,
+  `-remove`, `-create`, `-extract` in any format but raw with no `-o` (it rewrites the file it reads), any form whose `-o`
+  names a file, and defaults' `write`, `delete`, `rename`, `import` and `export` to a file. So does any form the guard
+  cannot place: two command options, an option it does not know, two `-o`, or a word the shell may still make an option
+  (a substitution, a variable it cannot read, xargs's files, a pattern that may name one). A script under either name is
+  judged as the script it is, and a settings hold names `plutil -p` among the reads that need no code.
+
+- **A word beginning `~-`, `~+` or `~N` is a value the guard cannot read** (review round 1 of 5.25.2). bash, macOS
+  /bin/sh and zsh expand it from OLDPWD, PWD or the folder stack, which a line may set where no word shows, and the guard
+  read it as written: `OLDPWD=-convert; plutil ~- xml1 <agent>` rewrote a launch agent while the guard saw a lint, and
+  `OLDPWD=-o; sort ~- <protected>/x <file>` wrote a protected file in 5.25.1 too. A write target or folder spelled so is
+  now one the guard cannot place; where a program's words decide what it writes (a writer, a reader whose options write,
+  git, find, sed, uniq, xxd, plutil, defaults, or a program it does not know) the word may be any option or a target
+  joined to one, so every operand may change; and a program run from a folder the guard cannot read, `~-/…` or `$X/…`, is
+  known by no name. Plain `~`, `~/…` and `~user` read as before, and readers such as cat, grep and ls take such a word
+  with no code.
+
 ## [5.25.1] - 2026-11-18
 
 What the principal's operations seats met in ordinary work on 2026-11-18 (BACKLOG A10, A11 and A12), each fixed tests

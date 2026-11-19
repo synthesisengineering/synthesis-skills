@@ -283,7 +283,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      quoted for where they land (quoting starts over inside `$( )` and backticks); a
      script that gives them its own values (`set --`, `shift`, a function) is left as
      written. `$PWD` and `$OLDPWD` are the folder each command is in and the one it was in
-     before, in its own words and targets; a script it hands a shell puts its own. `~` and
+     before, in its own words and targets; a script it hands a shell puts its own. A word
+     that begins `~-`, `~+` or `~N` (OLDPWD, PWD or the folder stack, which a line may set
+     where no word shows) is a value the guard cannot read: a write target or folder spelled
+     so is one it cannot place, a program run from one is known by no name, and where a
+     program's words decide what it writes it may be any option or a target joined to one
+     (review round 1 of 5.25.2). `~` and
      `$HOME` are the home a command gives itself when it sets `HOME`; a line that gives
      `HOME` a value the guard does not read (`read`, `printf -v`, a loop over it, a
      parameter that assigns) and then uses it waits, but text it only prints or hands a
@@ -467,8 +472,12 @@ harness that gives no transcript cannot carry approved sends or deploys until it
      `sort -o`), git with a read subcommand and none of its options that write or run
      (`--output`, `--work-tree`, `-c`, `--config-env`, a pager, `--ext-diff`, `--textconv`),
      `find` and `eval` (what each runs is judged as a command of its own), a hex dump with one
-     file, an awk program read with certainty that has no output redirect, pipe or `system`, a
-     sed program read with certainty (bracket expressions as BSD sed reads them) with no `w`,
+     file, plutil and defaults in a form that only prints (A13: plutil's `-p`, `-lint` and
+     `-help`, `-type` and `-extract … raw` with no `-o`, `-extract` and `-convert` with `-o -`;
+     defaults' `read` and `read-type`; a word the shell may still make an option, such as a
+     substitution or a pattern, keeps any form held), an awk program read with certainty that
+     has no output redirect, pipe or `system`, a sed program read with certainty (bracket
+     expressions as BSD sed reads them) with no `w`,
      `W` or `e`, a shell whose script is on the line, on its input or in a file `cat` pipes to
      it (each of its commands is judged; a script on its input that cannot be read waits),
      Python its reader proves, and the plugin's own scripts: inside the release the guard runs
