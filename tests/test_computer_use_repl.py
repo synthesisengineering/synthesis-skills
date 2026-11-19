@@ -136,7 +136,8 @@ def test_a_return_a_typed_line_break_or_a_click_that_says_nothing_waits(call):
 
 
 def test_words_the_repl_types_or_pastes_pass_the_register_scan_first():
-    sorry = {"code": "await chatTab.paste(null, \"I'm sorry for the delay. The deck is ready.\");", "title": "Writing the reply"}
+    """In a call that sends (review round 1 of 5.26.1, finding 7: words a call only types are no message)."""
+    sorry = {"code": "await chatTab.paste(null, \"I'm sorry for the delay. The deck is ready.\");", "title": "Sending the reply"}
     reason = check(sorry)
     assert reason.startswith("These words can't go out as written") and "delay-apology" in reason, reason
 
