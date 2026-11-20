@@ -6,7 +6,7 @@ Contents:
 - When to use it: decision ownership first, five or more parallel decisions of the same shape, natural fits
 - The origin measurement: why the other shapes fail
 - Relationship to other skills: autopilot, the adversarial review family, board messages (`synthesis msg`)
-- Changelog 1.0.0 to 2.4.0
+- Changelog 1.0.0 to 2.5.0
 - Related
 
 The 1.8.0 SKILL.md still carried this version line under its title, though its frontmatter said 1.8.0:
@@ -66,6 +66,16 @@ the burden of structuring the response falls on the person, every time, for ever
 
 ## Changelog
 
+- **2.5.0 (2026-11-19)** — SKILL.md rewritten to the repository's standard
+  (`docs/skill-writing.md`). Every binding rule keeps its number and meaning and says what to do,
+  when it applies and why, complete on its own. Rule 12, the rule agents missed most in the
+  evaluation baseline, names the moment it governs, acting on any chosen row, the checks before it,
+  and what goes ahead without a new confirmation: a grant already given, within its scope. Rule 7
+  states the decision-ownership classes itself rather than linking into another skill, which an
+  evaluation harness cannot open; rule 8 says what each part of the reader contract asks of the spec
+  and what `--strict-reader` refuses. A line above the rules says they hold against a contrary
+  request. When to use it moves word for word to this file; the command block, already word for word
+  in filing-and-authority.md, leaves SKILL.md. No script, flag or output changed.
 - **2.4.0 (2026-11-11)** — every row that is not blind carries a recommendation. Until now one
   recommended row covered for rows with none. A principal had been shown a bare accept-or-decline
   for an evening three hours of travel away, with no recommendation and no trip, and said yes: a

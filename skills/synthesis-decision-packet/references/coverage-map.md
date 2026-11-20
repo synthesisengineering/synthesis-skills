@@ -23,6 +23,7 @@ skill's evaluation cases cite.
 | 2.4.0 | 2.5.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `depends_on`, author, format, source, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "2.4.0"` | `version: "2.5.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning and no script, flag or output changed. No script prints the skill's version; background.md's Changelog gains the 2.5.0 entry |
 | Title | Title | Kept |
 | Opening paragraph: "When N unresolved decisions belong to the principal, collecting them one at a time scales poorly. The measurement that produced this skill is blunt: **26 rounds of per-item conversation produced 0 of 30 decisions. One packet produced 30 of 30, in one pass, in one paste.**" | references/background.md, The origin measurement | Moved: the same words already stand there, moved from 1.8.0; the story of the measurement leaves SKILL.md (format rule 12, W19) |
 | (none) | Opening paragraph, first sentence: "Collects five or more parallel decisions from a principal in one sitting." | Added (format rule 2): what the skill is for, from the description and When to use it |
@@ -56,6 +57,7 @@ skill's evaluation cases cite.
 |---|---|---|
 | background.md: opening line and contents list | The same, naming When to use it and when to read the file, board messages (`synthesis msg`) in place of the handoff queue retired in 2.0.1, and the changelog's current range | Reworded (navigation only) |
 | (none) | background.md: When to use it | Moved from SKILL.md (above), under an added opening line saying where it came from and that rules 7 and 12 govern where a wording differs (format rule 11) |
+| (none) | background.md: Changelog, the 2.5.0 entry | Added |
 | authoring.md: contents list of five sections | The same, with "Blind rows" and "A comfortable reading path", sections the file already held | Added (format rule 3) |
 | review-assets.md: 177 lines with no contents list | A contents list after its opening paragraphs, naming its six sections | Added (format rule 3: a linked file over 100 lines opens with its own contents list) |
 | preserved.md: title, opening paragraph, contents list | The title names 2.5.0; a new first paragraph; the contents list gains the 2.5.0 section and the 2.1.0 section it lacked | Reworded (navigation only); the M3 opening paragraph kept word for word |
