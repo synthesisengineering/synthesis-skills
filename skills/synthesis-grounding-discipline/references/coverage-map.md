@@ -23,6 +23,7 @@ carries its trigger, scope and reason in SKILL.md (W2, W5); where a rule takes a
 | 2.0.0 | 2.1.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "2.0.0"` | `version: "2.1.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning. The skill has no scripts and keeps no release notes, so this map and preserved.md are the record of the change |
 | Title | Title | Kept |
 | Opening paragraph: "Twelve checks that stop an agent from claiming more than its evidence supports. Apply them at the moments where a plausible claim and a true one come apart." | Opening paragraph | Reworded: says what the skill does, binding each claim to its evidence (format rule 2); "where a plausible claim and a true one come apart" kept |
 | "Numbers are load-bearing: other skills cite them. New rules are appended, never inserted." | references/catalog.md, the entry-numbers note | Merged: the catalog's note says the same, with the citations it protects, and W6 holds every rewrite to it. Every rule keeps its number |
