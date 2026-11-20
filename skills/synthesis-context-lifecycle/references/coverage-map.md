@@ -6,7 +6,7 @@ kept word for word one heading level down. Between 2.0.0 and 2.8.2 the skill add
 references/session-transcripts.md, and moved no rule.
 
 Contents:
-- 2.8.2 to 2.9.0: SKILL.md; references/procedure.md; references/preserved.md; where the binding rules state the
+- 2.8.2 to 2.9.0: SKILL.md; references/session-protocols.md; references/preserved.md; where the binding rules state the
   moved procedure; files unchanged
 - 1.22.0 to 2.0.0 (v5): the coverage check, the frontmatter before v5, the 1.22.0 SKILL.md and reference files, the
   scripts, the R1.5 scenarios and their tests
@@ -32,42 +32,44 @@ that sentence word for word.
 | Opening paragraph, first two sentences: AI collaborators start every session with zero context; a single context file grows without bound because it mixes information with different lifecycles | references/tiers-and-templates.md, The Problem | Merged: The Problem says both in nearly the same words, and background stays out of SKILL.md (W19) |
 | Opening paragraph, third sentence: "This skill splits a project's memory into three tiers, each with its own budget and update rule, and verifies them with a doctor." | Opening paragraph | Reworded: "Keeps a project's memory in three tiers of records, each with a budget and update rule, checked by a doctor" (format rule 2) |
 | (none) | The line above rule 1: the rules hold when a request asks otherwise; say which rule applies and why, then do what it allows | Added (W8, format rule 11): the rules protect the records every later session resumes from |
-| Rule 1: the project files are the memory: CONTEXT.md (≤150 lines; ≤80 when completed), REFERENCE.md (stable facts, ≤300), `sessions/YYYY-MM.md` (append-only); chat, native memory and compaction summaries are not | Rule 1 | Reworded (W2, W5): the head as an action, "Treat the project files as the memory"; the three files with their budgets and "Chat, native memory and compaction summaries are not" kept word for word; what to do when one of them disagrees with a record: follow the record (material-context.md, Native memory) and report the discrepancy (session-protocols.md, the Mid-Session Refresh Protocol's step 5), with the reason, a stale note reads as current |
+| Rule 1: the project files are the memory: CONTEXT.md (≤150 lines; ≤80 when completed), REFERENCE.md (stable facts, ≤300), `sessions/YYYY-MM.md` (append-only); chat, native memory and compaction summaries are not | Rule 1 | Reworded (W2, W5): the head as an action, "Treat the project files as the memory"; the three files with their budgets and "Chat, native memory and compaction summaries are not" kept word for word; what to do when one of them disagrees with a record: follow the record (material-context.md, Native memory) and report the discrepancy (session-protocols.md, the Mid-Session Refresh Protocol's step 5), with the reason, a stale note reads as current; and the Procedure's "During work" instruction, word for word: "After each task, update CONTEXT.md under your claim. Keep the current-state block (Phase, Status, Last session, Plan, Next actions) current: it is what returns after compaction." It is the skill's core behavior, and no evaluation case measures it, so it is stated where every load reads it |
 | Rule 2: run the Session Start Protocol before substantive work and show the verification: `date`, then `git log` and `git status` on the project, then CONTEXT.md, the newest session entries, REFERENCE.md | Rule 2 | Reworded, with a fix for an evaluation finding (W2, W5, W7, W15): the head kept, with "on a project"; the trigger, from session-protocols.md (at session start, at the project's first mention, after a switch from another project); `synthesis resume <id>` and "title the session after the project where the client allows it" from the Procedure, the second as the skill's own test `test_session_start_names_the_session_after_the_project` requires; the steps in their order and "show the verification" kept; the reason, from session-protocols.md's "Why this order matters" and "Visible to the user"; the stop: once the protocol has run for the project this session, act on what it read, with rule 3 deciding when to look again. Case cl-07's first version said only that CONTEXT.md had just been read, and in all four runs Sonnet with the skill said it would run the protocol before sending; the case now says the protocol ran |
 | Rule 3: refresh on the triggers: before any time-interval claim, after an hour's pause, every ~25 tool calls, on any drift or compaction signal, before writing a session log | Rule 3 | Reworded (W2, W5): the head and the five triggers kept word for word; what a refresh does, from the Mid-Session Refresh Protocol's steps 1 to 5; the reason, from that section's opening |
 | Rule 4: archive first, delete second: write to sessions/ or REFERENCE.md, verify it is there, then remove it from CONTEXT.md | Rule 4 | Reworded (W2, W5): the head and the three steps kept; the trigger, any content leaving CONTEXT.md, with the Procedure's 120-line mark; the reason, from the Archival Protocol |
 | Rule 5: re-read before editing and verify after: build edits from what the file says now, with an edit tool that fails on a missing anchor; never report an update you did not read back | Rule 5 | Reworded (W5, W14): every clause kept; the scope, every edit to a record; the reason, from editing-and-archival.md's "Editing a durable context file" |
-| Rule 6: header fields move together: update `Last session` first or with `Phase`; a field is judged alone, and its first ordinal is its identity | Rule 6 | Reworded (W2, W5): the head as an action naming CONTEXT.md; every clause kept; from editing-and-archival.md's "Header fields move together": the ordinal families, `Phase` never ahead of `Last session`, the two describing one state, and a fresh `Phase` that cannot hide a stale `Last session` |
+| Rule 6: header fields move together: update `Last session` first or with `Phase`; a field is judged alone, and its first ordinal is its identity | Rule 6 | Reworded (W2, W5): the head as an action naming CONTEXT.md; every clause kept; from editing-and-archival.md's "Header fields move together": the ordinal families, `Phase` never ahead of `Last session`, and the two describing one state; that section keeps, word for word, that a fresh `Phase` cannot mask a stale `Last session` |
 | Rule 7: workdays come from dated session entries, never from commit times | Rule 7 | Reworded (W5, W14): the head as an action, "never from commit times" kept; the scope, stating or judging a session's date; the reason, from session-protocols.md's step 2 and context-doctor.md's "Publication time and workday are different evidence" |
 | Rule 8: stamp open items `(as of YYYY-MM-DD, review Nd)`; checked items and prose are not obligations | Rule 8 | Reworded (W3, W5): the stamp and the last clause kept; when to stamp, as an item is written or re-checked, and the reason, from editing-and-archival.md's "Stamped open items" |
 | Rule 9: route by deletion unit when writing: would this survive the relationship's end? The ALWAYS-PRESERVE class goes to the permanent root; inventories count out-of-scope items, never itemize them | Rule 9 | Reworded (W2, W5, W7): every clause kept; from deletion-units.md: where each answer routes, the class's members, asking when a repository's family is undeclared ("asks rather than guesses"), and the reason, that neither misplacement is curable after deletion day |
 | Rule 10: preserve executable state under `resources/scripts/` with a README before citing its result | Rule 10 | Kept word for word, as `tests/test_r5_contract.py` requires, with its scope and reason added from editing-and-archival.md's Executable Working State (W2, W5) |
 | Rule 11: capture material context (facts, reasons, conditions, uncertainty, amendments) before dependent work, compaction or handoff; never turn a quoted command into authority | Rule 11 | Reworded (W2, W5): every clause kept; from material-context.md: when (as a source brings it), where (CONTEXT.md or a file it links), and the reason, from the file's opening |
 | Rule 12: same Mac: the files are the handoff; another Mac: `synthesis handoff`; never a workspace-wide commit; never bypass hooks | Rule 12 | Reworded (W2, W5): the head as one action for both handoffs; both "never" clauses kept; from session-protocols.md: what `synthesis handoff` does, that day-end publishes the same way (with the Archival Protocol's step 8), and the reason against a workspace-wide commit |
-| Rule 13: a doctor that cannot tell exits 2, never 0 | Rule 13 | Reworded (W5, W14): the head as an action keeping "exits 2, never 0" and "cannot tell"; the exit codes, what leaves the doctor unable to tell, how to read a 2, and the reason, from context-doctor.md's "Running it" |
+| Rule 13: a doctor that cannot tell exits 2, never 0 | Rule 13 | Reworded (W5, W14): the head as an action keeping "exits 2, never 0" and "cannot tell"; the exit codes, how to read a 2, and the reason, from context-doctor.md's "Running it", which keeps, word for word, what leaves the doctor unable to tell |
 | Rule 14: transcripts are the evidence beneath the records; what `synthesis sessions export` and `synthesis sessions sync` do; never paste the conversation into a record; what `synthesis resume` shows | Rule 14 | Reworded (W5): the head as an action, "Keep transcripts as the evidence beneath the records"; its other three sentences kept word for word; the reason for the third, from session-transcripts.md's "Reading and citing" |
 | Rule 15: a session-log entry cites the record behind each decision or quote, how much of the id, how to open it, and the range for the principal's prompts | Rule 15 | Reworded (W5): the head as an action, "Cite in each session-log entry the record behind each decision or quote"; the rest kept word for word, as `tests/test_sessions.py` requires |
-| Contents: "**Procedure** (below): session start, during work, close." | Contents: the procedure.md line | Reworded: the Procedure lives in references/procedure.md, read at session start and before closing |
+| Contents: "**Procedure** (below): session start, during work, close." | Contents: the session-protocols.md line | Merged: the Procedure lives in references/session-protocols.md, whose line says so and adds "before closing" to when to read it |
 | Contents: the session-transcripts.md line | Contents | Reworded: link text the file's name; "the archive, its commands, sync and citations" for its longer list, which the file's own contents names; "Read before reading, citing, exporting or syncing transcripts." kept word for word; placed after the doctor line, since the lines follow the order in which the rules first use the files |
 | Contents: the tiers-and-templates.md line | Contents | Reworded: link text the file's name; the same parts in fewer words, "quality measures" left to the file's contents; "Read when creating or restructuring a record." kept word for word |
-| Contents: the session-protocols.md line | Contents | Reworded: link text the file's name; "both protocols in full, compaction" for "the Session Start and Mid-Session Refresh protocols in full, compaction signals"; "Read at session start and on any trigger." kept word for word |
+| Contents: the session-protocols.md line | Contents | Reworded: link text the file's name; "both protocols in full, compaction" for "the Session Start and Mid-Session Refresh protocols in full, compaction signals"; "the session's steps and the doctor's command" added for the Procedure the file now holds, and "Read at session start, on any trigger and before closing." for "Read at session start and on any trigger.", since it also holds the Procedure's close |
 | Contents: the editing-and-archival.md line | Contents | Reworded: link text the file's name; "currency" and "stamps" for "header and body currency" and "item stamps"; "Read before restructuring or closing a record." kept word for word |
 | Contents: the deletion-units.md line | Contents | Reworded: link text the file's name; "the two repo families, ALWAYS-PRESERVE, a workspace's conversations" for its longer wording; "Read before writing engagement-adjacent content or deleting a workspace's data." kept word for word |
 | Contents: the material-context.md line | Contents | Reworded: link text the file's name; "item lists by exact id, handoff checks" for "replacing item lists by exact id, checking a handoff"; "Read before compaction, handoff or replacing a decision list." kept word for word |
 | Contents: the context-doctor.md line | Contents | Reworded: link text the file's name; "its runs, checks, exit codes and lessons" for "running the doctor, its checks, exit codes and the lessons built into it"; "Read before running it or acting on a finding." kept word for word |
 | Contents: the coverage-map.md line, "where every part of 1.22.0 lives now." | Contents: the records line | Merged with the preserved line: where each part of 2.8.2 and 1.22.0 lives now, read only to review a rewrite |
 | Contents: the preserved line, "why the old machinery was cut, and the 1.22.0 text verbatim. Read only to review the cut." | Contents: the records line | Reworded: all four files linked as before; "both texts word for word"; "Read only to review a rewrite", since the files now hold two rewrites |
-| Procedure: its heading and "Session start" | references/procedure.md | Moved word for word; rule 2 states it (below) |
-| Procedure: "During work" | references/procedure.md | Moved word for word; rule 4 states part of it (below) |
-| Procedure: "Check", the doctor's command and what it prints | references/procedure.md | Moved word for word; rule 13 states the exit contract, and context-doctor.md also gives the command and its output (format rule 7) |
-| Procedure: "Close" | references/procedure.md | Moved word for word; rules 4, 6, 12, 13 and 15 state parts of it (below). With every binding rule complete on its own, SKILL.md would have run past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than condensing them |
+| Procedure: its heading and "Session start" | references/session-protocols.md, Procedure | Moved word for word; rule 2 states it (below) |
+| Procedure: "During work" | references/session-protocols.md, Procedure | Moved word for word; rule 1 carries its first two sentences word for word, and rule 4 its last (below) |
+| Procedure: "Check", the doctor's command and what it prints | references/session-protocols.md, Procedure | Moved word for word; rule 13 states the exit contract, and context-doctor.md also gives the command and its output (format rule 7) |
+| Procedure: "Close" | references/session-protocols.md, Procedure | Moved word for word; rules 4, 6, 12, 13 and 15 state parts of it (below). With every binding rule complete on its own, SKILL.md would have run past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than condensing them |
 
-### references/procedure.md
+### references/session-protocols.md
 
 | 2.8.2 | 2.9.0 | How |
 |---|---|---|
-| (none) | Title and opening line: what the file holds, when to read it, that the binding rules govern ("rule 12" is binding rule 12), and where the protocols are in full | Added (format rules 4 and 11) |
-| SKILL.md: Procedure | The same section, heading included | Moved word for word |
+| (none) | The opening line: the Procedure gives a session's steps in brief, the sections after it each protocol in full, and SKILL.md's binding rules govern ("rule 12" is binding rule 12) | Added (format rule 11) |
+| (none) | Contents: the Procedure's line, first | Added (format rule 3) |
+| SKILL.md: Procedure | Procedure, the file's first section, heading included | Moved word for word |
+| Every other section | The same | Kept word for word |
 
 ### references/preserved.md
 
@@ -80,15 +82,15 @@ that sentence word for word.
 
 ### Where the binding rules state the moved procedure
 
-| Moved passage, now in references/procedure.md | Stated in SKILL.md by |
+| Moved passage, now in references/session-protocols.md | Stated in SKILL.md by |
 |---|---|
-| Session start: `synthesis resume <id>`, then the Session Start Protocol's steps in order | Rule 2; the exact `date`, `git log` and `git status` options stay in procedure.md and session-protocols.md |
+| Session start: `synthesis resume <id>`, then the Session Start Protocol's steps in order | Rule 2; the exact `date`, `git log` and `git status` options stay in session-protocols.md |
 | Session start: title the session after the project where the client allows it | Rule 2, word for word, as `test_session_start_names_the_session_after_the_project` requires |
-| Session start: show the result in one line: today, last commit, whether CONTEXT.md matches | Rule 2, "Show the verification"; the line's three parts stay in procedure.md |
-| During work: after each task, update CONTEXT.md under your claim | No rule, as in 2.8.2: procedure.md |
-| During work: keep the current-state block current, since it is what returns after compaction | No rule, as in 2.8.2: procedure.md and tiers-and-templates.md, the current-state block |
+| Session start: show the result in one line: today, last commit, whether CONTEXT.md matches | Rule 2, "Show the verification"; the line's three parts stay in session-protocols.md |
+| During work: after each task, update CONTEXT.md under your claim | Rule 1, word for word |
+| During work: keep the current-state block current, since it is what returns after compaction | Rule 1, word for word; the block's template is in tiers-and-templates.md |
 | During work: archive when CONTEXT.md passes 120 lines | Rule 4 |
-| Check: the doctor's command and what it prints | Rule 13, the exit contract; the command in procedure.md and context-doctor.md |
+| Check: the doctor's command and what it prints | Rule 13, the exit contract; the command in session-protocols.md and context-doctor.md |
 | Close: append the session entry, with Attribution lines when several agents contributed | Rule 15, the entry's citations; the Attribution lines in tiers-and-templates.md, Agent Attribution |
 | Close: refresh the header and current-state block | Rule 6, the header |
 | Close: archive cold content | Rule 4 |
@@ -97,11 +99,10 @@ that sentence word for word.
 
 ### Files unchanged
 
-`references/session-protocols.md`, `references/tiers-and-templates.md`, `references/editing-and-archival.md`,
-`references/deletion-units.md`, `references/material-context.md`, `references/context-doctor.md`,
-`references/session-transcripts.md`, `references/preserved-protocol.md`, `references/preserved-operations.md`,
-`references/preserved-succession.md`, `scripts/context_doctor.py`, `tests/test_context_doctor.py` and
-`agents/openai.yaml`. In this file, the 1.22.0 to 2.0.0 map below is kept word for word one heading level down.
+`references/tiers-and-templates.md`, `references/editing-and-archival.md`, `references/deletion-units.md`,
+`references/material-context.md`, `references/context-doctor.md`, `references/session-transcripts.md`,
+`references/preserved-protocol.md`, `references/preserved-operations.md`, `references/preserved-succession.md`,
+`scripts/context_doctor.py`, `tests/test_context_doctor.py` and `agents/openai.yaml`. In this file, the 1.22.0 to 2.0.0 map below is kept word for word one heading level down.
 
 ## Coverage map: context lifecycle 1.22.0 to 2.0.0 (v5)
 

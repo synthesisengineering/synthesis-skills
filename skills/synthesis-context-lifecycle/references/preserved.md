@@ -45,7 +45,14 @@ Why each part changed:
     disagrees with a record: follow the record, as [material-context.md](material-context.md), Native memory,
     resolves conflicts "in favor of the synthesis record", and report the discrepancy, as the Mid-Session Refresh
     Protocol's step 5 does, since a stale note reads as current. Every case of the skill's evaluation tests this
-    rule, and every one passed with 2.8.2 on both models, so no wording was made louder (W10).
+    rule, and every one passed with 2.8.2 on both models, so no wording was made louder (W10). The rule also carries
+    the Procedure's "During work" instruction word for word: "After each task, update CONTEXT.md under your claim.
+    Keep the current-state block (Phase, Status, Last session, Plan, Next actions) current: it is what returns after
+    compaction." It is the skill's core behavior and no evaluation case measures it, so it stays where every load
+    reads it rather than only in the reference that now holds the Procedure. To make room within W19's 7,600 bytes,
+    the Procedure joined session-protocols.md, which freed a Contents line, and two clauses this rewrite had added to
+    other rules returned to the references that state them word for word (rules 6 and 13, below). No 2.8.2 text left
+    SKILL.md.
   - Rule 2 keeps its head, its steps in their order and "show the verification". It names its trigger as
     [session-protocols.md](session-protocols.md) does (substantive work on a project begins: at session start, at
     the project's first mention, or after a switch from another project), and takes its reason from that file's
@@ -70,8 +77,8 @@ Why each part changed:
     another agent rewrote silently matches nothing while the report still says "updated".
   - Rule 6 names CONTEXT.md in its head and keeps "Update `Last session` first or with `Phase`", "a field is judged
     alone" and "its first ordinal is its identity". From editing-and-archival.md's "Header fields move together" it
-    takes the ordinal families, that `Phase` never moves ahead of `Last session`, that the two describe one state,
-    and that a fresh `Phase` cannot mask a stale `Last session`.
+    takes the ordinal families, that `Phase` never moves ahead of `Last session`, and that the two describe one
+    state; that a fresh `Phase` cannot mask a stale `Last session` stays in that section, word for word.
   - Rule 7 becomes an action and keeps "never from commit times". It names its scope (stating or judging a session's
     date) and takes its reason from session-protocols.md's step 2 and [context-doctor.md](context-doctor.md),
     "Publication time and workday are different evidence".
@@ -92,7 +99,8 @@ Why each part changed:
     claimed paths, a push, READY or NOT READY), that day-end publishes the same way (with the Archival Protocol's
     step 8), and the reason against a workspace-wide commit.
   - Rule 13 becomes an action that keeps "exits 2, never 0" and "cannot tell". From context-doctor.md, "Running it",
-    it takes the three exit codes, what leaves the doctor unable to tell, and the reason.
+    it takes the three exit codes and the reason; what leaves the doctor unable to tell stays in that section, word
+    for word.
   - Rule 14 becomes an action, "Keep transcripts as the evidence beneath the records"; its three other sentences are
     kept word for word, and "Never paste the conversation into a record" gains its reason from
     [session-transcripts.md](session-transcripts.md), "Reading and citing".
@@ -102,11 +110,12 @@ Why each part changed:
   first, then the files in the order the binding rules first use them, and the records last. The link text is the
   file's name without `.md`, while every link keeps its `references/` path, and each line's "Read" sentence, its
   instruction, is kept word for word. What each file holds is said in fewer words, since each file's own contents
-  list names its sections. The Procedure line becomes the procedure.md line, and the coverage-map and preserved lines
-  become one line for both rewrites, read only to review a rewrite. With every binding rule complete on its own, the
-  shorter lines keep SKILL.md 409 bytes under the 8,000-byte limit, the room W19 asks for.
-- **Procedure.** Moved word for word to [procedure.md](procedure.md), under a title and an opening line that say when
-  to read it and that the binding rules govern. With every binding rule complete on its own, SKILL.md would have run
+  list names its sections. The Procedure line merges into the session-protocols.md line, which says the file holds
+  the session's steps and adds "before closing" to when to read it, and the coverage-map and preserved lines become
+  one line for both rewrites, read only to review a rewrite. With every binding rule complete on its own, the shorter
+  lines keep SKILL.md 407 bytes under the 8,000-byte limit, the room W19 asks for.
+- **Procedure.** Moved word for word to [session-protocols.md](session-protocols.md) as its first section, under an
+  opening line that says the binding rules govern. With every binding rule complete on its own, SKILL.md would have run
   past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than condensing them.
   The coverage map shows which binding rule states each part of it.
 
