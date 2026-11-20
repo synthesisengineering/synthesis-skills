@@ -436,3 +436,10 @@ def test_nothing_still_describes_same_day_prep_as_optional_without_pointing_at_t
     assert "Step 1a" in lead_time
     plan = reference("plan-format.md")
     assert "Step 1a" in plan.split("\n## ")[0] and "## 📋 Prep packs" in plan and "**Prep packs section**" in plan
+
+
+def test_the_skill_binds_it():
+    """SKILL.md's binding rules may be all a model reads after a compaction, so the step is bound there too."""
+    rules = (SKILL / "SKILL.md").read_text(encoding="utf-8").split("## Binding rules")[1].split("## Contents")[0]
+    rule = next((line for line in rules.splitlines() if "`meeting_briefs.py`" in line), "")
+    assert rule.startswith("18. ") and "the earliest first" in rule and "never a day without meetings" in rule
