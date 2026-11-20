@@ -439,11 +439,21 @@ def test_a_seats_own_closing_words_are_added_and_a_value_that_is_no_list_blocks_
     state = tmp_path / "state"
     for words, expected, said in (("SENT", ["B", "C", "F", "G"], True), (["filed", "Not needed", "n/a"], ["F"], False),
                                   ([], ["B", "C", "F", "G"], False), (["FILED", 3], ["B", "C", "F", "G"], True)):
-        write(state, "config.json", json.dumps({"workspaces": {}, "ledger_closed_words": words}))
+        write(state, "config.json", json.dumps({"workspaces": {}, "defaults": {"ledger_closed_words": words}}))
         code, report = sweep(tmp_path, env={"RITUAL_STATE_DIR": str(state)})
         assert [row["item"] for row in report["owed"]["rows"]] == expected, words
         assert code == 0 and report["status"] == "CLEAR" and report["gaps"] == [], words
         assert ("ledger_closed_words" in report["owed"].get("config", "")) == said, words
+
+
+def test_a_workspaces_own_closing_words_close_its_ledgers_rows(tmp_path):
+    """2026-11-20: words in a workspace's own settings file were never read; the sweep read the top of config.json."""
+    write(tmp_path / "drafts", "_LEDGER.md", "| Item | Status | Owed since |\n|---|---|---|\n| A | PAID | 2026-11-01 |\n"
+          "| B | OWED | 2026-11-01 |\n")
+    write(tmp_path / "plans", "2026-11-12.md", "# Plan\n\nNothing dated.\n")
+    write(Path(os.environ["SYNTHESIS_WORKSPACES"]) / "desk" / ".agents", "rituals.json", json.dumps({"ledger_closed_words": ["PAID"]}))
+    _, report = sweep(tmp_path, "--workspace", "desk")
+    assert [row["item"] for row in report["owed"]["rows"]] == ["B"], report["gaps"]
 
 
 def test_an_item_two_declared_sets_share_is_counted_once_by_the_evening_job(tmp_path):
@@ -591,7 +601,7 @@ def test_a_ledgers_status_that_takes_its_closing_word_back_is_open(tmp_path):
     table = "| Item | Status | Owed since |\n|---|---|---|\n" + "".join(f"| row {n} | {status} | 2026-11-01 |\n" for n, (status, _) in enumerate(rows))
     write(tmp_path / "drafts", "_LEDGER.md", table)
     write(tmp_path / "plans", "2026-11-12.md", "# Plan\n\nNothing dated.\n")
-    write(tmp_path / "state", "config.json", json.dumps({"workspaces": {}, "ledger_closed_words": ["PAID", "NO ACTION"]}))
+    write(tmp_path / "state", "config.json", json.dumps({"workspaces": {}, "defaults": {"ledger_closed_words": ["PAID", "NO ACTION"]}}))
     _, report = sweep(tmp_path, env={"RITUAL_STATE_DIR": str(tmp_path / "state")})
     assert [row["item"] for row in report["owed"]["rows"]] == [f"row {n}" for n, (_, is_open) in enumerate(rows) if is_open]
 
