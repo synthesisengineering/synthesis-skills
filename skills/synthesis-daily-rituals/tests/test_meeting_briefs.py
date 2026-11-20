@@ -227,6 +227,9 @@ def broken(tmp_path: Path, case: str):
         "no preferences": (good, {"prefs": "{not json"}, "preferences"),
         "preferences not an object": (good, {"prefs": "[1]"}, "not one JSON object"),
         "a zone that is none": (good, {"prefs": {**PREFS, "timezone": "Mars/Olympus_Mons"}}, "time zone"),
+        "addresses not a list": (good, {"prefs": {**PREFS, "principal_addresses": "pat@example.com"}}, "a list"),
+        "a marker that is a word": (good, {"prefs": {**PREFS, "calendar_guardian": {"personal_markers": ["training"]}}},
+                                    "plain word"),  # it would hide "Training with the team", as slot_check.py refuses
         "a now that is no time": (good, {"now": "soon"}, "time zone or --now"),
     }[case]
 
@@ -234,7 +237,8 @@ def broken(tmp_path: Path, case: str):
 @pytest.mark.parametrize("case", ["no read", "not json", "a list", "no window", "another day", "no calendars",
                                   "empty calendars", "events not a list", "a start that is no time", "attendees not a list",
                                   "no packs folder", "a file for a folder", "a pack that is not text", "no preferences",
-                                  "preferences not an object", "a zone that is none", "a now that is no time"])
+                                  "preferences not an object", "a zone that is none", "a now that is no time",
+                                  "addresses not a list", "a marker that is a word"])
 def test_an_input_that_cannot_be_read_is_refused_and_nothing_is_judged(tmp_path, case):
     read, kwargs, says = broken(tmp_path, case)
     if case == "a pack that is not text":
