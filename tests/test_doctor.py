@@ -1166,6 +1166,29 @@ def test_the_doctor_checks_each_claude_home_the_config_names_and_fails_one_whose
     assert {c.name: c for c in doctor.run_checks()}["claude homes"].status == "fail"
 
 
+def test_the_doctor_checks_the_default_folder_and_each_listed_one_once_from_any_process(machine, tmp_path, monkeypatch):
+    """N4 of review round 1: run from the seat's own process, the doctor checked the seat's folder twice, as `claude`
+    and by its name, and ~/.claude never. Every Claude folder is checked once: the process's own as `claude`, each other
+    one by its name, ~/.claude among them."""
+    from synthesis import sandbox
+    home, fakebin, _ = machine
+    monkeypatch.setattr(sandbox, "CLAUDE_MANAGED", tmp_path / "managed" / "managed-settings.json")  # never this Mac's own
+    folder = home / ".claude-team"
+    team = plugin_copy(folder / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0", tmp_path / "source")
+    default = json.loads((fakebin / "claude.json").read_text())
+    fake_claude_by_home(fakebin, {"": default, str(folder): [{"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(team)}]})
+    paths.config_file().write_text(json.dumps({"claude_homes": ["~/.claude-team"]}))
+    for own, other in ((folder, home / ".claude"), (home / ".claude", folder)):
+        if own == folder:  # the seat's own process
+            monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(own))
+        else:  # a default session's
+            monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+        names = [c.name for c in doctor.run_checks()]
+        for part in ("plugin", "package", "hooks", "hooks on", "self-test"):
+            assert names.count(f"claude {doctor._short(other)} {part}") == 1, (own, part)
+        assert not [n for n in names if n.startswith(f"claude {doctor._short(own)} ")], own  # its own folder is `claude`
+
+
 # --- approvals that wait ----------------------------------------------------------------------------------------------
 # A harness whose hooks wait for the person's approval runs none of them: no send guard, no deploy guard, no reply
 # check. Codex asks again after every release, and on 2026-11-13 there were six. The doctor says so on one line of

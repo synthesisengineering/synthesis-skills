@@ -182,9 +182,9 @@ def test_entries_without_the_key_keep_todays_rules(seat):
         assert _call("navigate", PAGE, config, personal, me) == (
             "No browser is selected for this session; the extension is shared, so its browser or tab group may have changed. Call "
             f"list_connected_browsers, then select_browser with deviceId {PERSONAL} (the personal Chrome profile), before any other browser call.")
-        assert _call("select_browser", {"deviceId": TEAM}, config, personal, me) == (
+        assert _call("select_browser", {"deviceId": "DEV-ELSE-0003"}, config, personal, me) == (
             f"This session's browser is the personal Chrome profile ({PERSONAL}), set for the workspace it started in; selecting "
-            f"{TEAM} would act as another profile. Select {PERSONAL} instead.")
+            "DEV-ELSE-0003 would act as another profile. Select DEV-PERSONAL-0001 instead.")
         assert f"deviceId {PERSONAL}" in _call("switch_browser", {}, config, personal, me)
         assert _call("select_browser", {"deviceId": PERSONAL}, config, personal, me) is None
         assert "has not reported success" in _call("navigate", PAGE, config, personal, me)
@@ -200,10 +200,27 @@ def test_entries_without_the_key_keep_todays_rules(seat):
     assert "has not reported success" in _call("navigate", PAGE, plain, personal, {"session_id": "BARE"})
 
 
+def test_no_session_of_another_folder_selects_the_bound_device_wherever_it_runs(seat, tmp_path):
+    """N1 of review round 1: the device was bound only inside its own workspace, so a session of another folder outside
+    every workspace, or in another workspace whose entry names the same device, could select it. Only the bound home's
+    sessions select it, wherever any other session runs, and that one is told to hand the task over."""
+    spaces, homes, config = seat
+    config["browser_routing"]["workspaces"]["~/workspaces/other"] = {"device": TEAM, "label": "a second entry for the team profile"}
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    desktop = Path(os.environ["SYNTHESIS_CLAUDE_DESKTOP_DIR"]) / "local-agent-mode-sessions" / "acct" / "org" / "local_s2" / ".claude"
+    for sid, started, folder in (("DESK", outside, desktop), ("MINE", outside, homes["default"]), ("SPARE", outside, homes["spare"]),
+                                 ("PERS", spaces["personal"], homes["default"]), ("OTHER", spaces["other"], homes["default"])):
+        said = _call("select_browser", {"deviceId": TEAM}, config, started, _session(sid, started, _in(folder, started, sid))) or ""
+        assert TEAM_LABEL in said and "~/.claude-team" in said and "synthesis msg" in said, (sid, said)
+    assert not (paths.approvals() / "browser.json").exists() and not _homes_records()
+
+
 @pytest.mark.parametrize("change, named", [
     (lambda c: c.update(claude_homes="~/.claude-spare"), "must be a list"),
     (lambda c: c.update(claude_homes=["relative/folder"]), "'relative/folder'"),
     (lambda c: c.update(claude_homes=["~/.claude"]), "~/.claude"),
+    (lambda c: c.update(claude_homes=["~/.Claude"]), "~/.claude"),  # N2: the default folder in another spelling
     (lambda c: c["browser_routing"]["workspaces"]["~/workspaces/team"].update(claude_home=7), "7"),
     (lambda c: c["browser_routing"]["workspaces"]["~/workspaces/team"].update(claude_home=""), "''"),
 ])

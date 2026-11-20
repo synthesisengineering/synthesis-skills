@@ -98,6 +98,86 @@ def test_the_sealed_set_holds_each_claude_home_the_config_names(team, monkeypatc
     assert {home / ".claude" / "projects", home / ".claude" / "settings.json", home / ".claude.json"} <= {p for p, _, _ in sandbox.sealed()}
 
 
+# Review round 1, B1: one value that names no folder, or a config that will not parse, dropped every other Claude folder
+# from the guard (from a default session the seat's transcript, settings and shell snapshot took writes with no code;
+# from the seat, ~/.claude did). Every value that parses is kept, with ~/.claude wherever the config names a Claude home,
+# and while the config cannot be read the guard keeps the folders the last config it could read named.
+TYPO = {"claude_homes": ["~/.claude-team"], "browser_routing": {"workspaces": {
+    "~/workspaces/team": {"device": "DEV-TEAM-0002", "label": "team", "claude_home": "~/.claude-team"},
+    "~/workspaces/other": {"device": "DEV-OTHER-0003", "label": "other", "claude_home": ".claude-other"}}}}  # no ~/: a typo
+
+
+def _other(home, folder, monkeypatch, seat: bool):
+    """The other Claude folder of this process: the team folder from a default session, ~/.claude from the seat's own."""
+    if seat:
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(folder))
+        return home / ".claude"
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    return folder
+
+
+def _kept(other):
+    """What of a Claude folder only the guard keeps from a file tool, with what its answer says."""
+    return [(other / "projects" / "-team" / "S9.jsonl", "session transcripts"), (other / "settings.json", "approve followed by the code"),
+            (other / "shell-snapshots" / "snapshot-zsh-1.sh", "approve followed by the code")]
+
+
+def _hooked(payload: dict, capsys) -> str:
+    """Why the PreToolUse hook holds a call, as it prints it; "" for a call it lets through."""
+    from synthesis import hook
+    hook.pre_tool_use(payload)
+    out = capsys.readouterr().out
+    return json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"] if out.strip() else ""
+
+
+@pytest.mark.parametrize("seat", [False, True])
+def test_a_claude_home_that_names_no_folder_drops_no_other_folder_from_the_guard(team, monkeypatch, write_config, tmp_path, seat):
+    home, folder, _ = team
+    config = json.loads(json.dumps(TYPO))
+    write_config(config)
+    other = _other(home, folder, monkeypatch, seat)
+    for target, said in _kept(other):
+        assert said in (guards.check("Write", {"file_path": str(target), "content": "x"}, config, cwd=str(tmp_path),
+                                     session={"session_id": "S1"}) or ""), target
+
+
+@pytest.mark.parametrize("seat", [False, True])
+def test_a_config_that_will_not_parse_keeps_the_folders_the_last_readable_one_named(team, monkeypatch, write_config, capsys, seat):
+    """The hook judges a file tool without a config it cannot parse (22.20); the Claude folders it guards then come from
+    the last config it read in full, kept in the sealed approvals folder."""
+    home, folder, space = team
+    other, call = _other(home, folder, monkeypatch, seat), {"session_id": "S1", "cwd": str(space)}
+    assert _hooked({"tool_name": "Read", "tool_input": {"file_path": "/dev/null"}, **call}, capsys) == ""  # read in full
+    paths.config_file().write_text("{not json", encoding="utf-8")
+    for target, said in _kept(other):
+        assert said in _hooked({"tool_name": "Write", "tool_input": {"file_path": str(target), "content": "{\"disableAllHooks\": true}"},
+                                **call}, capsys), target
+
+
+@pytest.mark.parametrize("seat", [False, True])
+def test_with_a_claude_home_that_names_no_folder_the_sealed_set_still_holds_every_folder(team, monkeypatch, write_config, seat):
+    home, folder, _ = team
+    write_config(json.loads(json.dumps(TYPO)))
+    _other(home, folder, monkeypatch, seat)
+    managed = sandbox.claude_managed()
+    assert {"Edit(~/.claude/settings.json)", "Edit(~/.claude-team/settings.json)"} <= set(managed["permissions"]["deny"])
+    assert {"~/.claude/projects", "~/.claude-team/projects"} <= set(managed["sandbox"]["filesystem"]["denyWrite"])
+
+
+def test_another_spelling_or_a_link_of_the_default_folder_is_never_a_second_folder(team, monkeypatch):
+    """N2 of review round 1: the default folder was told apart by spelling, while the guard compares real paths with case
+    folded, so ~/.Claude, or a link to ~/.claude, passed for another account's folder."""
+    home, _, _ = team
+    (home / ".claude").mkdir()
+    (home / ".claude-link").symlink_to(home / ".claude", target_is_directory=True)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    for named in ("~/.Claude", "~/.claude-link"):
+        with pytest.raises(ValueError, match="~/.claude, the default home"):
+            paths.claude_homes({"claude_homes": [named]})
+        assert paths.claude_dirs({"claude_homes": [named]}) == [home / ".claude"]
+    assert paths.claude_homes({"claude_homes": ["~/.claude-team", "~/.Claude-Team"]}) == [home / ".claude-team"]  # one folder
+
+
 def test_the_files_staged_from_a_seats_own_process_are_the_ones_staged_from_any_other(team, monkeypatch):
     """Setup stages Claude Code's managed settings and Codex's requirements from the sealed set, and a seat's own process
     names its folder in CLAUDE_CONFIG_DIR: staged there, they are byte for byte what the doctor, run anywhere, expects,

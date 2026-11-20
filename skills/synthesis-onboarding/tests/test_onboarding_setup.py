@@ -505,6 +505,19 @@ def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neithe
     assert all("sudo" not in line and "after its pilot" in line for line in ordinary) and len(ordinary) == 2
 
 
+@pytest.mark.parametrize("config", ['{"claude_homes": ["~/.claude-team", ".claude-other"]}', "{not json"])
+def test_nothing_is_staged_while_the_claude_folders_the_config_names_cannot_be_read(system, config):
+    """B1 of review round 1: the sealed set is built from every Claude folder the config names, and one value that names
+    no folder, or a config that will not parse, dropped the others from the file setup staged, which the doctor then
+    offered to install. Setup refuses to stage, naming the config, until it reads in full."""
+    setup.paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    setup.paths.config_file().write_text(config, encoding="utf-8")
+    for clients in (["claude"], ["claude", "codex"]):
+        with pytest.raises(setup.SetupError, match="nothing staged.*config.json"):
+            setup.stage_sandbox(clients, seal=True)
+    assert not setup.sandbox.staged("claude").exists() and not setup.sandbox.staged("codex").exists()
+
+
 def test_a_staged_file_installed_by_the_principal_is_verified_and_no_command_is_printed_again(system, monkeypatch):
     setup.stage_sandbox(["claude"])
     there = setup.sandbox.target("claude")
