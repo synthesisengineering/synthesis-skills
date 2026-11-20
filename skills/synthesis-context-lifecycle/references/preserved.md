@@ -38,6 +38,23 @@ Why each part changed:
 - **The line above rule 1.** New (W8, format rule 11): the rules hold when a request asks otherwise, and the answer
   to such a request says which rule applies and why, then does what it allows. The rules protect the records that
   every later session, harness and Mac resumes from.
+
+  Two sentences joined it after the gate of 2026-11-20 (W12, W15). That gate found no rule weaker on either model,
+  but blind comparison did not favor the rewrite: on Opus each text won 14 comparisons and 14 tied; on Sonnet 2.8.2
+  won 17, the rewrite 15, and 10 tied. Most of the judge's reasons for 2.8.2's wins named what the rewrite's answers
+  added to what was asked: a placeholder transcript citation (rule 15) in the session-log line a case asked for,
+  which every one of the rewrite's twelve answers to that case carried and none of 2.8.2's did (the judge named
+  placeholders in Opus cl-03 rep 3 and cl-04 reps 1 to 3, and Sonnet cl-04 reps 0 and 1); answers past the sentence count asked for (Opus cl-05 reps 0 and 3, Sonnet cl-05
+  reps 1 and 2, Sonnet cl-07 rep 4); notes, checks and procedure appended to what was asked (Opus cl-01 rep 1,
+  cl-03 reps 0, 3 and 4, cl-04 reps 0 and 5, cl-07 rep 4; Sonnet cl-03 reps 0 and 2, cl-04 rep 4, cl-07 rep 2); and,
+  on Sonnet, a command without the target the request named (cl-02 reps 2 to 5). The rewrite's rules carry more of
+  each step than 2.8.2's did, and its answers recited the steps they could not run. The second sentence says that
+  asking for a format or length is not asking otherwise, so a rule's report goes inside what was asked; the third
+  says where a date or citation comes from (a stamp's date among them), and keeps what could not be checked or
+  filled to one clause, with no placeholder left. Rules 1, 2, 8 and 15 keep their requirements: the judge's reasons for the rewrite's wins (a
+  clearer report of the stale note, reading the records before acting, acting once the records read agreed with
+  memory) came from rules 1 and 2 (Opus cl-01 rep 0, cl-06 reps 4 and 5, cl-07 reps 0 and 2; Sonnet cl-01 reps 0, 1
+  and 3, cl-06 reps 1 and 2, cl-07 reps 0 and 5).
 - **Binding rules 1 to 15.** Each keeps its number and its meaning. Each is rewritten to W5 (the action as the bold
   head, then its scope and its reason) and made complete on its own (W2), from the skill's own text:
   - Rule 1 keeps CONTEXT.md's two budgets, REFERENCE.md's, the session log's append-only form and the sentence that
@@ -45,7 +62,9 @@ Why each part changed:
     disagrees with a record: follow the record, as [material-context.md](material-context.md), Native memory,
     resolves conflicts "in favor of the synthesis record", and report the discrepancy, as the Mid-Session Refresh
     Protocol's step 5 does, since a stale note reads as current. Every case of the skill's evaluation tests this
-    rule, and every one passed with 2.8.2 on both models, so no wording was made louder (W10). The rule also carries
+    rule, and every one passed with 2.8.2 on both models in the evaluation of 2026-11-18 (two repetitions), so no
+    wording was made louder (W10); at the gate's six repetitions 2.8.2 passed 76 of 78 checks on Opus and 78 of 78 on
+    Sonnet, and the rewrite 78 of 78 and 76 of 78, a difference inside the noise. The rule also carries
     the Procedure's "During work" instruction word for word: "After each task, update CONTEXT.md under your claim.
     Keep the current-state block (Phase, Status, Last session, Plan, Next actions) current: it is what returns after
     compaction." It is the skill's core behavior and no evaluation case measures it, so it stays where every load
@@ -83,7 +102,10 @@ Why each part changed:
     date) and takes its reason from session-protocols.md's step 2 and [context-doctor.md](context-doctor.md),
     "Publication time and workday are different evidence".
   - Rule 8 keeps the stamp and its last clause, and takes from editing-and-archival.md's "Stamped open items" when to
-    stamp (as an item is written or re-checked) and why (the item's age travels with it).
+    stamp (as an item is written or re-checked) and why (the item's age travels with it). After the gate of
+    2026-11-20 it also names which items, those of an open-items list, as that section opens ("Open-items lists
+    carry an implicit present tense nobody re-dates"), since answers with either text had put the stamp on a
+    session-log line, which is prose.
   - Rule 9 keeps its head, its question, the ALWAYS-PRESERVE sentence and the inventory clause. From
     [deletion-units.md](deletion-units.md) it takes where each answer routes, the members of the class, the question
     asked when a repository's family is undeclared ("asks rather than guesses") and its reason: neither misplacement
@@ -113,7 +135,10 @@ Why each part changed:
   list names its sections. The Procedure line merges into the session-protocols.md line, which says the file holds
   the session's steps and adds "before closing" to when to read it, and the coverage-map and preserved lines become
   one line for both rewrites, read only to review a rewrite. With every binding rule complete on its own, the shorter
-  lines keep SKILL.md 407 bytes under the 8,000-byte limit, the room W19 asks for.
+  lines kept the first text of 2.9.0 407 bytes under the 8,000-byte limit, the room W19 keeps so that the next fix
+  fits without a reorganization. The gate's fix (the two sentences in the line above rule 1 and rule 8's scope) uses
+  323 of those bytes and leaves SKILL.md at 7,916. A further addition needs a reorganization first: whole passages
+  moved word for word, shown to the principal before they are committed (format rule 3).
 - **Procedure.** Moved word for word to [session-protocols.md](session-protocols.md) as its first section, under an
   opening line that says the binding rules govern. With every binding rule complete on its own, SKILL.md would have run
   past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than condensing them.
