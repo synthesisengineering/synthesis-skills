@@ -153,10 +153,11 @@ def plugin_entry(client: str, binary: str):
 
 
 def configured_ref(client: str):
-    """The git ref the harness's synthesis marketplace tracks, or None when unknown."""
+    """The git ref the harness's synthesis marketplace tracks, or None when unknown: Claude Code's in the folder it is
+    run with, which CLAUDE_CONFIG_DIR names for another Claude account's seat (C2)."""
     try:
         if client == "claude":
-            known = json.loads((Path.home() / ".claude" / "plugins" / "known_marketplaces.json").read_text())
+            known = json.loads((Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "plugins" / "known_marketplaces.json").read_text())
             source = (known.get(MARKETPLACE) or {}).get("source") or {}
             return source.get("ref") if source.get("repo") == SOURCE else None
         config = doctor.read_toml((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))
@@ -691,7 +692,13 @@ def stage_sandbox(clients: list, dry_run: bool = False, seal: bool = False) -> l
     home's sealed install folder, and the one command that installs it, which the principal runs with his password (his
     ruling of 2026-11-15). Setup installs neither; it says what is installed and whether it holds the keys. Only
     `setup.py sandbox` passes `seal`, which makes Codex's profile read-only where the guard's records are: the rollout's
-    step 2, after its test that Codex runs its hooks inside its sandbox (review round 1 of 5.25.0, finding 1)."""
+    step 2, after its test that Codex runs its hooks inside its sandbox (review round 1 of 5.25.0, finding 1). Nothing
+    is staged while a Claude folder the config names cannot be read: the file would leave it unsealed (C2, B1)."""
+    try:
+        paths.claude_dirs(paths.config(), strict=True)
+    except (OSError, ValueError) as exc:
+        raise SetupError(f"sandbox: nothing staged, since the Claude folders {paths.config_file()} names cannot be read ({exc}): fix "
+                         "it, then run this again") from None
     lines = configure_codex(dry_run, seal=True) if seal and "codex" in clients else []
     for name in (n for n in ("claude", "codex") if n in clients):
         label, copy, there = sandbox.LABELS[name], sandbox.staged(name), sandbox.target(name)

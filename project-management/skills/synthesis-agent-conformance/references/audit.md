@@ -53,7 +53,8 @@ CLI ships inside the ChatGPT desktop app), rejecting a stale Codex launcher with
 bounded `--version` probe.
 
 Each line carries its check's name. Every name has an item below, which opens with the
-names it covers (`<harness>` is `claude`, `codex` or `muse`; `<ws>` is a workspace).
+names it covers (`<harness>` is `claude`, `codex` or `muse`, or `claude <folder>` for each other
+Claude folder: another Claude account's, and ~/.claude when the doctor runs in that account's seat; `<ws>` is a workspace).
 `tests/test_doctor.py` reads the names from `synthesis/doctor.py`, so a check added
 there with no item here fails:
 
@@ -101,9 +102,27 @@ there with no item here fails:
   that one does not answer the line says to run `codex plugin list` once. A Codex
   command that takes over two seconds to say its version is passed over only for
   another install that answers; with none, the doctor goes on with it. A listed
-  plugin whose folder is not there fails its package line;
+  plugin whose folder is not there fails its package line. Where the config names other
+  Claude accounts' folders (`claude_homes`, and each `browser_routing` workspace's
+  `claude_home`), each Claude folder but the one the doctor's own process runs for is a
+  harness of its own here, `claude <folder>`, checked once: each such folder, and ~/.claude
+  when the doctor runs in a seat, listed as Claude Code lists it for that folder's sessions
+  (`CLAUDE_CONFIG_DIR` naming it, or unset for ~/.claude); a folder that is not there fails
+  its plugin line and is never made;
+- `<harness> hooks on`, `<harness> self-test`: for each such folder, since its seat runs
+  no guard unless its hooks run, no settings layer it reads turns them off (`disableAllHooks`
+  in its `settings.json`, the machine's managed settings or its `remote-settings.json`, the
+  organization's server-managed settings cached after its login; a managed
+  `allowManagedHooksOnly` where no managed layer forces the plugin on; a managed layer that
+  turns the plugin off), its PreToolUse hook sets `"onFailure": "block"`, and the stable
+  hook, run as its sessions run it (the folder in `CLAUDE_CONFIG_DIR`, a transcript in its
+  `projects`), denies `rm -rf ~`. A layer that cannot be read makes the first line `unknown`;
+- `claude homes`: the config's `claude_homes`, and each workspace's `claude_home`, name
+  absolute or `~/` folders and never ~/.claude; otherwise no such folder is checked and
+  the guard refuses every browser call;
 - `claude transcripts`: Claude Code keeps transcripts past its 30-day default
-  (`cleanupPeriodDays` is set, and to a year or more);
+  (`cleanupPeriodDays` is set, and to a year or more), in ~/.claude and in each other
+  Claude account's folder, which the line then names;
 - `claude fail closed`: the installed plugin's PreToolUse hook sets `"onFailure": "block"`,
   so Claude Code holds a guarded call when the guard times out, crashes or cannot start
   (a hook without it fails the line), and every Claude Code on the Mac (the one on PATH

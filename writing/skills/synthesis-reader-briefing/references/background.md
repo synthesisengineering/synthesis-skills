@@ -16,7 +16,7 @@ This skill is also the procedural workaround for the well-known curse-of-knowled
 
 ## Related
 
-- [`synthesis-thinking-framework`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-thinking-framework/SKILL.md) — the design-thinking mode ("the user is not an abstraction") is what this skill operationalizes. The briefing is the procedural workaround for the curse-of-knowledge bias.
+- [`synthesis-thinking-framework`](https://github.com/synthesisengineering/synthesis-skills/blob/v5.30.0/skills/synthesis-thinking-framework/SKILL.md) — the design-thinking mode ("the user is not an abstraction") is what this skill operationalizes. The briefing is the procedural workaround for the curse-of-knowledge bias.
 - [`synthesis-content-quality`](../../synthesis-content-quality/SKILL.md) — criterion #37 (Insider Context Collapse) detects briefing failures in finished drafts. The briefing prevents; the criterion catches the cases where prevention was skipped.
 - [`synthesis-content-framing`](../../synthesis-content-framing/SKILL.md) — has an "Audience Declaration" rule about declaring audience IN the article opening. The briefing is the BEFORE-WRITING complement.
 - [`synthesis-article-writing`](../../synthesis-article-writing/SKILL.md) — depends on this skill; Phase 0 of the article-writing workflow is the briefing.

@@ -118,6 +118,17 @@ different ref, setup removes the marketplace and adds it again on that ref (a ma
 added earlier on another ref answers "already" and is re-added). An installed but
 disabled plugin is reported, never silently enabled.
 
+**Another Claude account's folder.** A seat signed in to a second Claude account runs Claude Code with
+`CLAUDE_CONFIG_DIR` naming a folder of its own (`~/.claude-team`), whose settings, plugins, records and login are its
+own. Setup installs into it when run with that variable set: the plugin through Claude Code's own commands, which
+then act on that folder, its marketplace read from that folder, and `cleanupPeriodDays` in that folder's
+`settings.json`. List the folder in the config's `claude_homes` first (the guardrails' references/config.md), then
+`synthesis doctor` checks it as it checks ~/.claude, before anyone signs in there. Listing it adds it to the sealed
+set, so the doctor's sandbox line asks for Claude Code's managed settings and Codex's requirements again
+(`setup.py sandbox`, then the command it prints); staged from that seat's process or any other, they are the same
+files, and nothing is staged while a Claude folder the config names cannot be read. A release installs into the folder its own process names: after one, run setup that way again for each other
+folder, or the doctor's `claude <folder> package` line says its plugin differs from the runtime.
+
 ## Claude Code setting setup owns
 
 Claude Code deletes a session's transcript 30 days after its last use unless `cleanupPeriodDays` is set. When the
