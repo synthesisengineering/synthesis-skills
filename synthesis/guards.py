@@ -5804,7 +5804,7 @@ SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
                               "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file",
                               "paths.approvals", "paths.install_dir", "paths.requests", "paths.old_approvals", "paths.old_line_allowances",
-                              "paths.harness_settings", "sends._closed_file", "paths.claude_homes", "paths.claude_dirs"})  # the sealed set's (the guard's sandbox)
+                              "paths.harness_settings", "sends._closed_file", "paths.claude_homes", "paths.claude_dirs", "paths.homes_kept", "paths.homes_unread"})  # the sealed set's (the guard's sandbox)
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -6747,7 +6747,7 @@ def _synthesis_reach(text: str) -> tuple:
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
             spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
                 "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
-                "_requests_file", "_ticket_file", "old_approvals", "old_line_allowances", "harness_settings", "_closed_file", "claude_homes", "claude_dirs")
+                "_requests_file", "_ticket_file", "old_approvals", "old_line_allowances", "harness_settings", "_closed_file", "claude_homes", "claude_dirs", "homes_kept", "homes_unread")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
