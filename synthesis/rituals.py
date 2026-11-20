@@ -108,6 +108,9 @@ def config() -> dict:  # an unreadable file raises: refuse rather than guess
     data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"workspaces": {}}
     if not isinstance(data, dict) or not isinstance(data.get("workspaces"), dict):
         raise ValueError("ritual config.json has no 'workspaces' mapping")
+    if stray := [key for key in ("critical_words", "ledger_closed_words") if key in data]:  # read for no workspace
+        raise ValueError(f"ritual config.json: {', '.join(stray)} at the top is read for no workspace; put it under "
+                         "defaults, for every workspace, or in a workspace's own settings (<workspace>/.agents/rituals.json)")
     for own in workspace_files():  # each is its workspace's settings, in place of this machine's entry for it
         try:
             data["workspaces"][own.parent.parent.name] = loaded = json.loads(own.read_text(encoding="utf-8"))

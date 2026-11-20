@@ -470,8 +470,8 @@ def collect(roots: list[tuple[Path, str]], as_of: date, workspace: str | None = 
     conf, words, closed_words, unlisted = dict(rituals.DEFAULTS), WORDS, LEDGER_CLOSED, ""
     try:
         cfg = rituals.config()
-        conf, words = rituals.settings(cfg, workspace or ""), cfg.get("critical_words") or WORDS
-        given = cfg.get("ledger_closed_words")
+        conf = rituals.settings(cfg, workspace or "")  # the workspace's own settings over the defaults (2026-11-20)
+        words, given = conf.get("critical_words") or WORDS, conf.get("ledger_closed_words")
         if given is not None and not (isinstance(given, list) and all(isinstance(word, str) and word.strip() for word in given)):
             # said in the ledger's own view: a slip here must not block a record over plans that were all read
             unlisted = "ledger_closed_words in the ritual config must be a list of words or phrases; the built-in closing words are used"

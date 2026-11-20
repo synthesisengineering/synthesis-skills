@@ -2977,8 +2977,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # keeps a workspace's own settings, none on CI's runners): synthesis/rituals.py's workspace_files 2 more (its docstring
 # names the root, and the root read from SYNTHESIS_WORKSPACES, as the guard reads it, else ~/workspaces); the root
 # conftest.py 1 (its autouse fixture sets that root to an empty folder beside the synthesis home, for every test).
-CORE_BUDGET = 26416
-PLUGIN_BUDGET = 53221
+# Then each 3 more for 5.28.3 (the operations seat, 2026-11-20: a workspace's own critical_words, written into its
+# settings file on the principal's approval, were never read, since the deadline sweep read the word lists only at
+# the top of config.json): synthesis/rituals.py's config() refuses a word list left at the top, naming where it goes
+# (the check with its comment 1, the message over 2 lines). decay_sweep.py's collect() reads both lists from the
+# workspace's settings in the same 2 lines it read them from the top in.
+CORE_BUDGET = 26419
+PLUGIN_BUDGET = 53224
 
 
 def _lines(files):
