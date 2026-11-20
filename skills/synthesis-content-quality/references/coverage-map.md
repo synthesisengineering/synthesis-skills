@@ -23,6 +23,7 @@ preserved.md.
 | 5.0.0 | 5.1.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: 5.0.0` | `version: 5.1.0` | Bumped: a minor version, since every binding rule keeps its number and meaning and no script interface changes. No script prints the skill's version and the skill keeps no release notes, so this map and preserved.md are the record of the change |
 | Title | Title | Kept |
 | Opening paragraph: "A systematic methodology for evaluating writing quality and identifying slop, with or without AI involvement." | Opening paragraph | Kept word for word |
 | Opening paragraph: "The framework targets bad content, not provenance." | Rule 1 | Merged: rule 1 says it as a rule, that prose shows editorial quality and model-shaped style, never provenance or authorship (format rule 11) |
