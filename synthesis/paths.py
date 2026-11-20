@@ -349,8 +349,12 @@ def homes_kept() -> list:
 def homes_unread() -> dict:
     """The config a call is judged under while the file cannot be read: one that names, beside the folders the last
     config read in full named (`homes_kept`, which `claude_dirs` adds), each ~/.claude* folder in the home, as another
-    account's is named, so that no process falls back to its own folder alone (review round 1 of C2, B1)."""
-    return {"claude_homes": [str(folder) for folder in Path.home().glob(".claude?*") if folder.is_dir()]}
+    account's is named, so that no process falls back to its own folder alone (review round 1 of C2, B1). A folder that
+    is a link, or whose `projects` leads anywhere but into it, is none: a command can make one whose records' memory
+    notes would lie in the sealed folders (review round 2, R2-B1)."""
+    home = os.path.realpath(Path.home())
+    return {"claude_homes": [str(folder) for folder in Path.home().glob(".claude?*") if folder.is_dir() and os.path.realpath(folder) ==
+                             os.path.join(home, folder.name) and os.path.realpath(folder / "projects") == os.path.join(home, folder.name, "projects")]}
 
 
 def keep_homes(config: dict) -> None:
