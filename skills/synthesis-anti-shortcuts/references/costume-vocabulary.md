@@ -16,12 +16,12 @@ This file is the reference companion to the scanner at [`../scripts/scan_output.
 Each entry follows the same shape:
 
 - **Phrase:** the literal or regex pattern to recognize
-- **Category:** one of the seven categories below
+- **Category:** one of the nine categories below
 - **Why it is a shortcut:** the underlying behavior the phrase covers
 - **Replacement framing:** what to write instead
 - **Discussion exemption:** when the same phrase appears as a teaching example or quoted reference, the scan should not fire
 
-The seven categories: `backward_compat`, `minimal_diff`, `asking_as_shortcut`, `deferral`, `archive_value`, `dismissal`, `scope_excuse`.
+The nine categories: `backward_compat`, `minimal_diff`, `asking_as_shortcut`, `deferral`, `archive_value`, `dismissal`, `scope_excuse`, `capability_surrender`, `effort_rationale`.
 
 The rule across all categories: if the user has explicitly removed the consideration the phrase optimizes for, the phrase is a costume and the draft needs to be rewritten.
 
@@ -390,7 +390,10 @@ diagnosing it. The shortcut is skipping the search for an alternative path.
 This category is the inverse-risk twin of governance discipline. An agent correctly told never to
 bypass an approval gate generalizes that rule onto plumbing, and the resulting sentence reads as
 principle rather than avoidance. Judge by the object: a withheld permission is a guardrail, an
-unconfigured API is a gap. See SKILL.md section 7, The Capability-Limit Probe.
+unconfigured API is a gap. See [methodology.md](methodology.md) section 7, The Capability-Limit Probe.
+
+This category has no scanner pattern in `costume-catalog.json`: each phrase below is right about a
+governance gate and wrong about a configuration gap, and a phrase match cannot tell the two apart.
 
 ### `not something I'll work around` / `won't work around that`
 
