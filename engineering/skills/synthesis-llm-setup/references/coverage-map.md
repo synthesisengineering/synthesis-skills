@@ -12,3 +12,11 @@ Every part of the 1.0.0 SKILL.md and where it lives now. Nothing was removed.
 | Step-by-step workflow, Updating projects | SKILL.md (verbatim); distilled into Binding rules 3, 4 and 6 |
 | Troubleshooting | references/troubleshooting.md (verbatim) |
 | Binding rules, Contents | New in 2.0.0; each binding rule restates rules already in the sections it names |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Guide for setting up and configuring LLM projects across platforms. Use when setting up a Claude Project, creating a ChatGPT GPT, configuring a Gemini Gem, setting up an AI assistant with custom instructions and knowledge, or configuring any LLM platform with AI Knowledge content."
+```

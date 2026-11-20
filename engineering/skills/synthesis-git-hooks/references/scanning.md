@@ -201,7 +201,7 @@ approved the same way as a file line, bound to the repository and the line
 ## An entry's own time
 
 Off unless the config has `record_times` (`{}` turns it on; see the guardrails'
-[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.0/skills/synthesis-agent-guardrails/references/config.md)). In a Markdown
+[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-agent-guardrails/references/config.md)). In a Markdown
 file (`.md`, `.markdown`) outside a folder of transcripts and outside what the setting's
 `skip` list names, the check reads the time an added entry gives for itself. An entry
 states one in four places:
@@ -302,7 +302,7 @@ ending in T for a zone, neither of which those commits bear out
 ## A status and its evidence
 
 Off unless the config has `status_evidence` (`{}` turns it on; see the guardrails'
-[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.0/skills/synthesis-agent-guardrails/references/config.md)). On 2026-11-12
+[config reference](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-agent-guardrails/references/config.md)). On 2026-11-12
 obligation statuses said colleagues could use a tool "now" when none of them could: the
 status had been written from an assumption, and nothing asked what it rested on. That a
 line claims a thing works is meaning, which the check does not read. That a table has a

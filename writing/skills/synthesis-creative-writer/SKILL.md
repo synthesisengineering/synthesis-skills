@@ -1,6 +1,6 @@
 ---
 name: synthesis-creative-writer
-description: "Configure an LLM as a creative writing coach and editor. Use for creative writing, writer setup, configure writer, creative assistant, content creation coaching, storytelling assistance, and writing improvement."
+description: "Set up an LLM as a creative writing coach and editor. Use for creative writing, storytelling help or configuring a writing assistant."
 license: CC0-1.0
 depends_on: []
 metadata:

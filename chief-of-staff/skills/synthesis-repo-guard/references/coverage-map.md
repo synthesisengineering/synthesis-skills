@@ -11,6 +11,7 @@ code evaluation (guards and rituals report, repo-guard rows).
 - Scripts and their verdicts
 - Edge cases and where they are held
 - Frontmatter before v5 (verbatim)
+- The full description
 
 ## Coverage check result
 
@@ -81,4 +82,12 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Finds work stranded on this Mac: repositories with uncommitted, unpushed or unpulled changes or a detached HEAD, in a read-only scan with a JSON report and a count-only alert. Use at day-end, before switching Macs, or when asked what is unsynced or what is left to commit."
 ```

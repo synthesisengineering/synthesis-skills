@@ -1,61 +1,74 @@
-# Contents (added for navigation in synthesis-model-tiers 3.0.0; data refreshed 2026-11-06):
+# Contents (added for navigation in synthesis-model-tiers 3.0.0; data refreshed 2026-11-20):
 # - sources: each documentation page, with URL, retrieval date, excerpt and the identifiers it documents
 # - providers: anthropic, openai, google, ollama; each model's native ID, status and sources
 # - selector_notes: what each client's selector does and does not prove
 # - excerpt_normalization
 schema_version: 1
 scope: public_identifier_documentation
-reviewed_on: '2026-11-06'
+reviewed_on: '2026-11-20'
 role_assignment: Synthesis recommendation based on provider descriptions; not a comparative benchmark
   result.
 sources:
   anthropic-models:
     url: https://platform.claude.com/docs/en/models/overview
-    retrieved: '2026-11-06'
-    excerpt: Claude API ID claude-fable-5-1 claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5
+    retrieved: '2026-11-20'
+    excerpt: Claude API ID claude-fable-5-2 claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5
     identifiers:
-    - claude-fable-5-1
+    - claude-fable-5-2
     - claude-opus-5-5
     - claude-sonnet-5-5
     - claude-haiku-5-5
   openai-astra:
-    url: https://developers.openai.com/api/docs/models/gpt-6-astra
-    retrieved: '2026-11-06'
-    excerpt: Our most capable model for the most demanding work.
+    url: https://developers.openai.com/api/docs/models/gpt-6.2-astra
+    retrieved: '2026-11-20'
+    excerpt: Our most capable model for your hardest projects, from start to finish.
     identifiers:
-    - gpt-6-astra
+    - gpt-6.2-astra
   openai-sol:
-    url: https://developers.openai.com/api/docs/models/gpt-6.1-sol
-    retrieved: '2026-11-06'
-    excerpt: Near-Astra performance for complex work at a lower cost.
+    url: https://developers.openai.com/api/docs/models/gpt-6.2-sol
+    retrieved: '2026-11-20'
+    excerpt: Our go-to model for everyday work, from coding to powering agents at scale.
     identifiers:
-    - gpt-6.1-sol
+    - gpt-6.2-sol
   openai-terra:
     url: https://developers.openai.com/api/docs/models/gpt-6.1-terra
-    retrieved: '2026-11-06'
+    retrieved: '2026-11-20'
     excerpt: A fast, efficient model for visual reasoning, precise computer use, and clear, natural writing.
     identifiers:
     - gpt-6.1-terra
   openai-luna:
     url: https://developers.openai.com/api/docs/models/gpt-6-luna
-    retrieved: '2026-11-06'
+    retrieved: '2026-11-20'
     excerpt: Our most efficient model for focused, high-volume tasks.
     identifiers:
     - gpt-6-luna
   google-models:
     url: https://aistudio.google.com/docs/models
-    retrieved: '2026-11-06'
-    excerpt: '[Gemini 3.5 Flash-Lite](/docs/models/gemini-3.5-flash-lite)'
+    retrieved: '2026-11-20'
+    excerpt: '[`gemini-3.5-flash-lite`](/docs/models/gemini-3.5-flash-lite)'
     identifiers:
-    - gemini-4-argon
-    - gemini-3.8-flash
+    - gemini-4-carbon
+    - gemini-4-neon
+    - gemini-4-hydrogen
     - gemini-3.5-flash-lite
-  google-argon:
-    url: https://aistudio.google.com/docs/models/gemini-4-argon
-    retrieved: '2026-11-06'
-    excerpt: Gemini 4 Argon (`gemini-4-argon`) is our flagship reasoning model
+  google-carbon:
+    url: https://aistudio.google.com/docs/models/gemini-4-carbon
+    retrieved: '2026-11-20'
+    excerpt: Gemini 4 Carbon (`gemini-4-carbon`) is our most capable reasoning model
     identifiers:
-    - gemini-4-argon
+    - gemini-4-carbon
+  google-neon:
+    url: https://aistudio.google.com/docs/models/gemini-4-neon
+    retrieved: '2026-11-20'
+    excerpt: Gemini 4 Neon (`gemini-4-neon`) brings frontier-level intelligence with fast end-to-end task completion
+    identifiers:
+    - gemini-4-neon
+  google-hydrogen:
+    url: https://aistudio.google.com/docs/models/gemini-4-hydrogen
+    retrieved: '2026-11-20'
+    excerpt: Gemini 4 Hydrogen (`gemini-4-hydrogen`) brings cutting-edge intelligence to everyone
+    identifiers:
+    - gemini-4-hydrogen
   ollama-gemma:
     url: https://ollama.com/library/gemma4/tags
     retrieved: '2026-11-06'
@@ -102,8 +115,8 @@ sources:
     identifiers: []
   codex-models:
     url: https://learn.chatgpt.com/docs/models
-    retrieved: '2026-09-25'
-    excerpt: codex -m gpt-6-astra
+    retrieved: '2026-11-20'
+    excerpt: codex -m gpt-6.2-astra
     identifiers: []
   claude-code-models:
     url: https://code.claude.com/docs/en/model-config
@@ -112,10 +125,10 @@ sources:
     identifiers: []
 providers:
   anthropic:
-    verified: '2026-11-06'
+    verified: '2026-11-20'
     models:
-      claude-fable-5-1:
-        native_id: claude-fable-5-1
+      claude-fable-5-2:
+        native_id: claude-fable-5-2
         status: documented
         sources:
         - anthropic-models
@@ -135,15 +148,15 @@ providers:
         sources:
         - anthropic-models
   openai:
-    verified: '2026-11-06'
+    verified: '2026-11-20'
     models:
-      gpt-6-astra:
-        native_id: gpt-6-astra
+      gpt-6.2-astra:
+        native_id: gpt-6.2-astra
         status: documented
         sources:
         - openai-astra
-      gpt-6.1-sol:
-        native_id: gpt-6.1-sol
+      gpt-6.2-sol:
+        native_id: gpt-6.2-sol
         status: documented
         sources:
         - openai-sol
@@ -158,19 +171,26 @@ providers:
         sources:
         - openai-luna
   google:
-    verified: '2026-11-06'
+    verified: '2026-11-20'
     models:
-      gemini/gemini-4-argon:
-        native_id: gemini-4-argon
+      gemini/gemini-4-carbon:
+        native_id: gemini-4-carbon
         status: documented
         sources:
         - google-models
-        - google-argon
-      gemini/gemini-3.8-flash:
-        native_id: gemini-3.8-flash
+        - google-carbon
+      gemini/gemini-4-neon:
+        native_id: gemini-4-neon
         status: documented
         sources:
         - google-models
+        - google-neon
+      gemini/gemini-4-hydrogen:
+        native_id: gemini-4-hydrogen
+        status: documented
+        sources:
+        - google-models
+        - google-hydrogen
       gemini/gemini-3.5-flash-lite:
         native_id: gemini-3.5-flash-lite
         status: documented
@@ -225,9 +245,9 @@ providers:
         sources:
         - ollama-gemma
 selector_notes:
-  codex: Full GPT-6 and GPT-6.1 model IDs are documented client selectors. Local client catalogs, API
-    capabilities, account access, active selection, and effort are separate evidence planes. No client or
-    API execution was performed for this refresh.
+  codex: Full GPT-6.2, GPT-6.1 and GPT-6 model IDs are documented client selectors. Local client catalogs,
+    API capabilities, account access, active selection, and effort are separate evidence planes. This refresh
+    rests on documentation alone; no client or API execution is evidence here.
   claude-code: Full Claude API IDs are accepted on the Anthropic API route. Family aliases vary with client
     version, endpoint and configuration; Bedrock, Foundry and Google Cloud deployments need their own
     selectors. Account access remains unknown.

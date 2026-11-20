@@ -25,3 +25,11 @@ Every part of the 1.1.0 SKILL.md and where it lives now. Nothing was removed.
 | The five Related entries (`synthesis-thinking-framework`, `synthesis-content-quality`, `synthesis-content-framing`, `synthesis-article-writing`, `synthesis-fact-checking`) | Each link now starts `../../` instead of `../`, because the list moved one directory deeper into references/. The words are unchanged. |
 
 One output path that named the author's own private repository became the placeholder `<your knowledge repo>/projects/<project>/drafts/`: the public plugin must not carry personal paths.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Pre-writing reader briefing, required before drafting a public article that draws on internal source material. Catches insider context collapse and declares series dependency. Use to write or plan an article, brief the audience, do pre-writing, ask who this is for, or settle a prerequisite."
+```

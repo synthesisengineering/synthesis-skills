@@ -1,6 +1,6 @@
 ---
 name: synthesis-pr-review
-description: "Delta review of a pull request in a synthesis-coded project: regression risk, root cause, scope, and handoff to adopt-and-adapt integration. Use when asked to: PR review, pull request, code review, review PR, delta review, review pull request, check PR, evaluate PR."
+description: "Review a pull request's changes: regression risk, root cause, scope, then hand off to integration. Use to review or check a PR."
 license: "CC0-1.0"
 depends_on: ["synthesis-code-integration", "synthesis-codebase-review"]
 metadata:
@@ -26,7 +26,7 @@ A pull request in a synthesis-coded project is not just "does the code work?" It
 6. **Grade every finding:** Must fix (blocks merge), Should fix, Consider or Nit. Be specific, explain the consequence, and name what is good, so the contributor knows what blocks merge and what to repeat.
 7. **No rubber stamps.** An approval without reading creates a false record; if you lack the time, say so.
 8. **Check the project's own conventions first** (`CLAUDE.md`, `AGENTS.md`, project review checklists). One convention violation means checking the whole diff for related ones.
-9. **Approval is not authorization.** Technical acceptance, merge authorization, release or deployment authorization and the delivered outcome are separate facts under the [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.0/skills/synthesis-thinking-framework/references/decision-ownership.md); required remaining work stays an open obligation.
+9. **Approval is not authorization.** Technical acceptance, merge authorization, release or deployment authorization and the delivered outcome are separate facts under the [decision-ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-thinking-framework/references/decision-ownership.md); required remaining work stays an open obligation.
 10. **Merge is step one of two.** Run the project's post-merge verification, and flag files that other in-flight PRs also touch.
 
 ## Contents

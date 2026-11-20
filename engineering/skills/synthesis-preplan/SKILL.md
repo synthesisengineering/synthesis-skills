@@ -1,6 +1,6 @@
 ---
 name: synthesis-preplan
-description: "Lock architecture decisions for a ticket or issue with real design choices: resolve delegated technical choices, ask structured questions for the user's, and hand a reviewable decision set to the planning step. Use to preplan, pre-plan a ticket, lock decisions, or list its open design questions."
+description: "Lock a ticket's architecture decisions before planning: settle delegated choices, ask about the rest. Use to preplan or list open questions."
 license: "CC0-1.0"
 user-invocable: true
 depends_on: ["synthesis-code-audit"]
@@ -44,7 +44,7 @@ Rules 1 to 8 are the 1.1.0 rules, in their order.
 
 ## Decision ownership and execution mode
 
-Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.0/skills/synthesis-thinking-framework/references/decision-ownership.md) before asking or locking a choice. Record `supervised` or `delegated`, its controlling instruction, delegated scope and remaining approval gates. User and project instructions take precedence over this workflow's defaults. Existing grants remain usable within their scope; preferences and packet records do not create authority.
+Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-thinking-framework/references/decision-ownership.md) before asking or locking a choice. Record `supervised` or `delegated`, its controlling instruction, delegated scope and remaining approval gates. User and project instructions take precedence over this workflow's defaults. Existing grants remain usable within their scope; preferences and packet records do not create authority.
 
 For an explicitly supervised preplanning session, pause at the assessment, decision summary and handoff review points below. For delegated work, publish those artifacts as checkpoints and continue through technical choices without another approval. An explicit user-requested pause remains binding in either mode. Keep the same verification and independent audit obligations.
 

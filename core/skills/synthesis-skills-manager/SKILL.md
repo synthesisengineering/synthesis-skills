@@ -1,6 +1,6 @@
 ---
 name: synthesis-skills-manager
-description: "Release the synthesis-skills plugin and keep skill installs true to source: one releaser at a time, push, install in Claude Code, Codex and Muse, verify installed bytes. Use to release, publish, install or update skills, check drift or provenance, or synthesis-merge a skill."
+description: "Release the synthesis-skills plugin and keep installs true to source in Claude Code, Codex and Muse. Use to release or update skills."
 license: "CC0-1.0"
 depends_on: ["synthesis-onboarding"]
 metadata:

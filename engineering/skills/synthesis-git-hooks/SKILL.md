@@ -1,6 +1,6 @@
 ---
 name: synthesis-git-hooks
-description: "Commit-time protection: blocks credentials, private keys and credential files in every repo, and unapproved disclosures where outsiders read it (class read from push remotes, with a disclosure ledger). Use to install, configure or debug the commit check, or when a commit is refused."
+description: "Commit check that blocks credentials, keys and unapproved disclosures. Use to install, configure or debug it, or when a commit is refused."
 license: "Apache-2.0"
 depends_on: ["synthesis-project-management"]
 metadata:
@@ -9,6 +9,7 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: engineering
 ---
 
 # Synthesis Git Hooks

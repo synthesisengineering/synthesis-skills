@@ -71,3 +71,11 @@ For positive principles (what to DO instead of what to avoid), use [`synthesis-w
 - [`synthesis-article-writing`](../synthesis-article-writing/SKILL.md) — End-to-end article workflow with quality gates
 - [`synthesis-article-refresh`](../synthesis-article-refresh/SKILL.md) — Refresh and revitalize older articles
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Catch human-source bad-writing patterns: humble-bragging, credential-stuffing, throat-clearing, caveat overload, reader flattery or condescension, weak sentences, cliché, register mismatch, needless edits. Use when reviewing, editing or self-editing prose, or scanning an archive."
+```

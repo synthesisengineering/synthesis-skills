@@ -1,6 +1,6 @@
 ---
 name: synthesis-catchup-ledger
-description: "Reconcile missed and pending commitments after a break in the daily-ritual cadence: sweep plans, transcripts and context over any window, classify every item into a dated catch-up ledger, and route survivors without flooding the plan. Use for post-vacation catch-up or what did I miss."
+description: "Reconcile missed and pending commitments after a break into a dated catch-up ledger. Use after time away or for 'what did I miss'."
 license: "CC0-1.0"
 depends_on: ["synthesis-daily-rituals", "synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:

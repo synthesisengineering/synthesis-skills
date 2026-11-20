@@ -48,3 +48,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Capture durable session facts in an OKF knowledge base: corpus-wide dedup, confidentiality routing, conflict reconciliation, provenance, shipping via synthesis-kb-edit. Use at session end, to capture or update knowledge, or to keep corrected facts about people, organizations, products or decisions."
+```

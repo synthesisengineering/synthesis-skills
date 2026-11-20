@@ -30,3 +30,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Combine multiple LLM responses into a single unified document. Use when asked to combine responses, merge outputs, synthesize responses, unify documents, or consolidate multiple AI-generated answers into one comprehensive result."
+```

@@ -8,6 +8,7 @@ Contents:
 - 5.0.0 to 5.1.0: SKILL.md; after the first gate; files unchanged
 - 4.2.0 to 5.0.0 (v5): SKILL.md sections, reference files, lines the coverage check reported, tests and the
   slop-detection manifest, the 4.2.0 frontmatter, the 4.2.0 lines with old link paths
+- The full description, word for word
 
 ## 5.0.0 to 5.1.0: the rewrite to the D8 standard
 
@@ -222,4 +223,12 @@ Detailed catalog content lives in the [references/](references/) subfolder:
 - [calibration-tables.md](references/calibration-tables.md): Two-axis calibration with per-family per-zone tables and ESL safe-harbor.
 - [historical-patterns.md](references/historical-patterns.md): Historical and Deprecated patterns for forensic analysis of older content.
 - [bibliography.md](references/bibliography.md): Consolidated bibliography with verification status.
+```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Detect AI slop and empty substance in prose: model-family fingerprints (Claude, GPT, Gemini, Llama and more), substance and depth tests, combined signals, two-axis calibration, ESL safe-harbor. Use for content quality, slop detection, AI content audits, editorial review and publishing standards."
 ```

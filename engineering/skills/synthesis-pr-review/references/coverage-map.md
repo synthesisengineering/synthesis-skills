@@ -24,3 +24,11 @@ Every part of the 1.2.0 SKILL.md and where it lives now. Nothing was removed.
 | Line | Change and reason |
 |---|---|
 | "The review findings feed directly into the integration plan. ..." (Integration with Adopt-and-Adapt) | The link to the decision-ownership contract now reads `../../synthesis-thinking-framework/references/decision-ownership.md`, because the paragraph moved one directory deeper into references/. The words are unchanged. |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Delta review of a pull request in a synthesis-coded project: regression risk, root cause, scope, and handoff to adopt-and-adapt integration. Use when asked to: PR review, pull request, code review, review PR, delta review, review pull request, check PR, evaluate PR."
+```

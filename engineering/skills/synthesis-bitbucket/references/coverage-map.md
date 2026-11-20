@@ -59,3 +59,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Work with Bitbucket Cloud via the open-source bkt CLI: PR lifecycle, repo and branch reads, and the bkt api escape hatch, with explicit repository binding and write-safety rules. Use when asked to: bitbucket, bkt, bitbucket pr, open bitbucket pr, review bitbucket pr, bitbucket cli, bitbucket api."
+```

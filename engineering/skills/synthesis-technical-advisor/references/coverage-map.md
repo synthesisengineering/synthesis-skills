@@ -10,3 +10,11 @@ Every part of the 1.0.0 SKILL.md and where it lives now. Nothing was removed.
 | Response Format, Code Standards, Recommendation Quality | SKILL.md (verbatim); distilled into Binding rules 1 to 5 |
 | Focus Areas | SKILL.md (verbatim) |
 | Binding rules, Contents | New in 2.0.0; each binding rule restates rules already in the sections above |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Configure an LLM as a senior technical advisor for software development and engineering. Use for technical advisor, tech setup, configure advisor, technical assistant, architecture review, code review guidance, and engineering decisions."
+```

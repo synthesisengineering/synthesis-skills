@@ -1,6 +1,6 @@
 ---
 name: synthesis-adversarial-review
-description: "Run bounded adversarial review by differently shaped agents against the principal's outcome: artifact-complete rounds, production-topology handoffs, concessions, a markdown findings table, sufficiency rulings, post-publication acceptance. Use for adversarial, cross-agent or red-team review."
+description: "Bounded adversarial review by differently shaped agents, with a findings table and rulings. Use for red-team or cross-agent review."
 license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:
@@ -23,7 +23,7 @@ Before freezing or accepting a package, apply the mandatory [domain contracts an
 The rules follow the protocol's sections in order, Purpose through Completion Report; [references/protocol.md](references/protocol.md) holds each section in full.
 
 1. **The review exists to deliver the principal's outcome:** the artifacts and enforced boundaries the principal asked to ship, at the accepted quality bar. Reviewer satisfaction, control growth and a large finding count are not completion criteria.
-2. **The review grants no publication, deployment, communication or repair authority.** Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.0/skills/synthesis-thinking-framework/references/decision-ownership.md) and record the technical sufficiency owner first.
+2. **The review grants no publication, deployment, communication or repair authority.** Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-thinking-framework/references/decision-ownership.md) and record the technical sufficiency owner first.
 3. **For [typed domain review](../synthesis-autopilot/references/domain-quality.md), freeze the accepted requirement, source universe, domain method and rubric before the attempt.** Replacing a reviewer without changed work or a concrete open risk does not justify another round.
 4. **Record the contract before dispatching a reviewer:** the principal outcome; the Closed review universe; consequence and depth; a Round-trip budget that counts principal courier crossings; and the Stop rule.
 5. **Executor and Adversarial reviewer are separate roles.** Rotate the blind spot, not the agent name. Concession is health: record what each side conceded.

@@ -78,3 +78,11 @@ Nothing of 2.0.0 moved or was removed; SKILL.md had room (6,001 bytes before).
 |---|---|
 | The principal's review caps of 2026-11-16: two review rounds per item, the materiality test after the second (an honest agent would hit the finding in ordinary work, or it appears in the principal's records), the open list for the rest, the coordinator bounding the review rather than the reviewer, at most three agents at once, and a release that ships what has passed review without waiting for another round | Binding rules 15 and 16 in SKILL.md, after rule 14, since they bound every section rather than follow one; [review-caps.md](review-caps.md) in full, listed in Contents |
 | Review round 1 of plan item 22.37: rounds are counted per item, so a fix, or a fix to a fix, never starts them again; after the second round the coordinator applies the materiality test and the adjudicator records its result, as binding rule 10 has only the adjudicator change a state | Binding rule 15 (its own text, reworded); [review-caps.md](review-caps.md); the findings template in [protocol.md](protocol.md#finding-ledger) gains a `Rounds:` line after its round-trip budget line, and no other line of it changed |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Run bounded adversarial review by differently shaped agents against the principal's outcome: artifact-complete rounds, production-topology handoffs, concessions, a markdown findings table, sufficiency rulings, post-publication acceptance. Use for adversarial, cross-agent or red-team review."
+```

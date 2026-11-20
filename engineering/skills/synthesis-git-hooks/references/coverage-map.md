@@ -15,6 +15,7 @@ appear unchanged in the named file. Code verdicts come from the v5 code evaluati
 - Frontmatter before v5 (verbatim)
 - Changed in the final v5 sweep
 - Changed for line approvals (2026-10-06)
+- The full description
 
 ## Coverage check result
 
@@ -138,3 +139,11 @@ The old line is verbatim in [preserved.md](preserved.md#replaced-in-the-final-v5
 
 The old per-repo-overrides.md line is verbatim in
 [preserved.md](preserved.md#replaced-by-line-approvals-2026-10-06).
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Commit-time protection: blocks credentials, private keys and credential files in every repo, and unapproved disclosures where outsiders read it (class read from push remotes, with a disclosure ledger). Use to install, configure or debug the commit check, or when a commit is refused."
+```

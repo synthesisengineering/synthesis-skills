@@ -1,6 +1,6 @@
 ---
 name: synthesis-absence-coordination
-description: "Coordinate an absence end to end (vacation, conference, family visit, medical leave): notification order, coverage and reachability, meeting release, personal-continuity notes, out-of-office set and clear, return sweep. Use when planning time off, announcing an absence or arranging coverage."
+description: "Plan an absence end to end: who to tell, coverage, meetings released, out-of-office on and off, the return sweep. Use for time off or leave."
 license: "Apache-2.0"
 depends_on: ["synthesis-chief-of-staff", "synthesis-agent-correspondence", "synthesis-catchup-ledger"]
 metadata:

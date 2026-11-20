@@ -1,6 +1,6 @@
 ---
 name: synthesis-implementation-integrity
-description: "Verify an implementation is genuinely complete before calling it done: trace data chains, find placeholders, audit test honesty, check environment parity and boundaries. Use to verify implementation, check completeness, answer is this done, or run an integrity, self-review, pre-PR or ship check."
+description: "Verify work is complete before calling it done: data chains, placeholders, honest tests. Use for 'is this done?', self-review, ship checks."
 license: "CC0-1.0"
 depends_on: []
 metadata:

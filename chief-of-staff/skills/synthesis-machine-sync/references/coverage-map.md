@@ -65,3 +65,11 @@ machine-sync had no scripts of its own; its engines lived in synthesis-project-m
 live: the strand scan and arrive-without-overwriting in synthesis-daily-rituals
 (`tests/test_repo_state.py`), handoff in the core (`tests/test_handoff.py`), resume warnings in
 the core (`tests/test_resume.py`).
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Move work between the principal's Macs and bring a Mac in or out: leave with synthesis handoff, arrive and resume, set up a new Mac, retire an old one. Use for: move work to another Mac, resume on another Mac, machine sync, bootstrap a new Mac, enroll a Mac, retire a Mac."
+```

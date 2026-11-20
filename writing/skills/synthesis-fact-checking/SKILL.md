@@ -1,6 +1,6 @@
 ---
 name: synthesis-fact-checking
-description: "Fact-check articles, posts, news and AI-synthesized content before publication: claims, quotes, studies, URLs and laundered citations. Use to fact-check, verify claims or sources, check accuracy, verify citations, validate references, or audit AI-summarized content."
+description: "Fact-check articles, posts and AI-summarized content before publication: claims, quotes, studies, URLs. Use to verify claims or citations."
 license: "CC0-1.0"
 depends_on: ["synthesis-content-quality"]
 metadata:

@@ -68,4 +68,12 @@ The R1.1 resume scenarios from the v5 code evaluation (wrong project, held
 project, unknown id, behind upstream, unreachable remote, newer worktree copy,
 diverged copies, future dates and the generated index) are tests in the
 plugin's `tests/test_resume.py`; see synthesis-project-management's
-[coverage map](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.0/skills/synthesis-project-management/references/coverage-map.md#edge-cases-from-the-code-evaluation).
+[coverage map](https://github.com/synthesisengineering/synthesis-skills/blob/v5.29.1/skills/synthesis-project-management/references/coverage-map.md#edge-cases-from-the-code-evaluation).
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Start or resume any synthesis project in any harness on any machine with verified context: classify the session (continuing, fresh, wrong project), load the records, respect live claims, surface other Macs' changes. Use when pasting a resume prompt or (re)opening project work."
+```

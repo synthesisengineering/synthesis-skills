@@ -85,3 +85,11 @@ metadata:
   platform: "macOS (Apple Silicon and Intel)"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Manifest-driven inbox cleanup for iCloud/IMAP, Microsoft 365 and outlook.com (Mail.app) and Gmail (workspace-mcp, server-side filters), with prompt-injection defenses. Use to clean up an inbox, sweep email, categorize senders, build email rules, archive promotions or set up Gmail filters."
+```
