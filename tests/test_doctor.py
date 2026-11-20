@@ -210,6 +210,45 @@ def test_listing_parsers_read_each_cli_shape(tmp_path):
     assert doctor.muse_entry({"error": {"code": "unknown-plugin"}}) is None
 
 
+CORE_ID, WRITING_ID = "synthesis-skills-core@synthesis-collections", "synthesis-skills-writing@synthesis-collections"
+
+
+def test_a_collections_install_is_guarded_by_its_core_and_the_listings_say_so(tmp_path):
+    """Ruling C8 (2026-11-20): a person may pick collections in place of the whole set, and the core collection then
+    carries the guard. Of what a harness lists, the guard's plugin is the whole set or the core: never both, since every
+    hook would run twice, and a collection with neither has no guard. Claude Code reads a plugin of a folder marketplace
+    in place (`readFromFolder`, Claude Code 2.1.316), so that is the folder its hooks run from."""
+    claude = [{"id": CORE_ID, "version": "5.0.0", "enabled": True, "installPath": str(tmp_path / "cache"),
+               "readFromFolder": str(tmp_path / "collections" / "core")},
+              {"id": WRITING_ID, "version": "5.0.0", "enabled": True, "installPath": str(tmp_path / "w")}]
+    assert doctor.claude_entry(claude) is None  # the whole set's own entry, which setup and a release read
+    guard = doctor.guard_entry(doctor.claude_entries(claude))
+    assert (guard["name"], guard["id"], guard["path"], guard.get("problem")) == (
+        "synthesis-skills-core", CORE_ID, tmp_path / "collections" / "core", None)
+    whole = {"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(tmp_path)}
+    assert doctor.guard_entry(doctor.claude_entries([whole])) == doctor.claude_entry([whole])  # the whole set, as before
+    twice = doctor.guard_entry(doctor.claude_entries([whole, *claude]))["problem"]
+    assert "synthesis-skills and synthesis-skills-core are both installed" in twice and "twice" in twice
+    bare = doctor.guard_entry(doctor.claude_entries(claude[1:]))["problem"]
+    assert bare.startswith("synthesis-skills-writing is installed without synthesis-skills-core, which carries the guard")
+    assert doctor.guard_entry(doctor.claude_entries([{"id": "other@x", "enabled": True}])) is None
+    cache = tmp_path / ".codex" / "plugins" / "cache" / "synthesis-collections" / "synthesis-skills-core" / "5.0.0"
+    cache.mkdir(parents=True)
+    codex = {"installed": [{"pluginId": CORE_ID, "name": "synthesis-skills-core", "marketplaceName": "synthesis-collections",
+                            "version": "5.0.0", "enabled": True}], "available": []}
+    assert doctor.codex_entry(codex, tmp_path / ".codex") is None
+    guard = doctor.guard_entry(doctor.codex_entries(codex, tmp_path / ".codex"))
+    assert (guard["id"], guard["path"]) == (CORE_ID, cache)
+    core = muse_inspect(tmp_path, id="synthesis-skills-core")
+    assert doctor.muse_entry(core) is None and doctor.muse_entry(core, doctor.CORE)["name"] == "synthesis-skills-core"
+
+
+def test_a_muse_approval_that_waits_names_the_plugin_that_carries_the_guard(tmp_path):
+    check = doctor.check_muse_approval(muse_inspect(tmp_path, status="untrusted", id="synthesis-skills-core"))
+    assert check.status == "fail" and check.detail.startswith("run `muse plugins approve synthesis-skills-core`: ")
+    assert doctor.waits_on_person(check)
+
+
 def test_plugin_hooks_json_is_wired_to_the_stable_hook():
     commands = [(e, h["command"]) for e, _, h in doctor.hooks_json_entries(REPO_HOOKS)]
     assert doctor.check_hooks_wired("claude", commands).status == "ok"
@@ -1858,6 +1897,74 @@ def test_a_listed_plugin_whose_folder_cannot_be_found_fails_its_line_and_the_doc
     assert doctor.main([]) == 1
     lines = codex_lines(capsys)
     assert lines["codex package"].split()[0] == "fail" and "no v5 runtime package" in lines["codex package"]
+
+
+# ---- a collections install: the core carries the guard (ruling C8, 2026-11-20) -------------------------------------
+# A person who picks collections has the core collection and the ones picked in each harness, from the collections'
+# marketplace, and the core carries the whole set's hooks and the runtime they run. The doctor holds the core to every
+# check it holds the whole set to: installed and enabled, its bytes the runtime's, its hooks wired, approved where the
+# harness asks. A harness that holds the whole set and the core runs every hook twice; one with a collection and
+# neither has no guard. Codex is asked for the collections' own marketplace, as it is for the whole set's.
+
+def collections_machine(machine, tmp_path):
+    """The machine with the core and the writing collection in each harness in place of the whole set."""
+    home, fakebin, muse_dir = machine
+    claude_dir = home / ".claude" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0"
+    writing = tmp_path / "writing"
+    writing.mkdir()
+    fake_cli(fakebin, "claude", [{"id": CORE_ID, "version": "5.0.0", "enabled": True, "installPath": str(tmp_path / "cache"),
+                                  "readFromFolder": str(claude_dir)},
+                                 {"id": WRITING_ID, "version": "5.0.0", "enabled": True, "installPath": str(writing)}])
+    cache = home / ".codex" / "plugins" / "cache"
+    (cache / "synthesis-collections").mkdir()
+    (cache / "synthesis-engineering" / "synthesis-skills").rename(cache / "synthesis-collections" / "synthesis-skills-core")
+    listed = [{"pluginId": plugin, "name": plugin.split("@")[0], "version": "5.0.0", "marketplaceName": "synthesis-collections",
+               "enabled": True} for plugin in (CORE_ID, WRITING_ID)]
+    fake_cli(fakebin, "codex", {"installed": listed, "available": []})
+    config = home / ".codex" / "config.toml"
+    config.write_text(config.read_text().replace(PLUGIN_ID, CORE_ID))
+    fake_cli(fakebin, "muse", muse_inspect(muse_dir, id="synthesis-skills-core"))
+    return home, fakebin
+
+
+def test_the_doctor_holds_a_collections_core_to_every_check_it_holds_the_whole_set_to(machine, tmp_path, capsys):
+    home, fakebin = collections_machine(machine, tmp_path)
+    log = codex_listings(fakebin, limited={"installed": [], "available": []}, whole="hang")  # never waited on
+    assert doctor.main([]) == 0, capsys.readouterr().out
+    lines = {" ".join(line.split()[1:3]): line for line in capsys.readouterr().out.splitlines()[1:]}
+    for harness in ("claude", "codex", "muse"):
+        assert lines[f"{harness} plugin"].split()[0] == "ok" and "synthesis-skills-core 5.0.0 installed" in lines[f"{harness} plugin"]
+        assert lines[f"{harness} package"].split()[0] == "ok"
+        assert lines[f"{harness} hooks"].split()[0] == "ok"
+    assert lines["codex hook"].split()[0] == "ok" and lines["muse hook"].split()[0] == "ok"
+    assert log.read_text().splitlines() == [LIMITED]
+
+
+def test_the_doctor_fails_a_harness_that_runs_the_guard_twice_or_holds_a_collection_without_it(machine, tmp_path, capsys):
+    home, fakebin = collections_machine(machine, tmp_path)
+    claude_dir = home / ".claude" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0"
+    whole = {"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(claude_dir)}
+    core = {"id": CORE_ID, "version": "5.0.0", "enabled": True, "installPath": str(claude_dir)}
+    writing = {"id": WRITING_ID, "version": "5.0.0", "enabled": True, "installPath": str(tmp_path)}
+    for listing, said in (([whole, core, writing], "synthesis-skills and synthesis-skills-core are both installed"),
+                          ([writing], "synthesis-skills-writing is installed without synthesis-skills-core")):
+        fake_cli(fakebin, "claude", listing)
+        assert doctor.main([]) == 1
+        line = next(line for line in capsys.readouterr().out.splitlines() if line.split()[1:3] == ["claude", "plugin"])
+        assert line.split()[0] == "fail" and said in line, line
+
+
+def test_codex_is_asked_for_the_collections_marketplace_beside_the_whole_sets(machine, tmp_path, capsys):
+    """Asked for one marketplace, Codex fetches no remote catalog: a collections install is found as fast as the whole
+    set, and the whole set with the core beside it is found at all."""
+    home, fakebin = collections_machine(machine, tmp_path)
+    log = codex_listings(fakebin, limited={"installed": [ENTRY], "available": []}, whole="hang")
+    (home / ".codex" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills").mkdir()
+    shutil.copytree(home / ".codex" / "plugins" / "cache" / "synthesis-collections" / "synthesis-skills-core" / "5.0.0",
+                    home / ".codex" / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0")
+    assert doctor.main([]) == 1
+    line = codex_lines(capsys)["codex plugin"]
+    assert line.split()[0] == "fail" and "both installed" in line and log.read_text().splitlines() == [LIMITED]
 
 
 @pytest.mark.parametrize("printed, expected", [
