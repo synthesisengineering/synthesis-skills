@@ -68,7 +68,7 @@ than half-reading it.
   `critical_words` list in a workspace's settings, or under `defaults` for every workspace, replaces the words that
   flag an untagged deadline as possibly critical ([critical-deadlines.md](critical-deadlines.md)), and a
   `ledger_closed_words` list there adds a seat's own words and phrases to the ones that close a ledger's row. Either
-  list at the top of `config.json` is read for no workspace, so the rituals refuse it and name where it goes (5.28.3). `"lapse_register": "<file>"`, written from the root or the home folder, names the workspace's lapse register for `lapse.py` and `lapse_review.py`; one helper writes a lapse at a time, by a lock beside this config (`lapse.lock`). `"commitment_check": true` (or `{"from": "YYYY-MM-DD"}` for its first day) has
+  list at the top of `config.json` is read for no workspace, so the rituals refuse it and name where it goes (5.28.2). `"lapse_register": "<file>"`, written from the root or the home folder, names the workspace's lapse register for `lapse.py` and `lapse_review.py`; one helper writes a lapse at a time, by a lock beside this config (`lapse.lock`). `"commitment_check": true` (or `{"from": "YYYY-MM-DD"}` for its first day) has
   `record` refuse a clean outcome while a commitment of the newest plan carries no date and no park, or an open
   dated item no Decay ID; only a missing key or `false` leaves it off. `streak: expected-days` counts an unbroken run over
   days the workspace is expected to close; working on a day that is not expected credits the

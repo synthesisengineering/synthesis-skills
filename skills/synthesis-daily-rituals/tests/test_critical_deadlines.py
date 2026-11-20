@@ -222,7 +222,7 @@ def test_a_workspaces_own_critical_words_flag_its_untagged_items(tmp_path):
 
 @pytest.mark.parametrize("key", ["critical_words", "ledger_closed_words"])
 def test_a_word_list_at_the_top_of_the_ritual_config_is_refused_by_name(tmp_path, key):
-    """Before 5.28.3 the sweep read these lists only at the top of config.json, while each workspace's settings live
+    """Before 5.28.2 the sweep read these lists only at the top of config.json, while each workspace's settings live
     in its own file or under `defaults`. A list left at the top is read for no workspace, so it is refused, naming
     where it goes, rather than ignored."""
     root, state = tmp_path / "plans", tmp_path / "state"
