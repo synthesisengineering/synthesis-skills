@@ -6,7 +6,6 @@ that home the default home's are still guarded; and the sandbox's sealed set hol
 plugins. Every home here is a temporary folder: nothing signs in."""
 
 import json
-import os
 import re
 
 import pytest

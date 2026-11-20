@@ -143,7 +143,7 @@ hooks before anyone signs in). Its entry names the folder in `claude_home`, and 
   browser call, and a selection record that cannot be read shows no selection.
 
 A board task is another session's message, never the principal's approval: every send, upload and form save in the
-seat waits for his code, typed in the seat's own window. The guard runs only where the seat's hooks run, so a folder
+seat waits for the principal's code, typed in the seat's own window. The guard runs only where the seat's hooks run, so a folder
 whose hooks do not run has no guard at all, and no synthesis code runs at such a seat's start to say so: the doctor
 fails that folder (the folder missing, the plugin missing or off there, its hooks not wired, or a settings layer it
 reads, its organization's server-managed settings among them, turning hooks off), and a seat runs `synthesis doctor`
