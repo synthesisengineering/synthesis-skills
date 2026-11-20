@@ -437,8 +437,13 @@ def acquire_org(url: str, root: Path = None) -> tuple:
 
 
 def install_org_skills(repo: Path, dry_run: bool = False) -> list:
-    """Copy the repository's skills into Claude Code's and the Agent Skills folders (never
-    ~/.codex/skills, which Codex owns). A copy someone edited since setup wrote it is kept. A dry run writes nothing."""
+    """Install the repository's skills once, in the Agent Skills folder (~/.agents/skills, which Codex and Muse read;
+    never ~/.codex/skills, which Codex owns), and make Claude Code's entry, ~/.claude/skills/<name>, the relative link
+    ../../.agents/skills/<name>: Muse reads both folders and warns once for each skill it finds in both, and a link to
+    one folder counts once. A copy someone edited since setup wrote it is kept, and so is a link of the person's. A
+    second copy an earlier setup wrote in Claude Code's folder is moved aside, compared with its source (or with what
+    setup or 4.x wrote there), and only then removed; one that differs is kept in a dated backup folder. A dry run
+    writes nothing, and a second run changes nothing."""
     nested, flat = sorted(repo.glob("skills/*/SKILL.md")), sorted(repo.glob("*/SKILL.md"))
     if nested and flat:
         raise setup.SetupError(f"{repo.name} has skills both under skills/ and at its root; use one layout")
@@ -447,24 +452,131 @@ def install_org_skills(repo: Path, dry_run: bool = False) -> list:
         ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         ledger = {}
-    lines = []
+    before, lines = dict(ledger), []
+    backup = setup.install._home() / "backups" / f"org-skills.{time.strftime('%Y%m%dT%H%M%S')}"
     for skill in [p.parent for p in nested or flat]:
-        done = []
-        for root, harness in ((Path.home() / ".claude" / "skills", "Claude Code"), (Path.home() / ".agents" / "skills", "Codex")):
-            dest = root / skill.name
-            if dest.exists() and ledger.get(str(dest)) != _digest(dest) and not _from_4x(dest, repo, skill):
-                lines.append(f"{dest}: {'would keep' if dry_run else 'kept'} (changed since setup wrote it, or not written by setup)")
-                continue
-            if not dry_run:
-                setup.export_tree(skill, dest)  # staging, then an atomic rename
-                ledger[str(dest)] = _digest(dest)
-            done.append(harness)
-        if done:
-            lines.append(f"skill {skill.name}: {'would install' if dry_run else 'installed'} for {' and '.join(done)}")
-    if not dry_run:
+        agents, claude = Path.home() / ".agents" / "skills" / skill.name, Path.home() / ".claude" / "skills" / skill.name
+        recorded = ledger.get(str(claude))  # what an earlier setup wrote there, if it recorded it
+        copy = _one_copy(skill, repo, agents, ledger, dry_run)
+        lines.append(f"skill {skill.name}: {copy}; {_claude_entry(skill, repo, agents, claude, ledger, backup, dry_run)}")
+        for left in sorted(claude.parent.glob(f".{skill.name}.aside-*")) if claude.parent.is_dir() else []:
+            why = _matches(left, skill, repo, recorded)  # a copy an interrupted run moved aside: kept unless it holds nothing
+            if dry_run:
+                said = f"would remove it (it matches {why})" if why else f"would keep it in a dated backup under {backup.parent}"
+            elif why:
+                _remove(left)
+                said = f"removed (it matches {why})"
+            else:
+                said = f"kept in {_keep(left, backup)}"
+            lines.append(f"{left}: left aside by an interrupted run; {said}")
+    if not dry_run and ledger != before:
         ledger_path.parent.mkdir(parents=True, exist_ok=True)
         ledger_path.write_text(json.dumps(ledger, indent=1, sort_keys=True) + "\n", encoding="utf-8")
     return lines
+
+
+def _one_copy(skill: Path, repo: Path, agents: Path, ledger: dict, dry_run: bool) -> str:
+    """The skill's one real copy, in the Agent Skills folder: written where there is none, or where setup's own copy (or
+    4.x's) no one edited is not the source's; kept where someone changed it or it is not setup's."""
+    there = os.path.lexists(agents)
+    if there and (agents.is_symlink() or not agents.is_dir() or (
+            ledger.get(str(agents)) != _digest(agents) and _digest(agents) != _digest(skill) and not _from_4x(agents, repo, skill))):
+        return (f"would keep {agents}" if dry_run else f"{agents} kept") + " (changed since setup wrote it, or not written by setup)"
+    if there and _digest(agents) == _digest(skill):
+        if not dry_run:
+            ledger[str(agents)] = _digest(agents)  # the source's own bytes: setup's to replace when the source moves on
+        return f"current in {agents}"
+    if not dry_run:
+        agents.parent.mkdir(parents=True, exist_ok=True)
+        setup.export_tree(skill, agents)  # staging, then an atomic rename
+        ledger[str(agents)] = _digest(agents)
+    return (f"would update {agents}" if there else f"would install in {agents}") if dry_run else \
+        f"{'updated' if there else 'installed'} in {agents}"
+
+
+def _claude_entry(skill: Path, repo: Path, agents: Path, claude: Path, ledger: dict, backup: Path, dry_run: bool) -> str:
+    """Claude Code's entry for the skill, as the relative link to its one copy, checked before and after it changes: a
+    link of the person's to elsewhere stays; a second copy is moved aside, compared, and removed or kept in `backup`."""
+    text = f"../../.agents/skills/{skill.name}"
+    if claude.is_symlink():
+        if os.readlink(claude) != text:
+            return (f"would keep {claude}" if dry_run else f"{claude} kept") + f" (a link to {os.readlink(claude)}, not setup's)"
+        if not dry_run:
+            ledger.pop(str(claude), None)
+        return f"{claude} links to it"
+    if not os.path.lexists(claude):
+        if dry_run:
+            return f"would link {claude} to it"
+        _link(claude, text, agents)
+        return f"{claude} links to it"
+    recorded = ledger.get(str(claude))  # what setup wrote there, if it recorded it
+    if dry_run:
+        why = _matches(claude, skill, repo, recorded)
+        return f"would move the second copy at {claude} aside, " + (
+            f"remove it (it matches {why})" if why else
+            f"keep it in a dated backup under {backup.parent} (it differs from its source)") + f" and link {claude} to it"
+    aside = claude.with_name(f".{claude.name}.aside-{os.getpid()}")
+    os.rename(claude, aside)  # moved aside first: nothing is removed before it is compared
+    try:
+        _link(claude, text, agents)
+    except (OSError, setup.SetupError):
+        if claude.is_symlink():
+            claude.unlink()
+        os.rename(aside, claude)  # the second copy back where it was
+        raise
+    ledger.pop(str(claude), None)
+    why = _matches(aside, skill, repo, recorded)
+    if why:
+        _remove(aside)
+        return f"{claude}, a second copy that matched {why}, was removed and now links to it"
+    return f"{claude}, a second copy that differs from its source, was kept in {_keep(aside, backup)} and now links to it"
+
+
+def _remove(copy: Path) -> None:
+    """Remove a second copy `_matches` found the same as what it came from: a real folder, never what a link leads to."""
+    if copy.is_symlink() or not copy.is_dir():
+        raise setup.SetupError(f"{copy} is not a folder of its own, so it was not removed")
+    shutil.rmtree(copy)
+
+
+def _matches(copy: Path, skill: Path, repo: Path, recorded) -> str:
+    """What a second copy is the same as, so that removing it loses nothing of anyone's: its source, what setup recorded
+    writing there, or what 4.x installed from this repository; '' when it is none of them."""
+    if copy.is_symlink() or not copy.is_dir():
+        return ""
+    digest = _digest(copy)
+    return ("its source" if digest == _digest(skill) else "what setup wrote there" if recorded and digest == recorded
+            else "what 4.x installed" if _from_4x(copy, repo, skill) else "")
+
+
+def _keep(copy: Path, backup: Path) -> Path:
+    """Move a copy into the dated backup folder, under its skill's name (a number added when that is taken)."""
+    backup.mkdir(parents=True, exist_ok=True)
+    name, number = copy.name.lstrip(".").split(".aside-")[0], 1
+    dest = backup / name
+    while os.path.lexists(dest):
+        number += 1
+        dest = backup / f"{name}.{number}"
+    shutil.move(str(copy), str(dest))
+    return dest
+
+
+def _link(entry: Path, text: str, copy: Path) -> None:
+    """Make `entry` the relative link `text`, beside it then renamed into place, and check that it reads as `copy`. A
+    link of setup's own left beside it by an interrupted run goes; it holds nothing."""
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    for left in entry.parent.glob(f".{entry.name}.link-*"):
+        if left.is_symlink():
+            left.unlink()
+    made = entry.with_name(f".{entry.name}.link-{os.getpid()}")
+    try:
+        os.symlink(text, made)
+        os.replace(made, entry)
+    finally:
+        if os.path.lexists(made):
+            made.unlink()
+    if os.readlink(entry) != text or os.path.realpath(entry) != os.path.realpath(copy):
+        raise setup.SetupError(f"{entry} does not lead to {copy} once linked as {text}; check both, then run this again")
 
 
 def _from_4x(dest: Path, repo: Path, skill: Path) -> bool:
