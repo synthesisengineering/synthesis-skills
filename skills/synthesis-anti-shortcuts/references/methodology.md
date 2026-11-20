@@ -3,13 +3,13 @@
 The full text of the pattern, "Delivery is part of completeness", and methodology sections 1 to 8. Section numbers are load-bearing: other documents cite them (for example "§4–5" for sub-agent dispatch and acceptance).
 
 Contents:
-- The Pattern: the seven costumes and what each one actually is
+- The Pattern: the nine costumes and what each one actually is
 - Delivery is part of completeness
 - The Methodology: 1 constraint-first protocol, 2 decision versus asking, 3 costume vocabulary, 4 sub-agent dispatch hygiene, 5 sub-agent acceptance audit, 6 pre-response self-check, 7 capability-limit probe, 8 maintenance loop
 
 ## The Pattern
 
-Six surface presentations recur across incidents. The underlying behavior is the same in each: a choice was made to avoid harder work because the harder work felt risky, even though the user had explicitly removed that risk from the decision set. Pattern recognition matters more than memorizing any single phrase.
+Nine surface presentations recur across incidents. The underlying behavior is the same in each: a choice was made to avoid harder work because the harder work felt risky, even though the user had explicitly removed that risk from the decision set. Pattern recognition matters more than memorizing any single phrase.
 
 | Costume | Surface presentation | What it actually is |
 |---|---|---|
@@ -20,6 +20,8 @@ Six surface presentations recur across incidents. The underlying behavior is the
 | Archive value | "Leave the stale block; it has historical reference value." | Avoiding deletion work; git history already does this job. |
 | Dismissal | "Not a pain point today. Theoretical concern. Doesn't bite hard." | Predicting away a user-raised concern instead of solving it. |
 | Scope excuse | "Pre-existing; out of scope; not introduced by this change." | Avoiding fix-while-touching in code being actively modified. |
+| Capability surrender | "Blocked at the API level; not something I'll work around; you'll have to do this manually." | Reporting a fixable gap (an unconfigured app, an ungranted scope) as a settled boundary instead of finding another path. |
+| Effort rationale | "It does the job at a fraction of the cost." | Deciding by build cost after the user removed cost from the decision. |
 
 Each costume sounds reasonable in isolation. Each is the same shortcut wearing different clothes. The full catalog with rationale per phrase lives in [`references/costume-vocabulary.md`](costume-vocabulary.md).
 
@@ -60,7 +62,7 @@ The protocol: before drafting any question to the user, scan recent conversation
 
 ### 3. The Costume Vocabulary
 
-Memorize the seven category labels above. When drafting analysis or reading a sub-agent's report, scan for phrases that match any category. When a match appears, ask: is this phrase a real engineering constraint here, or is it a costume covering avoidance?
+Memorize the nine category labels above. When drafting analysis or reading a sub-agent's report, scan for phrases that match any category. When a match appears, ask: is this phrase a real engineering constraint here, or is it a costume covering avoidance?
 
 The test: did the user, explicitly or via standing constraints, ask the agent to optimize for the thing this phrase implies? If yes, the phrase is legitimate. If the user asked for the opposite — "best, most flexible, robust, maintainable solution; no shortcuts" — the phrase is a costume. Strip it from the draft.
 
@@ -100,7 +102,7 @@ The check on every sub-agent return:
 
 Before sending any draft analysis, recommendation, or implementation plan:
 
-1. Scan the draft for costume vocabulary across all seven categories.
+1. Scan the draft for costume vocabulary across all nine categories.
 2. For each match, classify: real constraint or costume?
 3. For each costume, rewrite. The rewrite executes on the actual goal, not the safer-feeling reframe.
 4. If the draft ends with a question, verify the question is constraint-neutral (item 2 above).
