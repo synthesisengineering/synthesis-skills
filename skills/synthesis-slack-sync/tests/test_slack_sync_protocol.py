@@ -24,6 +24,7 @@ def test_e01_threads_are_reread_whole_with_no_lower_bound():
 def test_e02_replies_to_older_threads_are_found_by_search():
     assert "Source D" in STEP2 and "search the window for the principal's own messages" in STEP2
     assert "joins the re-read list" in STEP2
+    assert "`from:<@principal_user_id>`" in STEP2 and "never `from:me`" in STEP2  # A21
 
 
 def test_e04_quiet_needs_a_positive_control_else_unknown():
