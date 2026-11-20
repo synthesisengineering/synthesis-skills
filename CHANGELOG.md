@@ -4,6 +4,19 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.28.3] - 2026-11-20
+
+- **synthesis-context-lifecycle 2.9.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole, with when it applies and why; the coverage map places every rule of 2.8.2, which stays verbatim in
+  `references/preserved.md`. The first text's gate found nothing weaker but no outright win (the blind comparison tied
+  14 to 14 on Opus): the judge preferred the earlier text's answers where the rewrite's left placeholders in log lines,
+  recited procedure, or ran past a length the request set. So the rules now give a requested format and length first,
+  fill each date and citation from a command run or a record read, and keep stamps to open-items lists; three
+  sentences the rewrite itself had added move word for word to references, keeping SKILL.md 400 bytes under its limit
+  (7,570 bytes). Second gate at six repetitions against the pinned earlier text, nothing weaker and something better
+  on both models: Opus 100% (78 of 78) against 97% (76 of 78), blind comparison won 23 to 11 with 8 ties; Sonnet 99%
+  (77 of 78) against 100% (78 of 78), inside the noise, won 18 to 14 with 10 ties; rule 1 won on each.
+
 ## [5.28.2] - 2026-11-20
 
 - **synthesis-content-quality 5.1.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
