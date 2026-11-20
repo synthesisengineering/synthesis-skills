@@ -3036,8 +3036,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # environment, in their lines); run_hook and check_home_self_test take the folder's environment in their lines. The
 # plugin 6 more in skills/synthesis-onboarding/scripts/setup.py: stage_sandbox (its docstring 1; nothing staged while a
 # folder the config names cannot be read, in a try, 5).
-CORE_BUDGET = 26689
-PLUGIN_BUDGET = 53501
+# Then each 7 more, all in synthesis/paths.py, for the rest of B1 (a config that will not parse before any was read in
+# full, so with no record, left a process its own folder alone): homes_unread 5 (its line, docstring 3, the config a
+# call is judged under then, naming each ~/.claude* folder in the home, 1) with its 2 blank lines; the hook's
+# unreadable config, and _homes' when the file cannot be read, are that config in their lines.
+CORE_BUDGET = 26696
+PLUGIN_BUDGET = 53508
 
 
 def _lines(files):

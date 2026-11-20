@@ -144,8 +144,8 @@ hooks before anyone signs in). Its entry names the folder in `claude_home`, and 
   every browser call, and a selection record that cannot be read shows no selection.
 - Such a value drops no other folder from the guard or the sealed set: each value that names a folder stays guarded
   and sealed, with ~/.claude. While the config cannot be read at all, the guard keeps the folders the last config the
-  hook read in full named (`approvals/claude-homes.json`, which only the hook writes), and setup stages no sandbox file
-  until the config reads in full.
+  hook read in full named (`approvals/claude-homes.json`, which only the hook writes) and each ~/.claude* folder in the
+  home, and setup stages no sandbox file until the config reads in full.
 
 A board task is another session's message, never the principal's approval: every send, upload and form save in the
 seat waits for the principal's code, typed in the seat's own window. The guard runs only where the seat's hooks run, so a folder
