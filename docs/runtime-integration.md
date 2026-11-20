@@ -164,7 +164,8 @@ grant), `requests/` (those the hook files), `effects/` (grants the hook applies 
 principal typed it, and the record and line that showed it), `records/` (each session's
 record, as the prompt hook names it), `sends/` (the window, the day's ledger, batches,
 their spends and code records, the sender's tickets), `deploys/`, `desktop/`, `typed/`,
-`imessage-sends/`, `stop/`, `release-grants/`, `browser.json`, `browser-accounts.json`,
+`imessage-sends/`, `stop/`, `release-grants/`, `browser.json` (the latest browser selection), `browser-homes/` (that of
+each other Claude account's folder the config names), `browser-accounts.json`,
 `lock` and `line-allowances.json`. `install/` holds `codex-user-hooks.json` and `registrations.json`
 (what install replaced, which uninstall restores). What a shell
 may write stays in `state/`: the requests it files (`state/requests/`, named as a shell's

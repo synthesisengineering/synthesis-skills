@@ -2977,8 +2977,43 @@ ROOT = Path(__file__).resolve().parents[1]
 # keeps a workspace's own settings, none on CI's runners): synthesis/rituals.py's workspace_files 2 more (its docstring
 # names the root, and the root read from SYNTHESIS_WORKSPACES, as the guard reads it, else ~/workspaces); the root
 # conftest.py 1 (its autouse fixture sets that root to an empty folder beside the synthesis home, for every test).
-CORE_BUDGET = 26416
-PLUGIN_BUDGET = 53221
+# Then each 213 more, and the plugin 1 more besides, for a seat signed in to another Claude account (C2, 2026-11-20:
+# Claude Code reaches only the browsers whose extension is signed in to its own Claude account, so a workspace whose
+# Chrome profile is paired with another account is worked from a Claude Code folder of its own, signed in to that one,
+# and synthesis keeps that folder as it keeps ~/.claude). synthesis/guards.py 59: _seat 34 (its line, docstring 7, the
+# config's Claude homes read in a try 4, the transcript read and no home configured 3, a payload that names no
+# transcript 3, the session's home and each entry's owner 2, its workspace's owner 1, a listing or the seat's own
+# workspace 2, the handoff 6, the refusal outside the bound workspace 5), _selection 6 (its line, docstring 3, the
+# import 1, the record by home 1) and _homes 9 (its line, docstring 2, read once a call, in a try, 6), each with its 2
+# blank lines; check_browser 2 more (its docstring 1, the seat judged before the workspace's rules 1; the record's
+# place and the home it names in its lines); _protected_roots 1 more (each Claude home's records); _entry 1 (each
+# entered call's homes its own); _env_key, _settings_map, _claude_parts, _check, SYNTHESIS_PLACES and _synthesis_reach
+# take the homes in their lines. synthesis/doctor.py 85: check_hooks_on 22 (its line, docstring 5, its name 1, the
+# plugin as each managed layer sets it 2, the three settings that turn hooks off 4, the PreToolUse handler 3, a fault
+# 2, a layer not read 3, ok 1), claude_home_checks 21 (its line, docstring 4, the loop and the folder's name 3, its
+# listing 1, a folder not there 4, its plugin 2, the plugin's own checks 4, its self-test 1, the answer 1), _layers 15
+# (its line, docstring 3, the import 1, the drop-ins 1, the loop 1, each layer read 6, its place 1, the answer 1) and
+# check_home_self_test 9 (its line, docstring 2, the payload 1, the run 1, ok 2, a fault 2), each with its 2 blank
+# lines; run_checks 8 more (the homes read in a try 6, each one's listing started 2; the config read once, before the
+# listings, in place of after them); check_claude_retention 2 more (its docstring 1, the folder named at the head of
+# each line 1); run_hook and _start take an environment in their lines. synthesis/paths.py 38: claude_homes 19 (its
+# line, docstring 5, the two keys read 2, a list of another shape 2, the folders and the home 1, the loop over both
+# keys' values 1, its text 1, no absolute or ~/ path 2, the folder 1, ~/.claude refused 2, the answer 1) and
+# claude_dirs 14 (its line, docstring 5, this process's own 1, the homes read in a try 6, the answer 1), each with its
+# 2 blank lines; harness_settings 1 more (its docstring; each Claude home's settings in its lines).
+# synthesis/approvals.py 11: _homes_records 7 (its line, docstring 2, read in a try 4) with its 2 blank lines;
+# _account_folders 1 more (its docstring; the homes' records in its line) and remember 1 more (the homes' records).
+# synthesis/sandbox.py 15: _claudes 13 (its line, docstring 5, the config read in a try 4, the variable and the default
+# folder 1, each folder with its state file 2) with its 2 blank lines, in place of claude_json's 5 and its 2; _harness 2
+# more (each other folder's records, settings, state and plugins), _write_area 2 more (each folder's added
+# directories), _claude_settings 1 more (its docstring), _commands 1 more (each folder's plugin hooks) and codex_rules 1
+# more (each folder read-only). synthesis/sessions.py 5: natives 5 more (its docstring 1; each Claude home's records,
+# and a config whose homes cannot be read named as unread, in a try 4). synthesis/review.py none: each Claude home's
+# transcripts line and the two new checks among NOT_RUN in their lines. The plugin 1 more in
+# skills/synthesis-onboarding/scripts/setup.py: configured_ref's docstring 1 more (the marketplace read from the folder
+# CLAUDE_CONFIG_DIR names, in its line).
+CORE_BUDGET = 26629
+PLUGIN_BUDGET = 53435
 
 
 def _lines(files):

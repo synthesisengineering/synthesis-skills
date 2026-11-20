@@ -83,6 +83,8 @@ conftest where a `testpaths` setting may send it), for what they run outside a t
 | `account_routing.workspaces` | none (nothing routed) | `{"<workspace root>": {"account": "<address>", "label": "<name>", "aliases": ["<other spellings>"]}}`. The deepest root containing the session's working directory wins; `~` and symlinks resolve. A root with no `account` blocks routed calls there. Not a map: routed calls block. |
 | `account_routing.default_account` | none | The account a connector with no account parameter acts as, so a call without one can be allowed where that is the right account. |
 | `browser_routing.workspaces` | none (no browser check) | `{"<workspace root>": {"device": "<deviceId from list_connected_browsers>", "label": "<name>"}}`. The deepest root containing the directory the session started in wins. Browser calls there must use that device (references/account-routing.md, "Browser profiles"). Not a map, or a root without a device: browser calls block. |
+| `browser_routing.workspaces.<root>.claude_home` | none (any session of the workspace) | A Claude Code configuration folder (`~/.claude-team`): the workspace's browser belongs to that folder's sessions alone. Claude Code reaches only the browsers whose extension is signed in to its own Claude account, so a workspace whose Chrome profile is paired with another account is worked from a seat started with `CLAUDE_CONFIG_DIR` naming a folder signed in to that account. Only sessions whose transcript lies in that folder's `projects` drive the entry's device; any other session started in the workspace is refused before it selects, and told to send the task to that seat (`synthesis msg`), the entry's `label` printed; and that folder's sessions drive no other entry's device, nor any from outside the workspace. The folder counts as listed in `claude_homes`. A path that is no absolute or `~/` path: browser calls block (references/account-routing.md, "A seat signed in to another Claude account"). |
+| `claude_homes` | none | Other Claude accounts' Claude Code configuration folders, beside ~/.claude: `["~/.claude-team"]`. Each one, and each `claude_home` above, is kept as ~/.claude is: its sessions are archived, the record an approval of its sessions is checked against resolves, its records, settings and shell snapshots are guarded and sealed, its latest browser selection is its own (one account's extension pairing cannot move another's), and `synthesis doctor` checks its plugin, hooks and settings, with a self-test run as its sessions run. List a folder before its seat signs in, so the doctor proves its hooks first. A value that is not a list of absolute or `~/` paths, or that names ~/.claude: browser calls block and the doctor fails. |
 | `browser_routing.workspaces.<root>.accounts` | none (no site is asked about) | `{"<a site, or the page of it that shows the signed-in account>": "<the workspace's address there>"}`. A browser call that puts something into a page of a named site (keys, a form's value, an upload, a script) waits until a read of the site in the session's record shows that address. A read that shows another of the principal's addresses is called a misconfiguration: the hold and the turn's end say so, and `synthesis doctor` warns until a later read shows the right account (references/account-routing.md, "The account a site shows"). A map of another shape: the workspace's browser calls block. |
 | `push_deploys` | none | Repository roots whose push publishes (for example Cloudflare Pages on main). A push into one, or into a linked worktree of one, is a deploy. |
 | `deploy_remotes` | none | GitHub repositories, as `owner/repo`, where a push or a merged pull request publishes (for example a Homebrew tap). A `git push` from a checkout with a remote on one, or `gh pr merge` on one (by `-R` or the checkout's remotes), is a deploy. |
@@ -153,10 +155,17 @@ where such an installer puts its scripts are judged by the name (the open list, 
       "~/workspaces/personal": {"account": "me@personal.example"}
     }
   },
+  "claude_homes": ["~/.claude-team"],
   "browser_routing": {
     "workspaces": {
       "~/workspaces/clientco": {"device": "11111111-2222-3333-4444-555555555555", "label": "ClientCo profile",
                                 "accounts": {"assistant.example/settings": "me@clientco.example"}},
+      "~/workspaces/team": {
+        "device": "22222222-3333-4444-5555-666666666666",
+        "label": "the team Chrome profile, me@team.example, driven only by the team-account seat (~/.claude-team)",
+        "claude_home": "~/.claude-team",
+        "accounts": {"chat.example": "me@team.example", "admin.platform.example": "me@team.example", "assistant.example": "me@team.example"}
+      },
       "~/workspaces/personal": {"device": "66666666-7777-8888-9999-000000000000", "label": "personal profile"}
     }
   },

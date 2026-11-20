@@ -106,8 +106,8 @@ What it does, when `browser_routing.workspaces` maps the workspace the session s
   principal clicks connect), are refused.
 - Every other browser call passes only when this session made the latest selection, to its device, and its
   transcript shows that call returned `Selected browser "..."` without an error. A selection by any other
-  session, to any device, re-arms the check, because the shared extension's browser or tab group may have
-  changed. The transcript is read once per selection, from its last 8 MB.
+  session of the same Claude home, to any device, re-arms the check, because the shared extension's browser or
+  tab group may have changed. The transcript is read once per selection, from its last 8 MB.
 
 The workspace is the one recorded when the session started, so a session that changes directory keeps its
 browser. Outside every mapped root, and with no `browser_routing`, nothing is checked. A malformed map or a
@@ -118,6 +118,38 @@ and browsers driven by other harnesses' own browser tools. The selection is read
 elsewhere it never confirms, so the calls stay blocked.
 
 Tests: `tests/test_browser_guard.py`.
+
+### A seat signed in to another Claude account
+
+Claude Code reaches only the browsers whose extension is signed in to its own Claude account and organization. A
+Chrome profile whose extension is paired with another account (a work profile with the work account) is invisible to
+every session of the default home, and today's rule would tell such a session to select a device it cannot see. So
+that workspace is worked from a seat: Claude Code started with `CLAUDE_CONFIG_DIR` naming a configuration folder of
+its own (`~/.claude-team`), signed in to that account, with the plugin installed there (`synthesis doctor` proves its
+hooks before anyone signs in). Its entry names the folder in `claude_home`, and the folder counts as one of
+`claude_homes` (references/config.md):
+
+- Only sessions whose transcript lies in that folder's `projects` drive the entry's device. Any other session
+  started in the workspace, of the default home, the desktop app's agent mode, another Claude home or another
+  harness, is refused before it selects: told to write the task to a file and send the seat its path with
+  `synthesis msg`, the entry's `label` printed. Listing still passes.
+- The folder's sessions drive no other entry's device, and none from outside that workspace.
+- Each Claude home the config names keeps its own latest selection (`approvals/browser-homes/`), since one account's
+  extension pairing cannot move another's; every other session shares `approvals/browser.json`, as before. Within a
+  home, another session's selection re-arms the check as above.
+- A session's home is where the hook payload's transcript lies, read past any link, never a variable such as
+  `CLAUDE_CONFIG_DIR`, which an agent's command can set. With a Claude home configured, a call whose payload names
+  no transcript is refused, its listing apart; a `claude_homes` or `claude_home` that names no folder blocks every
+  browser call, and a selection record that cannot be read shows no selection.
+
+A board task is another session's message, never the principal's approval: every send, upload and form save in the
+seat waits for his code, typed in the seat's own window. The guard runs only where the seat's hooks run, so a folder
+whose hooks do not run has no guard at all, and no synthesis code runs at such a seat's start to say so: the doctor
+fails that folder (the folder missing, the plugin missing or off there, its hooks not wired, or a settings layer it
+reads, its organization's server-managed settings among them, turning hooks off), and a seat runs `synthesis doctor`
+before it takes a task.
+
+Tests: `tests/test_browser_seats.py`.
 
 ## The account a site shows
 
