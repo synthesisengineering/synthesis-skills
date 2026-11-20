@@ -4,6 +4,17 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.28.3] - 2026-11-20
+
+- **The model table names November's releases** (model tiers 3.0.2). Every role list was verified on 2026-11-20
+  against the provider's own documentation, with the page, excerpt and identifiers in
+  `references/catalog-verification.yaml`. Anthropic judgment moves to `claude-fable-5-2`. OpenAI judgment moves to
+  `gpt-6.2-astra` and routine to `gpt-6.2-sol`, with `gpt-6.1-terra` still its alternative. Google judgment moves to
+  `gemini/gemini-4-carbon`, with `gemini/gemini-4-neon` as its alternative, and routine to `gemini/gemini-4-hydrogen`,
+  which Google names the upgrade from Gemini 3.8 Flash. `gemini/gemini-4-argon` leaves the table: Google's own model
+  comparison now covers only Carbon, Neon, Hydrogen and Flash-Lite. The Ollama lists keep their 2026-11-06
+  verification. Codex's model page now documents the GPT-6.2 IDs as client selectors.
+
 ## [5.28.1] - 2026-11-19
 
 - **synthesis-decision-packet 2.5.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is stated

@@ -80,12 +80,12 @@ def test_shipped_catalog_contract():
 def test_verified_role_assignments():
     catalog = yamlish.load((ROOT/'tiers.yaml').read_text(encoding='utf-8'))
     assert {role: catalog['providers']['openai'][role] for role in ROLES} == {
-        'judgment': ['gpt-6-astra'], 'routine': ['gpt-6.1-sol', 'gpt-6.1-terra'], 'bulk': ['gpt-6-luna']}
+        'judgment': ['gpt-6.2-astra'], 'routine': ['gpt-6.2-sol', 'gpt-6.1-terra'], 'bulk': ['gpt-6-luna']}
     assert {role: catalog['providers']['anthropic'][role] for role in ROLES} == {
-        'judgment': ['claude-fable-5-1', 'claude-opus-5-5'], 'routine': ['claude-sonnet-5-5'],
+        'judgment': ['claude-fable-5-2', 'claude-opus-5-5'], 'routine': ['claude-sonnet-5-5'],
         'bulk': ['claude-haiku-5-5']}
     assert {role: catalog['providers']['google'][role] for role in ROLES} == {
-        'judgment': ['gemini/gemini-4-argon'], 'routine': ['gemini/gemini-3.8-flash'],
+        'judgment': ['gemini/gemini-4-carbon', 'gemini/gemini-4-neon'], 'routine': ['gemini/gemini-4-hydrogen'],
         'bulk': ['gemini/gemini-3.5-flash-lite']}
     assert catalog['providers']['ollama']['judgment'][0] == 'gemma4:31b'
     assert catalog['providers']['ollama']['routine'][0] == 'qwen3.8:27b'
@@ -100,11 +100,11 @@ def test_negative_catalog_controls(defect):
     if defect == 'detached_evidence':
         catalog['verification'] = 'unrelated.yaml'
     elif defect == 'duplicate_role':
-        catalog['providers']['openai']['judgment'].append('gpt-6-astra')
+        catalog['providers']['openai']['judgment'].append('gpt-6.2-astra')
     elif defect == 'endpoint_access_inferred':
         catalog['providers']['openai']['endpoint_availability'] = 'verified'
     elif defect == 'missing_source':
-        evidence['providers']['openai']['models']['gpt-6-astra']['sources'] = ['nonexistent']
+        evidence['providers']['openai']['models']['gpt-6.2-astra']['sources'] = ['nonexistent']
     elif defect == 'wrong_host':
         evidence['sources']['openai-astra']['url'] = 'https://example.com/model'
     elif defect == 'restamped':
@@ -116,13 +116,13 @@ def test_negative_catalog_controls(defect):
     elif defect == 'wrong_namespace':
         catalog['providers']['google']['identifier_namespace'] = 'provider_api'
     elif defect == 'invented_native_id':
-        evidence['providers']['openai']['models']['gpt-6-astra']['native_id'] = 'invented'
+        evidence['providers']['openai']['models']['gpt-6.2-astra']['native_id'] = 'invented'
     elif defect == 'api_selector_prefix':
-        catalog['clients']['gemini-api']['google']['gemini/gemini-3.8-flash'] = 'gemini/gemini-3.8-flash'
+        catalog['clients']['gemini-api']['google']['gemini/gemini-4-hydrogen'] = 'gemini/gemini-4-hydrogen'
     elif defect == 'local_readiness_inferred':
         catalog['providers']['ollama']['hardware_fit'] = 'verified'
     elif defect == 'active_selection':
-        catalog['selected_model'] = 'gpt-6.1-sol'
+        catalog['selected_model'] = 'gpt-6.2-sol'
     elif defect == 'effort_default':
         catalog['reasoning_effort'] = 'max'
     elif defect == 'lost_retained_model':
