@@ -12,6 +12,7 @@ code evaluation (guards and rituals report, message-guard rows and its section t
 - message_guard.py, section by section
 - Edge cases and the tests that hold them
 - Frontmatter before v5 (verbatim)
+- The full description
 
 ## Coverage check result
 
@@ -111,4 +112,12 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Send guard for agent-drafted messages: no send or draft goes out until the principal approves that exact call, and the text passes the register scan and format rules (HTML email, whole paragraphs, linked signatures, literal Message-IDs). Use when composing, configuring, or when a send is blocked."
 ```

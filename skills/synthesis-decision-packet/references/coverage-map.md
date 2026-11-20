@@ -9,6 +9,7 @@ Contents:
   files unchanged
 - 1.8.0 to 2.0.0 (v5): the section map; existing reference files; lines the coverage check reports; the 1.8.0
   frontmatter; scripts in v5 (M3), with the replaced prose of 2.0.1
+- The full description, word for word
 
 ## 2.4.0 to 2.5.0: the rewrite to the D8 standard
 
@@ -190,3 +191,11 @@ Replaced prose, each kept verbatim in [preserved.md](preserved.md):
 - SKILL.md Contents and background.md, "the handoff queue (`synthesis-project-management/scripts/handoff.py`)": preserved.md, "The handoff queue" (2.0.1, final v5 sweep). Now "board messages between agents (`synthesis msg`)"; `handoff.py` was replaced by `synthesis msg` with a brief file. background.md's Changelog gained a 2.0.1 entry; version 2.0.0 became 2.0.1.
 - SKILL.md binding rule 9, "The context doctor fails unverifiable packet pages.": preserved.md, "The context doctor in binding rule 9" (2.0.1). Now "`synthesis doctor` flags unverifiable packet pages in its *decision packets* check", matching enforcement.md.
 
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Collect five or more parallel decisions from a principal in one sitting: a self-contained HTML packet with a recommendation per row, consequence-labeled buttons, notes and a paste-back summary, filed in the project. Use when a review, migration, upgrade, triage or backlog pass needs rulings."
+```

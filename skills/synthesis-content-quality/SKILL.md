@@ -1,6 +1,6 @@
 ---
 name: synthesis-content-quality
-description: "Detect AI slop and empty substance in prose: model-family fingerprints (Claude, GPT, Gemini, Llama and more), substance and depth tests, combined signals, two-axis calibration, ESL safe-harbor. Use for content quality, slop detection, AI content audits, editorial review and publishing standards."
+description: "Detect AI slop and empty substance in prose with model-family fingerprints and substance tests. Use for slop detection or editorial review."
 license: CC0-1.0
 depends_on: []
 metadata:

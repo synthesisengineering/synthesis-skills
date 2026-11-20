@@ -27,3 +27,11 @@ Every part of the 1.1.0 SKILL.md and where it lives now. Nothing was removed.
 ## The 1.1.0 description
 
 > Refresh and revitalize older articles with improved clarity, presentation, and completeness while preserving the author's voice, argument, and period-appropriate context. Standard editorial practice for keeping a published archive polished and accessible. Use when asked to: refresh article, revitalize article, update older article, polish published post, enhance older content.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Refresh an older published article into its best version: clearer argument, fuller period-appropriate evidence, better structure and alt text, keeping the author's voice and absolute temporal integrity. Use to refresh, revitalize, update or polish an older post."
+```

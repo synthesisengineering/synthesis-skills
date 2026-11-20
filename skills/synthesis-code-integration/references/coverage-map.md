@@ -28,3 +28,11 @@ Every part of the 1.3.1 SKILL.md and where it lives now. Nothing was removed.
 | Critical Config Regression Guards | references/review-gates.md (verbatim); distilled into Binding rule 8 |
 | Lessons and Anti-Patterns | references/lessons.md (verbatim); the auto-deploy anti-pattern is Binding rule 12 |
 | Binding rules, Contents | New in 2.0.0; each binding rule restates rules already in the sections it names |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "The adopt-and-adapt pattern for integrating contributions to a synthesis-coded project: lead synthesist, quality gates, cherry-pick safety, integration intensity. Use for synthesis coding, multi-contributor, integration, cherry-pick, adopt and adapt, integrate or merge contributor work."
+```

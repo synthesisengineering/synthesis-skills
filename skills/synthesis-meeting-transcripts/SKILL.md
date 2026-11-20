@@ -1,6 +1,6 @@
 ---
 name: synthesis-meeting-transcripts
-description: "Fetch AI-generated meeting notes and full transcripts into local markdown, and verify an artifact is primary before it supports attribution. Tool-agnostic: Gmail/Drive MCPs or local exports. Use to fetch, pull, sync, download, import, classify or verify a meeting transcript."
+description: "Fetch meeting notes and full transcripts into local markdown, and check a transcript is primary. Use to fetch, sync or verify a transcript."
 license: "Apache-2.0"
 depends_on: []
 metadata:

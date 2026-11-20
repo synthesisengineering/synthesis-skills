@@ -1,6 +1,6 @@
 ---
 name: synthesis-voice-profiler
-description: "Build a writing voice profile from the user's samples and diagnostic questions, output as a voice section for CLAUDE.md or AGENTS.md that writing skills consume. Use when asked to create a voice profile, analyze writing style, extract voice, profile my writing or build a voice section."
+description: "Build a writing voice profile from samples and questions, as a voice section for CLAUDE.md or AGENTS.md. Use to profile a writing style."
 license: "CC0-1.0"
 user-invocable: true
 depends_on: []

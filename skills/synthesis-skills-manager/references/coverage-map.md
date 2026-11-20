@@ -14,6 +14,7 @@ or [preserved-release-protocol.md](preserved-release-protocol.md).
 - [Scripts by verdict](#scripts-by-verdict)
 - [Edge cases and the tests that hold them](#edge-cases-and-the-tests-that-hold-them)
 - [Changed in the final v5 sweep](#changed-in-the-final-v5-sweep)
+- [The full description](#the-full-description)
 
 ## Coverage check result
 
@@ -119,3 +120,11 @@ From the install-release evaluation, section 3:
 
 The old sentence is verbatim in [preserved.md](preserved.md) (the 2.9.3 Implementation Notes). The `install.sh update` lines in [source-update-protocol.md](source-update-protocol.md) stay: that section is the 2.9.3 protocol verbatim, its "In v5" preface routes public skills to `release.py`, and private and shared repositories still run their own `install.sh update`. SKILL.md is unchanged.
 
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Release the synthesis-skills plugin and keep skill installs true to source: one releaser at a time, push, install in Claude Code, Codex and Muse, verify installed bytes. Use to release, publish, install or update skills, check drift or provenance, or synthesis-merge a skill."
+```

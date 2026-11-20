@@ -1,6 +1,6 @@
 ---
 name: synthesis-agent-conformance
-description: "Audit and verify that synthesis behaves the same in Claude Code, Codex and Muse: source lint, installed parity, hook wiring and trust, AGENTS.md/CLAUDE.md adapters, skill catalogs, and project handoff between harnesses. Use for parity audits, instruction migrations, or checks after install."
+description: "Check synthesis behaves the same in Claude Code, Codex and Muse: hooks, skill catalogs, adapters. Use for parity audits or after install."
 license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-context-lifecycle"]
 metadata:

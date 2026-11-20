@@ -1,6 +1,6 @@
 ---
 name: synthesis-slack-sync
-description: "Sync Slack channels, DMs and threads to local transcripts via Slack MCP and update the daily action plan, with full thread re-reads and watermarked windows. Use when asked to: slack sync, sync from slack, check slack, read channels, sync messages, sync transcripts, what's new on slack."
+description: "Sync Slack channels, DMs and threads to transcripts and update the daily plan. Use for 'slack sync', 'check slack', 'what's new on slack'."
 license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:

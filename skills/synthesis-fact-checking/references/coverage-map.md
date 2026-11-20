@@ -88,3 +88,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Fact-check articles, posts, news and AI-synthesized content before publication: claims, quotes, studies, URLs and laundered citations. Use to fact-check, verify claims or sources, check accuracy, verify citations, validate references, or audit AI-summarized content."
+```

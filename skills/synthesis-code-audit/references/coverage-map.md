@@ -19,3 +19,11 @@ Every part of the 1.1.0 SKILL.md and where it lives now. Nothing was removed, an
 ## The 1.1.0 description
 
 > Systematic 10-dimension quality scan of code diffs, producing scored PASS/WARNING/FAIL verdicts per dimension with a machine-readable overall result. Includes PR review mode for cross-referencing findings against existing reviewer comments. Use when asked to: code audit, audit my changes, quality check, review the diff, check this code, audit my code, scan for issues, code quality scan, diff review.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Score a code diff on ten dimensions (conventions, reuse, consistency, security, scalability, future-proofing, quality, tests, docs, cleanup) with PASS, WARNING, FAIL or UNKNOWN and an overall verdict; PR review mode cross-references reviewer comments. Use to audit or review a diff."
+```

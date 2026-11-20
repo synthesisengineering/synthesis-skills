@@ -1,6 +1,6 @@
 ---
 name: synthesis-executive-communication
-description: "Translate technical work for CEOs, CFOs, boards and other non-technical executives: persona tests, de-jargoning, consequence over mechanism, trusted upward reports. Use for executive updates, progress reports, executive summaries, board updates, leadership status or business-term translation."
+description: "Translate technical work for CEOs, CFOs and boards: consequence over mechanism. Use for executive updates, summaries and board reports."
 license: "CC0-1.0"
 depends_on: []
 metadata:

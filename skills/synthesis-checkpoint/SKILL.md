@@ -1,6 +1,6 @@
 ---
 name: synthesis-checkpoint
-description: "Re-sync a session with ground truth: verified clock, project records, git, dated session entries and board claims. Use for checkpoints, drift or compaction recovery, 'where are we?', resuming after a pause, and refresh-and-report after an ecosystem upgrade."
+description: "Re-sync a session with ground truth: clock, records, git, board claims. Use for checkpoints, drift, after compaction or 'where are we?'."
 license: "CC0-1.0"
 depends_on: []
 metadata:

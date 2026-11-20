@@ -1,6 +1,6 @@
 ---
 name: synthesis-writing-craft
-description: "Positive writing principles from the writing-craft tradition for AI agents drafting, editing or reviewing prose on a writer's behalf: sentences, pacing, voice, register, structure, revision. Use with synthesis-content-quality and synthesis-writing-pitfalls."
+description: "Writing-craft principles for drafting, editing or reviewing prose on a writer's behalf: sentences, pacing, voice, register, structure."
 license: CC0-1.0
 depends_on: []
 metadata:

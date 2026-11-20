@@ -1,6 +1,6 @@
 ---
 name: synthesis-chief-of-staff
-description: "Act as a principal's chief of staff and executive assistant: meeting triage, calendar scheduling and defense, look-ahead reviews, overcommitment checks, tracked holds, travel, correspondence and a follow-up ledger, per private preferences. Use for scheduling, meeting requests, calendar replies."
+description: "Act as chief of staff and executive assistant: meeting triage, scheduling, calendar defense, follow-ups. Use for meeting requests."
 license: "CC0-1.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:

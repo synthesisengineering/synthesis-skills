@@ -1,6 +1,6 @@
 ---
 name: synthesis-message-exports
-description: "Import a message export the principal authorized (Facebook Messenger's JSON download, or its secure-storage download of encrypted chats) into private markdown transcripts, one per conversation, text fenced as untrusted data. Use for a principal-approved backlog import. Reads only; never sends."
+description: "Import an authorized Facebook Messenger export into private markdown transcripts, one per chat. Read-only. Use for a backlog import."
 license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-grounding-discipline"]
 metadata:
@@ -38,6 +38,7 @@ chats from secure storage.
 - [references/formats.md](references/formats.md): the two downloads, their folder layouts and fields, how each field is shown, the encoding repair, what the importer refuses and why, what is confirmed and what is inferred, with sources. Read it before running the importer on a new export, and whenever it refuses one.
 - [references/transcript-format.md](references/transcript-format.md): file names, the transcript's layout line by line, untrusted fences and hidden characters, Message IDs and re-import, citing a transcript, and how it maps to the Slack transcript format. Read it before reading, quoting or relying on a transcript.
 - [references/chat-page.md](references/chat-page.md): one chat read from its page when an export lacks it: the read, the coverage line, how its messages merge with a later export, where they go. Read before reading a chat's page.
+- [references/coverage-map.md](references/coverage-map.md): the full description, word for word.
 - Procedure, What the command prints, After a refusal: below.
 
 ## Procedure

@@ -1,6 +1,6 @@
 ---
 name: synthesis-daily-rituals
-description: "Day-start, day-end, mid-day sync and the weekly review: sync every declared channel, mailbox and repo, sweep deadlines and lapses, plan and close the day. Use for: day start, day end, morning routine, end of day, quick close, daily ritual, weekly review, sync channels."
+description: "Day start, day end, mid-day sync and weekly review: sync channels, mail and repos, sweep deadlines, plan or close the day."
 license: "Apache-2.0"
 depends_on:
   - synthesis-context-lifecycle

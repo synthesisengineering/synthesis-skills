@@ -1,6 +1,6 @@
 ---
 name: synthesis-reader-briefing
-description: "Pre-writing reader briefing, required before drafting a public article that draws on internal source material. Catches insider context collapse and declares series dependency. Use to write or plan an article, brief the audience, do pre-writing, ask who this is for, or settle a prerequisite."
+description: "Brief the reader before drafting a public article from internal material: who reads it and what they lack. Use to plan or start an article."
 license: "CC0-1.0"
 depends_on: []
 metadata:

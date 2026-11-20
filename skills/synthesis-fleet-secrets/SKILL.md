@@ -1,6 +1,6 @@
 ---
 name: synthesis-fleet-secrets
-description: "Provision machine secrets from a vault (1Password's op CLI) onto a Mac by hand, owner-only, with nothing in git. Use when asked to: fleet secrets, secrets manifest, materialize secrets, op backend, vault provisioning, check secrets, enroll a Mac's secrets, rotate secrets."
+description: "Provision a Mac's secrets from 1Password (op CLI), owner-only, nothing in git. Use to enroll, check or rotate secrets from a manifest."
 license: "Apache-2.0"
 depends_on: []
 metadata:

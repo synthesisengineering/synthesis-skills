@@ -14,6 +14,7 @@ the preserved files. "Cut" means not carried; the reason is here and in
 - [1.22.0 reference files](#1220-reference-files)
 - [Scripts](#scripts)
 - [R1.5 scenarios and their tests](#r15-scenarios-and-their-tests)
+- [The full description](#the-full-description)
 
 ## Coverage check results
 
@@ -120,3 +121,11 @@ All in `tests/test_context_doctor.py`.
 | Output leads with the active project and counts the rest; a new convention starts as a warning | `output_leads_with_the_active_project_and_counts_the_rest`, `item_stamps`, `a_single_project_run_shows_its_full_list` |
 | Section marker staleness | `a_stale_section_marker_fails` |
 | Session titled after the project (2026-09-21, from the old `test_session_start_protocol.py`) | `session_start_names_the_session_after_the_project` |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Keep a project's working memory small, current and durable across sessions, harnesses and Macs: CONTEXT, REFERENCE and session logs, session start, mid-session refresh, archiving, edits, deletion units, and the context records doctor."
+```

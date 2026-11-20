@@ -1,6 +1,6 @@
 ---
 name: synthesis-article-refresh
-description: "Refresh an older published article into its best version: clearer argument, fuller period-appropriate evidence, better structure and alt text, keeping the author's voice and absolute temporal integrity. Use to refresh, revitalize, update or polish an older post."
+description: "Refresh an older published article: clearer argument, period-true evidence, the author's voice kept. Use to update or polish an old post."
 license: "CC0-1.0"
 depends_on: []
 metadata:

@@ -1,6 +1,6 @@
 ---
 name: synthesis-okf
-description: "Validate, convert and author content for Google's Open Knowledge Format (OKF v0.1) with a conformance validator, an idempotent frontmatter converter and a consistency checker. Use to adopt OKF for an LLM wiki, audit conformance, check frontmatter or taxonomy drift, or convert markdown notes."
+description: "Validate, convert and author Open Knowledge Format (OKF) content. Use to adopt OKF for an LLM wiki, audit conformance or convert notes."
 license: CC0-1.0
 depends_on: []
 metadata:

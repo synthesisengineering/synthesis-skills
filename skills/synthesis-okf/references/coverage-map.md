@@ -65,3 +65,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Validate, convert and author content for Google's Open Knowledge Format (OKF v0.1) with a conformance validator, an idempotent frontmatter converter and a consistency checker. Use to adopt OKF for an LLM wiki, audit conformance, check frontmatter or taxonomy drift, or convert markdown notes."
+```

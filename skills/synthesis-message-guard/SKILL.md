@@ -1,6 +1,6 @@
 ---
 name: synthesis-message-guard
-description: "Send guard for agent-drafted messages: no send or draft goes out until the principal approves that exact call, and the text passes the register scan and format rules (HTML email, whole paragraphs, linked signatures, literal Message-IDs). Use when composing, configuring, or when a send is blocked."
+description: "Send guard: no agent message or draft goes out until the principal approves that exact call. Use when composing or when a send is blocked."
 license: "Apache-2.0"
 depends_on: ["synthesis-agent-correspondence"]
 metadata:
@@ -9,6 +9,7 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
   format: v5
+  category: chief-of-staff
 ---
 
 # Message Guard

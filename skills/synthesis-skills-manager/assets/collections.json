@@ -73,10 +73,5 @@
       "synthesis-bitbucket": "without it, each Bitbucket repository is reported unscanned, with the path it looked at"
     }
   },
-  "awaiting_room": {
-    "synthesis-git-hooks": "engineering",
-    "synthesis-kb-distribution": "project-management",
-    "synthesis-message-guard": "chief-of-staff",
-    "synthesis-waiting": "project-management"
-  }
+  "awaiting_room": {}
 }

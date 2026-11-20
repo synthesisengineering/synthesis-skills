@@ -25,3 +25,11 @@ Every part of the 1.1.0 SKILL.md and where it lives now. Nothing was removed.
 ## The 1.1.0 description
 
 > Find authoritative hyperlinks for people, organizations, and entities mentioned in content; recover dead URLs in archives via Wayback / Wikipedia / strip prioritization. Use when asked to: find links, hyperlink, research links, find URLs, gather references, look up websites for people or organizations, recover dead links, fix link rot, find archived versions.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Find authoritative hyperlinks for people, organizations and entities mentioned in content, and recover dead URLs in archives through Wayback, the same entity's current site, Wikipedia or stripping. Use to find links, research URLs, gather references, or fix link rot."
+```

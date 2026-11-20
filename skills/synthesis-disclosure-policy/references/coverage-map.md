@@ -65,3 +65,11 @@ git-hooks doctor or to configure a fixed-path policy file. Each old line is verb
 | ledger.example.yaml header | "in ~/.synthesis/git-hook-config.yaml", "engine and doctor", "The doctor flags stale allowances." | the policy that `commit_policy` names; "commit check in public-surface repos"; "The commit check refuses a stale allowance." |
 
 SKILL.md lists preserved.md in Contents; version 2.0.0 became 2.0.1.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Decide whether a real organization or person may be named or identified outward-facing: published precedent vs unapproved disclosure, precedent ledger, five tests, surface classes, git-hook enforcement. Use for: can I name this company, disclosure policy, precedent ledger, public bio names."
+```

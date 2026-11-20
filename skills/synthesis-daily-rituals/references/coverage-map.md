@@ -10,7 +10,7 @@ rule is kept in plain words there with v5 commands, and the original wording is 
 reason in [preserved.md](preserved.md).
 
 Contents: Coverage check results · Frontmatter before v5 (verbatim) · SKILL.md sections ·
-Reference files · Scripts by verdict · Tests · Edge cases and the test that holds each.
+Reference files · Scripts by verdict · Tests · Edge cases and the test that holds each · The full description.
 
 ## Coverage check results
 
@@ -182,3 +182,11 @@ Scenario numbers from `guards-rituals.md` section 3, and R1.2 from the same list
 | Lesson 2026-09-14 one workspace's review silences another | `test_ritual_state.py::test_weekly_review_recorded_for_one_workspace_leaves_another_owed` |
 | R8.1 the session line stays fast | `test_rituals.py::test_the_line_is_fast_on_a_year_of_records` |
 | R8.5 Apple's Python reads every manifest | `tests/test_yamlish.py` in the core |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Day-start, day-end, mid-day sync and the weekly review: sync every declared channel, mailbox and repo, sweep deadlines and lapses, plan and close the day. Use for: day start, day end, morning routine, end of day, quick close, daily ritual, weekly review, sync channels."
+```

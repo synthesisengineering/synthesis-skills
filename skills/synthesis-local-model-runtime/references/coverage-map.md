@@ -7,6 +7,7 @@ Contents:
 - Scripts, assets and tests (prose pass); lines the coverage check reports
 - The 1.1.0 frontmatter
 - Scripts in v5 (M3): files, subcommands, edge cases E85 to E87, old tests, replaced passages
+- The full description, word for word
 
 | 1.1.0 section | Now |
 |---|---|
@@ -156,3 +157,11 @@ Every line replaced in this pass is in references/preserved.md, verbatim, under 
   inventory.
 - references/catalog-maintenance.md: pinning layers for recovery. New: the Catalog age section.
 - references/security-and-privacy.md: the recovery rule and the local API paragraph.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Profile a computer, compare Ollama, LM Studio, llama.cpp and MLX-LM, recommend open-weight models that fit its memory and storage, install and update them with identity receipts, and verify inference. Use for local models, Ollama, which model fits this Mac or PC, model inventory or local benchmarks."
+```

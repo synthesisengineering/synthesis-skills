@@ -1,6 +1,6 @@
 ---
 name: synthesis-link-research
-description: "Find authoritative hyperlinks for people, organizations and entities mentioned in content, and recover dead URLs in archives through Wayback, the same entity's current site, Wikipedia or stripping. Use to find links, research URLs, gather references, or fix link rot."
+description: "Find authoritative links for people and organizations in content, and recover dead URLs. Use to find links, add references or fix link rot."
 license: "CC0-1.0"
 depends_on: []
 metadata:

@@ -1,6 +1,6 @@
 ---
 name: synthesis-autopilot
-description: "Run an explicitly delegated whole task to the end from a plan file in the project, unattended when needed. Use only on clear end-to-end delegation ('autopilot this', 'handle this end to end', 'run overnight'), never on a single-step approval or a talk about autonomy."
+description: "Run a delegated task to the end from a plan file. Only on clear delegation: 'autopilot this', 'handle this end to end', 'run overnight'."
 license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework", "synthesis-context-lifecycle", "synthesis-checkpoint", "synthesis-anti-shortcuts", "synthesis-grounding-discipline", "synthesis-implementation-integrity", "synthesis-project-management", "synthesis-adversarial-review", "synthesis-decision-packet", "synthesis-agent-conformance"]
 metadata:

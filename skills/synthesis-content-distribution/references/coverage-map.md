@@ -29,3 +29,11 @@ Every part of the 1.2.0 SKILL.md and where it lives now. Nothing was removed.
 ## The 1.2.0 description
 
 > Strategically promote and distribute content across social media platforms to build thought leadership, spark discussion, and create professional connections. Provides platform-specific guidelines, engagement strategies, cross-platform coordination, and quick-start templates for blog promotion and event/topic posts. Use when asked to: promote content, content distribution, social media strategy, share article, social media post, write tweet, LinkedIn post, Instagram post, promote blog, blog promotion, post about event, content marketing, distribute post, promote article, social media promotion.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Promote content on social media: strategic brief, platform posts for LinkedIn, X, Hacker News, Reddit, BlueSky and Instagram, social-register checks, a social.md sidecar, and engagement follow-up. Use to promote a blog post or article, or to write posts about an event or topic."
+```

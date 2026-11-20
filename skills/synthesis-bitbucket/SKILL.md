@@ -1,6 +1,6 @@
 ---
 name: synthesis-bitbucket
-description: "Work with Bitbucket Cloud via the open-source bkt CLI: PR lifecycle, repo and branch reads, and the bkt api escape hatch, with explicit repository binding and write-safety rules. Use when asked to: bitbucket, bkt, bitbucket pr, open bitbucket pr, review bitbucket pr, bitbucket cli, bitbucket api."
+description: "Work with Bitbucket Cloud through the bkt CLI: pull requests, repositories, branches, the API. Use for any Bitbucket or bkt request."
 license: "Apache-2.0"
 depends_on: []
 metadata:

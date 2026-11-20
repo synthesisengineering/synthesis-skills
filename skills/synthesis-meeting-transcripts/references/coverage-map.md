@@ -9,6 +9,7 @@ Contents:
   release notes, version and scripts; files unchanged
 - 0.14.0 to 1.0.0 (v5): version; section map; pointers from scripts; scripts in v5 (M3); edge cases; lines the
   coverage check reports; frontmatter before v5
+- The full description, word for word
 
 ## 1.2.1 to 1.3.0: the rewrite to the D8 standard
 
@@ -239,4 +240,12 @@ metadata:
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
 ---
+```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Fetch AI-generated meeting notes and full transcripts into local markdown, and verify an artifact is primary before it supports attribution. Tool-agnostic: Gmail/Drive MCPs or local exports. Use to fetch, pull, sync, download, import, classify or verify a meeting transcript."
 ```

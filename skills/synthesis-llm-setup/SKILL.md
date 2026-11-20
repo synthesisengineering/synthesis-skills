@@ -1,6 +1,6 @@
 ---
 name: synthesis-llm-setup
-description: "Guide for setting up and configuring LLM projects across platforms. Use when setting up a Claude Project, creating a ChatGPT GPT, configuring a Gemini Gem, setting up an AI assistant with custom instructions and knowledge, or configuring any LLM platform with AI Knowledge content."
+description: "Set up LLM projects on any platform: a Claude Project, a ChatGPT GPT, a Gemini Gem, with custom instructions and knowledge files."
 license: "CC0-1.0"
 depends_on: []
 metadata:

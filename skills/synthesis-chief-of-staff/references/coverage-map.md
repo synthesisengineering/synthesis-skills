@@ -66,3 +66,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Act as a principal's chief of staff and executive assistant: meeting triage, calendar scheduling and defense, look-ahead reviews, overcommitment checks, tracked holds, travel, correspondence and a follow-up ledger, per private preferences. Use for scheduling, meeting requests, calendar replies."
+```

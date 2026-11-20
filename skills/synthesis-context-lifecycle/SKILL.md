@@ -1,6 +1,6 @@
 ---
 name: synthesis-context-lifecycle
-description: "Keep a project's working memory small, current and durable across sessions, harnesses and Macs: CONTEXT, REFERENCE and session logs, session start, mid-session refresh, archiving, edits, deletion units, and the context records doctor."
+description: "Keep a project's CONTEXT, REFERENCE and session logs small and current across sessions and Macs. Use at session start, refresh or archiving."
 license: "CC0-1.0"
 depends_on: []
 metadata:

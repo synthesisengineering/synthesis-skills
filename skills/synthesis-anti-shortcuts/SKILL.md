@@ -1,6 +1,6 @@
 ---
 name: synthesis-anti-shortcuts
-description: "Catch the lazy-shortcut antipattern: costume vocabulary that hides deferral, dismissal or false consultation. Constraint-first protocol, sub-agent dispatch and acceptance hygiene, pre-response self-check. Use to avoid shortcuts, audit for laziness, check for deferral or enforce the best solution."
+description: "Catch lazy shortcuts: wording that hides deferral, dismissal or false consultation. Use to audit for laziness or insist on the best fix."
 license: "Apache-2.0"
 depends_on: ["synthesis-thinking-framework"]
 metadata:
