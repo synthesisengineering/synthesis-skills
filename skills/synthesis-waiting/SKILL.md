@@ -1,6 +1,6 @@
 ---
 name: synthesis-waiting
-description: "Arm a watcher before a turn ends on an expected event: a peer's message, a CI run, a file, a clock time. Covers synthesis wait, the inbox peek, what wakes each harness and what a watcher costs. Use when a reply would say 'waiting for', 'when it lands' or 'I'll pick it up once'."
+description: "Arm a watcher for an expected event (a reply, a CI run, a file, a time) before a turn ends. Use when a reply would say 'waiting for'."
 license: "CC0-1.0"
 depends_on:
   - synthesis-project-management
@@ -8,6 +8,7 @@ metadata:
   author: "Rajiv Pant"
   version: "1.2.0"
   format: v5
+  category: project-management
 ---
 
 # Synthesis Waiting
@@ -31,6 +32,7 @@ Waiting for an expected event is a task. A board message, a finished job or a pe
 - **The commands** (below): each form of `synthesis wait`, the peek, the sender's line, and what each prints. Read before arming a wait.
 - **Procedure** (below): the five steps, from naming the event to reading the mail.
 - [references/watchers.md](references/watchers.md): what wakes a session in Claude Code, Codex and Muse; which watcher fits one event, several events, a clock time and an idle peer; what each costs; what `wait run` does with the processes its command starts, and a try's two limits; what was probed and when. Read when choosing a watcher in a harness for the first time, when a check starts processes of its own or needs a terminal, or when a wake did not arrive.
+- [references/coverage-map.md](references/coverage-map.md): the full description, word for word.
 
 ## The commands
 

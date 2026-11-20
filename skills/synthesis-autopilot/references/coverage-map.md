@@ -15,6 +15,7 @@ reason is in [preserved.md](preserved.md).
 - [3.6.7 reference files](#367-reference-files)
 - [Evaluation scenarios and where each is held](#evaluation-scenarios-and-where-each-is-held)
 - [Changes after 4.0.0](#changes-after-400)
+- [The full description](#the-full-description)
 
 ## Coverage check results
 
@@ -297,3 +298,11 @@ quoted whole and read by that word; [plan-file.md](plan-file.md#origins-and-the-
 reply from the word continue, narrow or stop, keep the whole reply on the checked blocker,
 and ask again only when it holds none of the three. The first-word rule stays. What remains
 is on the open list in `docs/runtime-integration.md`.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Run an explicitly delegated whole task to the end from a plan file in the project, unattended when needed. Use only on clear end-to-end delegation ('autopilot this', 'handle this end to end', 'run overnight'), never on a single-step approval or a talk about autonomy."
+```

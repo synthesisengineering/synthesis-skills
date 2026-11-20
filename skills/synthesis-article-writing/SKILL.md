@@ -1,6 +1,6 @@
 ---
 name: synthesis-article-writing
-description: "Write and review thought leadership articles and blog posts: reader briefing, research, drafting, critical review, and publication-package review (title-only stranger test, title/description/body truth contract, batch headline budgets, slug closure). Use for headline or publication-readiness review."
+description: "Write and review articles and blog posts, from research to headline and publication-readiness review. Use to draft or review an article."
 license: "CC0-1.0"
 depends_on: ["synthesis-reader-briefing", "synthesis-content-quality"]
 metadata:

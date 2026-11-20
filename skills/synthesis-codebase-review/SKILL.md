@@ -1,6 +1,6 @@
 ---
 name: synthesis-codebase-review
-description: "Enterprise-scale codebase audit methodology with tiered review system (Essential through Mission-Critical). Use when asked to: codebase review, code audit, code review, review codebase, architecture review, security audit, full code review, enterprise review, codebase health check."
+description: "Audit a whole codebase at a chosen depth, Essential to Mission-Critical. Use for codebase, architecture or security reviews, health checks."
 license: "CC0-1.0"
 depends_on: []
 metadata:

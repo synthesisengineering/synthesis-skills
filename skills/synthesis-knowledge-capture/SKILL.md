@@ -1,6 +1,6 @@
 ---
 name: synthesis-knowledge-capture
-description: "Capture durable session facts in an OKF knowledge base: corpus-wide dedup, confidentiality routing, conflict reconciliation, provenance, shipping via synthesis-kb-edit. Use at session end, to capture or update knowledge, or to keep corrected facts about people, organizations, products or decisions."
+description: "Capture durable session facts into a knowledge base, deduplicated and routed by confidentiality. Use at session end or to correct a fact."
 license: CC0-1.0
 depends_on:
   - synthesis-okf

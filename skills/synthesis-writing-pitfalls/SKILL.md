@@ -1,6 +1,6 @@
 ---
 name: synthesis-writing-pitfalls
-description: "Catch human-source bad-writing patterns: humble-bragging, credential-stuffing, throat-clearing, caveat overload, reader flattery or condescension, weak sentences, cliché, register mismatch, needless edits. Use when reviewing, editing or self-editing prose, or scanning an archive."
+description: "Catch human bad-writing habits: humble-bragging, throat-clearing, hedging, clichés, register slips. Use when reviewing or editing prose."
 license: CC0-1.0
 depends_on: []
 metadata:

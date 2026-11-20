@@ -1,6 +1,6 @@
 ---
 name: synthesis-promotion-gate
-description: "Scan a built site for configured internal markers (draft notes, placeholders, private comments) before an approved deploy, and refuse on any hit. Use for publication gates, rendered-output inspection, pre-deploy marker scans or build.sh deploy checks."
+description: "Scan a built site for draft notes, placeholders and private comments before deploy, and refuse on any hit. Use for pre-deploy checks."
 license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-implementation-integrity"]
 metadata:

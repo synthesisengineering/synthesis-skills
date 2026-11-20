@@ -1,6 +1,6 @@
 ---
 name: synthesis-response-merger
-description: "Combine multiple LLM responses into a single unified document. Use when asked to combine responses, merge outputs, synthesize responses, unify documents, or consolidate multiple AI-generated answers into one comprehensive result."
+description: "Merge several LLM responses into one unified document. Use to combine, merge or consolidate AI answers."
 license: "CC0-1.0"
 user-invocable: false
 depends_on: []

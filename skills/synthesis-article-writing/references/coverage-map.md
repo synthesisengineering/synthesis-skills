@@ -32,3 +32,11 @@ The coverage check reports these four lines. Each was changed only so it stays t
 > Five-phase workflow for creating high-quality thought leadership articles: reader briefing, research and validation, strategic writing, pre-publication critical review, and publication-package review (title, metadata, and batch gates). Includes anonymization protocol, credibility assessment, substance density checks, engagement optimization, the title-only stranger test, the title/description/body truth contract, batch headline monotony budgets, and the slug/metadata closure invariant. Use when asked to: write article, thought leadership, blog post, article workflow, write blog, draft article, create thought piece, write opinion piece, leadership article, headline review, title review, publication readiness, article package review.
 
 Two moved lines were reworded at equal strength, because the public repo's commit scanner refuses two privacy-marker words on added lines: draft-review.md now says "expose information that must stay private", and research-and-drafting.md lists "An employer's or client's internal systems or strategies". The originals are in git history at origin/main.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Write and review thought leadership articles and blog posts: reader briefing, research, drafting, critical review, and publication-package review (title-only stranger test, title/description/body truth contract, batch headline budgets, slug closure). Use for headline or publication-readiness review."
+```

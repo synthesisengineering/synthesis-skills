@@ -1,6 +1,6 @@
 ---
 name: synthesis-preplan
-description: "Lock architecture decisions for a ticket or issue with real design choices: resolve delegated technical choices, ask structured questions for the user's, and hand a reviewable decision set to the planning step. Use to preplan, pre-plan a ticket, lock decisions, or list its open design questions."
+description: "Lock a ticket's architecture decisions before planning: settle delegated choices, ask about the rest. Use to preplan or list open questions."
 license: "CC0-1.0"
 user-invocable: true
 depends_on: ["synthesis-code-audit"]

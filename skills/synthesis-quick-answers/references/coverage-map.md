@@ -37,3 +37,11 @@ The paragraph above about release and onboarding checks reading fixed phrases de
 is gone. The other phrases it lists remain. SKILL.md lists preserved.md in Contents; version
 2.0.0 became 2.0.1.
 
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Run a cheap, read-mostly companion session for ad hoc workspace lookups so focused sessions stay on task. Every answer names its source and a Verified, Cached or Uncertain tier. Use for a quick-answers, FAQ or lookup companion; not for decisions, drafting or sending messages."
+```

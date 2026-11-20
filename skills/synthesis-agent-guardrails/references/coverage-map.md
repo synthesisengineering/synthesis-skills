@@ -12,6 +12,7 @@ row G for the shell classifier).
 - Scripts and their verdicts
 - Edge cases and the tests that hold them
 - Frontmatter before v5 (verbatim)
+- The full description
 
 ## Coverage check result
 
@@ -100,3 +101,11 @@ metadata:
 the generic sub-agent brief rules now live in synthesis-anti-shortcuts' sub-agent-hygiene.md.
 No preserved text changed. SKILL.md is unchanged.
 
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Pre-tool guards beyond sends: the account a calendar or mail call acts as, a browser call's Chrome profile, deploys and their date rules, destructive commands; the reply check and day-end provenance scan. Use to configure them, or when a deploy, delete, calendar or browser call is blocked."
+```

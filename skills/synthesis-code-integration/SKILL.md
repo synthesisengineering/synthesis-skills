@@ -1,6 +1,6 @@
 ---
 name: synthesis-code-integration
-description: "The adopt-and-adapt pattern for integrating contributions to a synthesis-coded project: lead synthesist, quality gates, cherry-pick safety, integration intensity. Use for synthesis coding, multi-contributor, integration, cherry-pick, adopt and adapt, integrate or merge contributor work."
+description: "Integrate contributor work into a synthesis-coded project by adopt and adapt, with safe cherry-picks. Use to merge a contribution."
 license: "CC0-1.0"
 depends_on: []
 metadata:

@@ -70,3 +70,11 @@ triggers.
 | Change | Where |
 |---|---|
 | Procedure step 4 gains one sentence after its existing text: make the count at every checkpoint, principal items closed against self-generated items added since the last, which stops new work for the principal's one line (the principal's rulings of 2026-11-16) | SKILL.md, Procedure step 4, linking synthesis-project-management's `references/backlog.md`, "The count at every checkpoint", where the count is in full. No earlier sentence changed or moved |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Re-sync a session with ground truth: verified clock, project records, git, dated session entries and board claims. Use for checkpoints, drift or compaction recovery, 'where are we?', resuming after a pause, and refresh-and-report after an ecosystem upgrade."
+```

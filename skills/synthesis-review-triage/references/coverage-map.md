@@ -54,3 +54,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Prioritize a PR review queue: classify, exclude, detect author responses, score by review gap, CI, age, size and labels, and gate re-reviews (full, delta or skip). Use when asked to triage PRs, which PR to review next, review queue, PR backlog, review priority or review workload."
+```

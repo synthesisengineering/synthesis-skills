@@ -62,3 +62,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Verify an implementation is genuinely complete before calling it done: trace data chains, find placeholders, audit test honesty, check environment parity and boundaries. Use to verify implementation, check completeness, answer is this done, or run an integrity, self-review, pre-PR or ship check."
+```

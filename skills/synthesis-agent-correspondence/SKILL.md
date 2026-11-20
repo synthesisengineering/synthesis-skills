@@ -1,6 +1,6 @@
 ---
 name: synthesis-agent-correspondence
-description: "Compose and send honest agent correspondence on Slack, email and other channels: principal-direct, assistant and bot lanes, the voice axis, review depth, personas, disclosure signatures and send gates. Use for sending on a principal's behalf, message signatures, persona registries or agent voice."
+description: "Compose and send agent messages on Slack and email: lanes, personas, disclosure signatures, send gates. Use to send on a principal's behalf."
 license: "Apache-2.0"
 depends_on: []
 metadata:

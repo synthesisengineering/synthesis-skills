@@ -1,6 +1,6 @@
 ---
 name: synthesis-kb-edit
-description: "Edit, validate and ship Markdown knowledge-base changes through the repository's .agents/knowledge-base.yaml workflow. Use to update a knowledge base, edit KB content, fix a durable fact, add a concept, ship a KB edit, open a KB review request, or sync a KB checkout after publication."
+description: "Edit, validate and ship Markdown knowledge-base changes through the repo's workflow. Use to update a KB, fix a fact or open a KB review."
 license: Apache-2.0
 depends_on:
   - synthesis-okf

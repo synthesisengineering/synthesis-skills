@@ -1,6 +1,6 @@
 ---
 name: synthesis-project-management
-description: "Run synthesis projects as markdown records in git and keep parallel sessions from colliding. Use for project setup, naming, index, lessons, session start and end, claims before writes, one context owner, peer messages, worktrees, handoff between harnesses or Macs, Codex dispatch."
+description: "Run projects as markdown records in git and keep parallel sessions from colliding. Use for project setup, claims, worktrees or handoffs."
 license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:

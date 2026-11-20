@@ -25,3 +25,11 @@ Every part of the 1.0.0 skill and where it lives now. Nothing was removed.
 | `## Purpose` | Removed. The v5 format requires Binding rules and Contents to be the first two sections, so the purpose paragraph now sits directly under the title, as in every v5 skill. Its text is unchanged. |
 
 The software-licensing addendum is now named "Closed-Source Software Addendum" in its heading and the contents lists, at equal meaning, because the public repo's commit scanner refuses a privacy-marker word on added lines. The original name is in git history at origin/main.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Enterprise-scale codebase audit methodology with tiered review system (Essential through Mission-Critical). Use when asked to: codebase review, code audit, code review, review codebase, architecture review, security audit, full code review, enterprise review, codebase health check."
+```

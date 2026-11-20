@@ -1,6 +1,6 @@
 ---
 name: synthesis-mac-sync
-description: "Keep several Macs in step: config files through iCloud, repositories and remotes through git, and work moved with synthesis handoff. Use for: mac sync, run my mac-sync, sync config, push or pull config to iCloud, sync repos, repo status, leaving this Mac."
+description: "Keep several Macs in step: config through iCloud, repos through git. Use for 'mac sync', syncing config or repos, or leaving this Mac."
 license: "CC0-1.0"
 depends_on: ["synthesis-daily-rituals"]
 metadata:

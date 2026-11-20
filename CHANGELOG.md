@@ -4,6 +4,26 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.29.1] - 2026-11-20
+
+- **Every skill's description fits Claude Code's skill listing** (BACKLOG C6, the principal's ruling of
+  2026-11-20). The 73 public descriptions are at most 140 characters, and each full description moves word for
+  word to its skill's `references/coverage-map.md`, under "The full description" (four skills gain a coverage map
+  with its Contents line; four gain their `metadata.category`, emptying `awaiting_room`). With the private
+  descriptions shortened and eleven rarely used Anthropic skills listed by name only in the principal's own
+  setting, the listing fits its 30,000-character cap and every synthesis skill keeps its description. Measured on
+  the final text, Opus and Sonnet: the six skills formerly listed by name only were picked in 22 of 24 runs, against
+  9 of 24 before; the six described ones in 24 of 24; no wrong pick on near misses, and no skill on the 12
+  no-skill prompts.
+- **The model table names November's releases** (model tiers 3.0.2). Every role list was verified on 2026-11-20
+  against the provider's own documentation, with the page, excerpt and identifiers in
+  `references/catalog-verification.yaml`. Anthropic judgment moves to `claude-fable-5-2`. OpenAI judgment moves to
+  `gpt-6.2-astra` and routine to `gpt-6.2-sol`, with `gpt-6.1-terra` still its alternative. Google judgment moves to
+  `gemini/gemini-4-carbon`, with `gemini/gemini-4-neon` as its alternative, and routine to `gemini/gemini-4-hydrogen`,
+  which Google names the upgrade from Gemini 3.8 Flash. `gemini/gemini-4-argon` leaves the table: Google's own model
+  comparison now covers only Carbon, Neon, Hydrogen and Flash-Lite. The Ollama lists keep their 2026-11-06
+  verification. Codex's model page now documents the GPT-6.2 IDs as client selectors.
+
 ## [5.29.0] - 2026-11-20
 
 - **Same-day meeting briefs are a required day-start step** (synthesis-daily-rituals 3.20.0; BACKLOG A24, the

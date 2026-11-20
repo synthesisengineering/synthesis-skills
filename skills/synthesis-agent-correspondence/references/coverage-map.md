@@ -73,3 +73,11 @@ machinery v5 removed (the grounding ledger, capability enrollment, `--message-sh
 | personas-and-adoption.md, adoption step 5 | wire the gates "to `synthesis-message-guard`"; "your guard has brand-integrity patterns" | configure message-guard's register patterns; "your register patterns include brand-integrity rules" | Fail-closed enforcement over convention; lane-aware brand-integrity rules |
 
 SKILL.md also lists [preserved.md](preserved.md) in Contents; version 4.0.0 became 4.0.1.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Compose and send honest agent correspondence on Slack, email and other channels: principal-direct, assistant and bot lanes, the voice axis, review depth, personas, disclosure signatures and send gates. Use for sending on a principal's behalf, message signatures, persona registries or agent voice."
+```

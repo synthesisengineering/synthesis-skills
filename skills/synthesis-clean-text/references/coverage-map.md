@@ -34,3 +34,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Enforce clean-text and no-hidden-marker requirements, audit inspectable characters and provenance, and state the verification boundary for statistical text marks. Use when generating clean text, checking hidden characters, addressing watermark concerns, or selecting a controlled generation path."
+```

@@ -1,6 +1,6 @@
 ---
 name: synthesis-grounding-discipline
-description: "Keep agent output tied to evidence: record only what a source surfaced, re-verify cached facts, prove absence with a positive control, never complete truncated output, and validate paths before writes or deletes. Use before recording, quoting, claiming absence or deleting."
+description: "Tie output to evidence: record only what a source showed, re-verify cached facts, prove absence. Use before recording, quoting or deleting."
 license: "Apache-2.0"
 depends_on: []
 metadata:
