@@ -97,3 +97,14 @@ def test_the_sealed_set_holds_each_claude_home_the_config_names(team, monkeypatc
     assert (folder / "settings.json", None) in sandbox._claude_settings()  # its sandbox exceptions are read for the seal
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(folder))
     assert {home / ".claude" / "projects", home / ".claude" / "settings.json", home / ".claude.json"} <= {p for p, _, _ in sandbox.sealed()}
+
+
+def test_the_files_staged_from_a_seats_own_process_are_the_ones_staged_from_any_other(team, monkeypatch):
+    """Setup stages Claude Code's managed settings and Codex's requirements from the sealed set, and a seat's own process
+    names its folder in CLAUDE_CONFIG_DIR: staged there, they are byte for byte what the doctor, run anywhere, expects,
+    so installing them never leaves the sandbox reported out of date."""
+    home, folder, _ = team
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    staged = (sandbox.expected("claude"), sandbox.expected("codex"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(folder))
+    assert (sandbox.expected("claude"), sandbox.expected("codex")) == staged
