@@ -6,6 +6,7 @@ that home the default home's are still guarded; and the sandbox's sealed set hol
 plugins. Every home here is a temporary folder: nothing signs in."""
 
 import json
+import os
 import re
 
 import pytest
@@ -164,6 +165,28 @@ def test_a_config_never_read_in_full_falls_back_to_no_folder_alone(team, monkeyp
     for target, said in _kept(other):
         assert said in _hooked({"tool_name": "Write", "tool_input": {"file_path": str(target), "content": "x"}, **call}, capsys), target
     assert not (paths.approvals() / paths.HOMES_KEPT).exists()  # nothing was read in full, so nothing was recorded
+
+
+def test_while_the_config_cannot_be_read_a_claude_folder_a_command_made_opens_no_sealed_folder(team, monkeypatch, capsys):
+    """R2-B1 of review round 2: the fallback took any ~/.claude* folder for a Claude home, a decoy a command can make
+    among them: a staged folder whose relative `projects` link, once moved to ~/.claude-decoy, leads into the synthesis
+    home, or a ~/.claude* link to the state folder. The memory-notes exemption then let a Markdown file into the archive,
+    the sealed approvals and the state folder, which the guard refused before. A folder that is a link, or whose
+    `projects` is one, is no Claude home there."""
+    home, _, space = team
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    call = {"session_id": "S1", "cwd": str(space)}
+    stage = home / "stage"
+    stage.mkdir()
+    (stage / "projects").symlink_to(os.path.relpath(paths.home(), home / ".claude-decoy"), target_is_directory=True)
+    stage.rename(home / ".claude-decoy")  # the same words lead into the synthesis home once moved
+    paths.state().mkdir(parents=True, exist_ok=True)
+    (home / ".claude-state").symlink_to(paths.state(), target_is_directory=True)
+    paths.config_file().write_text("{not json", encoding="utf-8")
+    for target in [paths.home() / name / "memory" / "planted.md" for name in ("sessions", "approvals", "state")] + [
+            paths.state() / "projects" / "x" / "memory" / "planted.md"]:
+        said = _hooked({"tool_name": "Write", "tool_input": {"file_path": str(target), "content": "x"}, **call}, capsys)
+        assert said.startswith("Refused"), (target, said)
 
 
 @pytest.mark.parametrize("seat", [False, True])
