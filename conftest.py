@@ -27,6 +27,7 @@ def no_synthesis_home_of_this_mac(tmp_path, monkeypatch):
     hold every Mac's ritual history since 5.20.0, and seven ritual tests read it there once the hourly sync had written
     it (5.20.1). The core's tests set the same folder; a skill's own test may set another."""
     monkeypatch.setenv("SYNTHESIS_HOME", str(tmp_path / "synthesis-home"))
+    monkeypatch.setenv("SYNTHESIS_WORKSPACES", str(tmp_path / "workspaces"))  # nor its workspaces' ritual settings (5.28.1)
 
 
 @pytest.fixture(autouse=True)
