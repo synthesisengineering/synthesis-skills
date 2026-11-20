@@ -1,5 +1,7 @@
-"""build_collections.py: the five collections, plugins of the synthesis skills without hooks, each built from the flat
-folder into a folder of its own beside the whole set, which the release publishes as the collections branch.
+"""build_collections.py: the five collections, plugins of the synthesis skills, each built from the flat folder into a
+folder of its own beside the whole set, which the release publishes as the collections branch. The core carries the
+whole set's guard, its hooks and the runtime they run, so no collection installs without it (ruling C8, 2026-11-20);
+the other four hold no hook.
 
 Three groups, as for the directory package. The first reads one real build of this checkout: what each folder holds,
 where each byte came from, its three manifests and the two marketplace files. The second gives the checks checkouts
@@ -22,10 +24,22 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 import build_collections as collections  # noqa: E402
+from synthesis import install  # noqa: E402
 
 SPEC = json.loads((ROOT / collections.LIST).read_text(encoding="utf-8"))
 FIVE = ["core", "project-management", "engineering", "writing", "chief-of-staff"]  # the owner's ruling, 2026-11-14
 WHOLE = "https://github.com/synthesisengineering/synthesis-skills"
+MUSE_HOOKS = sorted(path.relative_to(ROOT).as_posix() for path in (ROOT / ".muse-plugin" / "hooks").iterdir())
+
+
+def runtime_files() -> dict:
+    """{path: bytes} of what the runtime's install takes from this checkout (install._files): what the core carries."""
+    return {rel: path.read_bytes() for rel, path in install._files(ROOT)}
+
+
+def guard_files() -> set:
+    """The whole set's guard as the core carries it: the hooks each harness reads, and the runtime they run."""
+    return {"hooks/hooks.json", *MUSE_HOOKS, *runtime_files()}
 
 
 def categories(skill_md: str) -> list:
@@ -91,21 +105,51 @@ def test_the_owner_ruled_five_collections_the_fifth_named_chief_of_staff():
 
 
 def test_each_folder_holds_its_skills_its_three_manifests_and_the_two_licenses(built):
-    home = homes()
+    """And the core the guard besides: the whole set's hooks and the runtime they run, the scripts the runtime keeps of
+    skills in other collections among it (C8)."""
+    home, guard = homes(), guard_files()
     for name in FIVE:
         mine = folder(built, name)
-        assert {path.split("/")[1] for path in mine if path.startswith("skills/")} == {
+        assert {path.split("/")[1] for path in mine if re.fullmatch(r"skills/[^/]+/SKILL\.md", path)} == {
             skill for skill, collection in home.items() if collection == name}, name
-        carried = {"synthesis/__init__.py", "synthesis/yamlish.py"} if name in ("core", "project-management", "chief-of-staff") else set()
+        carried = {"synthesis/__init__.py", "synthesis/yamlish.py"} if name in ("project-management", "chief-of-staff") else set()
+        if name == "core":
+            carried = {path for path in guard if not path.startswith("skills/")}
+            assert {path for path in mine if path.startswith("skills/") and home.get(path.split("/")[1]) != "core"} == {
+                path for path in guard if path.startswith("skills/") and home[path.split("/")[1]] != "core"}
         assert {path for path in mine if not path.startswith("skills/")} == {*collections.MANIFESTS, *collections.LICENSES,
-                                                                              *carried}
+                                                                              *carried}, name
     assert {path for path in built if path.split("/")[0] not in FIVE} == set(collections.MARKETPLACES)
 
 
 def test_every_skill_is_carried_once_whole_but_for_its_tests(built):
+    """Once in its own collection; the core's copies of the scripts the runtime keeps are the guard's, not the skill."""
+    home = homes()
     tracked = sorted(name for name in git(ROOT, "ls-files", "-z", "--", "skills").split("\0") if name and not is_test(name))
-    carried = sorted(path.split("/", 1)[1] for path in built if path.split("/")[1:2] == ["skills"])
+    carried = sorted(path.split("/", 1)[1] for path in built if path.split("/")[1:2] == ["skills"]
+                     and home[path.split("/")[2]] == path.split("/")[0])
     assert carried == tracked
+
+
+def test_the_core_carries_the_whole_sets_guard_byte_for_byte(built):
+    """Ruling C8 (2026-11-20): whoever picks a collection gets the core and the guard with it. The core holds the hooks
+    each harness reads, as the whole set holds them, and the runtime they run, as the runtime's install takes it."""
+    core, runtime = folder(built, "core"), runtime_files()
+    for path in ["hooks/hooks.json", *MUSE_HOOKS]:
+        assert core[path] == (ROOT / path).read_bytes(), path
+    assert runtime and all(core[path] == data for path, data in runtime.items())
+    assert {"synthesis/hook.py", "synthesis/install.py", "CHANGELOG.md"} <= set(runtime)
+    whole = json.loads((ROOT / ".muse-plugin" / "plugin.json").read_text(encoding="utf-8"))["capabilities"]["hooks"]
+    assert manifest(built, "core", ".muse-plugin/plugin.json")["capabilities"]["hooks"] == whole and len(whole) == 4
+    for path in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):  # both read hooks/hooks.json by its place
+        assert not collections.hooked(manifest(built, "core", path))
+
+
+def test_the_core_s_runtime_is_the_whole_set_s_so_the_doctor_s_package_check_holds(written):
+    """The doctor holds each harness's guard plugin to the installed runtime by this hash (check_package), and a first
+    session start installs the runtime from the plugin's own folder: the core's must be the whole set's."""
+    assert install.package_hash(written / "core") == install.package_hash(ROOT)
+    assert install.carried(written / "core") == install.carried(ROOT)
 
 
 def test_every_carried_file_is_its_source_byte_for_byte_but_for_links_that_leave_its_folder(built):
@@ -119,9 +163,11 @@ def test_every_carried_file_is_its_source_byte_for_byte_but_for_links_that_leave
     assert [path for path in differ if unlinked((ROOT / path).read_bytes()) != unlinked(carried[path])] == []
 
 
-def test_no_folder_holds_or_registers_a_hook(built):
-    assert [path for path in built if "hooks" in path.split("/") or path.endswith("hooks.json")] == []
-    for name in FIVE:
+def test_no_folder_but_the_core_holds_or_registers_a_hook(built):
+    """The guard runs once: a collection beside the core that held hooks too would run each of them twice."""
+    assert sorted(path for path in built if "hooks" in path.split("/") or path.endswith("hooks.json")) == sorted(
+        f"core/{path}" for path in ["hooks/hooks.json", *MUSE_HOOKS])
+    for name in FIVE[1:]:
         claude, codex, muse = (manifest(built, name, path) for path in collections.MANIFESTS)
         assert "hooks" not in claude and "hooks" not in codex and muse["capabilities"]["hooks"] == []
         assert not any(map(collections.hooked, (claude, codex, muse)))
@@ -156,19 +202,22 @@ def test_every_collection_but_the_core_declares_the_core_as_its_claude_code_depe
 
 
 def test_the_muse_manifest_lists_exactly_the_folders_skills(built):
+    """Each skill whose SKILL.md the folder holds: the core's copies of the scripts the runtime keeps are no skill."""
     for name in FIVE:
         listed = manifest(built, name, ".muse-plugin/plugin.json")["capabilities"]["skills"]
-        mine = sorted({path.split("/")[1] for path in folder(built, name) if path.startswith("skills/")})
+        mine = sorted({path.split("/")[1] for path in folder(built, name) if re.fullmatch(r"skills/[^/]+/SKILL\.md", path)})
         assert listed == [{"id": skill, "path": f"skills/{skill}/SKILL.md"} for skill in mine]
 
 
-def test_each_description_names_the_whole_set_as_the_way_to_the_guards_board_and_rituals(built):
+def test_each_description_says_the_core_carries_the_guard_and_names_the_whole_set(built):
     """In each manifest, and in the marketplace entry, which is what Claude Code shows of a plugin that is not
-    installed yet and in its details (the probe of 2026-11-14)."""
+    installed yet and in its details (the probe of 2026-11-14). Every collection comes with the core, and the core
+    with the guard (C8): a description that said a collection runs without hooks would now be false."""
     listed = {entry["name"]: entry["description"] for entry in json.loads(built[".claude-plugin/marketplace.json"])["plugins"]}
     for name in FIVE:
         said = manifest(built, name, ".claude-plugin/plugin.json")["description"]
-        assert [word for word in ("guards", "board", "rituals", "synthesis-skills", WHOLE) if word not in said] == []
+        assert [part for part in (SPEC["guard"], SPEC["whole_set"], "synthesis-skills", WHOLE) if part not in said] == []
+        assert ("hooks" in said and "approval" in said and "runtime" in said) and "no hooks" not in said
         assert ("core collection" in said) == (name != "core")  # the other four say they build on it
         assert {manifest(built, name, path)["description"] for path in collections.MANIFESTS} == {said}
         assert listed[SPEC["collections"][name]["name"]] == said
@@ -211,7 +260,8 @@ def test_the_real_collections_pass_their_own_check(capsys, this_checkout):
 
 FIXTURE = {"core": "core", "branch": "collections",
            "marketplace": {"name": "kit", "displayName": "Kit", "description": "Kits.", "owner": {"name": "Kit"}},
-           "with_core": "It builds on the core collection.", "without": "No guards, no board, no rituals.",
+           "with_core": "It builds on the core collection.", "guard": "The core carries the guard.",
+           "whole_set": "The whole kit is one plugin.",
            "collections": {"core": {"name": "kit-core", "description": "The core."},
                            "writing": {"name": "kit-writing", "description": "Writing."},
                            "engineering": {"name": "kit-engineering", "description": "Engineering."}}}
@@ -266,11 +316,11 @@ def test_a_sound_checkout_builds_with_no_problem_and_each_part_where_it_belongs(
            "writing/skills/pen/agents/openai.yaml", "engineering/skills/gear/SKILL.md",
            "engineering/skills/gear/agents/openai.yaml", *collections.MARKETPLACES])
     pen = json.loads(files["writing/.claude-plugin/plugin.json"])
-    assert pen == {"name": "kit-writing", "version": "5.8.0",
-                   "description": "Writing. It builds on the core collection. No guards, no board, no rituals.",
+    assert pen == {"name": "kit-writing", "version": "5.8.0",  # a checkout with no hooks has no guard to say it carries
+                   "description": "Writing. It builds on the core collection. The whole kit is one plugin.",
                    "author": {"name": "A"}, "homepage": "https://example.com", "repository": "https://example.com/kit",
                    "license": "CC0-1.0", "keywords": [], "skills": "./skills/", "dependencies": ["kit-core"]}
-    assert json.loads(files["core/.claude-plugin/plugin.json"])["description"] == "The core. No guards, no board, no rituals."
+    assert json.loads(files["core/.claude-plugin/plugin.json"])["description"] == "The core. The whole kit is one plugin."
     assert json.loads(files["writing/.codex-plugin/plugin.json"])["interface"] == {
         "displayName": "kit-writing", "developerName": "A", "category": "Developer Tools", "shortDescription": "",
         "longDescription": pen["description"]}
@@ -401,6 +451,97 @@ def test_a_symbolic_link_in_a_skill_stops_the_build(tmp_path, capsys):
     assert code == 2 and "skills/pen/linked.md is a symbolic link" in lines[0]
 
 
+# ---- the guard, carried by the core (ruling C8, 2026-11-20) ------------------------------------------
+# Whoever picks a collection gets the core with it, and the core carries the whole set's guard: its hooks, as Claude
+# Code and Codex (hooks/hooks.json) and Muse (its manifest's hooks and their scripts) read them, and the runtime they
+# run, as the runtime's install takes it (install.takes): the runtime package, the scripts of each skill it keeps at a
+# stable path, and the CHANGELOG. Every byte is the whole set's, links and all, so the core's runtime is the whole set's.
+
+STOP = '"$HOME/.synthesis/v5/bin/synthesis-hook" stop'
+MUSE_STOP = {"id": "kit-stop", "event": "Stop", "command": ["/bin/sh", ".muse-plugin/hooks/stop.sh"], "timeoutMs": 10000}
+GUARD = {"hooks/hooks.json": json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": STOP}]}]}}) + "\n",
+         ".muse-plugin/hooks/stop.sh": f"#!/bin/sh\nexec {STOP}\n",
+         ".muse-plugin/plugin.json": json.dumps({"schemaVersion": 1, "name": "kit", "version": "5.8.0",
+                                                 "capabilities": {"skills": [], "hooks": [MUSE_STOP]}}),
+         "CHANGELOG.md": "# Changelog\n\nThe pen is [here](skills/pen/SKILL.md).\n",  # a link that leaves the core
+         "synthesis/install.py": 'STABLE_SKILL_SCRIPTS = ("gear",)\n'}
+CARRIED = sorted(set(GUARD) - {".muse-plugin/plugin.json"} | set(RUNTIME) | {"skills/gear/scripts/tool.py"})
+
+
+def gear() -> dict:
+    """A skill in engineering whose script the runtime keeps at a stable path (its install.py names it)."""
+    return {**skill("gear", "engineering"), "scripts/tool.py": "print('tool')\n", "references/how.md": "How.\n"}
+
+
+def guarded(tmp_path, skills=None, spec=None):
+    """A committed checkout whose whole set has a guard: GUARD's hooks and runtime, and the gear skill."""
+    return checkout(tmp_path, {**SOUND, "gear": gear()} if skills is None else skills, spec, {**RUNTIME, **GUARD})
+
+
+def test_a_whole_set_with_hooks_has_its_guard_built_into_the_core_and_into_no_other_folder(tmp_path):
+    repo = guarded(tmp_path)
+    files, _ = collections.build(repo)
+    assert problems(repo) == []
+    core = {path[len("core/"):]: data for path, data in files.items() if path.startswith("core/")}
+    assert set(core) == {*collections.MANIFESTS, *collections.LICENSES, "skills/base/SKILL.md",
+                         "skills/base/agents/openai.yaml", *CARRIED}  # gear's script, never its SKILL.md or references
+    assert all(core[path] == (repo / path).read_bytes() for path in CARRIED)  # byte for byte, the CHANGELOG's link too
+    assert json.loads(core[".muse-plugin/plugin.json"])["capabilities"]["hooks"] == [MUSE_STOP]
+    for name in ("writing", "engineering"):
+        assert not [path for path in files if path.startswith(name + "/") and "hooks" in path.split("/")]
+        assert json.loads(files[f"{name}/.muse-plugin/plugin.json"])["capabilities"]["hooks"] == []
+    for name in ("core", "writing", "engineering"):  # each says so, where a harness shows it
+        assert "The core carries the guard." in json.loads(files[f"{name}/.claude-plugin/plugin.json"])["description"]
+
+
+@pytest.mark.parametrize("change, expected", [
+    (lambda f: {"core/hooks/hooks.json": None}, "core/hooks/hooks.json: missing; the core carries the guard"),
+    (lambda f: {"core/.muse-plugin/hooks/stop.sh": None}, "core/.muse-plugin/hooks/stop.sh: missing; the core carries the guard"),
+    (lambda f: {"core/synthesis/board.py": None}, "core/synthesis/board.py: missing; the core carries the guard"),
+    (lambda f: {"core/skills/gear/scripts/tool.py": None}, "core/skills/gear/scripts/tool.py: missing; the core carries the guard"),
+    (lambda f: {"core/CHANGELOG.md": None}, "core/CHANGELOG.md: missing; the core carries the guard"),
+    (lambda f: {"core/hooks/hooks.json": b"{}\n"}, "core/hooks/hooks.json: differs from its source"),
+    (lambda f: {"core/synthesis/paths.py": b"import sys\n"}, "core/synthesis/paths.py: differs from its source"),
+    (lambda f: {"core/CHANGELOG.md": f["core/CHANGELOG.md"].replace(b"skills/pen", b"https://example.com/kit/blob/v5.8.0/skills/pen")},
+     "core/CHANGELOG.md: differs from its source"),  # the guard is the whole set's to the byte: no link is rewritten
+    (lambda f: {"core/.muse-plugin/plugin.json": edited(f, "core/.muse-plugin/plugin.json",
+                                                       lambda m: m["capabilities"]["hooks"].clear())},
+     "core/.muse-plugin/plugin.json: registers hooks other than the whole set's"),
+    (lambda f: {"core/.claude-plugin/plugin.json": edited(f, "core/.claude-plugin/plugin.json",
+                                                         lambda m: m.update(hooks="./hooks/hooks.json"))},
+     "core/.claude-plugin/plugin.json: registers a hook"),
+    (lambda f: {"writing/hooks/hooks.json": f["core/hooks/hooks.json"]}, "writing/hooks/hooks.json: holds a hook"),
+    (lambda f: {"writing/.muse-plugin/plugin.json": edited(f, "writing/.muse-plugin/plugin.json",
+                                                          lambda m: m["capabilities"]["hooks"].append(MUSE_STOP))},
+     "writing/.muse-plugin/plugin.json: registers a hook"),
+    (lambda f: {"core/skills/gear/SKILL.md": f["engineering/skills/gear/SKILL.md"]},
+     "core/skills/gear/SKILL.md: not a manifest, a license or a file of a skill in core"),
+])
+def test_a_core_that_does_not_carry_the_whole_sets_guard_as_it_is_is_refused(tmp_path, change, expected):
+    repo = guarded(tmp_path)
+    files, _ = collections.build(repo)
+    found = collections.verify(repo, rebuilt(files, change(files)))
+    assert any(problem.startswith(expected) for problem in found), found
+
+
+def test_a_core_script_runs_with_the_runtime_and_reaches_the_scripts_the_guard_carries_beside_it(tmp_path):
+    """A core script may import any of the runtime, and reach a script of a skill the runtime keeps, since the core
+    carries both; without a guard, the same core is refused for each."""
+    base = {**skill("base"), "scripts/run.py": "import pathlib\nfrom synthesis import board\n"
+                                                 "TOOL = pathlib.Path(__file__).resolve().parents[2] / 'gear' / 'scripts' / 'tool.py'\n"}
+    assert problems(guarded(tmp_path, {**SOUND, "base": base, "gear": gear()})) == []
+    plain = problems(checkout(tmp_path / "plain", {**SOUND, "base": base, "gear": gear()}))
+    assert any(problem.startswith("core/skills/base/scripts/run.py: imports synthesis.board as it starts") for problem in plain)
+    assert any(problem.startswith("core/skills/base/scripts/run.py: reaches gear's folder") for problem in plain)
+
+
+def test_the_real_collections_file_names_the_guard_for_every_collection_and_the_core_as_its_carrier():
+    """The guard rides in the collection every other one depends on, so no install of a collection leaves it out."""
+    assert SPEC["core"] == "core" and SPEC["guard"] and SPEC["whole_set"] and "without" not in SPEC
+    home = homes()  # a core script runs in the core now, with the runtime beside it: none needs the whole set any more
+    assert [path for path in SPEC["needs_the_whole_set"] if home[path.split("/")[1]] == "core"] == []
+
+
 # ---- the command line, and the tree a release commits ----------------------------------
 
 def run(capsys, *argv):
@@ -467,7 +608,26 @@ def test_what_cannot_be_read_exits_2_and_says_why(tmp_path, capsys):
     assert code == 2 and lines[0].startswith("cannot continue: ")
 
 
-@pytest.mark.parametrize("argv", [[], ["out", "--check"]])
+def test_tree_builds_from_the_commit_checks_and_writes_the_tree_a_release_commits(tmp_path, capsys):
+    """Review round 1 of C8, B3: a release ran the installed runtime's build, an earlier release's, so a change to how
+    collections are built shipped a release late (C8's own stopped at its check). The release now runs the build script
+    of the commit it releases, from its clone, and takes the tree it writes into that clone's objects."""
+    repo = checkout(tmp_path)
+    code, lines = run(capsys, "--tree", "--repo-root", repo)
+    files, modes = collections.build(repo, commit=True)
+    holds = f"3 collections, 3 skills, {len(files)} files, version 5.8.0"
+    assert (code, lines) == (0, [f"tree {collections.tree(repo, files, modes)} branch collections: {holds}"])
+    assert git(repo, "status", "--porcelain") == ""  # objects in its store, nothing in its checkout
+    assert run(capsys, "--tree", "--dry-run", "--repo-root", repo) == (0, [f"checked branch collections: {holds}; nothing written"])
+
+
+def test_tree_refuses_collections_that_fail_a_check_and_writes_no_tree(tmp_path, capsys):
+    repo = checkout(tmp_path, {**SOUND, "lost": skill("lost", category=None)})
+    code, lines = run(capsys, "--tree", "--repo-root", repo)
+    assert code == 1 and lines[0] == "refused: 1 problem; nothing written" and lines[1].startswith("skills/lost/SKILL.md")
+
+
+@pytest.mark.parametrize("argv", [[], ["out", "--check"], ["--tree", "--check"], ["--check", "--dry-run"]])
 def test_exactly_one_thing_is_asked_for(argv, capsys):
     with pytest.raises(SystemExit) as stopped:
         collections.main(argv)
@@ -491,8 +651,9 @@ def test_the_tree_a_release_commits_holds_exactly_the_built_files(tmp_path):
 
 def test_the_readme_lists_each_collection_with_its_plugin_its_skills_and_its_install_lines():
     """The table is what someone choosing a collection reads, so it is held to the data: a skill that changes collection
-    changes the table in the same pull request. The install lines name the branch and the marketplace the data names."""
-    section = (ROOT / "README.md").read_text(encoding="utf-8").split("### One collection, without the hooks", 1)[1]
+    changes the table in the same pull request. Setup's option comes first; the harnesses' own lines name the branch and
+    the marketplace the data names, and each installs the core, which carries the guard (C8)."""
+    section = (ROOT / "README.md").read_text(encoding="utf-8").split("### Pick your collections", 1)[1]
     section = section.split("\n### ", 1)[0]
     rows = {found.group(1): found.group(2).split(", ")
             for found in re.finditer(r"^\| [^|]+ \| `([\w-]+)` \| ([^|]+?) \|$", section, re.M)}
@@ -500,12 +661,15 @@ def test_the_readme_lists_each_collection_with_its_plugin_its_skills_and_its_ins
     assert rows == {entry["name"]: sorted(skill[len("synthesis-"):] for skill, collection in home.items()
                                           if collection == name) for name, entry in SPEC["collections"].items()}
     market, branch = SPEC["marketplace"]["name"], SPEC["branch"]
-    for line in (f"claude plugin marketplace add synthesisengineering/synthesis-skills@{branch}",
+    for line in ("onboard.sh | sh -s -- plugin --collections writing", "setup.py plugin --collections engineering",
+                 f"claude plugin marketplace add synthesisengineering/synthesis-skills@{branch}",
                  f"codex plugin marketplace add synthesisengineering/synthesis-skills --ref {branch}",
                  f"muse plugins marketplace add {market} {WHOLE}.git#{branch}",
                  f"claude plugin install synthesis-skills-engineering@{market}",
-                 f"codex plugin add synthesis-skills-core@{market}", f"muse plugins install synthesis-skills-core@{market}"):
+                 f"codex plugin add synthesis-skills-core@{market}", f"muse plugins install synthesis-skills-core@{market}",
+                 "muse plugins approve synthesis-skills-core"):
         assert line in section, line
+    assert "without the hooks" not in section and "no hooks" not in section
 
 
 # ---- a collection's scripts run where it is installed (R1-3 of 5.22.0's review) -----------------
@@ -539,20 +703,20 @@ def test_every_collected_script_runs_from_its_folder_or_says_in_a_line_that_it_n
     """Each entry point (a file with a `__main__` guard) is run as a person runs it, with --help, from the folder the
     build wrote. It runs, or it is one the collections file names as needing the whole set and says so in one line;
     none ends in a traceback. A script that refuses for its own reasons (a config to fill in, an installer of its own)
-    passes: it ran."""
+    passes: it ran. In the core, which carries the runtime with the guard (C8), every script runs, the copies of other
+    collections' scripts the runtime keeps among them."""
     declared, wrong, seen = set(SPEC.get("needs_the_whole_set", {})), [], set()
     for script in sorted(written.glob("*/skills/*/**/*.py")):
-        source = script.relative_to(written).as_posix().split("/", 1)[1]
+        where, source = script.relative_to(written).as_posix().split("/", 1)
         if is_test(source) or "__main__" not in script.read_text(encoding="utf-8"):
             continue
         done = subprocess.run([sys.executable, "-E", "-s", str(script), "--help"], capture_output=True, text=True,
                               env=alone(tmp_path), cwd=tmp_path, stdin=subprocess.DEVNULL, timeout=120)
-        said = (done.stdout + done.stderr).strip()
-        needs = bool(RUNTIME_MISSING.search(said))
-        if "Traceback" in done.stderr or needs != (source in declared) or needs and (
-                done.returncode == 0 or len(said.splitlines()) != 1):
+        said = (done.stdout + done.stderr).strip()  # a refusal for want of the runtime is one line and an error's exit
+        refused = bool(RUNTIME_MISSING.search(said)) and done.returncode != 0 and len(said.splitlines()) == 1
+        if "Traceback" in done.stderr or refused != (source in declared and where != "core"):
             wrong.append(f"{script.relative_to(written)}: exit {done.returncode}: {said.splitlines()[-1:]}")
-        seen.add(script.relative_to(written).parts[0])
+        seen.add(where)
     assert wrong == [] and seen == set(FIVE)
 
 
@@ -570,13 +734,16 @@ def test_the_core_s_knowledge_base_gate_runs_from_the_core_s_folder(written, tmp
 
 
 def test_a_collection_carries_the_runtime_s_yaml_reader_only_where_its_scripts_read_it(written):
+    """The core carries the whole runtime package with the guard; another collection only its YAML reader, and only
+    where its scripts read it."""
     for name in FIVE:
-        held = sorted(path.name for path in (written / name / "synthesis").glob("*"))
+        held = sorted(path.relative_to(written / name).as_posix() for path in (written / name / "synthesis").rglob("*")
+                      if path.is_file())
         reads = any("yamlish" in path.read_text(encoding="utf-8")
                     for path in (written / name / "skills").rglob("*.py") if not is_test(path.as_posix()))
-        assert held == (["__init__.py", "yamlish.py"] if reads else []), name
-        assert all((written / name / "synthesis" / file).read_bytes() == (ROOT / "synthesis" / file).read_bytes()
-                   for file in held)
+        assert held == (sorted(path for path in runtime_files() if path.startswith("synthesis/")) if name == "core" else
+                        ["synthesis/__init__.py", "synthesis/yamlish.py"] if reads else []), name
+        assert all((written / name / file).read_bytes() == (ROOT / file).read_bytes() for file in held)
 
 
 GUARDED = ("import sys\nsys.dont_write_bytecode = True\ntry:\n    from synthesis import {module}\nexcept ImportError as exc:\n"
@@ -686,10 +853,11 @@ def test_an_optional_load_the_script_does_not_take_fails_the_build(tmp_path):
 def test_the_two_paths_the_review_found_across_collections_are_each_accounted_for(written):
     """The rituals' pull-request scan reaches the Bitbucket skill's helper (engineering) from chief of staff, and says a
     Bitbucket repository is unscanned without it; onboarding's setup reaches the rituals' launch file from the core,
-    and needs the whole set in any case."""
+    which carries that file with the runtime the guard runs (C8)."""
     assert SPEC["optional_loads"] == {"skills/synthesis-daily-rituals/scripts/pr_queue_scan.py": {
         "synthesis-bitbucket": SPEC["optional_loads"]["skills/synthesis-daily-rituals/scripts/pr_queue_scan.py"]["synthesis-bitbucket"]}}
-    assert "skills/synthesis-onboarding/scripts/setup.py" in SPEC["needs_the_whole_set"]
+    assert "skills/synthesis-onboarding/scripts/setup.py" not in SPEC["needs_the_whole_set"]
+    assert (written / "core/skills/synthesis-daily-rituals/scripts/com.synthesis.day-end-nudge.plist").is_file()
     found = collections.verify(ROOT, {path.relative_to(written).as_posix(): path.read_bytes()
                                       for path in written.rglob("*") if path.is_file()})
     assert [problem for problem in found if "reaches" in problem] == []
@@ -718,8 +886,11 @@ def leaves(md: Path, folder: Path, tracked: set) -> list:
 
 
 def test_no_link_in_a_collection_leads_out_of_its_folder(written):
-    tracked = set(git(ROOT, "ls-files").split("\n")) - {""}
+    """But for the guard the core carries: the runtime's own bytes, links and all, as the installed runtime holds them
+    (its CHANGELOG links to the rituals' references, which no runtime holds either)."""
+    tracked, guard = set(git(ROOT, "ls-files").split("\n")) - {""}, guard_files()
     found = [f"{name}/{line}" for name in FIVE for md in sorted((written / name).rglob("*.md"))
+             if not (name == "core" and md.relative_to(written / name).as_posix() in guard)
              for line in leaves(md, written / name, tracked)]
     assert found == []
 

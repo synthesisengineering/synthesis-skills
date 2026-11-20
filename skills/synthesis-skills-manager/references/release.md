@@ -126,8 +126,11 @@ Before anything is pushed it refuses when:
 - CI has not passed for HEAD on that repository (read with `gh run list -R
   github.com/synthesisengineering/synthesis-skills --commit`; unknown is not passed);
 - another live session holds the release train;
-- the five collections, built from HEAD's commit, fail a check, or the collections file
-  cannot be read ([collections.md](collections.md)); a dry run builds and checks them too.
+- the five collections, built from HEAD's commit by the clone's own `build_collections.py
+  --tree` in a process of its own, fail a check, the clone holds no such script, or the
+  collections file cannot be read ([collections.md](collections.md)); a dry run builds and
+  checks them too. The release that first ships this is made with its own release tool:
+  install the merged checkout's runtime first (`synthesis install <checkout>`).
 
 Publication pushes `main`, `stable`, the tag and the collections to every push remote,
 one atomic push per remote, so a channel or pin never moves without the others. The

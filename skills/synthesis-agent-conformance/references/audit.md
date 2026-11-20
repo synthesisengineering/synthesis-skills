@@ -92,10 +92,15 @@ there with no item here fails:
 - `harnesses`: at least one of the three harnesses was found on this Mac;
 - `<harness> plugin`, `<harness> package`, `<harness> hooks`: per harness, the plugin
   installed and enabled, its code equal to the runtime (never a version label), all four
-  events wired to the stable hook. A listing that does not answer within 45 seconds
+  events wired to the stable hook. The plugin is the one that carries the guard there:
+  the whole set, or, for collections picked in its place, their core
+  (`synthesis-skills-core`, which carries the whole set's hooks and runtime); a harness
+  that holds both fails, since every hook would run twice, and so does one with a
+  collection and no core. A listing that does not answer within 45 seconds
   says nothing about the install, and that harness's plugin line is `unknown`: `cannot tell`.
   Codex is asked for the plugin's own marketplace
-  (`codex plugin list --json -m synthesis-engineering`), for which it fetches no remote
+  (`codex plugin list --json -m synthesis-engineering`), and the collections'
+  (`-m synthesis-collections`), for which it fetches no remote
   catalog. Its whole listing, which fetches one when Codex's copy is over three hours
   old, is asked when the first shows no plugin or prints no JSON, so the Codex lines
   can take two limits; "not installed" is said only from the whole listing, and when

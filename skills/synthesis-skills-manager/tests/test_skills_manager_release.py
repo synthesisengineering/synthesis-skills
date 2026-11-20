@@ -39,6 +39,14 @@ def git(repo, *args):
 # The collections a release publishes beside the whole set: here one, the core, holding the one skill.
 COLLECTIONS = {"core": "core", "branch": "collections", "marketplace": {"name": "demo-collections"},
                "collections": {"core": {"name": "demo-core", "description": "The core."}}}
+BUILD = Path("skills") / "synthesis-skills-manager" / "scripts"
+
+
+def builds(repo):
+    """The build scripts, as every commit of the repository holds them: a release builds its collections with its own."""
+    (repo / BUILD).mkdir(parents=True, exist_ok=True)
+    for name in ("build_collections.py", "build_directory_package.py"):
+        (repo / BUILD / name).write_bytes((ROOT / BUILD / name).read_bytes())
 
 
 def source_repo(tmp_path, version="5.1.0", changelog=None, remotes=1):
@@ -52,6 +60,7 @@ def source_repo(tmp_path, version="5.1.0", changelog=None, remotes=1):
     (repo / build_collections.LIST).write_text(json.dumps(COLLECTIONS))
     for name in build_collections.LICENSES:
         (repo / name).write_text(f"{name} terms.\n")
+    builds(repo)
     (repo / "CHANGELOG.md").write_text(changelog or f"# Changelog\n\n## [{version}] - 2026-10-05\n\n- x\n")
     subprocess.run(["git", "init", "-q", str(repo)], check=True)
     git(repo, "add", ".")
@@ -252,6 +261,44 @@ def test_collections_that_fail_their_checks_stop_the_release_before_anything_is_
     git(repo, "commit", "-qam", "a collections file that cannot be read")
     with pytest.raises(setup.SetupError, match="cannot build the collections: "):
         release.publish(repo, "5.1.0", dry_run=dry_run)
+
+
+# Review round 1 of C8, B3: the release tool runs from the installed runtime, an earlier release, and built the
+# collections with that release's build: a change to how they are built shipped a release late, and C8's own release
+# stopped at its check. It runs the build script of the commit it releases, from its clone, in a process of its own.
+
+def own_build(repo, body: str):
+    """The clone's build script made to answer as `body` says, committed: what the release runs is the clone's."""
+    (repo / BUILD / "build_collections.py").write_text(f"import sys\n{body}\n")
+    git(repo, "commit", "-qam", "this release's own build")
+
+
+def test_the_release_builds_its_collections_with_the_build_script_of_its_own_clone(tmp_path):
+    repo = source_repo(tmp_path)
+    own_build(repo, "print('checked branch shelves: built by the clone' if '--dry-run' in sys.argv else "
+                    "'tree ' + 'a' * 40 + ' branch shelves: built by the clone')")
+    assert release.collections(repo) == ("a" * 40, "shelves")
+    assert release.collections(repo, dry_run=True) == ("", "shelves")
+    assert not hasattr(release, "build_collections")  # the running copy's build is never consulted
+
+
+def test_collections_the_clones_build_refuses_publish_nothing_and_say_why(tmp_path):
+    repo = source_repo(tmp_path)
+    own_build(repo, "print('refused: 2 problems; nothing written')\nprint('one')\nprint('two')\nsys.exit(1)")
+    with pytest.raises(setup.SetupError, match=r"the collections fail 2 checks, so nothing was published: one; two"):
+        release.collections(repo)
+    own_build(repo, "print('cannot continue: a file it reads is gone')\nsys.exit(2)")
+    with pytest.raises(setup.SetupError, match="cannot build the collections: a file it reads is gone"):
+        release.collections(repo)
+
+
+def test_a_clone_without_its_build_script_is_refused_naming_the_step(tmp_path):
+    repo = source_repo(tmp_path)
+    git(repo, "rm", "-q", str(BUILD / "build_collections.py"))
+    git(repo, "commit", "-qm", "no build script")
+    with pytest.raises(setup.SetupError, match="cannot build the collections: .* holds no skills/synthesis-skills-manager/"
+                                               "scripts/build_collections.py"):
+        release.publish(repo, "5.1.0", dry_run=True)
 
 
 # ---- the GitHub release -------------------------------------------------------

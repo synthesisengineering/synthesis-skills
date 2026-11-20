@@ -33,6 +33,7 @@ if __package__ in (None, ""):
 from synthesis import install, paths  # noqa: E402
 
 PLUGIN = "synthesis-skills"
+CORE, COLLECTIONS = "synthesis-skills-core", "synthesis-collections"  # a collections install's guard rides in its core (C8)
 STABLE_HOOK = "$HOME/.synthesis/v5/bin/synthesis-hook"
 EVENTS = {"SessionStart": "session-start", "UserPromptSubmit": "user-prompt-submit",
           "PreToolUse": "pre-tool-use", "Stop": "stop"}
@@ -46,6 +47,7 @@ LISTINGS = {  # each harness's own read-only listing command
     "codex": CODEX_WHOLE + ["-m", MARKETPLACE],
     "muse": ["plugins", "inspect", PLUGIN, "--json"],
 }
+CORE_LISTINGS = {"codex": CODEX_WHOLE + ["-m", COLLECTIONS], "muse": ["plugins", "inspect", CORE, "--json"]}  # beside them
 HOOK_BUDGET_MS = 50
 CODEX_DOC_BYTES = 98_304
 CODEX_DEFAULT_DOC_BYTES = 32_768
@@ -232,15 +234,17 @@ def check_shell_name(home: Path, harness: str, tool: str, run=subprocess.run) ->
 # ---- harness plugin state -----------------------------------------------------
 
 def check_plugin(harness: str, entry: dict | None, error: str = "") -> Check:
-    """entry: {"enabled": bool, "version": str, "path": Path | None, "problem": str}."""
+    """entry: {"enabled": bool, "version": str, "path": Path | None, "problem": str, "name": the plugin when it is the
+    collections' core}: the plugin that carries the guard there (`guard_entry`)."""
     if entry is None:  # a CLI that never answered says nothing about the install: warn, never pass or fail
         return Check("unknown" if error.startswith("cannot tell") else "fail", f"{harness} plugin", error or f"{PLUGIN} is not installed")
     if entry.get("problem"):
         return Check("fail", f"{harness} plugin", entry["problem"])
+    name = entry.get("name", PLUGIN)
     if not entry.get("enabled"):
-        return Check("fail", f"{harness} plugin", f"{PLUGIN} {entry.get('version', '')} is installed but disabled")
+        return Check("fail", f"{harness} plugin", f"{name} {entry.get('version', '')} is installed but disabled")
     where = _short(entry["path"]) if entry.get("path") else "path unknown"
-    return Check("ok", f"{harness} plugin", f"{PLUGIN} {entry.get('version', '')} installed and enabled at {where}")
+    return Check("ok", f"{harness} plugin", f"{name} {entry.get('version', '')} installed and enabled at {where}")
 
 
 def check_package(harness: str, plugin_root: Path | None, runtime: str) -> Check:
@@ -1051,8 +1055,9 @@ def check_muse_approval(inspect: dict) -> Check:
         return Check("fail", "muse hook approval", "the installed plugin registers no hooks")
     pending = [f"{c['candidate'].get('capability_id', '?')} ({c.get('status', 'unknown')})"
                for c in hooks if c.get("status") != "trusted_enabled"]
-    if pending:
-        return Check("fail", "muse hook approval", f"run `muse plugins approve {PLUGIN}`: " + ", ".join(pending))
+    if pending:  # the plugin that carries the guard: the whole set, or a collections install's core
+        name = (inspect.get("record") or {}).get("id") or PLUGIN
+        return Check("fail", "muse hook approval", f"run `muse plugins approve {name}`: " + ", ".join(pending))
     return Check("ok", "muse hook approval", f"all {len(hooks)} hooks approved and enabled")
 
 
@@ -2118,36 +2123,76 @@ def json_in(text: str):
     return None
 
 
-def claude_entry(listing) -> dict | None:
+def claude_entries(listing) -> dict:
+    """{plugin: entry} of the synthesis plugins in Claude Code's list: the whole set, from any marketplace, and each
+    collection from the collections' marketplace. Claude Code reads a plugin of a folder marketplace in place
+    (`readFromFolder`, 2.1.316), so that is the folder its hooks run from; else its copy in the cache."""
+    found = {}
     for item in listing if isinstance(listing, list) else (listing or {}).get("plugins") or []:
-        if isinstance(item, dict) and str(item.get("id", "")).split("@")[0] == PLUGIN:
-            path = item.get("installPath")
-            return {"enabled": bool(item.get("enabled")), "version": item.get("version", ""),
-                    "path": Path(path) if path else None}
-    return None
+        name, _, market = str(item.get("id", "")).partition("@") if isinstance(item, dict) else ("", "", "")
+        if name and name not in found and (name == PLUGIN or market == COLLECTIONS):
+            path = item.get("readFromFolder") or item.get("installPath")
+            found[name] = {"enabled": bool(item.get("enabled")), "version": item.get("version", ""),
+                           "path": Path(path) if path else None, **({} if name == PLUGIN else {"name": name, "id": item["id"]})}
+    return found
+
+
+def claude_entry(listing) -> dict | None:
+    """The whole set's entry in Claude Code's list, None when it holds none."""
+    return claude_entries(listing).get(PLUGIN)
+
+
+def codex_entries(listing, codex_home: Path, whole: bool = True) -> dict:
+    """{plugin: entry} of the synthesis plugins in a Codex listing: the whole set from any marketplace (unless `whole` is
+    False), and each collection from the collections' marketplace."""
+    found = {}
+    for item in (listing if isinstance(listing, dict) else {}).get("installed") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or str(item.get("pluginId", "")).split("@")[0])
+        market = str(item.get("marketplaceName") or str(item.get("pluginId", "")).partition("@")[2])
+        if name not in found and (name == PLUGIN and whole or name != PLUGIN and market == COLLECTIONS):
+            version = str(item.get("version") or "")  # a listing with no version names no folder
+            folder = codex_home / "plugins" / "cache" / market / name / version
+            found[name] = {"enabled": bool(item.get("enabled")), "version": version,
+                           "path": folder if version and folder.is_dir() else None, "id": item.get("pluginId", ""),
+                           **({} if name == PLUGIN else {"name": name})}
+    return found
 
 
 def codex_entry(listing, codex_home: Path) -> dict | None:
-    for item in (listing if isinstance(listing, dict) else {}).get("installed") or []:
-        if isinstance(item, dict) and (item.get("name") == PLUGIN or str(item.get("pluginId", "")).split("@")[0] == PLUGIN):
-            version = str(item.get("version") or "")  # a listing with no version names no folder
-            folder = codex_home / "plugins" / "cache" / str(item.get("marketplaceName") or "") / str(item.get("name") or PLUGIN) / version
-            return {"enabled": bool(item.get("enabled")), "version": version,
-                    "path": folder if version and folder.is_dir() else None, "id": item.get("pluginId", "")}
-    return None
+    """The whole set's entry in a Codex listing, None when it holds none."""
+    return codex_entries(listing, codex_home).get(PLUGIN)
 
 
-def muse_entry(inspect) -> dict | None:
+def muse_entry(inspect, plugin: str = PLUGIN) -> dict | None:
+    """The entry of `plugin` in Muse's answer to `muse plugins inspect <plugin> --json`; None for another's record."""
     record = (inspect if isinstance(inspect, dict) else {}).get("record")
-    if not record:
+    if not record or record.get("id") not in (None, plugin):
         return None
     path = record.get("cache_path")
     entry = {"enabled": bool(record.get("enabled")), "version": record.get("version", ""),
-             "path": Path(path) if path else None}
+             "path": Path(path) if path else None, **({} if plugin == PLUGIN else {"name": plugin})}
     if inspect.get("valid") is False:
         codes = ", ".join(d.get("code", "?") for d in inspect.get("diagnostics") or [])
         entry["problem"] = f"Muse reports the installed manifest invalid ({codes})"
     return entry
+
+
+def guard_entry(found: dict) -> dict | None:
+    """Of the synthesis plugins a harness holds ({plugin: entry}), the entry of the one that carries the guard: the whole
+    set, or the core of a collections install (ruling C8, 2026-11-20). Both at once run every hook twice, and a call both
+    copies judge is held even once approved; a collection with neither is skills with no guard. None for none at all."""
+    if PLUGIN in found and CORE in found:
+        return {**found[PLUGIN], "problem": f"{PLUGIN} and {CORE} are both installed, so every synthesis hook runs twice "
+                f"and a call both copies judge is held even once approved: remove the collections, or the whole set"}
+    if PLUGIN in found or CORE in found:
+        return found.get(PLUGIN) or found[CORE]
+    if found:
+        return {**found[sorted(found)[0]], "problem": f"{', '.join(sorted(found))} {'is' if len(found) == 1 else 'are'} "
+                f"installed without {CORE}, which carries the guard, so no synthesis hook holds a send or a deploy here: "
+                "install it (setup.py plugin --collections names it)"}
+    return None
 
 
 def _hooks_file(root: Path | None) -> dict:
@@ -2164,7 +2209,7 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
     checks, versions = [], {}
     if "claude" in found:
         listing, error = _finish(procs["claude"])
-        entry = claude_entry(listing)
+        entry = guard_entry(claude_entries(listing))  # the whole set, or a collections install's core (C8)
         checks.append(check_plugin("claude", entry, error))
         if entry:
             versions["claude"], hooks = entry.get("version", ""), _hooks_file(entry["path"])
@@ -2177,12 +2222,15 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
     if "codex" in found:
         codex_home = paths.codex_home()
         listing, error = _finish(procs["codex"])
-        entry = codex_entry(listing, codex_home)
+        held = codex_entries(listing, codex_home)
+        if "codex:core" in procs:  # the collections' own marketplace, asked beside the whole set's: no catalog either
+            held = {**codex_entries(_finish(procs["codex:core"])[0], codex_home, whole=False), **held}
+        entry = guard_entry(held)
         if entry is None and not error.startswith(("cannot tell", "could not run")):
             # Not shown by its own marketplace, or a Codex that does not know the option: absent is said only from
             # the whole listing, the one that may fetch the catalog.
             listing, error = _finish(_start(procs["codex"].args[:1] + CODEX_WHOLE))
-            entry = codex_entry(listing, codex_home)
+            entry = guard_entry(codex_entries(listing, codex_home))
             if entry is None and error.startswith("cannot tell"):
                 error = error.replace("; run the doctor again", ": Codex's whole listing fetches its remote plugin catalog when its "
                                       "copy is old, and this limit stops the fetch each time; run `codex plugin list` once, then the doctor again")
@@ -2206,7 +2254,10 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
                 checks.append(check_codex_catalog(result, catalog_error, entry["path"], config, codex_home))
     if "muse" in found:
         inspect, error = _finish(procs["muse"])
-        entry = muse_entry(inspect)
+        core = _finish(procs["muse:core"])[0] if "muse:core" in procs else None  # a collections install's core (C8)
+        held = {name: e for name, e in ((PLUGIN, muse_entry(inspect)), (CORE, muse_entry(core, CORE))) if e}
+        entry = guard_entry(held)
+        inspect = core if entry is not None and entry.get("name") == CORE else inspect  # the approvals of that plugin
         if entry is None and isinstance(inspect, dict) and isinstance(inspect.get("error"), dict):
             absent = inspect["error"].get("code") == "unknown-plugin"  # Muse's own code for a plugin that is not there
             error = "" if absent else str(inspect["error"].get("message", "")) or error
@@ -2303,6 +2354,8 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         path = find(h)                     # means a version probe, which overlaps the others' listings
         if path:
             clis[h], started[h] = path, _start([path] + LISTINGS[h])
+            if h in CORE_LISTINGS:  # where a collections install keeps its guard: Claude Code's one listing holds both
+                started[f"{h}:core"] = _start([path] + CORE_LISTINGS[h])
     try:
         config = paths.config()
     except (OSError, ValueError):

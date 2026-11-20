@@ -19,9 +19,11 @@ Codex and Muse while remaining compatible with the Agent Skills standard.
 - `skills/synthesis-onboarding/scripts/setup.py` installs the native plugin in
   each harness; native plugins are the only installation path.
 - `skills/synthesis-skills-manager/assets/collections.json` lists the five
-  collections, plugins without hooks that each release builds from `skills/` and
-  publishes as the `collections` branch; each skill names its own in its frontmatter
-  (`metadata.category`). That branch is a build output: never edit it by hand.
+  collections, plugins that each release builds from `skills/` and publishes as the
+  `collections` branch, and that setup's `--collections` installs; the core carries the
+  whole set's guard, its hooks and their runtime, so no collection installs without it.
+  Each skill names its own in its frontmatter (`metadata.category`). That branch is a
+  build output: never edit it by hand.
 
 Never edit installed plugin caches or user-level skill copies. Make the change
 here, verify it, merge it to `main`, then update the installed plugins.
@@ -135,17 +137,18 @@ can rewrite it. So, with any login that can act on this repository:
   repository from GitHub at that commit in the protected releases folder, and everything after comes from that clone.
   It holds the release train (a board claim on the main checkout's `CHANGELOG.md`; another live session holding it
   means another release is under way, and the script names it), builds and checks the five collections from the
-  clone's commit (`build_collections.py`), tags, pushes `main`, `stable`, the tag and the collections, as the
-  `collections` branch, atomically from the clone and reads them back with `git ls-remote`, creates the GitHub release
-  for the tag (its CHANGELOG entry as the notes, read back as latest), opens the Homebrew tap's pull request that points
-  the `synthesis` formula at the tag's archive (it merges itself when the tap's install tests pass), installs into Claude
-  Code, Codex and Muse with each harness's own commands (Muse from the clone), verifies each harness's installed files
-  equal the clone's tag at the folder it reports loading, installs the stable runtime from the clone (its staged copy
-  must hold the tag's listing before `current` moves) and runs `synthesis doctor`, then waits for the tap's pull
-  request to merge and reads the formula back from the tap's `main`. A GitHub server error runs its stage again, up to
-  three times, since each stage reads what is already published first, and a tap job GitHub never gave a runner is run
-  again. A release is not complete until the script exits 0; a hook approval only the person can give in a harness
-  (Codex asks again after every release) is named as waiting, not counted.
+  clone's commit with the clone's own `build_collections.py --tree`, in a process of its own, tags, pushes `main`,
+  `stable`, the tag and the collections, as the `collections` branch, atomically from the clone and reads them back
+  with `git ls-remote`, creates the GitHub release for the tag (its CHANGELOG entry as the notes, read back as latest),
+  opens the Homebrew tap's pull request that points the `synthesis` formula at the tag's archive (it merges itself
+  when the tap's install tests pass), installs into Claude Code, Codex and Muse with each harness's own commands (Muse
+  from the clone), verifies each harness's installed files equal the clone's tag at the folder it reports loading,
+  installs the stable runtime from the clone (its staged copy must hold the tag's listing before `current` moves) and
+  runs `synthesis doctor`, then waits for the tap's pull request to merge and reads the formula back from the tap's
+  `main`. A GitHub server error runs its stage again, up to three times, since each stage reads what is already
+  published first, and a tap job GitHub never gave a runner is run again. A release is not complete until the script
+  exits 0; a hook approval only the person can give in a harness (Codex asks again after every release) is named as
+  waiting, not counted.
 - `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>` installs a released tag from a fresh clone of
   it, after drift: GitHub must serve the tag on its `main` with CI passed, and nothing older than the running runtime or
   GitHub's highest version tag installs. On a new Mac, where no runtime is installed yet, the checkout's copy runs it
