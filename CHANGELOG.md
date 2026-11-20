@@ -4,6 +4,24 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.28.2] - 2026-11-20
+
+- **synthesis-content-quality 5.1.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole, with when it applies and why; the coverage map places every rule of 5.0.x, and the earlier text stays
+  verbatim in `references/preserved.md`. The first text's gate found nothing weaker but lost the blind comparison on
+  Sonnet (the earlier text's answers preferred 49 times, the rewrite's 29, 6 ties): four phrases were carried too far,
+  among them a question about the review's mode asked in 46 of 84 answers against 25, and internal catalog ids shown
+  to the reader. Those four are narrowed. Second gate at six repetitions against the pinned earlier text, nothing
+  weaker and something better on both models: Opus 98% (153 of 156) against 97% (152 of 156), blind comparison won 39
+  to 30 with 15 ties, seven rules won; Sonnet 97% (152 of 156) against 97% (151 of 156), won 35 to 33 with 16 ties,
+  five rules won.
+- **A workspace's own critical words are read.** The deadline sweep read `critical_words` (the words that flag an
+  untagged deadline as possibly critical) and `ledger_closed_words` only at the top of `config.json`, while 5.27.1
+  moved each workspace's settings into its own file, so words written there on the principal's approval were
+  silently ignored and the workspace kept the ten built-in words (reported by an operations seat). Both lists are
+  now read from the workspace's settings, or `defaults` for every workspace; a list left at the top of `config.json`
+  is refused by name, never ignored. Tests first.
+
 ## [5.28.1] - 2026-11-19
 
 - **synthesis-decision-packet 2.5.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is stated

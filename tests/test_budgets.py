@@ -2977,6 +2977,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # keeps a workspace's own settings, none on CI's runners): synthesis/rituals.py's workspace_files 2 more (its docstring
 # names the root, and the root read from SYNTHESIS_WORKSPACES, as the guard reads it, else ~/workspaces); the root
 # conftest.py 1 (its autouse fixture sets that root to an empty folder beside the synthesis home, for every test).
+# Then each 3 more for 5.28.2 (the operations seat, 2026-11-20: a workspace's own critical_words, written into its
+# settings file on the principal's approval, were never read, since the deadline sweep read the word lists only at
+# the top of config.json): synthesis/rituals.py's config() refuses a word list left at the top, naming where it goes
+# (the check with its comment 1, the message over 2 lines). decay_sweep.py's collect() reads both lists from the
+# workspace's settings in the same 2 lines it read them from the top in.
 # Then each 213 more, and the plugin 1 more besides, for a seat signed in to another Claude account (C2, 2026-11-20:
 # Claude Code reaches only the browsers whose extension is signed in to its own Claude account, so a workspace whose
 # Chrome profile is paired with another account is worked from a Claude Code folder of its own, signed in to that one,
@@ -3012,8 +3017,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # transcripts line and the two new checks among NOT_RUN in their lines. The plugin 1 more in
 # skills/synthesis-onboarding/scripts/setup.py: configured_ref's docstring 1 more (the marketplace read from the folder
 # CLAUDE_CONFIG_DIR names, in its line).
-CORE_BUDGET = 26629
-PLUGIN_BUDGET = 53435
+CORE_BUDGET = 26632
+PLUGIN_BUDGET = 53438
 
 
 def _lines(files):
