@@ -55,6 +55,21 @@ def test_claude_update_refreshes_the_marketplace_then_the_plugin(tmp_path, monke
     assert calls(log)[1:3] == ["plugin marketplace update synthesis-engineering", f"plugin update {PLUGIN_ID}"]
 
 
+def test_the_marketplace_read_is_the_one_of_the_claude_folder_setup_installs_into(tmp_path, monkeypatch):
+    """C2: a seat signed in to another Claude account runs from a folder of its own, and setup installs into it with
+    CLAUDE_CONFIG_DIR naming it; the ref its marketplace tracks is that folder's, never ~/.claude's."""
+    def marketplace(folder, ref):
+        known = folder / "plugins" / "known_marketplaces.json"
+        known.parent.mkdir(parents=True)
+        known.write_text(json.dumps({setup.MARKETPLACE: {"source": {"repo": setup.SOURCE, "ref": ref}}}))
+    marketplace(Path.home() / ".claude", "stable")
+    marketplace(tmp_path / ".claude-team", "v5.0.0")
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    assert setup.configured_ref("claude") == "stable"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / ".claude-team"))
+    assert setup.configured_ref("claude") == "v5.0.0"
+
+
 def test_codex_update_upgrades_the_snapshot_before_adding(tmp_path, monkeypatch):
     listing = {"installed": [{"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0",
                               "marketplaceName": "synthesis-engineering", "enabled": True}]}
@@ -488,6 +503,19 @@ def test_setup_stages_both_files_prints_the_command_for_each_and_installs_neithe
     assert setup.stage_sandbox(["claude"], seal=True) == lines[len(codex):len(codex) + 1]  # only for the harnesses here
     ordinary = setup.stage_sandbox(["claude", "codex"])  # a plugin or full run: staged, the commands left to the rollout
     assert all("sudo" not in line and "after its pilot" in line for line in ordinary) and len(ordinary) == 2
+
+
+@pytest.mark.parametrize("config", ['{"claude_homes": ["~/.claude-team", ".claude-other"]}', "{not json"])
+def test_nothing_is_staged_while_the_claude_folders_the_config_names_cannot_be_read(system, config):
+    """B1 of review round 1: the sealed set is built from every Claude folder the config names, and one value that names
+    no folder, or a config that will not parse, dropped the others from the file setup staged, which the doctor then
+    offered to install. Setup refuses to stage, naming the config, until it reads in full."""
+    setup.paths.config_file().parent.mkdir(parents=True, exist_ok=True)
+    setup.paths.config_file().write_text(config, encoding="utf-8")
+    for clients in (["claude"], ["claude", "codex"]):
+        with pytest.raises(setup.SetupError, match="nothing staged.*config.json"):
+            setup.stage_sandbox(clients, seal=True)
+    assert not setup.sandbox.staged("claude").exists() and not setup.sandbox.staged("codex").exists()
 
 
 def test_a_staged_file_installed_by_the_principal_is_verified_and_no_command_is_printed_again(system, monkeypatch):

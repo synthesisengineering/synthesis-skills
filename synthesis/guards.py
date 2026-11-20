@@ -652,6 +652,7 @@ def _entry(judge):
                     _PENDING[me] = None  # entered: if its finally is cut short, the hook's answer settles what it left
                 EFFECTS.clear()
                 approvals.SPENT.clear()
+                _CALL["homes"] = None  # its Claude homes are its own config's (`_homes`)
             _DEPTH[0] += 1
             verdict, decided = judge(*args, **kwargs), True
         finally:
@@ -1270,17 +1271,19 @@ def _last_selection(transcript: str) -> tuple[str, bool] | None:
 
 def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: dict | None) -> str | None:
     """Config: {"browser_routing": {"workspaces": {"<root>": {"device": "<deviceId>", "label": "<name>"}}}}. The
-    workspace is the one the session started in, so changing directory never changes its browser."""
+    workspace is the one the session started in, so changing directory never changes its browser; one whose entry
+    names a `claude_home` is that Claude home's sessions' alone (`_seat`)."""
     routing = config.get("browser_routing")
     if routing is None:
         return None
     if not isinstance(routing, dict) or not isinstance(routing.get("workspaces"), dict):
         return "browser_routing in the synthesis config needs a \"workspaces\" map; browser calls are blocked until it is fixed"
-    found, me = _browser_workspace(config, cwd, session), paths.session_id(session)
-    if found is None:
-        return None
+    found, me, name = _browser_workspace(config, cwd, session), paths.session_id(session), tool[len(BROWSER):]
+    refused, home = _seat(name, tool_input, routing["workspaces"], found, config, session)
+    if refused or found is None:
+        return refused
     root, meta = found
-    device, label, name = str(meta.get("device") or "").strip(), meta.get("label") or root, tool[len(BROWSER):]
+    device, label, record = str(meta.get("device") or "").strip(), meta.get("label") or root, _selection(home)
     if not device:
         return f"browser_routing names no browser for {root}; browser calls there are blocked until it does"
     named = named_sites(meta)
@@ -1296,10 +1299,10 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
         if wanted != device:
             return (f"This session's browser is {label} ({device}), set for the workspace it started in; selecting "
                     f"{wanted or 'nothing'} would act as another profile. Select {device} instead.")
-        paths.write_json(paths.approvals() / "browser.json", {"device": device, "session": me, "at": time.time(), "confirmed": False})
+        paths.write_json(record, {"device": device, "session": me, "at": time.time(), "confirmed": False, **({"home": home} if home else {})})
         return None
-    current = paths.read_json(paths.approvals() / "browser.json")
-    if current.get("session") != me or current.get("device") != device or not me:
+    current = paths.read_json(record)
+    if current.get("session") != me or current.get("device") != device or not me or current.get("home", "") != home:
         since = (f"The latest browser selection was made by session {current.get('session')}, at "
                  f"{time.strftime('%H:%M', time.localtime(float(current.get('at') or 0)))}, not by this one"
                  if current.get("session") and current.get("session") != me else "No browser is selected for this session")
@@ -1309,8 +1312,57 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
         if _last_selection(str((session or {}).get("transcript_path") or "")) != (device, True):
             return (f"This session's last select_browser for {device} has not reported success ('Selected browser ...'), "
                     "so actions could reach another profile. Call select_browser again and wait for its result.")
-        paths.write_json(paths.approvals() / "browser.json", {**current, "confirmed": True})
+        paths.write_json(record, {**current, "confirmed": True})
     return _account_hold(name, tool_input, named, config, device, label, session) if named else None
+
+
+def _seat(name: str, tool_input: dict, workspaces: dict, found: tuple | None, config: dict, session: dict | None) -> tuple:
+    """(why a browser call is refused, else None; the Claude home whose latest selection this session's is kept with, ""
+    for every session outside the homes the config names, which one extension pairing serves). A seat signed in to
+    another Claude account runs from a Claude Code folder of its own and sees only that account's browsers (C2,
+    2026-11-20), so an entry's `claude_home` gives the entry's device to that home's sessions alone: any other session is
+    refused that device wherever it runs (review round 1 of C2, N1), and one started in the workspace is refused before it
+    selects, each told to hand the task over; the home's sessions are refused in every other workspace and outside
+    every one. The home is where the hook payload's transcript lies, past any link and in any case (N2), never a
+    variable a command sets; with a home configured, a session whose home cannot be told is refused."""
+    try:
+        homes = [os.path.realpath(h) for h in paths.claude_homes(config)]
+    except ValueError as exc:
+        return f"The synthesis config's Claude homes cannot be read: {exc}. Browser calls are blocked until it is fixed.", ""
+    given = str((session or {}).get("transcript_path") or "")
+    if not homes or name == "list_connected_browsers" and not os.path.isabs(given):
+        return None, ""
+    if not os.path.isabs(given):
+        return ("This call's hook payload names no transcript, so the guard cannot tell which Claude home, and so which Claude "
+                "account's browsers, this session runs from: browser calls other than list_connected_browsers are refused."), ""
+    home, owner = next((h for h in homes if paths.inside(os.path.realpath(given), os.path.join(h, "projects"))), ""), (
+        lambda meta: paths.resolved(meta["claude_home"].strip()) if "claude_home" in meta else None)
+    me, mine, wanted = paths.resolved(home) if home else "", owner(found[1]) if found else None, (
+        str(tool_input.get("deviceId") or "") if name == "select_browser" else None)
+    held = next(((root, meta) for root, meta in workspaces.items() if isinstance(meta, dict) and owner(meta) not in (None, me)
+                 and str(meta.get("device") or "").strip() == wanted), None)  # another home's device, asked for by this session
+    if name == "list_connected_browsers" or mine == me and not held:
+        return None, home
+    if held or mine:
+        root, meta = held or found
+        return (f"The browser {meta.get('label') or root} ({meta.get('device')}), set for {root}, is driven only by sessions of the "
+                f"Claude home {meta['claude_home']}, signed in to a Claude account of its own, and this session runs from "
+                f"{'the Claude home ' + home if home else 'another Claude home'}. Send the task to that seat: write what to read or "
+                "do, and any exact text to send, in a file, then `synthesis msg` its session the file's path; it runs the task "
+                "there and answers on the board."), home
+    theirs = [(root, meta) for root, meta in workspaces.items() if isinstance(meta, dict) and owner(meta) == me]
+    return (f"This session runs from the Claude home {theirs[0][1]['claude_home']}, whose sessions drive only " + ", ".join(
+        f"{meta.get('label') or root} ({meta.get('device')}), for {root}" for root, meta in theirs) + ": no other workspace's "
+        "browser, and none from outside that workspace. Start the session there, or send this task to a session of the "
+        "workspace it belongs to." if theirs else None), home
+
+
+def _selection(home: str):
+    """The latest browser selection of a Claude home's sessions: browser.json for every session outside the homes the
+    config names, and browser-homes/<its digest>.json for each of those, signed in to an account of its own whose
+    extension pairing no other selection moves (C2)."""
+    import hashlib
+    return paths.approvals() / ("browser-homes/" + hashlib.sha256(home.encode("utf-8")).hexdigest()[:16] + ".json" if home else "browser.json")
 
 
 def _browser_workspace(config: dict, cwd: str, session: dict | None) -> tuple | None:
@@ -3907,6 +3959,7 @@ def _protected_roots(config: dict | None) -> list[str]:
         ROOTS_MEMO[key] = [str(r) for r in [paths.state(), paths.board(), paths.sessions(), *(paths.home() / name for name in ("releases", "current", "bin", "git-hooks")),
                                             paths.approvals(), paths.install_dir(),  # the sealed folders (the guard's sandbox, 2026-11-15)
                                             *paths.transcript_roots().values(),  # the runtime the hook runs from, its entry points (5.22.1)
+                                            *(os.path.join(h, "projects") for h in _homes()),  # every Claude home's records (C2)
                                             paths.codex_home() / "archived_sessions",  # Codex's archived rollouts, where a note may point (5.24.1)
                                             paths.desktop_dir() / "local-agent-mode-sessions",  # the desktop app's agent-mode transcripts, one path
                                             *([store] if store else [])]] + (_settings() if mode else [])
@@ -3965,7 +4018,18 @@ def _env_key() -> tuple:
         ROOTS_MEMO.clear()
         OWN_MEMO.clear()
     return tuple(os.environ.get(k, "") for k in ("HOME", "PATH", "ZDOTDIR", "BASH_ENV", "ENV", "SYNTHESIS_HOME", "CLAUDE_CONFIG_DIR",
-                                                 "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR"))
+                                                 "CODEX_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "SYNTHESIS_CLAUDE_DESKTOP_DIR")) + _homes()
+
+
+def _homes() -> tuple:
+    """Every Claude Code folder the guard keeps (paths.claude_dirs): the call's own, from the config it is judged under
+    (`_check`), else read from the file once."""
+    if _CALL.get("homes") is None:
+        try:
+            _CALL["homes"] = tuple(map(str, paths.claude_dirs(paths.config())))
+        except (OSError, ValueError):
+            _CALL["homes"] = tuple(map(str, paths.claude_dirs(paths.homes_unread())))
+    return _CALL["homes"]
 
 
 def _settings_map() -> dict:
@@ -3979,7 +4043,7 @@ def _settings_map() -> dict:
         return SETTINGS_MAPS[key]
     home = os.path.expanduser("~")
     found = {str(paths.config_file()): ("config.json", ""), str(paths.home() / "git-hooks"): ("git-hooks", ""),
-             **{str(p): ("harness", "") for p in paths.harness_settings()}}  # sealed with the trust base (the guard's sandbox)
+             **{str(p): ("harness", "") for p in paths.harness_settings(_homes())}}  # sealed with the trust base (the guard's sandbox)
     read = _regular(os.path.join(home, ".zshenv"), 1 << 16)
     zdots = [env.get("ZDOTDIR") or home] + [_expanded(dot) for _, dot in ZDOTDIR_SET.findall(read[0].decode("utf-8", "replace") if read else "")]
     for folder, name in [(z, n) for z in [home] + zdots for n in STARTUP_FILES[:5]] + [(home, n) for n in STARTUP_FILES[5:]]:
@@ -3987,7 +4051,7 @@ def _settings_map() -> dict:
     for named in (env.get("BASH_ENV"), env.get("ENV")):
         if named:
             found[_expanded(named)] = ("startup", "")
-    found[os.path.join(env.get("CLAUDE_CONFIG_DIR") or os.path.join(home, ".claude"), "shell-snapshots")] = ("snapshots", "")
+    found.update({os.path.join(claude, "shell-snapshots"): ("snapshots", "") for claude in _homes()})  # each Claude home's (C2)
     folders = [d for d in dict.fromkeys(os.path.abspath(os.path.expanduser(d)) for d in env.get("PATH", "").split(os.pathsep)
                                         + list(paths.PROGRAM_DIRS) if d) if _writable(d)]  # the system's own take no agent write
     kept = {"claude": [os.path.join(env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share"), "claude"),
@@ -4117,14 +4181,14 @@ def check_settings_write(tool: str, tool_input: dict, cwd: str, session: dict | 
 
 
 def _claude_parts(real: str) -> list:
-    """A path's parts below the Claude Code `projects` folder it lies in, the CLI's or a desktop agent-mode session's
-    (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words alone;
-    [] where it lies in neither. No folder is listed on the hook's path."""
-    key = ("claude", *map(os.environ.get, ("HOME", "CLAUDE_CONFIG_DIR", "SYNTHESIS_CLAUDE_DESKTOP_DIR")))  # what places them
-    if key not in ROOTS_MEMO:  # the two folders, read once for those (a line of nested scripts asked 13,188 times)
-        ROOTS_MEMO[key] = [str(paths.transcript_roots()["claude-code"]), str(paths.desktop_dir() / "local-agent-mode-sessions")]
-    root, base = (_real(p) for p in ROOTS_MEMO[key])
-    if paths.inside(real, root):
+    """A path's parts below the Claude Code `projects` folder it lies in, a Claude home's (C2) or a desktop agent-mode
+    session's (`<app>/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude/projects`), read from its words
+    alone; [] where it lies in none. No folder is listed on the hook's path."""
+    key = ("claude", *map(os.environ.get, ("HOME", "CLAUDE_CONFIG_DIR", "SYNTHESIS_CLAUDE_DESKTOP_DIR")), *_homes())  # what places them
+    if key not in ROOTS_MEMO:  # the folders, read once for those (a line of nested scripts asked 13,188 times)
+        ROOTS_MEMO[key] = [str(paths.desktop_dir() / "local-agent-mode-sessions")] + [os.path.join(h, "projects") for h in _homes()]
+    base, *roots = (_real(p) for p in ROOTS_MEMO[key])
+    for root in (r for r in roots if paths.inside(real, r)):
         return os.path.relpath(paths.spelled(real), paths.spelled(root)).split(os.sep)
     parts = os.path.relpath(paths.spelled(real), paths.spelled(base)).split(os.sep) if paths.inside(real, base) else []
     return parts[5:] if len(parts) > 5 and parts[2].startswith("local_") and parts[3:5] == [".claude", "projects"] else []
@@ -5724,7 +5788,7 @@ SYNTHESIS_WRITES = frozenset(f"{module}.{name}" for module, names in (  # synthe
     ("hook", "_batch _carried_since _line _newer_plugin_note _ran _upgrade_note _window apply_effects main pre_tool_use session_start stop "
              "user_prompt_submit"),
     ("install", "_install_lock _install_locked _merge _move_records _spend_release _stage _unwritable _write_exec approval grant_release install "
-                "move_approvals move_board refresh_launchers register_git_hooks uninstall"), ("paths", "note_wait write_json"),
+                "move_approvals move_board refresh_launchers register_git_hooks uninstall"), ("paths", "keep_homes note_wait write_json"),
     ("project", "_carry_out _mark_carried_out _peers _recent_conversation handoff resume"),
     ("judge", "_ask_local _cloud _judged _locked _log _post _remember _spend _subscription ask notice probe"),
     ("reply_check", "check misrouted_accounts shortcut_problem shortcut_verdict unarmed_wait unwatched_sends"),
@@ -5740,7 +5804,7 @@ SYNTHESIS_PLACES = frozenset({"paths.home", "paths.state", "paths.board", "paths
                               "paths.transcript_roots", "paths.desktop_agent_roots", "paths.line_allowances", "approvals._dir", "sessions.root",
                               "sends._spends_file", "sends._batch_file", "sends._window_file", "sends._requests_file", "sends._ticket_file",
                               "paths.approvals", "paths.install_dir", "paths.requests", "paths.old_approvals", "paths.old_line_allowances",
-                              "paths.harness_settings", "sends._closed_file"})  # the sealed set's (the guard's sandbox)
+                              "paths.harness_settings", "sends._closed_file", "paths.claude_homes", "paths.claude_dirs", "paths.homes_kept", "paths.homes_unread"})  # the sealed set's (the guard's sandbox)
 
 
 def _regular(path: str, limit: int = SCRIPT_LIMIT):
@@ -6683,7 +6747,7 @@ def _synthesis_reach(text: str) -> tuple:
                 isinstance(p, ast.JoinedStr) for p in _ancestors(parents, up))  # inside an f-string a call's place is not to be trusted
             spots, coarse = spots + [(up, parts[1], parts[2])] * plain, coarse or not plain or parts[2] in (
                 "old_board", "transcript_roots", "desktop_agent_roots", "line_allowances", "_spends_file", "_batch_file", "_window_file",
-                "_requests_file", "_ticket_file", "old_approvals", "old_line_allowances", "harness_settings", "_closed_file")
+                "_requests_file", "_ticket_file", "old_approvals", "old_line_allowances", "harness_settings", "_closed_file", "claude_homes", "claude_dirs", "homes_kept", "homes_unread")
         module = len(parts) > 1 and os.path.isfile(os.path.join(os.path.dirname(os.path.abspath(__file__)), parts[1] + ".py"))
         if (len(parts) > 2 and module and not _synthesis_own(parts[1], parts[2])) or (len(parts) == 2 and not module and not _synthesis_own("__init__", parts[1])):
             return "follows", unfollowed.format(f"`{'.'.join(parts[1:3])}`, a name its module imports"), None
@@ -11217,7 +11281,7 @@ def check(tool: str, tool_input: dict, config: dict, cwd: str | None = None, ses
 def _check(tool: str, tool_input: dict, config: dict, cwd: str | None, session: dict | None) -> str | None:
     _TAILS.clear()  # each call reads the record anew: a rewrite in place can keep a file's size and its time stamp
     _CALL.update(codes={}, ran={}, proofs={}, files={}, real={}, looks={}, senders=[], until=time.monotonic() + CALL_SECONDS, approved=False,
-                 deep=[], unmatched="")  # and every script it runs
+                 deep=[], unmatched="", homes=tuple(map(str, paths.claude_dirs(config))))  # and every script it runs
     if code_mode_script(tool, tool_input, session):
         return None  # it acts only through its nested calls, each judged here as a call of its own
     if isinstance(tool_input, str) and shell_tool(tool):  # an `exec` call that is no script: the string is its command

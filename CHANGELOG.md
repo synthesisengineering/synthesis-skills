@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.30.0] - 2026-11-20
+
+- **A second Claude Code folder can be the only seat that drives a Chrome profile** (BACKLOG C2, step 4 of the
+  principal's plan). A `browser_routing` entry may name a `claude_home`, and the config's `claude_homes` lists each
+  such folder: only sessions whose transcripts lie in that folder may select the entry's device, wherever they run;
+  any other session is refused before it selects and told to hand the task to that seat; the folder's own sessions may
+  drive no other entry's device. Each folder keeps its own latest-selection record, and a session's folder is read from
+  the hook payload's transcript path, never from an environment variable. The folder joins the guard's protected
+  harness folders, the session archive and the sandbox's sealed set, and `synthesis doctor` checks each configured
+  folder (plugin, hooks wired and on, transcript retention, a self-test run as its sessions run it). Fail-closed
+  throughout: a malformed value drops no other folder's protection; an unreadable config falls back to the last list
+  read in full (a record only the hook writes) plus every real `~/.claude*` folder; setup stages nothing while the list
+  cannot be read. Two review rounds, every finding fixed tests first. With no `claude_home` configured, nothing changes.
+
 ## [5.29.1] - 2026-11-20
 
 - **Every skill's description fits Claude Code's skill listing** (BACKLOG C6, the principal's ruling of
