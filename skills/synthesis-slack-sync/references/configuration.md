@@ -23,6 +23,10 @@ Create `.agents/slack-sync.yaml` in each project that uses this skill. Existing 
 #
 # workspace: (REQUIRED) Workspace identifier. Used in transcript headers; must match
 #   the workspace-private repo name pattern ai-knowledge-<workspace>-<person>-private.
+# principal_user_id: (REQUIRED, v4.1.0+) The principal's own Slack member id (U…, or W…
+#   on Enterprise Grid). The search for the principal's own messages names it as
+#   from:<@ID>, never from:me, which searches as whatever account the connector uses.
+#   Preflight exits 1 without it and 2 for a value that is no member id.
 # slack_workspace_domain: (OPTIONAL but strongly recommended, v3.1.0+) The Slack
 #   workspace's URL host, e.g. "acme.slack.com". Used to construct clickable
 #   message permalinks in transcripts and draft messages. If absent, the skill
@@ -38,6 +42,7 @@ Create `.agents/slack-sync.yaml` in each project that uses this skill. Existing 
 # channels / dm_channels / group_dm_channels: as before.
 
 workspace: example-workspace
+principal_user_id: U0EXAMPLE00
 slack_workspace_domain: example-workspace.slack.com
 
 transcripts_repo: ~/workspaces/example-workspace/ai-knowledge-example-workspace-<person>-private

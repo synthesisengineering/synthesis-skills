@@ -5,7 +5,7 @@ license: "CC0-1.0"
 depends_on: ["synthesis-project-management"]
 metadata:
   author: "Rajiv Pant"
-  version: "4.0.4"
+  version: "4.1.0"
   category: chief-of-staff
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
@@ -67,7 +67,7 @@ Each step below is its command; the full step is in references/sync-protocol.md.
 
 ### Step 0: Preflight — resolve every read target (v3.7.0, REQUIRED)
 
-`python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/preflight.py --config .agents/slack-sync.yaml` prints the resolved-target table and a **census** line (`census: 9 C / 4 D / 0 unresolved`); `--json --out <declared.json>` writes the declared set Step 4's gate reads. Exit 1: a target is unresolved; exit 2: empty set or bad config.
+`python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/preflight.py --config .agents/slack-sync.yaml` prints the resolved-target table and a **census** line (`census: 9 C / 4 D / 0 unresolved`); `--json --out <declared.json>` writes the declared set Step 4's gate reads. Exit 1: a target is unresolved or no `principal_user_id` is declared (the own-message search names it as `from:<@ID>`, never `from:me`); exit 2: empty set or bad config.
 
 ### Step 1: Read channels for new top-level messages
 
