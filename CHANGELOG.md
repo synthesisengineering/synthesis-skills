@@ -4,6 +4,35 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.28.0] - 2026-11-19
+
+- **synthesis-slack-sync 4.1.0: the principal's own messages are searched by member id, never `from:me`** (BACKLOG
+  A21, an operations seat's report of 2026-11-19). Source D's search for the principal's own messages ran as the
+  connector's `from:me`, which returned another person's message as the principal's newest; an explicit `from:<@ID>`
+  returned the right two. The config now declares `principal_user_id`; `preflight.py` validates it (`U…`, or `W…` on
+  Enterprise Grid), prints it as the `from:<@ID>` to search by, exits 1 when a config names none and 2 for a value that
+  is no member id, and leaves the declared set the watermark gate reads unchanged. Source D, the lookup protocol, the
+  configuration reference and SKILL.md say never `from:me`. Tests first (13 failing before the fix).
+- **synthesis-grounding-discipline 2.1.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole, the numbers other documents cite kept. Rule 9 now says where it stops: a bounded read already done (by
+  the agent this session, or by the user who reports it with its bounds) settles absence within those bounds, the case
+  its pilot run of 2026-10-07 failed. Rule 6 carries the catalog's rule that neither a convention document nor a file
+  count wins by itself, with the newest files inspected. When to Apply, When NOT to Apply and the Self-Check move word
+  for word into `references/self-check.md`; the 2.0.0 text stays verbatim in `references/preserved.md`. Gate at six
+  repetitions against the pinned earlier text, nothing weaker and something better on both models, no difference in
+  the noise band: Opus 99% (143 of 144) against 95% (137 of 144), Sonnet 95% (137 of 144) against 93% (134 of 144).
+- **synthesis-anti-shortcuts 2.3.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is stated
+  whole, with when it applies and why; When to Apply, When NOT to Apply and The scanner move word for word into
+  `references/applying.md`, The Pattern and the Pre-Response Self-Check merge into `references/methodology.md`, which
+  already held them word for word, the 2.2.0 text stays verbatim in `references/preserved.md`, and the scanner's
+  `--catalog` flag is described as the script reads it. The references now count the catalog's nine categories (they
+  said six and seven), the pattern table gains capability surrender and effort rationale, and the vocabulary says why
+  capability surrender has no scanner pattern: each of its phrases is right about a governance gate and wrong about a configuration gap. Gate at six
+  repetitions against the pinned earlier text, nothing weaker on either model by the gate's test and something better
+  (rules won: Opus 1, 4, 5, 7, 8; Sonnet 3, 5, 9): Opus 84% (113 of 134) against 85% (112 of 132), Sonnet 90% (129 of
+  144) against 92% (130 of 142), every difference within the gate's noise (Opus rule 3 28 of 30 against 30; Sonnet
+  rule 6 12 of 18 against 13, rule 7 16 of 18 against 18), none on both models.
+
 ## [5.27.2] - 2026-11-19
 
 - **synthesis-thinking-framework 3.2.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is

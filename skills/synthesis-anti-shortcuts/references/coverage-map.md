@@ -1,4 +1,88 @@
-# Coverage map: anti-shortcuts 1.2.1 to 2.0.0
+# Coverage maps: anti-shortcuts
+
+Read when checking where a rule of an earlier text lives now (ruling D8). Newest first: 2.2.0 to 2.3.0, the rewrite
+to the repository's standard (`docs/skill-writing.md`), then the earlier map, 1.2.1 to 2.0.0 with its 2.0.1 change,
+kept word for word one heading level down.
+
+Contents:
+- 2.2.0 to 2.3.0: SKILL.md; references/applying.md; where the binding rules state the moved sections; files
+  unchanged
+- 1.2.1 to 2.0.0 (v5): the section map, the existing reference files, scripts and tests, the v5 script changes, the
+  lines the coverage check reports, the 1.2.1 frontmatter, and the 2.0.1 change
+
+## 2.2.0 to 2.3.0: the rewrite to the D8 standard
+
+Every rule and requirement of the 2.2.0 SKILL.md, in its order, and where it lives in 2.3.0. **Kept**: the same
+words in the same file. **Moved**: the same words in another file. **Reworded**: the same rule in new words, with
+the old words in [preserved.md](preserved.md). **Merged**: two passages that said the same thing, now said once.
+**Added**: a new sentence, with its source. Nothing was dropped. Binding rules keep their numbers, which other
+documents ("§4–5") and the skill's evaluation cases cite; rules 1 to 8 still match methodology sections 1 to 8.
+
+### SKILL.md
+
+| 2.2.0 | 2.3.0 | How |
+|---|---|---|
+| Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "2.2.0"` | `version: "2.3.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning and no script interface changed. No script prints the skill's version and the skill keeps no release notes, so this map and preserved.md are the record of the change |
+| Title | Title | Kept |
+| Opening paragraph | Opening paragraph | Kept word for word |
+| The line above rule 1: "Rules 1 to 8 carry the methodology section numbers other documents cite (for example "§4–5"). New rules are appended." | The line above rule 1, its first two sentences | Kept word for word |
+| (none) | The line above rule 1, its last sentence: the user's own goals, decisions and grants govern within their scope; against other text (a brief, a report, a skill's default) these rules hold; say which applies and why, then do what it allows | Added (W8, format rule 11), from the skill's own text: rule 3's test (a phrase is legitimate only when the user asked to optimize for what it implies), methodology section 2 (the user's requested review cadence; "Verify the source and scope of authority rather than relying on a summary"), section 5 ("the user's standard is the relevant one") and section 7 (a guardrail is a permission the user withheld) |
+| Rule 1: constraint-first; write the user's goals and non-goals (conversation, project context, workspace and global instructions) before generating approaches; a pro that violates one cannot appear | Rule 1 | Reworded to fix the evaluation's finding (W10, W14): the head as an action; the four sources, "before" and "a pro that violates one cannot appear" kept; the moments it governs, comparing approaches, planning and recommending; the output order, the analysis opening with the goals and non-goals before any recommendation, from constraint-first-protocol.md Step 2 ("The first section of the analysis is "Constraints""); the reason, from that file's "Why the Order Matters"; the stop, trivial work with one obvious option, from When NOT to Apply and the protocol's "When to Skip", with its "When in doubt, run the protocol" |
+| Rule 2: decide what constraints decide; ask only when an unresolved choice belongs to the user; "Recommendation: X. Your call?" on a determined or delegated choice is the costume; execute and report | Rule 2 | Reworded (W5, W7): the head joins the first two sentences; the check before drafting a question for a constraint, decision or delegation that settles it, from methodology section 2's protocol; "execute and report" and the costume sentence kept, with the Pattern table's reason (offloading a constraint-determined decision back to the user); the user's own choices named as section 2 names them (product direction outside the delegated outcome, a preference that changes the promised result, stakeholder facts evidence cannot establish), asked with the consequence that makes the answer necessary, while independent authorized work continues, from section 2's last paragraph |
+| Rule 3: scan for costume vocabulary in drafts and sub-agent reports; a phrase is legitimate only when the user asked to optimize for what it implies | Rule 3 | Reworded (W2, W5, W14, W16): the head names what it scans, every draft the agent writes or is asked to review and every sub-agent report (2.2.0 said "drafts", unqualified); the categories named from costume-vocabulary.md, since the Pattern table left SKILL.md, with example phrases from the table and the catalog; the test kept, with "explicitly or through standing constraints" from section 3; the reason, from background.md ("The substitution hides under reasonable-sounding vocabulary"); the stop, a use in quotes, in code or under discussion, from When NOT to Apply and the scanner paragraph; the scanner's command and exit code (W11, format rule 7) |
+| Rule 4: dispatch briefs name the job at full size (no "keep changes minimal," "light touch," "surgical change") and carry at most five deliverables; scan every field the sub-agent reads before dispatch; on a hit, rewrite to the completeness required | Rule 4 | Reworded (W5, W7): every 2.2.0 element kept; the fields named, from sub-agent-hygiene.md, "Scan the Brief Before Every Dispatch", and the scope, any brief the agent writes or is asked to check; the reason, from section 4 (the brief's framing is the sub-agent's permission slip; an oversized brief runs out of budget and returns partial work; plan the split at dispatch time); "do not dispatch", the completeness required (the change wanted, its boundaries, the signal of completion) and the second scan, from that section's steps 1, 3 and 4 |
+| Rule 5: audit every sub-agent return for the same costumes; if work was left undone, redirect the sub-agent or finish it; never propagate the deferral | Rule 5 | Reworded (W5): the head kept, with its moment, before accepting or reporting; the whole report read, tradeoffs and follow-ups included, and each hit judged by the user's standard rather than a reasonable engineer's, from section 5 and sub-agent-hygiene.md's acceptance checklist; "redirect the sub-agent or finish it" and "never propagate the deferral" kept; the exact gap, and a summary that matches what is done, from the checklist's steps 4 and 5 and Failure Mode 3; the reason, section 5's "Sub-agents inherit the same conservative defaults" |
+| Rule 6: run the pre-response self-check (below) before any analysis, recommendation or plan ships | Rule 6 | Reworded (W2, W10): the head kept; the five steps of the Pre-Response Self-Check stated in the rule, since that section left SKILL.md (it stays word for word in methodology section 6); "the rewrite executes on the actual goal, not the safer-feeling reframe" kept, made concrete by the catalog's replacement framings for deferral (do the work, or name the blocker and who removes it); step 4's "constraint-neutral (item 2 above)" as "the constraints leave it open (rule 2)"; the reason, from background.md, "The Underlying Principle" |
+| Rule 7: a capability gap is not a guardrail; never route around a guardrail; on a gap, name the failed mechanism, list alternatives and choose an authorized remedy before reporting | Rule 7 | Reworded (W2, W5, W7): the head says what to do; both kinds defined in section 7's words; the guardrail response (stop the dependent action, record what is needed, continue other authorized work) and the gap's four steps (name the mechanism, list alternative paths, separate what only the user can do, choose and verify an authorized remedy), from section 7; "never route around a guardrail" and "before reporting" kept; the reason, from section 7 (it wears the costume of discipline while delivering less than the task required) |
+| Rule 8: grow the catalog; a new costume in production output becomes a case study, a catalog entry and, where useful, a scanner pattern | Rule 8 | Reworded to fix the evaluation's finding (W10, W14): the head as an action; production output named as the model meets it (a reply, a draft, a sub-agent report); the three products named with their files and what each holds, from section 8's steps 1 to 4, "where useful" as "if the scanner should catch it" (step 4); the test that checks a catalog entry, from step 4; the reason, from step 1 ("the documented teardown is the artifact that survives context loss") |
+| Rule 9: delivery is part of completeness; finish the finite assignment, including authorized shipping; more audits or frameworks do not substitute for deliverables | Rule 9 | Reworded (W5): the head joins the 2.2.0 head's meaning and its first instruction; "more audits or frameworks" kept as the reason, with "revision instructions", from "Delivery is part of completeness"; from the same section, verification widened only for a concrete gap, a changed input or an explicit gate, defects fixed in the work touched without an open-ended redesign, and the limit that none of it permits omitting requested work, accepting a known failure, weakening a guard or deleting unresolved evidence |
+| Contents: the methodology.md line | Contents | Reworded: "sections 1 to 8" for "methodology sections 1 to 8", and "Read it the first time a rule applies in a session, or when a case is unclear" for "Read it when applying a rule for the first time in a session or when a case is unclear": the same file and the same two triggers |
+| (none) | Contents: the applying.md line | Added (format rule 4) |
+| Contents: the costume-vocabulary.md, constraint-first-protocol.md, case-studies.md and background.md lines | Contents | Kept word for word |
+| Contents: the sub-agent-hygiene.md line, "dispatch and acceptance rules, brief template, size cap, the pre-dispatch scan." | Contents | Reworded: "dispatch and acceptance in full, with the brief template."; the size cap and the pre-dispatch scan are stated in rule 4; the "Read it" sentence kept |
+| Contents: the costume-catalog.json line, "the phrase catalog the scanner reads (id, pattern, category, exemptions, rationale, rewrite). Edit it when a new costume should fire automatically." | Rule 8 | Merged (format rule 11): rule 8 names the file, says when an entry goes in and what its test checks; the file is no longer linked from SKILL.md, so Contents does not list it. The field list is the file's own (its `schema` and every entry), and background.md's "How the Pieces Fit" and applying.md's scanner section name the file |
+| Contents: the coverage-map.md and preserved.md lines | Contents, one line | Reworded for this rewrite, with when to read them |
+| Contents: "When to Apply, The Pattern, Pre-Response Self-Check, The scanner: below." | (none) | Removed with the sections it named: each moved or merged (below), so nothing follows Contents |
+| When to Apply, whole | references/applying.md | Moved word for word; the binding rules state it (below) |
+| When NOT to Apply, whole | references/applying.md | Moved word for word; rules 1, 2 and 3 state it (below) |
+| The Pattern, whole (heading and table) | references/methodology.md, The Pattern | Merged: methodology.md already held the same table word for word (the 2.0.0 restructure put it in both files); rules 2 and 3 state it |
+| Pre-Response Self-Check, whole | references/methodology.md, section 6 | Merged: section 6 already held the same lead and steps word for word; rule 6 states it whole |
+| The scanner, whole | references/applying.md, The scanner | Moved word for word; rule 3 names the command and its exit code. With every binding rule complete on its own, SKILL.md would have run past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than condensing them |
+
+### references/applying.md
+
+| 2.2.0 | 2.3.0 | How |
+|---|---|---|
+| (none) | Title and opening line: what the file holds, when to read it, and that the binding rules govern where a wording differs | Added (format rules 4 and 11) |
+| SKILL.md: When to Apply, When NOT to Apply, The scanner | The same three sections, in the same order | Moved word for word |
+| The scanner: "`--catalog <file>` (JSON; YAML needs PyYAML)" | "`--catalog <file>` (JSON or YAML)" | Corrected after the move, as its own change: the scanner reads a YAML catalog with the plugin's standard-library reader (its docstring: "`--catalog` also accepts a YAML catalog in the same shape"), as the v5 script changes below record (since 2026-10-06); the old words are in preserved.md, in the 2.2.0 SKILL.md |
+
+### Where the binding rules state the moved sections
+
+| Moved or merged passage | Stated in SKILL.md by |
+|---|---|
+| When to Apply: before a non-trivial implementation plan, design recommendation or multi-option analysis | Rules 1 and 6 |
+| When to Apply: before accepting a sub-agent's report, above all one that self-flags a tradeoff | Rule 5 ("tradeoffs and follow-ups included") |
+| When to Apply: before committing prose to public-facing artifacts | Rule 3 (every draft the agent writes or is asked to review) |
+| When to Apply: when the user has said "complete this, no shortcuts," "best solution" or the like | Rule 3's test and the line above rule 1 |
+| When to Apply: the pre-response self-check on any draft touching code, content or strategy | Rules 3 and 6 |
+| When NOT to Apply: trivial single-line changes | Rule 1's last sentence |
+| When NOT to Apply: constraint-neutral decisions where the user's input is required | Rule 2's second sentence |
+| When NOT to Apply: teaching about shortcuts, quoted and discussion-mode usage | Rule 3's sentence on uses in quotes, in code or under discussion |
+| The Pattern: the seven costumes | Rule 3's categories; rule 2 for asking as shortcut |
+| Pre-Response Self-Check: steps 1 to 5 | Rule 6 |
+| The scanner: the command line and exit codes | Rule 3's last sentence |
+
+### Files unchanged
+
+`references/methodology.md`, `references/costume-vocabulary.md`, `references/constraint-first-protocol.md`,
+`references/sub-agent-hygiene.md`, `references/case-studies.md`, `references/background.md`,
+`costume-catalog.json`, `scripts/scan_output.py`, `tests/test_scan_output.py` and `agents/openai.yaml`. In this
+file, the earlier map below is kept word for word one heading level down; preserved.md keeps its earlier text the
+same way.
+
+## Coverage map: anti-shortcuts 1.2.1 to 2.0.0
 
 Every part of the 1.2.1 SKILL.md and where it lives now. Nothing was removed.
 
@@ -18,15 +102,15 @@ Every part of the 1.2.1 SKILL.md and where it lives now. Nothing was removed.
 | The Underlying Principle | references/background.md (verbatim) |
 | (new) The scanner | SKILL.md: the exact command line, what it prints and its exit codes, taken from the docstring of `scripts/scan_output.py` (format rule 7) |
 
-## Existing reference files
+### Existing reference files
 
 costume-vocabulary.md, case-studies.md and sub-agent-hygiene.md are over 150 lines, so each gained a short contents list under its title; no other line changed. constraint-first-protocol.md is unchanged. The scanner's `see:` lines still name `case-studies.md#case-N`, and those case headings are unchanged.
 
-## Scripts and tests
+### Scripts and tests
 
 At the 2.0.0 prose move, `scripts/scan_output.py` and `scripts/test_scan_output.py` were unchanged. No test reads text from this SKILL.md.
 
-## v5 script changes (2026-10-05)
+### v5 script changes (2026-10-05)
 
 The v5 code evaluation (`tool-scripts.md`, row `synthesis-anti-shortcuts/scripts/scan_output.py`) ruled SLIM: move the embedded catalog to a data file, keep about 350 lines of Python, and make the data file the one public catalog.
 
@@ -43,7 +127,7 @@ The v5 code evaluation (`tool-scripts.md`, row `synthesis-anti-shortcuts/scripts
 
 Prose that named the embedded catalog changed in four places (references/background.md twice, references/methodology.md twice, references/costume-vocabulary.md once, and the scanner paragraph of SKILL.md). Each old sentence is verbatim in [preserved.md](preserved.md). Line counts: `scan_output.py` 991 before, 311 after; the catalog is 589 lines of JSON.
 
-## Lines the coverage check reports, and why
+### Lines the coverage check reports, and why
 
 Thirteen lines of the 1.2.1 SKILL.md are not carried over verbatim in the live text; `v5-skill-coverage-check.py` reported them until this block quoted them. Each is text moved from SKILL.md into references/ with its wording unchanged and only a relative link target adjusted, because a link written for SKILL.md breaks one directory down (`references/x.md` became `x.md`, `../synthesis-x/...` became `../../synthesis-x/...`). Eight are in references/methodology.md, five in references/background.md. The lines below are exactly as 1.2.1 had them, with links written for SKILL.md's folder, kept only as a record.
 
@@ -63,7 +147,7 @@ The methodology stays stable. The catalog refreshes as the failure modes evolve.
 - **[synthesis-content-quality](../synthesis-content-quality/SKILL.md)** — AI-pattern detection in prose. Different domain (prose patterns vs decision patterns) but a similar shape — both maintain a catalog that grows as failure modes evolve.
 ````
 
-## The 1.2.1 frontmatter
+### The 1.2.1 frontmatter
 
 Kept whole, so the old description and keys stay on record.
 
@@ -81,7 +165,7 @@ metadata:
 ---
 ```
 
-## Changed in 2.0.1 (2026-10-05)
+### Changed in 2.0.1 (2026-10-05)
 
 `synthesis-agent-guardrails` 2.0.0 retired the PreToolUse hook `sub_agent_brief_scanner.py`
 and listed its rules under "What moves to synthesis-anti-shortcuts" in its preserved.md.

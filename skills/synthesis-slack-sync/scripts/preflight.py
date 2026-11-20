@@ -26,7 +26,13 @@ Resolution therefore belongs in one place that fails closed. This script:
   ``sync_watermark.py status --targets-from`` reads), derived at sync time
   and never hand-maintained;
 * refuses an empty resolved set or a malformed config (exit 2), and exits 1
-  when any declared target is unresolved so the sweep report must name it.
+  when any declared target is unresolved so the sweep report must name it;
+* reads ``principal_user_id``, the principal's own Slack member id, and prints
+  it as the ``from:<@ID>`` that Step 2's search for the principal's own
+  messages names. On 2026-11-19 a connector's ``from:me`` returned another
+  person's message as the principal's newest: ``me`` is whatever account the
+  connector searches as. A config that names no principal exits 1; a value
+  that is no member id (``U…``, or ``W…`` on Enterprise Grid) exits 2.
 
     preflight.py --config .agents/slack-sync.yaml
     preflight.py --config .agents/slack-sync.yaml --json --out /tmp/declared.json
@@ -36,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +63,9 @@ CLASSES = (
     ("dm_channels", "dm", "dm_id", ("D",)),
     ("group_dm_channels", "group-dm", "id", ("C", "G")),
 )
+
+
+MEMBER_ID = re.compile(r"[UW][A-Z0-9]{2,}")  # a Slack member id: U…, or W… on Enterprise Grid
 
 
 class ConfigError(ValueError):
@@ -123,6 +133,18 @@ def resolve_targets(config: dict) -> list[Target]:
     return targets
 
 
+def principal(config: dict) -> str | None:
+    """The principal's own member id, or None when the config names none. A value that is no member id is refused,
+    since nothing is guessed: a quoted mention, a conversation id or `me` would each search as someone else."""
+    raw = config.get("principal_user_id")
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    value = raw.strip() if isinstance(raw, str) else None
+    if value is None or not MEMBER_ID.fullmatch(value):
+        raise ConfigError(f"principal_user_id {raw!r} is not a Slack member id (U…, or W… on Enterprise Grid)")
+    return value
+
+
 def census(targets: list[Target]) -> str:
     counts: dict[str, int] = {}
     for target in targets:
@@ -138,13 +160,15 @@ def declared_set(targets: list[Target]) -> dict[str, list[str]]:
     return {SURFACE: [target.read_id for target in targets if target.resolved]}
 
 
-def render_table(workspace: str, targets: list[Target]) -> str:
+def render_table(workspace: str, targets: list[Target], who: str | None = None) -> str:
     lines = [f"# Slack preflight — workspace {workspace}", "",
              "| class | read id | name | status |", "|---|---|---|---|"]
     for target in targets:
         status = "resolved" if target.resolved else f"UNRESOLVED — {target.reason}"
         lines.append(f"| {target.kind} | {target.read_id or '—'} | {target.name} | {status} |")
     lines.extend(["", census(targets)])
+    if who:
+        lines.append(f"principal: {who} — search the principal's own messages as from:<@{who}>")
     return "\n".join(lines)
 
 
@@ -158,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = _load_config(Path(args.config).expanduser())
         targets = resolve_targets(config)
+        who = principal(config)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -177,13 +202,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(declared, indent=2))
     else:
-        print(render_table(str(config.get("workspace") or "?"), targets))
+        print(render_table(str(config.get("workspace") or "?"), targets, who))
     unresolved = [target for target in targets if not target.resolved]
     if unresolved:
         print(f"{len(unresolved)} declared target(s) unresolved — report each one in the sync report; "
               "never as unreadable, never as a config defect", file=sys.stderr)
-        return 1
-    return 0
+    if who is None:
+        print("principal_user_id is missing: the search for the principal's own messages needs their Slack member id, "
+              "as from:<@ID>; never from:me, which names whatever account the connector searches as", file=sys.stderr)
+    return 1 if unresolved or who is None else 0
 
 
 if __name__ == "__main__":

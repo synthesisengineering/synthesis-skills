@@ -2966,8 +2966,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # call goes, 1); sends' read_batch and _unspendable join guards.SYNTHESIS_WRITES in its two lines.
 # Then each 1 more, in synthesis/guards.py, for review round 2 of 5.27.1 (finding A, what an honest agent hits): message_problems
 # reads a Drive file's content as a document's own lines, its breaks_ok over 2 lines; _hands_over's empty-key fix in its line.
+# Then the plugin 27 more, all in synthesis-slack-sync's preflight.py, for 5.28.0 (BACKLOG A21: on 2026-11-19 a connector's
+# `from:me` returned another person's message as the principal's newest): the module docstring's principal_user_id
+# bullet 6; `import re` 1; MEMBER_ID with its comment 1 and its 2 blank lines; principal() 10 (its line, docstring 2,
+# the value read 1, none declared 2, the strip 1, the member-id check 2, the return 1) with its 2 blank lines;
+# render_table's principal line 2; main's read of it 1; main's end 2 more (the missing principal's message over 2
+# lines, and one return for both causes in place of two returns).
 CORE_BUDGET = 26414
-PLUGIN_BUDGET = 53191
+PLUGIN_BUDGET = 53218
 
 
 def _lines(files):
