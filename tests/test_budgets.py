@@ -3017,8 +3017,27 @@ ROOT = Path(__file__).resolve().parents[1]
 # transcripts line and the two new checks among NOT_RUN in their lines. The plugin 1 more in
 # skills/synthesis-onboarding/scripts/setup.py: configured_ref's docstring 1 more (the marketplace read from the folder
 # CLAUDE_CONFIG_DIR names, in its line).
-CORE_BUDGET = 26632
-PLUGIN_BUDGET = 53438
+# Then each 57 more, and the plugin 6 more besides, for review round 1 of C2 (2026-11-20). B1, which blocked: one
+# value that named no folder, or a config that would not parse, dropped every other Claude folder from the guard and
+# the sealed set. synthesis/paths.py 41: _named_homes 20 (its line, docstring 3, the two keys read 2, every value of
+# both 2, the folders, problems and home 1, the loop 1, its text 1, its folder 1, no path 2, ~/.claude by any spelling
+# or link 3, each folder kept once 2, the answer 1), keep_homes 9 (its line, docstring 2, the record written only where
+# every value names a folder and it differs, in a try, 6), homes_kept 5 (its line, docstring 2, the record read 2) and
+# resolved 4 (its line, docstring 2, the answer 1), each with its 2 blank lines; HOMES_KEPT 1 with its 2 blank lines;
+# claude_homes 9 fewer (its reading moved to _named_homes: the rest its line, docstring 5, the problems raised 3, the
+# answer 1); claude_dirs 1 more (its docstring 2 more; the config read once, the strict check, the record's folders
+# joined and each folder kept once as resolved compares them in 7 lines in place of 8). synthesis/hook.py 2:
+# pre_tool_use 2 more (the folders of a config read in full kept 1, the comment that says where a file tool's come
+# from otherwise 1). N1: synthesis/guards.py 5: _seat 5 more (its docstring 1, the session's folder and the device a
+# select asks for 1, another home's entry for that device 2, the entry the handoff names 1); check_browser hands it
+# the call in its line. N2 in resolved and _named_homes, above. N4: synthesis/doctor.py 9: _seat_env 5 (its line,
+# docstring 2, the environment without the variable 1, the answer 1) with its 2 blank lines; claude_home_checks 1 more
+# (its docstring); run_checks 1 more (the process's own folder 1; every other one from claude_dirs, and each listing's
+# environment, in their lines); run_hook and check_home_self_test take the folder's environment in their lines. The
+# plugin 6 more in skills/synthesis-onboarding/scripts/setup.py: stage_sandbox (its docstring 1; nothing staged while a
+# folder the config names cannot be read, in a try, 5).
+CORE_BUDGET = 26689
+PLUGIN_BUDGET = 53501
 
 
 def _lines(files):

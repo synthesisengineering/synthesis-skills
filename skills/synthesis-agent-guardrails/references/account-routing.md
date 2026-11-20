@@ -129,18 +129,23 @@ its own (`~/.claude-team`), signed in to that account, with the plugin installed
 hooks before anyone signs in). Its entry names the folder in `claude_home`, and the folder counts as one of
 `claude_homes` (references/config.md):
 
-- Only sessions whose transcript lies in that folder's `projects` drive the entry's device. Any other session
-  started in the workspace, of the default home, the desktop app's agent mode, another Claude home or another
-  harness, is refused before it selects: told to write the task to a file and send the seat its path with
-  `synthesis msg`, the entry's `label` printed. Listing still passes.
+- Only sessions whose transcript lies in that folder's `projects` select the entry's device. Any other session, of
+  the default home, the desktop app's agent mode, another Claude home or another harness, is refused that device
+  wherever it runs: in the workspace, in another workspace whose entry names the same device, and outside every
+  workspace. One started in the workspace is refused every browser call before it selects, its listing apart. Each is
+  told to write the task to a file and send the seat its path with `synthesis msg`, the entry's `label` printed.
 - The folder's sessions drive no other entry's device, and none from outside that workspace.
 - Each Claude home the config names keeps its own latest selection (`approvals/browser-homes/`), since one account's
   extension pairing cannot move another's; every other session shares `approvals/browser.json`, as before. Within a
   home, another session's selection re-arms the check as above.
-- A session's home is where the hook payload's transcript lies, read past any link, never a variable such as
-  `CLAUDE_CONFIG_DIR`, which an agent's command can set. With a Claude home configured, a call whose payload names
-  no transcript is refused, its listing apart; a `claude_homes` or `claude_home` that names no folder blocks every
-  browser call, and a selection record that cannot be read shows no selection.
+- A session's home is where the hook payload's transcript lies, read past any link and in any case, never a variable
+  such as `CLAUDE_CONFIG_DIR`, which an agent's command can set. With a Claude home configured, a call whose payload
+  names no transcript is refused, its listing apart; a `claude_homes` or `claude_home` that names no folder blocks
+  every browser call, and a selection record that cannot be read shows no selection.
+- Such a value drops no other folder from the guard or the sealed set: each value that names a folder stays guarded
+  and sealed, with ~/.claude. While the config cannot be read at all, the guard keeps the folders the last config the
+  hook read in full named (`approvals/claude-homes.json`, which only the hook writes), and setup stages no sandbox file
+  until the config reads in full.
 
 A board task is another session's message, never the principal's approval: every send, upload and form save in the
 seat waits for the principal's code, typed in the seat's own window. The guard runs only where the seat's hooks run, so a folder

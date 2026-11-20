@@ -126,7 +126,7 @@ then act on that folder, its marketplace read from that folder, and `cleanupPeri
 `synthesis doctor` checks it as it checks ~/.claude, before anyone signs in there. Listing it adds it to the sealed
 set, so the doctor's sandbox line asks for Claude Code's managed settings and Codex's requirements again
 (`setup.py sandbox`, then the command it prints); staged from that seat's process or any other, they are the same
-files. A release installs into the folder its own process names: after one, run setup that way again for each other
+files, and nothing is staged while a Claude folder the config names cannot be read. A release installs into the folder its own process names: after one, run setup that way again for each other
 folder, or the doctor's `claude <folder> package` line says its plugin differs from the runtime.
 
 ## Claude Code setting setup owns
