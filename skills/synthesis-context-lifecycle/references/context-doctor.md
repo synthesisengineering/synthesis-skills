@@ -131,7 +131,7 @@ An entry is a heading the doctor reads as one, with its text up to the next. A c
 
 The pairing for the item-currency suppression is `terminal-project-open-items`: a project claiming to be finished while still listing obligations it owes. The general form, which covers both this and the case where a check simply reaches less than it appears to: **a guard's coverage is a claim that needs its own verification, separate from whether it passes.**
 
-**Publication time and workday are different evidence.** Freshness uses dated session records, regardless of whether Git publishes them in a single-project commit, a bulk commit or a delayed archive pass. Git author/committer dates never replace the recorded workday, and a bulk commit touching many projects is a session for none of them. Missing narrative evidence remains explicit; a clean tree or matching commit date cannot certify current session state.
+**Publication time and workday are different evidence.** Freshness uses dated session records, regardless of whether Git publishes them in a single-project commit, a bulk commit or a delayed archive pass. Git author/committer dates never replace the recorded workday, and a bulk commit touching many projects is a session for none of them. Missing narrative evidence remains explicit; a clean tree or matching commit date cannot certify current session state. To state or judge a session's date, read its entry: delayed publication, overnight work and timezones put commits on other dates, and a bulk commit is a session for no project.
 
 **A new convention starts as a warning.** Item stamping turned whole corpora red the day it landed when it was a defect; warnings surface it without blocking anyone, and defects stay reserved for structural problems.
 
