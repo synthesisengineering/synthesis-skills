@@ -42,8 +42,8 @@ A critical deadline is a deadline item ([decay-sweep.md](decay-sweep.md)) with f
   under it is the direct link and what the principal has to do.
 
 The sweep also lists items with no tag whose title or reason reads like a critical class
-(enrollment, insurance, taxes, a patent, a visa, a passport, immigration, payroll, FSA, HSA; the
-ritual config's `critical_words`, a list of words or patterns, replaces that list). Each stays
+(enrollment, insurance, taxes, a patent, a visa, a passport, immigration, payroll, FSA, HSA; a
+workspace's `critical_words` in its ritual settings, or under `defaults`, a list of words or patterns, replaces that list). Each stays
 listed until it is classified: tag it, or write `**Critical:** no (<why this one is not>)`.
 
 ## Where it lives in the plan

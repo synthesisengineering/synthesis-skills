@@ -117,7 +117,7 @@ Where the config has `reply_watch`, the turn-end check holds a turn to this: a t
 person ends with one of the two, after the last such message, or the reply is sent back once. The check reads the
 line the command wrote, not the words of a shell command, so a statement made before the message went does not
 cover it. What it reads is in
-the guardrails' [reply check](https://github.com/synthesisengineering/synthesis-skills/blob/v5.28.1/skills/synthesis-agent-guardrails/references/reply-and-provenance.md#a-message-to-a-person).
+the guardrails' [reply check](https://github.com/synthesisengineering/synthesis-skills/blob/v5.28.2/skills/synthesis-agent-guardrails/references/reply-and-provenance.md#a-message-to-a-person).
 A draft is not such a message (the principal sends it, and nobody knows when), and neither is a calendar event, a
 ticket, a comment, a reaction, a share, a document, a file for the principal or a note to another session.
 
