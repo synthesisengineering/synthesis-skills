@@ -1,4 +1,81 @@
-# Coverage map: content quality 4.2.0 to 5.0.0
+# Coverage maps: content quality
+
+Read when checking where a rule of an earlier text lives now (ruling D8). Newest first: 5.0.0 to 5.1.0, the
+rewrite to the repository's standard (`docs/skill-writing.md`), then the 4.2.0 to 5.0.0 map, kept word for word
+one heading level down.
+
+Contents:
+- 5.0.0 to 5.1.0: SKILL.md; after the first gate; files unchanged
+- 4.2.0 to 5.0.0 (v5): SKILL.md sections, reference files, lines the coverage check reported, tests and the
+  slop-detection manifest, the 4.2.0 frontmatter, the 4.2.0 lines with old link paths
+
+## 5.0.0 to 5.1.0: the rewrite to the D8 standard
+
+Every rule and requirement of the 5.0.0 SKILL.md, in its order, and where it lives in 5.1.0. **Kept**: the same
+words in the same file. **Moved**: the same words in another place. **Reworded**: the same rule in new words, with
+the old words in [preserved.md](preserved.md). **Merged**: two passages that said the same thing, now said once.
+**Added**: a new sentence, with its source. Nothing was dropped, and no passage left SKILL.md for a reference.
+Binding rules keep their numbers, which the skill's evaluation cases cite. Why each part changed is in
+preserved.md.
+
+### SKILL.md
+
+| 5.0.0 | 5.1.0 | How |
+|---|---|---|
+| Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: 5.0.0` | `version: 5.1.0` | Bumped: a minor version, since every binding rule keeps its number and meaning and no script interface changes. No script prints the skill's version and the skill keeps no release notes, so this map and preserved.md are the record of the change |
+| Title | Title | Kept |
+| Opening paragraph: "A systematic methodology for evaluating writing quality and identifying slop, with or without AI involvement." | Opening paragraph | Kept word for word |
+| Opening paragraph: "The framework targets bad content, not provenance." | Rule 1 | Merged: rule 1 says it as a rule, that prose shows editorial quality and model-shaped style, never provenance or authorship (format rule 11) |
+| Opening paragraph: "Ethically authored AI-collaborated content can be excellent; styled empty human content is slop. This skill detects slop." | Opening paragraph | Kept word for word |
+| (none) | The line above rule 1: the rules hold when a request asks otherwise; say which rule applies and why, then do what it allows | Added (W8, format rule 11), from the skill's own absolutes in rules 1, 6, 8 and 11 |
+| Rule 1: keep four outputs apart: editorial quality, model-shaped style, technical provenance, authorship; prose shows only the first two, so no pattern, count, combination or detector score establishes authorship | Rule 1 | Reworded (W2, W5): the four outputs and the second sentence kept; the scope, every review, and what a request for an authorship verdict gets (a judgment of the text's editorial merits, and the outside evidence that could settle authorship), from review-method.md's four-axis boundary (editorial quality: "what helps or harms the reader and what revision is needed"); narrowed after the first gate (below) |
+| Rule 2: ask the mode first; artifact mode (default for editorial work) skips WRAPPER-OPENER and WRAPPER-CLOSER patterns; full-response mode (chat-log forensics) applies all; wrapper patterns in an artifact audit are false positives | Rule 2 | Reworded (W5, W7, W14): the head as an action, settle the detector mode before applying patterns; the ask kept for text with wrapper lines when the request leaves the mode open, with the review meanwhile in the default the rule already set (narrowed after the first gate, below); full-response mode stated as the material it governs, a whole chat response or log under study; the false positives kept as the reason |
+| Rule 3: literal defects first: placeholder text, chatbot artifacts, fabricated citations or DOIs, raw markdown, reasoning-tag leakage; confirm and repair each; a residue shows a tool touched the text, not who wrote it | Rule 3 | Reworded (W5): the head as an action; the five defects and the last clause kept; how to confirm a citation, from step 2 and B2-COMBO-007; the reason, from step 2's "high-salience defects" |
+| Rule 4: combinations beat counts; three matched B2 combos outweigh ten independent indicators; no single indicator proves AI generation; inherited false-positive estimates are unvalidated hypotheses | Rule 4 | Reworded (W5): the head as an action, weigh matched combinations over counts; every claim kept; the reason and the retired count threshold, from catalog-overview.md's B2 section |
+| Rule 5: run the substance tests (deletion A2-SUB-001, specificity A2-SUB-002, load-bearing claims A2-SUB-003) on sample paragraphs; they catch slop whoever wrote it | Rule 5 | Reworded to fix the evaluation's finding (W10, W12, W14): the tests and "They catch slop whoever wrote it." kept; what each test checks, from substance-and-depth.md; the scope, every review, from step 4; asked to rewrite a flagged passage, write the new text out, claiming only what the evidence in hand supports, a template following it but never replacing it, from A2-SUB-001's fix and the record's "concrete repair" (the template clause narrowed after the first gate, below) |
+| Rule 6: ESL safe-harbor; uniform paragraphs, restricted vocabulary and heavy transitions alone are a negative marker (B2-COMBO-010), because non-native English writing shares them; never flag that signature without a register-specific marker | Rule 6 | Reworded (W5, W12): the head names the safe-harbor and the action, never flag the ESL signature alone; the negative marker and its reason kept; the register-specific markers listed, from B2-COMBO-010 in catalog-overview.md |
+| Rule 7: SSWP and base-rate numbers are dated hypotheses, never P(AI) or an authorship probability; calibration drifts with releases; re-calibrate quarterly | Rule 7 | Reworded (W5) and merged: the head as an action, treat the estimates as dated hypotheses; the combined-signal estimates joined from the Required finding record's last sentence; the reason, from calibration-tables.md's August 2026 correction; "re-calibrate quarterly" kept |
+| Rule 8: detectors are signals, not authority; perfect grammar, bland prose, common phrases, em-dashes alone and detector scores do not reliably signal AI generation; none is ever the sole basis for a determination | Rule 8 | Reworded (W5): the first and last clauses joined in the head; the list kept word for word; the reasons, from review-method.md's Ineffective Detection Methods |
+| Rule 9: every finding gets the record below; every prose-only review ends with its closing sentence | Rule 9 | Reworded (W2) and merged: the Required finding record stated in the rule, its five fields in their order and its closing sentence word for word; "every finding" kept; the reason added |
+| Rule 10: review batches as one corpus; five or more articles sharing an author, site or window, or one claim-level defect, triggers a cross-document scan; per-article review cannot see shared constructions | Rule 10 | Reworded (W5, W11): "texts" for "articles"; what the scan looks for, repeated constructions and the same claim in any wording, from review-method.md's Corpus-Level Review; the reason kept; the Procedure's script sentence moved in |
+| Rule 11: never delete a pattern; retire it to Historical or Deprecated with its era, so older content stays analyzable; `A3-TF-006` is the canonical system-prompt-bleed locator; `A3-BT-013` stays its legacy locator until Rajiv approves a replacement | Rule 11 | Reworded to fix the evaluation's finding (W7, W15): the head joins the first two sentences; what goes ahead when a deletion is refused, moving the full entry to historical-patterns.md with a cross-reference, from historical-patterns-2-net-new-and-forensics.md; an entry already there is retired and stays in place; the reason kept as "Retiring keeps older content analyzable"; the locator sentence kept, with "explicitly" from review-method.md's step 2 |
+| Contents: the review-method.md line | Contents | Reworded: link text the file name; the same parts in fewer words; "Follow it in every review" for "Read before every review", taking in the Procedure's first sentence |
+| Contents: the catalog-overview.md, background.md and philosophy-and-application.md lines | Contents | Reworded: link text the file name; the same parts in fewer words, with when to read each kept |
+| Contents: the checklists.md line | Contents | Reworded: "five revision passes and quick checks", the list of checks left to checklists.md's own contents list; when to read it kept |
+| Contents: the A1, A2, A3, B2 and B3 lines | Contents | Reworded: link text "index" or the file name, every part linked as before; the part labels and when to read each kept; the A1 index's "(template, era, zone)" left to that file's opening contents; "Read for step 4" and "Read for step 3" kept on the A2 and B2 lines (restored after the first gate, below) |
+| Contents: the historical-patterns.md line | Contents | Reworded: labeled "Retired"; reading it for a catalog change added (rule 11) |
+| Contents: the current-model-candidates.md line | Contents | Kept word for word, its link text the file name |
+| Contents: the bibliography.md and coverage-map.md line | Contents: the bibliography.md line; the coverage-map.md and preserved.md line | Reworded: when to read the bibliography added; the coverage map and preserved.md named together as the rewrite's record |
+| Contents: "Procedure and Required finding record: below." | (none) | Merged: both sections now live in rules 9 and 10 and the review-method.md line |
+| (none) | Contents: the preserved.md link | Added |
+| Procedure: "Follow steps 1 to 7 of [references/review-method.md](references/review-method.md)." | Contents: the review-method.md line | Merged |
+| Procedure: the corpus_repetition.py sentence | Rule 10 | Moved word for word, apart from "For a batch, run" becoming "Run" |
+| Required finding record: its heading | (none) | Merged: the record has one home, rule 9 |
+| Required finding record: the five fields of every flagged pattern | Rule 9 | Merged, the fields in their order (W2) |
+| Required finding record: "End prose-only reviews with `Authorship not established from prose cues.`" | Rule 9's head | Merged; the sentence in backticks kept word for word, which `tests/test_additive_upgrade_contract.py` reads from SKILL.md |
+| Required finding record: "Do not convert inherited SSWP, base-rate, or combined-signal estimates into an authorship probability." | Rule 7 | Merged |
+
+### After the first gate
+
+The first gate of 5.1.0 (six repetitions per case) passed on Opus and failed on Sonnet the pairwise test of
+`docs/skill-writing.md` step 10: the 5.0.0 text won 49 comparisons, the rewrite 29, with 6 ties, though no rule's
+pass rate fell beyond noise. Sonnet carried four new phrases into answers they did not fit, so one change narrows
+each; no rule is weaker, and none is added.
+
+| Rewrite wording at the first gate | Now | What Sonnet's answers showed |
+|---|---|---|
+| Rule 1: "asked who wrote a text, give quality and style and name the outside evidence (drafts, a disclosure, a provider mark) that could settle it" | "asked who wrote a text, judge its editorial merits and name the outside evidence that could settle authorship" | Authorship answers grew family-style tables with catalog IDs (A1-GPT-004, B2-COMBO-068: ten citations in six cq-01 answers, none in the 5.0.0 answers), and "provider mark" appeared in 21 of 84 answers against 8, three of them in referrals about a student essay (cq-09). The judge preferred the answers that kept the editorial judgment apart from authorship. Style observations stay allowed; the rule no longer prescribes them in an authorship answer |
+| Rule 2: "When the request leaves it open, ask while reviewing in the default." | "When wrapper lines appear and the request leaves the mode open, ask while reviewing in the default." | Answers named the mode and offered the other in 46 of 84 answers against 25, including texts with no chat wrapper (cq-05, 5 of 6 against 1; cq-12, 5 against 2). With no wrapper lines both modes give the same findings, so the ask settles nothing there (W7, W14) |
+| Rule 5: "a conditional template is no rewrite" | "a template may follow it, never replace it" | On cq-06, where no rewrite was asked, the replacement structures with facts to supply that the judge preferred ("[year]", "[named investment or change]") fell from 6 of 6 answers to none. The rewrite of cq-13 must still be written out (W15) |
+| Contents: A2 "for rule 5", B2 "Read for rules 4 and 6" | A2 "Read for step 4", B2 "Read for step 3", the 5.0.0 pointers | A question about an indicator count (cq-05) opened the B2 file in 5 of 6 answers against 3 and the A2 file in 6 against 2, and two answers cited B2 IDs to the user, one walking through the requirements of B2-COMBO-001 and B2-COMBO-003; no 5.0.0 answer cited one. The step pointers open those catalogs when a text is under review |
+
+### Files unchanged
+
+Every reference file apart from this map and the new preserved.md, `scripts/corpus_repetition.py`, the tests and
+`agents/openai.yaml`. In this file, the 4.2.0 to 5.0.0 map below is kept word for word one heading level down.
+
+## Coverage map: content quality 4.2.0 to 5.0.0
 
 Every part of the 4.2.0 SKILL.md and of every 4.2.0 reference file, and where it lives now (ruling D8). Nothing was removed, so there is no preserved.md.
 
@@ -10,7 +87,7 @@ Contents:
 - The 4.2.0 frontmatter, quoted whole.
 - The 4.2.0 lines with old link paths, quoted whole.
 
-## SKILL.md sections
+### SKILL.md sections
 
 | 4.2.0 section | Now |
 |---|---|
@@ -39,7 +116,7 @@ Contents:
 
 No heading was renamed. New headings: `## Binding rules`, `## Contents`, `## Procedure` in SKILL.md, and the title, intro and contents list at the top of each new or split reference file.
 
-## Reference files
+### Reference files
 
 Five files were larger than one read (about 60 KB). Each was split by section, verbatim: the file under the old name keeps its opening sections and gains a contents list naming its parts, and each part holds the following sections unchanged behind a short title and contents list. Parts sit in the same folder as the old file, so links inside the moved text still resolve, and a link to a split file lands on its index. The old line order holds across the index and its parts in sequence.
 
@@ -57,7 +134,7 @@ Five files were larger than one read (about 60 KB). Each was split by section, v
 
 New reference files made from SKILL.md text: review-method.md, catalog-overview.md, checklists.md, background.md, and this map.
 
-## Lines the coverage check reported, and why
+### Lines the coverage check reported, and why
 
 Run against `origin/main`, `v5-skill-coverage-check.py` reported 37 lines of the 4.2.0 SKILL.md until the record block at the end of this map quoted them. All 37 are text moved from SKILL.md into references/ with the wording unchanged and only a relative link adjusted, because a link written for SKILL.md breaks one folder down (`../synthesis-x/SKILL.md` became `../../synthesis-x/SKILL.md`, `references/x.md` became `x.md`, `references/` became `./`, `scripts/` became `../scripts/`):
 
@@ -72,12 +149,12 @@ Run against `origin/main`, `v5-skill-coverage-check.py` reported 37 lines of the
 
 No reference file line was reported.
 
-## Tests and the slop-detection manifest
+### Tests and the slop-detection manifest
 
 - `tests/test_no_removals.py` and `tests/test_additive_upgrade_contract.py` now read a split file together with its numbered parts (`<name>-<n>-<slug>.md`, in order). The checks are unchanged: every baseline line must still appear in order across the file and its parts, the catalog counts must still reach 108 A1, 17 A2, 76 A3 and 86 B2 headers, and each August 2026 locator must still appear exactly once.
 - `tools/slop-detection/manifest.md` lists the four new SKILL.md companions (review-method, catalog-overview, checklists, background) right after SKILL.md in the required files, and every split part after its index in the extended files.
 
-## The 4.2.0 frontmatter
+### The 4.2.0 frontmatter
 
 Kept whole, so the old description and keys stay on record.
 
@@ -103,7 +180,7 @@ metadata:
 ---
 ```
 
-## The 4.2.0 lines with old link paths
+### The 4.2.0 lines with old link paths
 
 The 37 lines listed above exactly as 4.2.0 had them, so the coverage check and synthesis-content-quality's no-removals test can match each one. The links here are written for SKILL.md's folder and are kept only as a record.
 
