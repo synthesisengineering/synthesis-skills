@@ -37,7 +37,7 @@ For each distinct viable approach that remains under binding rule 4, document it
 
 Investigate the uncertainty that could change the selection. Generate more approaches when they add a materially different tradeoff, not to meet an option quota.
 
-For diagnosis, write binding rule 5's three lines before editing code. Use the thinking framework's [decisive-uncertainty method](https://github.com/synthesisengineering/synthesis-skills/blob/v5.30.0/skills/synthesis-thinking-framework/references/decisive-uncertainty.md); preserve refuted predictions and re-open only the acceptance checks they affect. Inspect the actual consumer program as well as its result so a test that prints a fixed answer cannot certify the fix.
+For diagnosis, write binding rule 5's three lines before editing code. Use the thinking framework's [decisive-uncertainty method](https://github.com/synthesisengineering/synthesis-skills/blob/v5.31.0/skills/synthesis-thinking-framework/references/decisive-uncertainty.md); preserve refuted predictions and re-open only the acceptance checks they affect. Inspect the actual consumer program as well as its result so a test that prints a fixed answer cannot certify the fix.
 
 ### Step 3: Evaluate and select
 

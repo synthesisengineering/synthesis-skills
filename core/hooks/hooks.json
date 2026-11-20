@@ -1,0 +1,50 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/bin/sh -c 'h=\"$HOME/.synthesis/v5/bin/synthesis-hook\"; [ -x \"$h\" ] || python3 -B -S \"$1/synthesis/install.py\" \"$1\" >/dev/null; exec \"$h\" session-start \"$1\"' synthesis-session-start \"${CLAUDE_PLUGIN_ROOT}\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" user-prompt-submit",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|bash|exec_command|write_stdin|exec|shell|shell_command|local_shell|run_shell_command|Write|Edit|MultiEdit|NotebookEdit|write_file|edit_file|apply_patch|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" pre-tool-use || { echo \"synthesis guard could not run, so the call is held: run synthesis doctor\" >&2; exit 2; }",
+            "timeout": 5,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$HOME/.synthesis/v5/bin/synthesis-hook\" stop",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,301 @@
+"""Ritual state for SessionStart and the 16:55 nudge (R5.1), from the append-only log
+`ritual_state.py record` writes; every view answers for one workspace, and screen text
+names none. `rituals.py --owed-today` exits 0 only when no workspace owes today's close."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from synthesis import paths  # noqa: E402
+
+DEFAULTS = {"streak": "none", "weekdays": [0, 1, 2, 3, 4], "non_working_dates": []}
+MAILBOX_DAYS = {"every-ritual": 3, "weekly": 8}  # a declared account's mail is read within this, weekends included
+POINTER = "details: python3 <synthesis-daily-rituals>/scripts/ritual_state.py query summary"
+UNNAMED = (None, "", "unknown")
+
+
+def state_dir() -> Path:
+    return Path(os.environ.get("RITUAL_STATE_DIR") or paths.home() / "rituals")
+
+
+def _machine() -> str:
+    """This machine's own id: the Mac's platform UUID, or Linux's machine-id; "" when neither can be read."""
+    import subprocess
+    try:
+        if sys.platform == "darwin":
+            out = subprocess.run(["ioreg", "-rd1", "-c", "IOPlatformExpertDevice"], capture_output=True, text=True,
+                                 timeout=10).stdout
+            return next((line.split('"')[-2] for line in out.splitlines() if "IOPlatformUUID" in line), "")
+        return Path("/etc/machine-id").read_text(encoding="utf-8").strip()
+    except (OSError, subprocess.SubprocessError, IndexError):
+        return ""
+
+
+def host() -> str:
+    """This Mac's name for its file of ritual history: `SYNTHESIS_HOST`, or the host name, with what a file name cannot
+    hold folded to "-" and a short hash of the name and the machine's own id, so two Macs that share a name, or two
+    names that fold alike, keep two files (5.20.0's second review, N3)."""
+    import hashlib
+    import re
+    import socket
+    given = os.environ.get("SYNTHESIS_HOST")
+    name = given or socket.gethostname()
+    folded = re.sub(r"[^A-Za-z0-9._-]", "-", name[:-len(".local")] if name.endswith(".local") else name)[:60]
+    return f"{folded or 'unnamed'}-{hashlib.sha256((name + ('' if given else _machine())).encode('utf-8')).hexdigest()[:8]}"
+
+
+def is_record(row) -> bool:
+    """A ritual record of the shape every view reads: a day, a direction and, where given, text for its workspace and
+    time. A line of another shape is malformed and costs only itself (5.20.0's second review, N9)."""
+    return (isinstance(row, dict) and is_day(row.get("date")) and isinstance(row.get("direction"), str) and row["direction"]
+            and all(isinstance(row.get(k, ""), str) for k in ("workspace", "ts", "mode", "outcome")))
+
+
+def hosts_folders() -> list[Path]:
+    """Each workspace's sessions repo's `rituals/`, where the sync keeps every host's records (plan item 13.5, part 5)."""
+    try:
+        found = paths.config().get("sessions_repos")
+    except (OSError, ValueError):
+        return []  # an unreadable config is said where it is read; this Mac's own log is still read
+    return sorted({Path(os.path.expanduser(p)) / "rituals" for w, p in (found.items() if isinstance(found, dict) else ())
+                   if w != "other" and isinstance(p, str)})
+
+
+def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line costs only itself
+    """This Mac's log and every host's file in each sessions repo's `rituals/`, each record once (5.20.0), each with the
+    `host` whose file it was read from, "" for this Mac's log (BACKLOG D5). A file that cannot be read, or a line that is
+    not a record, is counted as malformed; neither costs the rest."""
+    rows, seen, own = [], set(), state_dir() / "history.jsonl"
+    for path in [own] + [f for d in hosts_folders() for f in sorted(d.glob("*.jsonl"))]:
+        try:
+            if path.is_symlink() or (path.is_file() and path.stat().st_size > 64 * 1024 * 1024):
+                raise OSError("a link, or over 64 MB: not read")
+            lines = path.read_bytes().splitlines() if path.is_file() else []
+        except OSError:
+            rows.append(None)
+            continue
+        for line in (raw.strip() for raw in lines):
+            if not line or line in seen:
+                continue
+            seen.add(line)
+            try:
+                row = json.loads(line.decode("utf-8"))
+            except ValueError:  # UnicodeDecodeError is one
+                row = None
+            rows.append(dict(row, host="" if path == own else path.stem) if isinstance(row, dict) else row)
+    good = [r for r in rows if is_record(r)]
+    return good, len(rows) - len(good)
+
+
+def workspace_files() -> list[Path]:
+    """Each workspace's own ritual settings, `<workspace>/.agents/rituals.json`: kept in that workspace's private
+    repository and linked there as its other manifests are, so they reach every machine by git, on any system (the
+    principal's question of 2026-11-19: iCloud is Mac-only). A link whose repository is not on this machine is none. The
+    workspaces are where the guard looks for them: `SYNTHESIS_WORKSPACES`, else ~/workspaces."""
+    root = Path(os.environ.get("SYNTHESIS_WORKSPACES") or Path.home() / "workspaces")
+    return [f for f in sorted(root.glob("*/.agents/rituals.json")) if f.exists()]
+
+
+def config() -> dict:  # an unreadable file raises: refuse rather than guess
+    path = state_dir() / "config.json"
+    data = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {"workspaces": {}}
+    if not isinstance(data, dict) or not isinstance(data.get("workspaces"), dict):
+        raise ValueError("ritual config.json has no 'workspaces' mapping")
+    if stray := [key for key in ("critical_words", "ledger_closed_words") if key in data]:  # read for no workspace
+        raise ValueError(f"ritual config.json: {', '.join(stray)} at the top is read for no workspace; put it under "
+                         "defaults, for every workspace, or in a workspace's own settings (<workspace>/.agents/rituals.json)")
+    for own in workspace_files():  # each is its workspace's settings, in place of this machine's entry for it
+        try:
+            data["workspaces"][own.parent.parent.name] = loaded = json.loads(own.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"{own} cannot be read: {exc}") from None
+        if not isinstance(loaded, dict):
+            raise ValueError(f"{own}: a workspace's ritual settings must be an object")
+    if not all(isinstance(v, dict) or not v for v in (data.get("defaults"), *data["workspaces"].values())):  # nothing set reads as nothing
+        raise ValueError("ritual config.json: 'defaults' and each workspace must be an object")  # settings() raised a TypeError on it
+    if any(type(v) is not int or v < 1 for v in (settings(data, w).get("quiet_after_days", 1) for w in data["workspaces"])):
+        raise ValueError("ritual config.json: quiet_after_days must be a whole number of days")
+    return data
+
+
+def settings(cfg: dict, workspace: str) -> dict:
+    return {**DEFAULTS, **(cfg.get("defaults") or {}), **(cfg["workspaces"].get(workspace) or {})}
+
+
+def is_day(text) -> bool:
+    """Whether text is one day written YYYY-MM-DD: Python 3.11 and later also read 20261112 and 2026-W46-4 as dates."""
+    import re
+    try:
+        return bool(re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", text)) and bool(date.fromisoformat(text))
+    except (TypeError, ValueError):
+        return False
+
+
+def prompt_check(conf: dict):
+    """How a workspace's settings put the day's prompt check: False where a missing key or `false` turns it off
+    (null and 0 once closed a day unchecked), else (its folders of records, its first day or ""). Any other value
+    is refused, as the day-end refuses it: a ValueError that says why, then which of the three faults it is. The
+    day-end and the doctor's line both read the setting here, so neither calls on what the other refuses."""
+    wanted = conf.get("prompt_reconcile", False)
+    if wanted is False:
+        return False
+    roots = wanted.get("records") if isinstance(wanted, dict) else None
+    if not (isinstance(roots, list) and roots and all(isinstance(r, str) and r for r in roots)):
+        raise ValueError("its prompt_reconcile names no folder of records", "folders")
+    if any(not os.path.isabs(os.path.expanduser(r)) for r in roots):  # read from wherever the day-end runs
+        raise ValueError("its prompt_reconcile names a folder of records from no fixed place", "loose")
+    if "from" in wanted and not is_day(wanted["from"]):  # compared as text, `tomorrow` or a number put every day before it
+        raise ValueError("its prompt_reconcile starts from what is not a day written YYYY-MM-DD", "from")
+    return roots, wanted.get("from", "")
+
+
+def expected(day: date, conf: dict) -> bool:
+    return day.isoformat() not in conf["non_working_dates"] and day.weekday() in conf["weekdays"]
+
+
+def last(records: list[dict], workspace: str, direction: str = "day-end") -> dict | None:
+    """The newest record of that kind; of two tied to the second, the one read later, so a correction appended wins."""
+    hits = [r for r in records if r.get("workspace") == workspace and r["direction"] == direction]
+    return max(reversed(hits), key=lambda r: (r["date"], _moment(r.get("ts")))) if hits else None
+
+
+def _moment(ts) -> float:
+    """A record's time as a moment, so two Macs' clocks in different zones compare (5.20.0's first review, F18)."""
+    try:
+        return datetime.fromisoformat(str(ts)).timestamp()
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+
+
+def streak(records: list[dict], cfg: dict, workspace: str, today: date) -> int | None:
+    # expected days closed in a row: a close on any day credits; a day not expected never breaks it
+    conf = settings(cfg, workspace)
+    if conf["streak"] != "expected-days":
+        return None
+    closed = {r["date"] for r in records if r.get("workspace") == workspace and r["direction"] == "day-end"}
+    count = int(today.isoformat() in closed)  # today is not over: a close credits, absence does not break
+    for back in range(1, 401):
+        day = today - timedelta(days=back)
+        if day.isoformat() not in closed and expected(day, conf):
+            break
+        count += day.isoformat() in closed
+    return count
+
+
+def open_days(records: list[dict], today: date, workspace: str | None = None) -> list[tuple[str, str]]:
+    # (workspace, date) started and never closed in 30 days; old migration markers count for neither
+    floor = (today - timedelta(days=30)).isoformat()
+    keep = [r for r in records if r["date"] >= floor and r.get("mode") != "migration"
+            and r.get("workspace") not in UNNAMED and workspace in (None, r["workspace"])]
+    marks = {d: {(r["workspace"], r["date"]) for r in keep if r["direction"] == d} for d in ("day-start", "day-end")}
+    return sorted(marks["day-start"] - marks["day-end"], key=lambda pair: (pair[1], pair[0]))
+
+
+def friday(today: date) -> date:
+    return today - timedelta(days=(today.weekday() - 4) % 7)
+
+
+def weekly_owed(records: list[dict], cfg: dict, workspace: str, today: date) -> bool:
+    # owed when the latest review predates the most recent Friday (an early one is dated that Friday); a workspace
+    # worked occasionally owes none, its signal being elapsed quiet (Rajiv, 2026-09-02; asked again 2026-10-27)
+    if settings(cfg, workspace).get("quiet_after_days"):
+        return False
+    review = last(records, workspace, "weekly-review")
+    return review is None or review["date"] < friday(today).isoformat()
+
+
+def quiet(records: list[dict], cfg: dict, workspace: str, today: date) -> int | None:
+    # days since an occasional workspace's newest ritual record, once that reaches its quiet_after_days
+    limit = settings(cfg, workspace).get("quiet_after_days")
+    newest = max((r["date"] for r in records if r.get("workspace") == workspace), default=None)
+    if not limit or newest is None or newest > (today - timedelta(days=limit)).isoformat():
+        return None
+    return (today - date.fromisoformat(newest[:10])).days
+
+
+def stale_mailboxes(now: datetime) -> list[tuple[str, str, str]]:
+    """(workspace, address, read through) for every declared account read longer ago than its sweep allows.
+    2026-10-20: a workspace whose rituals stopped left its mailbox unread ten days, and only that workspace's
+    own ritual could have reported it; every session start now counts it."""
+    from synthesis.yamlish import load
+    found = []
+    for manifest in sorted((Path.home() / "workspaces").glob("*/.agents/mailboxes.yaml")):
+        try:
+            data = load(manifest.read_text(encoding="utf-8"))
+            name = "".join(c for c in data["workspace"] if c.isalnum() or c in "-_")
+            store = paths.home() / "sync-watermarks" / f"{name}.json"
+            targets = (json.loads(store.read_text(encoding="utf-8")) if store.is_file() else {}).get(
+                "surfaces", {}).get("email", {}).get("targets") or {}
+            accounts = [(a["address"], MAILBOX_DAYS.get(a.get("sweep"))) for a in data["accounts"]]
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            found.append((manifest.parent.parent.name, "(manifest or watermark store unreadable)", ""))
+            continue
+        for address, days in accounts:
+            through = str((targets.get(address) or {}).get("through") or "")
+            try:
+                fresh = days is None or now - datetime.fromisoformat(through) <= timedelta(days=days)
+            except (TypeError, ValueError):  # never read, or a time without its offset
+                fresh = False
+            found += [] if fresh else [(data["workspace"], address, through)]
+    return found
+
+
+def session_line(cwd: str, today: date | None = None) -> str:  # empty until a ritual is recorded
+    now = datetime.now().astimezone() if today is None else datetime.combine(today, time(12)).astimezone()
+    today, (records, bad) = today or now.date(), read()
+    try:
+        cfg = config()
+    except ValueError as exc:
+        return f"Rituals: state unreadable ({exc}); {POINTER}."
+    if not records and not cfg["workspaces"]:
+        return ""
+    try:
+        here = Path(cwd).resolve().relative_to((Path.home() / "workspaces").resolve()).parts[0]
+    except (ValueError, IndexError, OSError):
+        here = ""
+    parts, day = [], str(today)
+    if here:
+        close, run = last(records, here), streak(records, cfg, here, today)
+        opened = [d for _, d in open_days(records, today, here) if d != day]
+        bits = ([f"last day-end {close['date']}" if close else "no day-end recorded"]
+                + ([f"streak {run}"] if run is not None else [])
+                + ([] if any(r.get("workspace") == here and r["direction"] == "day-start" and r["date"] == day
+                             for r in records) else ["no day-start recorded today"])
+                + ([f"{len(opened)} workday(s) started and never closed ({', '.join(opened)})"] if opened else [])
+                + ([f"weekly review owed (Friday {friday(today)})"] if weekly_owed(records, cfg, here, today) else []))
+        parts.append("this workspace: " + "; ".join(bits))
+    floor = str(today - timedelta(days=30))
+    others = sorted(({r["workspace"] for r in records if r["date"] >= floor and r.get("workspace") not in UNNAMED}
+                     | {w for w in cfg["workspaces"] if settings(cfg, w)["streak"] == "expected-days"
+                        or settings(cfg, w).get("quiet_after_days")}) - {here})
+    if others:
+        unclosed = {w for w, d in open_days(records, today) if w in others and d != day}
+        still = sum(quiet(records, cfg, w, today) is not None for w in others)
+        parts.append(f"{len(others)} other workspace(s): {len(unclosed)} with workdays never closed, "
+                     f"{sum(weekly_owed(records, cfg, w, today) for w in others)} owing a weekly review"
+                     + (f", {still} worked occasionally and quiet too long" if still else ""))
+    stale = stale_mailboxes(now)
+    parts += [f"{len(stale)} declared mailbox(es) unread past their sweep cadence"] if stale else []
+    parts += [f"{bad} malformed log line(s)"] if bad else []
+    return f"Rituals (today {today:%a %Y-%m-%d}): " + ". ".join(parts) + f". {POINTER}."
+
+
+def owed_today(today: date | None = None) -> bool:  # opened and not closed today, or an expected close owed
+    today, (records, _) = today or date.today(), read()
+    cfg = config()
+    return any(d == str(today) for _, d in open_days(records, today)) or any(
+        settings(cfg, w)["streak"] == "expected-days" and expected(today, settings(cfg, w))
+        and (last(records, w) or {}).get("date") != str(today) for w in cfg["workspaces"])
+
+
+if __name__ == "__main__":
+    if sys.argv[1:2] == ["--owed-today"]:
+        sys.exit(1 if owed_today() else 0)
+    print(session_line(os.getcwd()))

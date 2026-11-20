@@ -1,0 +1,9162 @@
+# Changelog
+
+All notable changes to Synthesis Skills are documented here.
+
+Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
+
+## [5.31.0] - 2026-11-20
+
+- **Install only the collections a person picks, guard included** (BACKLOG C8, the principal's ruling of 2026-11-20).
+  `setup.py plugin --collections <names>` installs the core first, then the named collections, in Claude Code, Codex
+  and Muse; the choice is recorded, so a later run adds a collection and keeps the rest; naming none keeps the whole set,
+  as before. The core collection now carries the whole set's hooks and the runtime they run, byte for byte, so no install
+  path leaves the guard out; the doctor fails a harness that holds both the whole set and the core, or a collection
+  without the core; a disabled core is refused before anything installs; uninstall removes the core last and keeps the
+  runtime while any harness's list cannot be read. The collections are built inside the sealed install folder, and the
+  release builds them with its fresh clone's own script. **Behavior change:** anyone who installed the earlier hookless
+  collections gets the guard's hooks when they update the core; Claude Code runs them at once, while Codex and Muse ask for
+  approval. Releasing this version starts with `synthesis install <merged checkout>` (AGENTS.md, Releases).
+- **An organization's skills are kept once.** The onboarding's org-skill install keeps one real copy in
+  `~/.agents/skills` and links Claude Code's entry to it, so Muse no longer sees each skill twice; old copies convert by
+  move, verify, then delete, and a folder already linked to the other counts as one copy. Two review rounds; every
+  finding fixed tests first.
+
+## [5.30.0] - 2026-11-20
+
+- **A second Claude Code folder can be the only seat that drives a Chrome profile** (BACKLOG C2, step 4 of the
+  principal's plan). A `browser_routing` entry may name a `claude_home`, and the config's `claude_homes` lists each
+  such folder: only sessions whose transcripts lie in that folder may select the entry's device, wherever they run;
+  any other session is refused before it selects and told to hand the task to that seat; the folder's own sessions may
+  drive no other entry's device. Each folder keeps its own latest-selection record, and a session's folder is read from
+  the hook payload's transcript path, never from an environment variable. The folder joins the guard's protected
+  harness folders, the session archive and the sandbox's sealed set, and `synthesis doctor` checks each configured
+  folder (plugin, hooks wired and on, transcript retention, a self-test run as its sessions run it). Fail-closed
+  throughout: a malformed value drops no other folder's protection; an unreadable config falls back to the last list
+  read in full (a record only the hook writes) plus every real `~/.claude*` folder; setup stages nothing while the list
+  cannot be read. Two review rounds, every finding fixed tests first. With no `claude_home` configured, nothing changes.
+
+## [5.29.1] - 2026-11-20
+
+- **Every skill's description fits Claude Code's skill listing** (BACKLOG C6, the principal's ruling of
+  2026-11-20). The 73 public descriptions are at most 140 characters, and each full description moves word for
+  word to its skill's `references/coverage-map.md`, under "The full description" (four skills gain a coverage map
+  with its Contents line; four gain their `metadata.category`, emptying `awaiting_room`). With the private
+  descriptions shortened and eleven rarely used Anthropic skills listed by name only in the principal's own
+  setting, the listing fits its 30,000-character cap and every synthesis skill keeps its description. Measured on
+  the final text, Opus and Sonnet: the six skills formerly listed by name only were picked in 22 of 24 runs, against
+  9 of 24 before; the six described ones in 24 of 24; no wrong pick on near misses, and no skill on the 12
+  no-skill prompts.
+- **The model table names November's releases** (model tiers 3.0.2). Every role list was verified on 2026-11-20
+  against the provider's own documentation, with the page, excerpt and identifiers in
+  `references/catalog-verification.yaml`. Anthropic judgment moves to `claude-fable-5-2`. OpenAI judgment moves to
+  `gpt-6.2-astra` and routine to `gpt-6.2-sol`, with `gpt-6.1-terra` still its alternative. Google judgment moves to
+  `gemini/gemini-4-carbon`, with `gemini/gemini-4-neon` as its alternative, and routine to `gemini/gemini-4-hydrogen`,
+  which Google names the upgrade from Gemini 3.8 Flash. `gemini/gemini-4-argon` leaves the table: Google's own model
+  comparison now covers only Carbon, Neon, Hydrogen and Flash-Lite. The Ollama lists keep their 2026-11-06
+  verification. Codex's model page now documents the GPT-6.2 IDs as client selectors.
+
+## [5.29.0] - 2026-11-20
+
+- **Same-day meeting briefs are a required day-start step** (synthesis-daily-rituals 3.20.0; BACKLOG A24, the
+  principal's request relayed by an operations seat). After the live calendar read, the new `meeting_briefs.py` sorts
+  the day's meetings: the ones to brief (accepted, optional ones included, the principal's part and the agenda with
+  each), each existing lead-time pack to refresh rather than rewrite, declined meetings, holds and unclear attendance
+  listed apart, and a calendar that could not be read reported as a coverage gap that blocks a clean day-start, never
+  as a day without meetings; the earliest meeting comes first. Each brief is built with synthesis-meeting-prep, led by
+  the purpose and the decision or ask, written as a private note in the workspace, linked in the plan, and the earliest
+  is surfaced before it starts even while the wider sync runs (day-start Step 1a, with Steps 4, 6 and 8). Binding rule
+  18 carries the step; four incident sentences moved word for word from rules 2, 3, 12 and 16 to the version history,
+  a move the principal saw before it was committed. Tests first: a mixed day with a presenter's agenda and an existing
+  pack, the JSON, exit codes and 17 kinds of unreadable input.
+
+## [5.28.3] - 2026-11-20
+
+- **synthesis-context-lifecycle 2.9.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole, with when it applies and why; the coverage map places every rule of 2.8.2, which stays verbatim in
+  `references/preserved.md`. The first text's gate found nothing weaker but no outright win (the blind comparison tied
+  14 to 14 on Opus): the judge preferred the earlier text's answers where the rewrite's left placeholders in log lines,
+  recited procedure, or ran past a length the request set. So the rules now give a requested format and length first,
+  fill each date and citation from a command run or a record read, and keep stamps to open-items lists; three
+  sentences the rewrite itself had added move word for word to references, keeping SKILL.md 400 bytes under its limit
+  (7,570 bytes). Second gate at six repetitions against the pinned earlier text, nothing weaker and something better
+  on both models: Opus 100% (78 of 78) against 97% (76 of 78), blind comparison won 23 to 11 with 8 ties; Sonnet 99%
+  (77 of 78) against 100% (78 of 78), inside the noise, won 18 to 14 with 10 ties; rule 1 won on each.
+
+## [5.28.2] - 2026-11-20
+
+- **synthesis-content-quality 5.1.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole, with when it applies and why; the coverage map places every rule of 5.0.x, and the earlier text stays
+  verbatim in `references/preserved.md`. The first text's gate found nothing weaker but lost the blind comparison on
+  Sonnet (the earlier text's answers preferred 49 times, the rewrite's 29, 6 ties): four phrases were carried too far,
+  among them a question about the review's mode asked in 46 of 84 answers against 25, and internal catalog ids shown
+  to the reader. Those four are narrowed. Second gate at six repetitions against the pinned earlier text, nothing
+  weaker and something better on both models: Opus 98% (153 of 156) against 97% (152 of 156), blind comparison won 39
+  to 30 with 15 ties, seven rules won; Sonnet 97% (152 of 156) against 97% (151 of 156), won 35 to 33 with 16 ties,
+  five rules won.
+- **A workspace's own critical words are read.** The deadline sweep read `critical_words` (the words that flag an
+  untagged deadline as possibly critical) and `ledger_closed_words` only at the top of `config.json`, while 5.27.1
+  moved each workspace's settings into its own file, so words written there on the principal's approval were
+  silently ignored and the workspace kept the ten built-in words (reported by an operations seat). Both lists are
+  now read from the workspace's settings, or `defaults` for every workspace; a list left at the top of `config.json`
+  is refused by name, never ignored. Tests first.
+
+## [5.28.1] - 2026-11-19
+
+- **synthesis-decision-packet 2.5.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is stated
+  whole, with when it applies and why; When to use it moves word for word into `references/background.md`, and the
+  2.4.0 text stays verbatim in `references/preserved.md`. The first text's gate found it weaker on one limit, on both
+  models in the same case: asked for a packet of six unlike decisions, the answers built one (Opus 14 of 18 against
+  18, Sonnet 12 of 18 against 16, on the when-not checks). So rule 7 now asks for five or more decisions of the same
+  shape, each with a recommendation, and binds the four limits of When NOT to use it even against a request for a
+  packet; the three sentences on what the generator refuses move word for word to `references/enforcement.md`. Gate
+  at six repetitions against the pinned earlier text, nothing weaker and something better on both models: Opus 100%
+  (144 of 144) against 94% (136 of 144), Sonnet 98% (141 of 144) against 99% (142 of 144), when-not 18 of 18 on each.
+- **The ritual settings are read under the workspaces root synthesis names** (`SYNTHESIS_WORKSPACES`, else
+  `~/workspaces`, as the guard reads it). 5.27.1's reader took the real home's folder whatever a machine or a test
+  set, so six ritual tests failed on any Mac that keeps a workspace's own settings, and none on CI's runners; every
+  test now starts with an empty workspaces root. Tests first.
+
+## [5.28.0] - 2026-11-19
+
+- **synthesis-slack-sync 4.1.0: the principal's own messages are searched by member id, never `from:me`** (BACKLOG
+  A21, an operations seat's report of 2026-11-19). Source D's search for the principal's own messages ran as the
+  connector's `from:me`, which returned another person's message as the principal's newest; an explicit `from:<@ID>`
+  returned the right two. The config now declares `principal_user_id`; `preflight.py` validates it (`U…`, or `W…` on
+  Enterprise Grid), prints it as the `from:<@ID>` to search by, exits 1 when a config names none and 2 for a value that
+  is no member id, and leaves the declared set the watermark gate reads unchanged. Source D, the lookup protocol, the
+  configuration reference and SKILL.md say never `from:me`. Tests first (13 failing before the fix).
+- **synthesis-grounding-discipline 2.1.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole, the numbers other documents cite kept. Rule 9 now says where it stops: a bounded read already done (by
+  the agent this session, or by the user who reports it with its bounds) settles absence within those bounds, the case
+  its pilot run of 2026-10-07 failed. Rule 6 carries the catalog's rule that neither a convention document nor a file
+  count wins by itself, with the newest files inspected. When to Apply, When NOT to Apply and the Self-Check move word
+  for word into `references/self-check.md`; the 2.0.0 text stays verbatim in `references/preserved.md`. Gate at six
+  repetitions against the pinned earlier text, nothing weaker and something better on both models, no difference in
+  the noise band: Opus 99% (143 of 144) against 95% (137 of 144), Sonnet 95% (137 of 144) against 93% (134 of 144).
+- **synthesis-anti-shortcuts 2.3.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is stated
+  whole, with when it applies and why; When to Apply, When NOT to Apply and The scanner move word for word into
+  `references/applying.md`, The Pattern and the Pre-Response Self-Check merge into `references/methodology.md`, which
+  already held them word for word, the 2.2.0 text stays verbatim in `references/preserved.md`, and the scanner's
+  `--catalog` flag is described as the script reads it. The references now count the catalog's nine categories (they
+  said six and seven), the pattern table gains capability surrender and effort rationale, and the vocabulary says why
+  capability surrender has no scanner pattern: each of its phrases is right about a governance gate and wrong about a configuration gap. Gate at six
+  repetitions against the pinned earlier text, nothing weaker on either model by the gate's test and something better
+  (rules won: Opus 1, 4, 5, 7, 8; Sonnet 3, 5, 9): Opus 84% (113 of 134) against 85% (112 of 132), Sonnet 90% (129 of
+  144) against 92% (130 of 142), every difference within the gate's noise (Opus rule 3 28 of 30 against 30; Sonnet
+  rule 6 12 of 18 against 13, rule 7 16 of 18 against 18), none on both models.
+
+## [5.27.2] - 2026-11-19
+
+- **synthesis-thinking-framework 3.2.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
+  stated whole: what to do, when and why. Rule 7 (judge every promised outcome in its own terms, and name before
+  implementing the observation that tells a useful result from a plausible wrong one) now covers the plan and the report
+  of done, and counts the request's stated goal as an outcome. The Pre-Response Protocol, Depth Calibration, and Decision
+  ownership and execution sections move word for word into `references/protocol.md`; the 3.1.0 text stays verbatim in
+  `references/preserved.md`. Gate at six repetitions against the pinned earlier text, nothing weaker on either model:
+  Opus 94% against 92% (rule 7 36 of 36 against 28), Sonnet 93% against 88% (rule 7 34 of 36 against 22).
+
+## [5.27.1] - 2026-11-19
+
+- **An approval code the principal types into a Codex question card's answer counts** (BACKLOG A18, the principal's
+  direction of 2026-11-19, with his yes in chat). Codex wraps a card's reply in one block, a JSON list of question and
+  answer, which the parser had dropped whole as harness text, so `approve <code>` typed into a card did not count. Each
+  answer is now read alone, and its code counts only when the whole prompt is that one block, the session's record holds
+  it as a message its client sent, the record shows the card's asking call, none of the options that call offered
+  carries the code (a picked option is the agent's words), and the code appears in the block as typed. The question
+  never counts, nor does a block inside other text: Codex also records an automation's heartbeat, whose words an agent
+  sets, as the user's message (review round 1). A replay of every card reply on one Mac counted the three codes the
+  principal typed and nothing else.
+- **A Drive call that makes, copies or moves a file waits by where it lands, not where its bytes come from** (BACKLOG
+  A19, the principal's question why a Drive import asked a code). The workspace connector's `create_drive_file`, the
+  three imports, `copy_drive_file`, `create_doc`, `create_spreadsheet`, `export_doc_to_pdf` and `create_drive_folder`,
+  and the Google Drive connector's `create_file`, `copy_file` and `update_file` (known by keys of that connector's own
+  schema, so another server's tool of the same name is not caught) ask nothing in the principal's own My Drive (no
+  folder, or `root`) and wait for a code naming the file and the folder in any named folder, which may be shared; a copy
+  given no folder lands beside its original and waits too. A file's content is read as a document's own lines, not as
+  a message's line breaks. 5.26.1 judged by the source: an upload to a private My Drive waited, and bytes passed inline
+  into a shared folder did not. Reading Drive never asks.
+- **A batch refuses, as it is read from its file, an entry the send path would never spend** (BACKLOG A20, an
+  operations seat's report of 2026-11-19, and review round 1): one whose input names what its connector fetches or reads
+  as the call runs (a forward that carries the original's attachments had been put to the principal, opened, and never
+  spent), one that names a file by `sha256:<hex>:<path>` reference, one whose words the principal's settings refuse, and
+  one that puts a meeting on today. A key that only names a file, such as `file_name`, no longer counts as fetched, so
+  several Drive files into a named folder go on one batch code. A stored batch is not judged again when it is listed or
+  opened.
+- **A workspace's ritual settings can live in its own repository** (BACKLOG C7, the principal's question of 2026-11-19:
+  synthesis is meant for Windows, Linux and Mac in any mix, and the sync folder that carried the ritual config between
+  Macs is iCloud). `~/workspaces/<W>/.agents/rituals.json`, linked from the workspace's private repository as its
+  `repos.yaml` and `mailboxes.yaml` are, takes the place of that workspace's entry in the machine's ritual
+  `config.json`, which keeps the defaults; git carries it to every machine. A link whose repository is not on a machine
+  is skipped there; a file that cannot be read, or is not an object, stops the rituals and names itself. The doctor's
+  `home paths` line reads these files too. Setup on a new machine now links every `*.yaml` and `*.json` in a
+  workspace's repository's `.agents/`, not `repos.yaml` alone: until now only the Mac-only mac-sync linked the rest.
+
+## [5.27.0] - 2026-11-19
+
+- **A standard for writing skills, measured before release** (`docs/skill-writing.md`, BACKLOG B1). A binding rule
+  says what to do, when, and why, in its own words, so an agent can apply it without opening another file; a rule
+  that was only a link is now complete. Passages move into references word for word, and each rewrite passes the
+  evaluation gate on two models at six repetitions with no rule weaker before it merges.
+- **synthesis-meeting-transcripts 1.3.0.** Its eleven rules are stated whole; Step 0, the declared-window sweep,
+  moves into `references/declared-window-sweep.md` word for word, and the earlier text stays verbatim in
+  `references/preserved.md`. Gate: Opus 137 of 138 against 137 of 138, Sonnet 136 against 132, no rule weaker.
+- **synthesis-code-planning 2.1.0.** Its eight rules are stated whole (rule 1, a bare link to the decision-ownership
+  contract, now says what the contract requires of code work, and still links it); the procedure moves into
+  `references/process.md` word for word. Gate: Opus 95% against 87%, Sonnet 92% against 87%; rule 1 rose from 5 of
+  12 to 8 of 12 on Opus and from 3 of 12 to 7 of 12 on Sonnet, and no rule is weaker.
+
+## [5.26.1] - 2026-11-18
+
+- **The send guard reads Codex's computer-use REPL as computer use** (BACKLOG A14, an operations seat's report of
+  2026-11-18: a chat reply sent through `mcp__cua_repl__js` left no ledger line under a batch whose entry was never
+  spent, and a slide import, uploads and two form saves ran with no code). A REPL call is read as the actions its code
+  writes out, described by the call's title. One that sends, uploads, edits a document or saves a form waits for a code
+  naming it and is logged once released, and since the REPL keeps what earlier calls defined, so does one whose title
+  says so though its code shows no action (a helper an earlier call defined). A control is read where an ordinary
+  spelling names it (a locator bound to a name, a chain over lines, a test id, a selector's aria-label or text, a
+  filter's text), and page code run by `evaluateAll`, `waitForFunction`, `$eval` or `$$eval` is read as a page script.
+  Return, a typed line break and an untitled click wait, as in any messaging app, since a REPL call never names its app.
+  Typed words are scanned as a message only in a call that sends, so an address, CSV rows, code or a search is never
+  refused for its words. Code the guard cannot read, `eval`, `Function` or `constructor` named anywhere, or a send whose
+  words are not written into the call, is refused; code that imports a module, reaches the process, or calls a module's
+  process methods or its deletes, renames, links or permission changes (`execSync`, `unlink`, `symlink`, `chmod`) waits
+  for its own code. Writing and creating files through an imported module passes (review round 2: holding them held an
+  honest agent's proofs and step records, up to 58 in a day). No batch takes a REPL call, and a batch an
+  earlier release opened with one no longer counts as open.
+- **Uploads, document edits and form saves wait on every computer-use tool** when the action's summary says so, except
+  on a local app's page; a save of a download, a screenshot, an export or the REPL's own state is no form save, and a
+  send window covers only sends.
+- **A file handed to a page or a service waits for a code naming the upload** (A14). By kind: a tool whose name says it
+  uploads or attaches, with no reading verb before that word; a browser's `set_input_files`; Claude in Chrome's
+  `file_upload` and `upload_image` and Playwright's `browser_file_upload`, judged on their page, so a local app asks
+  nothing; a Drive call that reads a file from this disk (`create_drive_file` and the three imports), which asked
+  for no code, since its destination may be a shared folder; a driven browser's drop of files and its own
+  `setInputFiles`; and a connector field given a file by `sha256:<hex>:<path>` reference, its bytes bound. A connector's
+  upload holds as a send that names the file and where it goes. Each released upload is in the sends ledger, and no
+  batch takes a driven browser's tool.
+- **A JavaScript string's escapes are read as they run**, so a typed `'\n'` or legacy octal `'\12'` counts as Return;
+  this closes two page-script spellings on the open list.
+- **A config's tool globs match a tool as every harness names it** (BACKLOG A15). Codex writes a server named
+  `workspace-mcp` as `workspace_mcp`, so a Google Chat message signed with the plain `Ragbot (ragbot.ai)` form its
+  config allows (`signature.plain_url_tools`) was refused there. `send_tools`, `not_send_tools`, the document-edit
+  tools, `plain_email_tools`, `plain_url_tools` and `fresh_calendar.reads` now match each glob as written against the
+  tool's name and against it with its server's `_` read as `-`, so a glob written with the server's own name matches
+  both harnesses' names.
+- **The review: a detached HEAD at a commit a remote holds is nothing at risk.** Run as released on the Mac it was built
+  on, 11 of the 23 detached checkouts it failed sat at a published commit. Such a checkout with nothing else to repair
+  joins the shared no-risk warning; one detached at a commit no remote holds still fails.
+
+## [5.26.0] - 2026-11-18
+
+- **`synthesis review`: the whole Mac in one read, ending in a repair plan** (BACKLOG C3, roadmap FUTURE-01). One
+  read-only command reads every workspace's checkouts (worktrees included) and declared clones, each project's records,
+  the board's claims, the launchd schedules and the installed side. It prints findings by severity (fail, unknown,
+  warn), then a numbered plan. Each step names its exact command and who may run it: the agent with no code, the agent
+  with the principal's code, or the principal. No step runs. `--json` gives the same as one object; `--fetch` fetches
+  first. Exit 0, 1 for a failure, 2 for anything it could not tell.
+- **A step's class is the guard's own.** Git steps are classed by the guard's deciders, which record no request. A push
+  to a repository that publishes on push, or one that may move a gated default branch, waits for the principal's code.
+  No git they start reaches any remote, so no transport runs a program a repository's configuration names.
+- **The commit names its paths.** Every uncommitted path is read from git's status, an untracked folder as one. The
+  commit names each path no live seat's claim covers, never `git add -A`; that seat gets a board message, and nothing is
+  pushed under it. Past 100 paths, what is work is the principal's to decide.
+- **A branch with no upstream fails only where its commits are at risk.** One whose commits a remote-tracking branch
+  already holds (a worktree whose pull request merged) is nothing at risk: every such checkout shares one warning, naming
+  five, with no step. On the Mac this was built on, that was 86 of the 130 checkouts on a branch with no upstream.
+- **Unknown is never fine.** `synthesis doctor` gives a line that could not tell its own status, `unknown`, counted in its
+  summary and listed after failures. Health still turns on failures only. The review reports an unreadable `.git`, an
+  unreadable board session file and anything an area raises as unknown. A reader of `synthesis doctor --json` that took
+  such a line as `warn` now sees `unknown`.
+- **The strand scan never rewrites an index:** its git runs with `GIT_OPTIONAL_LOCKS=0`.
+- **A release installs the runtime its tag declares** (BACKLOG A16). The release tool runs from the running runtime, and
+  its installer staged the new runtime, and the release listed it, by the running runtime's own list of the skills the
+  runtime carries, so a release that added one installed it short: 5.25.1's runtime came up without
+  synthesis-slack-sync, and the doctor failed its package checks until the tag was installed again. Staging, the
+  release grant's spend and the release's listing now read that list from the plugin being installed: its
+  `synthesis/install.py`, parsed as data and never run, bound once to a literal tuple of distinct skill folder names, or
+  refused. The doctor fails a harness's plugin whose list cannot be read instead of stopping. This release is itself
+  installed by 5.25.2's installer; it adds no carried skill.
+- **A second Mac syncs the workspaces it holds** (BACKLOG D5, the two-Mac check). One config serves every Mac, and a
+  Mac that held only some of the workspaces failed every hourly sessions sync, and so every `synthesis handoff`, for
+  each sessions repository it had not cloned, while the doctor told it to clone them. A repository that is not cloned
+  now fails the sync only while the Mac holds something of that workspace (a session in its archive, a ritual record,
+  or a ritual log it cannot read); otherwise the sync passes it over in a line of its own, and the doctor reports it as
+  information.
+- **The summary shows each Mac's close.** `ritual_state.py query summary` named one close per workspace, so two Macs
+  that closed one workspace on one day read the same whether or not the other's record had arrived. It now lists each
+  Mac's newest day-end close (`closes by host:`; `last_day_end_by_host` in `--json`). A new end-to-end test runs a fresh
+  install, a message carried by `synthesis handoff` and read by `resume` on a second home, and both homes' day-ends
+  counted, each command as its own process through the launchers the install wrote.
+
+## [5.25.2] - 2026-11-18
+
+- **plutil and defaults read a launch agent with no code** (BACKLOG A13). The guard held `plutil -p` of a launch agent,
+  piped to grep, as a possible change of a harness's settings, and `defaults read` of it the same way: neither was a
+  program it knew. Both now read a property list as cat does in the forms that only print, each run on a copy and read in
+  plutil's help and manual: plutil's `-p`, `-lint` (its default) and `-help`, `-type` and `-extract … raw` with no `-o`,
+  and `-extract` or `-convert` with `-o -`; defaults' `read` and `read-type`. Every form that writes still waits for the
+  principal's code: `-convert` in place, beside the file (`-e`) or into a protected folder (`-o`), `-insert`, `-replace`,
+  `-remove`, `-create`, `-extract` in any format but raw with no `-o` (it rewrites the file it reads), any form whose `-o`
+  names a file, and defaults' `write`, `delete`, `rename`, `import` and `export` to a file. So does any form the guard
+  cannot place: two command options, an option it does not know, two `-o`, or a word the shell may still make an option
+  (a substitution, a variable it cannot read, xargs's files, a pattern that may name one). A script under either name is
+  judged as the script it is, and a settings hold names `plutil -p` among the reads that need no code.
+
+- **A word beginning `~-`, `~+` or `~N` is a value the guard cannot read** (review round 1 of 5.25.2). bash, macOS
+  /bin/sh and zsh expand it from OLDPWD, PWD or the folder stack, which a line may set where no word shows, and the guard
+  read it as written: `OLDPWD=-convert; plutil ~- xml1 <agent>` rewrote a launch agent while the guard saw a lint, and
+  `OLDPWD=-o; sort ~- <protected>/x <file>` wrote a protected file in 5.25.1 too. A write target or folder spelled so is
+  now one the guard cannot place; where a program's words decide what it writes (a writer, a reader whose options write,
+  git, find, sed, uniq, xxd, plutil, defaults, or a program it does not know) the word may be any option or a target
+  joined to one, so every operand may change; and a program run from a folder the guard cannot read, `~-/…` or `$X/…`, is
+  known by no name. Plain `~`, `~/…` and `~user` read as before, and readers such as cat, grep and ls take such a word
+  with no code.
+
+## [5.25.1] - 2026-11-18
+
+What the principal's operations seats met in ordinary work on 2026-11-18 (BACKLOG A10, A11 and A12), each fixed tests
+first, and a TLS gap found while fixing one of them.
+
+- **A help request needs no code.** A script the runtime carries, run by the interpreter's plain word with `--help` or
+  `-h` alone, runs with no code even without `-s`: it prints its usage and makes none of its decisions, and what the
+  user's own site folder loads into it loads into every Python run the guard lets through. A test runs every Python
+  script the runtime carries both ways in a home of its own and holds each to its usage, writing and starting nothing;
+  the eleven that read a config or their input first, or are no script, are named in `guards.NO_HELP` and keep the rule
+  of any run. A copy outside the runtime, such as a harness's plugin cache, still waits; its hold now names the
+  runtime's copy, which needs no code, and a settings hold names the settings the held program's own text names rather
+  than every one the guard has.
+- **A record of a hold.** A shell line that carries a pending approval code is still refused, since it may hand the code
+  to a program that types into a session or writes its record. The refusal now says how to record a hold: leave the
+  code out (the call, the check that held it and the time are the record), or write the record with the harness's file
+  tool, which writes only the file it names.
+- **A forward's quoted header names no meeting.** The fresh-calendar rule no longer holds a message for a time in the
+  header a mail client writes over a forwarded or replied-to message: From, Sent, Date, To, Cc and Subject lines with a
+  sender and a dated Date or Sent, under a forward's or an original message's marker, a rule or quote marks, and a
+  reply's dated "On <date>, <sender> wrote:", in plain text or HTML. A time in the message's new words, in the quoted
+  message's own words, or in a header-like block with no such mark is still held.
+- **The inbox engine connects under `python3 -s`, and always verifies.** It verifies IMAP against a CA bundle no agent
+  can change: certifi's where it is importable and root-owned, else the operating system's own (`/etc/ssl/cert.pem` on
+  macOS, owned by root with every folder above it), and the interpreter's default store only where neither is there;
+  verification is never off. The census, which opened its connection with imaplib's default context (which verifies
+  no certificate), now connects through the same verified path.
+- **The runtime carries the slack-sync skill.** Its workspace map, preflight and thread checker run as
+  `python3 -s ~/.synthesis/v5/current/skills/synthesis-slack-sync/scripts/…`, as every other ritual script runs; a seat
+  that ran them so was held, since the runtime had no such files. A test holds every runtime command a skill documents
+  to a script the runtime carries that the guard lets run.
+- **Concurrent-seats mode and the Slack gate agree.** A ritual's own watermark advances, the end-of-sync gate and the
+  decay sweep run with seats live: the watermark store has been written under a lock and never backwards since
+  2026-11-11, and the sweep writes no state. Rule 4 keeps its words and says so, and so does the Slack sync's Step 4.
+- **A long argument no longer stops the guard (BACKLOG A12).** A pattern of more than 64 parts is read as written, so a
+  JSON argument full of addresses no longer recurses through glob, and a line nested past what the guard reads waits for
+  the principal's code with a plain reason instead of failing on RecursionError.
+- **A mid-day sync is recorded** (BACKLOG A11). `ritual_state.py record --direction midday` now works; before, the
+  recorder took only day-start, day-end and weekly-review, though the worker contract records every run by its run type.
+  Each sync appends its own record, a later one that day too (its artifact is `midday-N`). It is held to the critical
+  deadlines, travel, choices and commitments as a day-start is, and leaves the prompts to the day's close. No view counts
+  a sync as opening or closing a workday, so streaks, the last close, workdays never closed, the weekly review, the
+  session line and the nudge read as before. The row of `query last` and `summary` lists the newest sync (`last_midday`),
+  and a sync ends the quiet of a workspace worked occasionally.
+- **A correction recorded in the same second as the close wins.** `rituals.last` kept the first of two records tied to
+  the second, so a corrected day-end appended within the second of a clean close read clean, against day-end.md's rule
+  that the later record wins. The later one is now read, by every view that reads through it.
+- **The desk's coverage line folds the newest mid-day run.** `ritual_workers.py coverage` looked for a day's `midday`
+  artifact alone, so after a second sync, filed as `midday-N`, the line gave the first one's time and outcome. It now
+  reads later runs by the deadline sweep's own pattern, after the first in the order of N and before the day-end.
+- **A file pattern is read where the shell writes it** (review round 1 of 5.25.1). The guard matches a pattern against
+  the disk part by part, through any link and with no recursion, for a redirect or a copy's target as for any word, and
+  a pattern it cannot match within its caps (1,024 names, 256 folders read) waits for the principal's code. Through a
+  link the agent made in its own folder, `cp … <folder>/l*k/grants/…` past 64 parts (since A12) and
+  `echo … > <folder>/c*r/guards.py` at any length (as in 5.25.0) had written into the sealed approvals and the runtime's
+  code with no code.
+- **Not synthesis's:** the refusal of a push "after the preceding commit failed" came from Codex's own approval reviewer
+  (`auto_review`), which read the previous cell's hold as a failed commit. No change.
+
+## [5.25.0] - 2026-11-18
+
+The guard's sandbox (BACKLOG C1; design note 22.9, sections 2 and 4, and the principal's eight rulings of 2026-11-15,
+each the recommendation). Every record an approval rests on moves into a folder only the hook writes, and each harness's
+own operating-system sandbox is set to keep every agent's shell out of it and out of the rest of what the guard trusts:
+the runtime, its settings, the git hooks, the transcript archive, and each harness's records, settings and programs.
+This release ships the code and stages the two policy files; the seal holds once the principal installs them. It also
+adds `synthesis searches` (BACKLOG B5) and two fixes its builder found.
+
+- **The sealed folders.** `~/.synthesis/v5/approvals/` holds what an approval rests on: `grants/`, the hook's
+  `requests/`, `effects/` (grants the hook applies itself), `granted.jsonl` (each spent code, with the record and line
+  that showed it), `records/` (each session's record), `sends/`, `deploys/`, `desktop/`, `typed/`, `imessage-sends/`,
+  `stop/`, `release-grants/`, the browser files, the lock and the approved commit lines. `~/.synthesis/v5/install/`
+  holds what only the installer writes: setup's record of the Codex hooks it declared, install's own record, and the
+  staged policy files. The installer moves the old layout at its switch, never before, so an install that waits for
+  the principal's code leaves the running release's records where it reads them and reads his code there; the first
+  hook of this release to find the old layout moves it too. The move is made once, merging a line store the config
+  placed elsewhere, and nothing is deleted. A shell files its requests in `state/requests/`, which with the board and
+  the outbox is all of the synthesis home a sandboxed agent writes.
+- **The hook is the only writer of approvals.** It grants a shell's request only on the principal's typed code, names
+  it as a shell's, and never grants one planted under a code the hook filed: a code's first digit says who filed it (0
+  to 4 the hook, 5 to 9 a shell), so no file a shell writes stands for a code the hook showed, even once that code's
+  request has expired. A typed code answers each request it carried once, and is never shown again. What a typed code approves whose effect is
+  a sealed record (a commit line, a send window, a batch) the hook applies at the prompt, the turn's next tool call or
+  its end, once the session's record shows the code. The commit check, `synthesis sends open` and `sends batch` only
+  ask; `sends close` writes a mark that only ends a window. The lost-session and gap-review commands read a live, typed
+  grant and spend nothing, and a process that cannot write the sealed folder spends nothing and says why.
+- **A command outside the sandbox waits for the code of exactly that command** (ruling 2): Claude Code's
+  `dangerouslyDisableSandbox`, Codex's escalated run and the desktop app's terminal panel. The release launcher's own
+  line needs none (ruling 3: installs come from the protected release tool without a code).
+- **No approval in a Muse session** until a probe shows Muse's sandbox seals the folders (ruling 6): its prompt hook
+  grants nothing, and a held call says to make it in Claude Code or Codex.
+- **The guard's settings change only through `synthesis config apply <file>`**, which shows the change key by key and
+  writes `config.json` on the principal's code for exactly that file's content. A file tool's write of a harness's hook
+  or sandbox settings, or of a launch agent, waits for the code of that call; an MCP tool that writes is judged by its
+  path arguments, as the file tools are, since an MCP server runs outside every sandbox; and the installer refuses,
+  naming the folder, where it cannot write the sealed runtime, rather than install half of it.
+- **The two administrator files.** Every `plugin` or full run of setup stages Claude Code's managed settings and Codex's
+  requirements in `install/`; only `setup.py sandbox`, the rollout's step after its pilot, prints the one `sudo` command
+  that installs each, and the doctor and an ordinary run point to the rollout instead. Setup installs neither. Both are built from one sealed set (`synthesis/sandbox.py`): the sandbox on and never off for want of one,
+  the write area of ruling 8 (a session's folders and temp, plus `~/workspaces` and `~/.Trash`) with the board, the
+  outbox and `state/requests` named, as Codex's profile names them, an `Edit` deny rule
+  for every sealed path, Claude Code's own records denied to the shell alone, and an ask rule behind the guard's hold;
+  for Codex, a profile of its own pinned with no full access, and the guard's four hooks as managed hooks (ruling 7),
+  the only hooks Codex runs. The Codex profile in `config.toml` keeps the same set read-only, every ancestor of a sealed
+  folder included, once `setup.py sandbox` writes it: that is the rollout's Codex step, which first tests whether Codex
+  runs its hooks inside its sandbox (the note's section 5), so no release's install, and no `plugin` or full run of
+  setup, seals Codex before then. Each printed command checks the staged file's SHA-256 first, so a copy changed after
+  setup staged it installs nothing. A typed code that matched no request is marked too, so nothing filed under it later
+  is answered by that prompt; and an install that waits while a release before 5.25 runs says why that release answers
+  "Not granted" to its code.
+- **The doctor** reports the sandbox in one `sandbox` line (off, staged, or installed and holding the keys: root's with
+  every folder above it, this release's bytes, nothing outranking it), counts Codex's hook trust as policy once the
+  requirements hold, and fails, in a new `approvals` line, a layout that has both the old records and `approvals/`.
+  `synthesis doctor --seal`, run from a session's shell, tries each write the seal must refuse and fails loudly on any
+  that goes through, removing or putting back what it made; run outside a sandbox, it reads the configuration instead.
+- **What stays the principal's to install.** Nothing in this release installs either policy file. After the pilot of
+  design 4.8 step 3 (one Claude Code CLI session started with the managed content as its `--settings`, running the probe
+  set and a day's work, then a session in the desktop app's Code tab), the principal installs both once per Mac with
+  his password, by the two commands setup prints (`skills/synthesis-onboarding/references/harness-install.md`), and
+  again when a release changes either; `synthesis doctor --seal` green on every harness comes before the cutover is
+  announced on the board.
+- **Where part 1 went past the note.** The close mark of `sends close` lives in `state/requests/`, the one folder of
+  the state that Codex's profile lets a shell write. The hook also applies an effect at the prompt itself, where the
+  harness recorded the prompt before the hook ran. Codex's escalated run (`sandbox_permissions: "require_escalated"`,
+  `with_escalated_permissions`) is held as Claude Code's flag is; the note named only Claude Code's. `config apply`
+  asks one code, for the content, where the note's unsandboxed run would have asked a second for leaving the sandbox.
+  The guard holds a file tool's write of the harnesses' settings and launch agents itself, which holds before the
+  managed file is installed; the note left that to the managed deny rules.
+- **Where part 2 went past the note.** Codex's requirements pin a profile of their own, `synthesis-sealed`, allowed by
+  the table form of `[allowed_permission_profiles]`, where the note pinned `synthesis` by an array: Codex 0.169 ignores
+  an array there, and a profile the requirements define may not share a name with one in `config.toml`. The managed
+  settings also deny `~/.claude.json` and every repository's `.claude` settings and `.mcp.json`, a route the note's 4.6
+  left open: with unsandboxed commands allowed (ruling 2), Claude Code honors a repository's settings that loosen its
+  sandbox (an `excludedCommands` entry, which no hold of the guard sees), and the hooks and MCP servers they name run
+  with full access; the seal check reads each such file and fails on a command pattern one lets out. The files are
+  staged in the sealed `install/`, so no session changes one before it is installed. The seal check deletes only where
+  a move was refused, its file copied out first, and moves no live folder and asks no broker once its first write in
+  the approval records goes through, so a Mac whose seal is open keeps its folders where they are.
+- **Joined in the integration.** The doctor read the browser accounts from the old place and judged a Codex grant
+  against the state folder, which no longer holds approvals; the seal check's hook probe watched two folders the move
+  left empty, so a hook that wrote a grant was reported held; and no doctor line failed a layout that has both, as the
+  note's 4.1 asks. Each now reads the sealed layout (`grants/`, `effects/` and `records/` for the hook probe), and
+  `guards.SYNTHESIS_WRITES` lists the seal check's own writers.
+- **`synthesis searches --agents N`** (BACKLOG B5) counts a session's web searches, its sub-agents' included, from
+  each harness's own records (Claude Code's `WebSearch` calls, Codex's uses of its hosted search tool, Muse's
+  `web_search` calls in its client mode), each call once by its id. With the principal's `search_budget` set, it prints
+  what is left and each of N agents' share, rounded down, and exits 1 when that share is under one search or the count
+  cannot be told; a count the records cannot tell is said, with why, never counted as zero. The autopilot's fan-out rule
+  runs it before a research fan-out and puts each agent's share in its brief.
+- **A Muse session's sub-agents are in the session archive.** Muse keeps each sub-agent's record in a folder of its
+  own under its session's `subagent/` (281 on the principal's Mac), and the export never listed one. Each is now listed
+  beside its session and named after it as Claude Code's sub-agents are (`<parent>-agent-<id>`), its prompts kept as
+  its parent agent's briefs, and filed in the workspace its parent ran in, read from the parent's record, since its own
+  seldom names one; a `subagent/` folder the export cannot list is named, not passed over.
+- **The browser rules read a workflow's agents' records**, which lie below a session's `subagents/` folder
+  (`subagents/workflows/<run>/`), as they read a sub-agent's: the newest list that names a tab, a page script run on a
+  tab the session made, and a workflow agent's own record of a tab it made all count, within the same read budget (a
+  record last written before the tab was made is not read).
+- **Residual.** As part 1 lists them: a shell-filed request can misdescribe what its code approves (it deceives the
+  principal and forges nothing); a Codex `write_stdin` into a session an escalated command started types into that
+  unsandboxed shell under the one code; and the plugin caches are sealed by the sandbox alone, since the skills'
+  scripts run from there. As part 2 leaves them: the seal check asks two brokers, launchd and LaunchServices, of the
+  note's list (Apple Events, a running tmux or screen server, ssh to localhost and the harnesses' own prompt routes are
+  for the pilot's probe set), and Muse documents no folder rules, so nothing shows its sandbox seals the set. Not yet
+  confirmed on a Mac (the note's section 5): whether Codex runs its hooks outside its sandbox, which the sealed profile
+  `setup.py sandbox` writes makes decisive for approvals in Codex; whether Codex refuses the rename of a sealed folder's ancestor; the
+  place of Codex's requirements, taken from Codex's documentation; and whether Claude Code's sandbox holds in the
+  desktop app's Code tab and agent mode. As the review leaves them: a code a release before this one showed, whose first
+  digit is 5 to 9, is open to a request planted under it once its own has expired (around the upgrade only, before the
+  seal is installed); and a staged file changed while sudo asks for the password is installed, which the doctor names
+  afterwards.
+
+## [5.24.1] - 2026-11-17
+
+- **A Mac on 5.23 upgrades directly.** 5.24.0's installer refused the principal's code on a Mac moving from 5.23,
+  because 5.23's prompt hook recorded the session's transcript without the folders beside it, which 5.24.0 requires; the
+  runtime had to be installed with 5.23's own `synthesis install` first. Such a note now counts where its path lies
+  inside each harness's folders under the account's own home, as the system's user database names it
+  (`paths.account_home`), which no variable a command sets can move. Anywhere else, through a link or a climb out of
+  those folders, it still counts for nothing, and a note that names its folders is read as before.
+- **The hooks follow the Mac's newest Python.** The installer pinned the first acceptable interpreter, the one running
+  the install, so a Mac whose default moved to Python 3.15 kept its hooks on 3.12. It now pins the newest final release
+  from 3.9 to the newest the checks test (`install.TESTED`, which a test reads from the workflow), among the interpreter
+  running it, the system's own and each of python.org's versions; a pre-release or a newer version is never pinned. A
+  release installed by 5.24.0's installer pins as before; installing the tag again with the new runtime
+  (`synthesis-release --install-only --tag v5.24.1`) moves the hooks, with no code. The doctor's new `hook interpreter`
+  line says which Python the hooks run and names a newer python.org version the installer had to pass over, with why
+  and the steps that let it be pinned: python.org's 3.15 installs writable by the admin group, which a Mac's own user is
+  in, so it is passed over until `sudo chmod -R go-w` on its folder. The doctor never runs a Python this user can
+  change: the hooks' own is asked first, and each python.org version is read from its folder's name (review round 2).
+- **The checks test four interpreters:** Linux on 3.12 and 3.15, macOS on 3.15 and Apple's own 3.9, in 24 jobs, 12 of
+  them on macOS, where GitHub's runners are scarcest (were 30, 18 on macOS, on 3.12 and 3.13).
+- **One command, one code.** The guard stopped at the first check that held a command, so a command two checks held
+  asked for two codes, one after the other: on 2026-11-17 the runtime check and then the check on a script that names
+  synthesis's writers held one command minutes apart. Every check of a shell command or a file write is now judged; a
+  refusal is what the call gets, and the checks that wait are said together, every request they file under one code
+  that grants them all (`approvals.one_code`). The call's requests are filed together when it ends, and a pending code
+  is reused only for exactly the requests it carries, so a code names exactly what it grants: the integration review
+  found a draft of this change letting a deploy added after an install, or a deploy's new HEAD after a commit, join the
+  code shown for less. An identical retry keeps its code; a program's own check (the CLI's install) finds its request
+  among the code's others; an approval a later check cannot verify is said with the call's other waits; and voiding a
+  request takes a code that carries it beside others with it.
+- **One approval per send.** The send hold, the message guard's procedure and the correspondence skill say the code is
+  the principal's only approval: make the call when the text is final and show the text with its code in one message,
+  never after a separate go-ahead on the draft, which made the principal approve twice.
+- **The doctor checks the Mac's security.** One `machine security` line when all is well, otherwise a `security <name>`
+  warning for each problem, naming the one step that fixes it: the home folder and `~/.ssh` open to no other local user,
+  no private key in `~/.ssh` readable by one, and on macOS FileVault, the firewall, System Integrity Protection and
+  Gatekeeper on. A folder is judged where a link leads, a group of the user's own (Linux's user private groups) lets no
+  one else in, and the files in `~/.ssh` are named only when the folder itself lets another user in. The doctor runs at
+  each day's start and after every install, so a new Mac's first setup runs it too.
+- **The guard protects Codex's archived rollouts** (`~/.codex/archived_sessions`) as it does its live ones: a session's
+  note may point there, and a shell wrote there with no code.
+- **The browser tests find Chrome's headless shell** where AGENTS.md now says to install it (`~/.cache/synthesis/browsers`),
+  so a local run skips none of them.
+- **CI can run a maintainer's own macOS jobs on a self-hosted Mac.** When the repository variable
+  `SELF_HOSTED_MAC_ACTORS` names both the run's actor and the person who started its attempt, and the code is the
+  repository's own, the macOS jobs run there with a read-only token, no secret and no credentials left in the checkout;
+  every other job, every fork's included, stays on GitHub's machines. The variable is unset, so nothing changes until a
+  runner is registered. AGENTS.md says what a login that can act on the repository must never do while it is set.
+
+## [5.24.0] - 2026-11-15
+
+- **The runtime the guard runs changes only on the principal's code** (review round 2 of 5.23.1, N5 and N6, both live
+  in 5.23.0; his sandbox rulings of 2026-11-15). `synthesis install <folder>` made any folder the runtime with no code,
+  by PATH and by `~/.synthesis/v5/bin/synthesis`, since the guard read it as a program that names no protected folder,
+  and the version floor read only what the folder said about itself. `synthesis uninstall` removed `current`, the
+  launchers and the releases with no code, and the next session start's bootstrap then installed the harness folder's
+  own code as a first install. Now a command that installs a runtime from a folder, removes it or writes its launchers
+  again waits for the principal's code for that exact command, run in the folder it was asked from, with each folder it
+  installs from bound by the hash of its runtime (a folder changed after the code asks again): `synthesis install`
+  with or without a folder and `synthesis uninstall`, by PATH, the stable path, a link, `python -m synthesis.cli`, `-m
+  synthesis` or `-m synthesis.install`, the CLI's module or any `synthesis/install.py` run by path (the runtime's own
+  had passed as the plugin's), the CLI's script read by a shell, behind `env`, `nohup`, `xargs`, `find -exec` or `uv
+  run`, in every harness's shell. The CLI's own parser reads the words (`cli.parsed`, which the CLI dispatches with
+  too), so help, `uninstall --dry-run` and words the CLI refuses need no code; a word the guard cannot read makes the
+  command wait. A Python program's import of synthesis is read wherever a statement may start:
+  `python3 -c "import sys; from synthesis import install; install.install(...)"` had passed, since the guard looked for
+  the import only at the start of a line. A name or a file of synthesis's handed to a loader is refused.
+- **A session start installs only into a home no runtime has been in.** It installed the plugin folder's runtime
+  whenever that folder carried a newer release, and the bootstrap installed whatever the folder held whenever the
+  stable hook was missing. That folder is the harness's own plugin cache, which the guard does not protect. Now both
+  install only where the synthesis home holds none of `releases`, `current`, `bin`, `git-hooks`, `state`, `board` or
+  `sessions` (`install.traces`; `install.py` passes `synthesis install --first`): an installed runtime is never replaced
+  from that folder, at any version, and a home a runtime has left, by uninstall or any other route, keeps its state,
+  board and archive, so no session start installs there again. The bootstrap says so on stderr, and every guarded call
+  is held until setup or the release script installs a runtime. The doctor's package check no longer says a session
+  start updates the runtime. `docs/runtime-integration.md` states what stays open: the bootstrap runs the plugin
+  folder's own code and `hooks.json` lives in that folder, so an agent that rewrites the harness's plugin cache changes
+  what the next session start runs; sealing the plugin caches belongs to the sandbox.
+- **Measured first**, over 60 days of this Mac's records, read only (263,900 shell commands: 115,777 in Claude Code and
+  148,123 in Codex; the controls found 4,961 `git commit`, 1,001 `synthesis claim` and 965 `synthesis who` runs):
+  `synthesis uninstall` never ran; `synthesis install` ran twice (once from a folder, once for its help); the
+  runtime's `install.py` by path 6 times (4 into a test's own home); setup.py's plugin install twice; the release script
+  154 times and its dry run 57 (both already waited, run from a checkout); `update`, which v5 does not have, 13 times;
+  42 Python programs called the installer (4 into a test's own home). Replayed after review round 1 of 22.18 through
+  5.23.0's guard and this one, each from its installed runtime as the hook runs it (6,997 commands: each that names the
+  CLI near install or uninstall, setup.py, release.py or install.py, or holds a Python import of synthesis the old
+  reading missed), 12 now wait or are refused, on 6 days: two runs of a copy's `install.py` in a temporary folder; three
+  programs that import synthesis after a `;` and name its doctor's or its wait's writer; and seven that import it after
+  a `;`, or load its file, in a way the reader cannot follow, refused as the same program is when its import starts a
+  line. Eight of the twelve are test or probe work by their own marks (a temporary folder, a home of their own, pytest).
+- **How it was checked.** Tests first, committed alone: 50 of them failed on the code before. The runtime's own entry
+  points are also judged by the installed runtime's guard, where its install.py had passed as the plugin's.
+- **Install and uninstall themselves spend the principal's code** (review round 1 of 22.18, H1; review round 4 of 5.23.1,
+  Q4). The guard held the CLI only where it was the command on the line, so a script run by `sh`, by its path or
+  sourced, Python's `subprocess` or `os.system`, a Python file, perl, awk, a git alias, a make recipe, a wrapper of
+  another name, `crontab` or `at` reached it with no code, and a program could call `install.install` itself. Now
+  `install.install` and `install.uninstall`, which the CLI, install.py's main, setup.py and the release script all run
+  through, refuse to replace or remove a runtime in a home that shows one (`install.traces`) unless a live grant the
+  principal's prompt backs names that exact change; otherwise they file the request and raise `install.Unapproved` with
+  what the hook says. The hook asks for the same subject where it reads the CLI as the command and only checks it, so
+  the principal approves before the run and the install spends it. Where no runtime runs the prompt hook (after an
+  uninstall), the session's own record showing the code is enough (`approvals.answered`). The first install, help, a dry
+  run and words the CLI refuses need no code. That holds for every route that starts the CLI, setup.py or the release
+  script as a process of its own. Install calls the check it bound when it loaded, so a program in its own process that
+  puts its own function in `install.approval`, by name or by a name built at run time, changes nothing (review round 2
+  of 22.18, K1). Not every name built at run time fails closed: a program that replaces those bound names
+  (`install._approve`, `install._released`) or the runtime's files itself is held only by the guard's reading of it,
+  which holds it where it spells the installer and passes it where it builds the names at run time, and then installs
+  its own runtime; that is on the open list (combined review round 1 of 22.8 with 22.18, C1). setup.py takes
+  `--session` for the session the principal types the code in, from his own terminal, where no harness gives one, and
+  passes it to the install and the uninstall (K2).
+- **The code binds the install that happens** (H2). `package_hash` read only `synthesis/*.py` and the stable scripts, of
+  the folder as the hook saw it: a package folder added after the code was installed on it, and a change made after the
+  hook's check was what got installed. Now `package_digest` is the sha256 of every file an install copies (the whole
+  package with its folders, the stable scripts and the CHANGELOG, each by its path and length); the install stages that
+  copy in the protected releases folder, hashes the copy, checks it and installs from it. `synthesis install` with no
+  folder binds the CLI's own folder the same way, and a bare `synthesis` that PATH resolves to anything but the stable
+  launcher is not read as the CLI. A release older than the running one is a subject of its own, `rollback`, named to
+  the principal as a downgrade with both versions, and needs his code on every route.
+- **The hook grants the release launcher one install of its tag** (review round 2 of 22.18, K1). 22.18's release route
+  trusted the process's main program and the interpreter's flags (`__main__.__file__` inside a release, `-I -S`), which
+  a program in the same process can set: a forged `__main__` replaced the runtime with no code, as did a function put in
+  `install.approval`. Now, when the guard lets the release launcher's line through, it writes one grant: an install of
+  `v<version>` (the tag the line names, or the version its checkout's manifests carry; a dry run is granted nothing)
+  into this home. `install.install` spends it once, and only for the release tool's fresh clone in the protected
+  releases folder whose HEAD is the commit GitHub's tag names (asked of GitHub with `git ls-remote`, from a folder
+  outside the clone, so no config of the clone's can send the question elsewhere: combined review round 2, R2-1), its
+  tracked tree clean, and whose staged copy holds exactly the files of that commit's tree; any other folder, version,
+  home or a second install asks for the principal's code, and so does a rollback. Run from a checkout, as main runs it,
+  the release script's install stage waits for the code. From the combined review of 22.8 with 22.18 (round 1):
+  - **The launcher's shell wrapper is the system's shell or nothing** (C2). `<shell> -c '<line>'` was taken for the
+    launcher's line by the shell's name alone, so a program of the agent's named `bash`, `sh` or `zsh` carried the line,
+    minted the grant and ran with nothing else judged. Now the shell must be a file owned by root with every folder
+    above it and writable by no user, as the interpreter pin requires, both as named and as resolved: named by its
+    path, that file; named bare, the first of that name on the harness's own PATH, so a `bash` of the agent's found
+    first in a folder this user writes is refused, while folders this user writes that hold none may come first, as
+    they do on the principal's Mac and on CI's runners (Codex's shell tool, A7). A link of a user's to the system's
+    shell or to its folder does not count, since it can be pointed elsewhere once the line has passed; the system's
+    own links (`/bin` on Linux) do. Open, crafted: a shell put ahead of the system's on PATH after the line has passed,
+    before the harness looks it up, runs in its place; a strict expected-failure test holds it.
+  - **A harness command the release runs cannot choose the runtime** (C8). The release runs each harness's own command
+    (`claude`, `codex`, `muse`, `gh`), found where this user writes, after its clone exists, and read the install's
+    listing from the clone afterwards: a planted `claude` committed its own runtime in the clone, moved the tag there,
+    and the grant was spent on it. Now the listing is read from the verified commit before any harness command runs, the
+    clone is held to that commit (its HEAD, its tag, a clean tracked tree) after each harness command and before the
+    install, and the spend asks GitHub which commit the tag names. A release pushes its tag before it installs the
+    runtime, so its own install step still needs no code; a clone whose tag GitHub does not serve waits for it.
+  - **The runtime loads on Python 3.9 again** (C10): `install.py` has `from __future__ import annotations`, which its
+    `dict | None` annotations need on Apple's 3.9, the oldest interpreter the runtime pins, and a test imports every
+    runtime module under 3.9 where one is present.
+  - **The checkout's manifest is read as the guard reads a file it may not wait on** (C7a): a FIFO there stopped it.
+- **A release runs from the installed runtime's own release launcher, with no code** (`synthesis-skills-manager`
+  3.7.0), by the principal's ruling of 2026-11-15, with review round 1's findings closed. Since 5.22.1 every release
+  waited for a code. The runtime now carries the release tool and what it imports (this skill's scripts and
+  `synthesis-onboarding`'s), and install writes `~/.synthesis/v5/bin/synthesis-release` beside the hook's launcher. The
+  guard lets exactly that launcher run with no code: alone on the line in plain words, by its absolute path, with only
+  the options the tool documents and no abbreviation, `--session` only as the asking session's own id, on the
+  canonical checkout by an absolute path (origin and every remote's address, as git uses it, the synthesis-skills
+  repository on GitHub; on `main`; its own git config setting no key that runs a program or sends git elsewhere), or
+  `--install-only --tag v<version>`. The line passes from Codex's shell tool (`bash -lc <line>`) as from the other
+  shells. The tool by its own path, the checkout's copy, a copy of the launcher, the scripts the runtime carries for it
+  (never trusted as the plugin's own), another option, a program that loads the tool's own modules (found by file, so a
+  project's own `release` or `setup` runs as before) and any wrapper wait for the code.
+- **Every entry point runs an interpreter pinned at install** (review round 1, P1, P3 and A4). The hook launcher ran
+  `python3 -S` from PATH, where both harnesses on the principal's Mac put folders this user writes before the real
+  interpreter, so one file named python3 there, or with Apple's Python one compiled file under
+  `~/Library/Caches/com.apple.python`, replaced the guard. Install now pins the first interpreter that is its own real
+  path, owned by root with every folder above it, writable by neither this user nor its groups, and Python 3.9 or later
+  (the one installing, else python.org's, the Command Line Tools', Xcode's, `/usr/bin/python3` or
+  `/usr/local/bin/python3`). The hook, the git hooks, the CLI and the release tool each run it through a launcher in
+  the protected `bin/` or `git-hooks/` with `-I -S` under `env -i`, keeping only the variables the runtime was measured
+  to read (git's too, for the commit check), with the launcher's own synthesis home whatever the caller exports, and
+  with the real git's folder and then the system's own first on PATH: Apple's `/usr/bin/git` is a shim that finds the
+  git it runs through `xcrun_db`, a file in this user's own temporary folder that holds each tool's path, so the real
+  git is found and checked as the interpreter is (review round 2). With no such interpreter the launchers refuse.
+  Install, and every session start after it, write the launchers this runtime writes, so a Mac moved to this release by
+  an older release's session start gets them too. The runtime is compiled for that interpreter beside its source, and
+  the doctor checks the pin and every launcher.
+- **What a release publishes and installs comes from a fresh clone of what GitHub serves** (review rounds 1 and 2).
+  The checkout `--repo-root` names only says what is released: it must be clean, its manifests and CHANGELOG must
+  agree, HEAD must be the tip of GitHub's `main` (read with git's own config left out), a tag of the version that
+  GitHub already has must name HEAD, CI must have passed for HEAD there, and the version must be no older than the
+  running runtime or GitHub's highest version tag (read the same way, never with a `gh` found on PATH). The commit
+  preflight read is the one released. The tool then clones the repository from GitHub, with git's own config left out,
+  into a folder of its own in the protected releases folder at that commit, its name the run's pid and a random part,
+  and builds and checks the collections (their files written into the clone's objects from memory with `git
+  fast-import`, the tree held to the ids their bytes give), tags, pushes (read back the same way), takes the release
+  notes, exports Muse's bundle, verifies every harness and installs the runtime from that clone alone; the runtime's
+  staged copy must hold the tag's listing before `current` moves, and a clone gone before then stops the run. A run
+  removes only its own clone, and another run's only when that run is gone and the clone is over six hours old.
+  `--install-only` names a tag (`--tag v<version>`) whose commit must be on `main` in that clone. An install of a
+  release older than the running one is a rollback, which needs the principal's code on every route (above); no
+  keyword passes it, since any program in the process could pass one (round 4, Q4). One install runs at a time in a
+  synthesis home, from that check to the switch of `current`, under a lock (review round 3; the lock's file is one this
+  user may only write, so no program that only reads can hold it). With no interpreter to pin, install stops and names
+  what to install, and Apple's `/usr/bin/python3` shim is never pinned.
+- **Commands are judged in every folder they may run in**: a Codex `workdir`, a terminal tab's `cwd`, `env -C` and
+  `git -C` by their real paths, since the kernel follows a link before a `..` (review rounds 1 and 2, A5 and N1); a
+  shell's `cd`, `pushd` and `popd` by their text and by their real paths (`cd -P`, `set -P`, zsh's `chase_dots` and
+  `chase_links` resolve `..` physically, round 3, M1), under each CDPATH or cdpath entry the line or the environment
+  sets (the launchers now keep CDPATH and OLDPWD), at OLDPWD for `cd -`, at a variable's value under cdable_vars, at a
+  folder named as a command under auto_cd, where zsh's `cd old new` leads, and, for the commands after its `&&` chain,
+  where the shell stays when a `cd` may fail: no folder there when the guard looks, or a command before it that may
+  make, remove or move one (round 4, Q1). A `cd` piped into another command, or in a list sent to the background,
+  moves nothing past its subshell, and `env cd` and the like move nothing. These readings are the parse's own, so a
+  check the guard runs for a program's commands no longer cuts the physical one short. A line whose folder
+  this cannot tell waits for the principal's code: a CDPATH set in a way it cannot read, a redefined `cd`, a `cd` inside
+  eval, a sourced file or a trap, a function whose body changes folder called outside a command substitution, an alias
+  a command on the line defines, BASH_ENV or ZDOTDIR. **`~/.synthesis/v5/git-hooks` is a
+  protected folder** (A8). In a repository under `pr_gated`, a push waits for the principal's code when it makes, moves
+  or deletes a version tag there (round 3, M5): one named in full, a bare name git takes for a local tag, `--tags`, or
+  an annotated version tag that `--follow-tags` or `push.followTags` carries along; the remote is asked which version
+  tags it holds (`git ls-remote`), and when it cannot be asked the push waits. A branch whose name starts with "v" is
+  a branch (round 4, Q3).
+- **A session start never replaces an installed runtime from its harness's folder**, by the principal's sandbox
+  rulings of 2026-11-15 ("seal everything the guard trusts", "install from the protected release tool"). The session
+  start installed the runtime from the plugin folder the harness loaded whenever it carried a newer release; that
+  folder is the harness's own plugin cache, which the guard does not protect, so a higher version written into it
+  became the runtime at the next session start (live in 5.23.0). Now the session start, and the bootstrap in
+  `hooks.json` (`install.py`, which passes `synthesis install --first`), install from that folder only where no runtime
+  exists at all. Where one does and the folder is newer, the session start says so once (a system message naming both
+  versions and `~/.synthesis/v5/bin/synthesis-release --install-only --tag v<version>`, which verifies the tag on
+  GitHub's main and that it is newer), and the doctor warns while the two differ. `docs/runtime-integration.md` lists
+  the first install from a harness folder among what stays open, and why it is acceptable.
+- **A model judges the turn-end shortcut check's list hits** (M38, plan item 21.3; the principal's rulings of
+  2026-11-14 and 2026-11-15). With a `judge` section in the config, a reply the shortcut list flags is read by a model
+  before it goes back, by `synthesis/policies/shortcut-phrasing.md` (does what the reply holds back need the
+  principal's code or consent, or does it sit inside the agent's delegated authority?) and a second, narrow question
+  (`shortcut-asks.md`). A hit clears only when both pass surely; a hold is sent back with the words the judge read; with
+  no judge, or none that answers in time, the list decides exactly as before. The principal's last message is read as
+  data beside the reply, and content that addresses the judge is held. The judge runs on a local model through
+  Ollama's loopback address, on the plan of the harness the reply came from (`subscription`: Claude Code's `claude -p`
+  or Codex's `codex exec`, with no tools, every hook off, no session kept, the credentials that outrank the plan taken
+  out, and a marker that quiets synthesis's own hooks inside the run, so no one buys API credits for it), or on a cloud
+  model with the key of the reply's workspace and a monthly cap. On 33 labeled list hits, Haiku 5.5 on the plan cleared
+  no real shortcut or unsure item and 7 of 25 legitimate hits, a flagged reply's 95th percentile 7.2 seconds; Codex's
+  models did not pass. Verdicts are cached, and logged with counts and digests only; `scripts/judge_replay.py` replays a
+  model or a policy on recorded list hits, by label, before it ships.
+- **The judge binds every setting it takes from the config** (review round 1 of the judge, 2026-11-15: a session can
+  write the config with no code, and a written setting made the Stop hook run any program or post to any host). A
+  `judge.subscription` entry's `command` is used only where it resolves to that harness's own program: `claude` or
+  `codex` as the hook's PATH resolves it, or in its known install locations (`~/.local/bin`, `/opt/homebrew/bin`,
+  `/usr/local/bin` and the apps' own folders). Anything else runs nothing, the word list decides, and the doctor names
+  the setting instead of running it. A program planted in one of those folders that the person can write, or in a
+  folder earlier on PATH, counts as the harness's own: that crafted route is on the open list in
+  `docs/runtime-integration.md`, with the older class of a program planted ahead of the real one on PATH. `judge.cloud.url` is only the provider's own host over https
+  (`api.anthropic.com`), so the reply, the principal's last message and the workspace's key go nowhere else. A
+  subscription `model` is a plain name and its `effort` letters, values on the harness's command line and never options
+  of their own; each `cloud.keys` path ends in the provider's name; `local.url` stays on this Mac's loopback address and
+  `deadline_seconds` at most 8. A section outside these bounds is said in the reply sent back and by the doctor, and
+  the list decides until it is fixed.
+- **The Stop hook gives the judge 8 seconds inside 10**, by the principal's approval of 2026-11-15: the hook is
+  registered with 10 seconds in Claude Code, Codex and Muse (every other hook keeps its time), the reply check gives the
+  judge 8 from its own start, and `deadline_seconds` may be up to 8. A reply the list does not flag never waits on a
+  judge: the Stop hook on such a reply took 76 ms at the median before the change and after it.
+- **`synthesis doctor` says when the plan's judge would not answer**: for each harness `judge.subscription` names, it
+  reads the sign-in from the command line's own status command and asks the judge one invented sentence the way a
+  reply is asked, in the background and at most 20 seconds a harness. No sign-in, an API account (which the judge would
+  bill), a command line missing or too old, print mode not using the sign-in (as when `-p` runs bare), a model the plan
+  does not offer, no verdict, or a time that would pass the judge's deadline is a warn with its fix, so the fall back to
+  the word list is never silent.
+- **On a messaging site's page a script the guard cannot read is refused** (core; `synthesis-message-guard` 2.12.1,
+  references/config.md). Round 4 of the batch approval's review found a page script that clicks Send by a name it builds
+  as it runs (`el['cli' + 'ck']()`) passing on Slack, WhatsApp, LinkedIn, Gmail and X. A script there is now read as
+  code: one that calls what it names only as it runs, or puts code where the page runs it, is refused; one that acts
+  waits for the code, now with an optional call, a call or handler by a destructured name or a bare one the script does
+  not define, a move by the address or another part of it, set by any assignment, and a fetch or Request whose init
+  has a method that is no literal GET or HEAD or carries a body (an init the reader cannot follow is read by such a
+  method set anywhere in the script, as an object key or by a member assignment, or a body in an object it passes to a
+  call or one a variable it passes holds; an XHR's method too; every assignment operator counts, `??=` and `||=`
+  included); a read passes,
+  `Array.fill`, `[].slice.call`, a read through a fetch wrapper and a read helper named for what it reads, a function
+  or a method of an object or class the script defines, included. Its
+  first review round found a page no list shows read as no messaging site's (a sub-agent's above all) and a refused
+  navigate taken as a driven browser's page; its second, the pane's page after `preview_start` read as unknown, so a
+  local app's click waited for a code; its third, a sub-agent judged by its own list after its session moved the tab
+  they share. Each is read rightly now: Claude in Chrome's tab is read at the newest list across the session's record
+  and its sub-agents', and a call that sends only if a page no result shows is a messaging site's is told to read the
+  page first, with no code asked, in a browser whose reads show its page. Over 60 days of records it refuses none of the
+  seats' 181 ordinary scripts on those pages, holds the 5 that click or move the tab, as before, and passes 176, and
+  neither later round changes the guard's verdict on any of Claude Code's 3,708 browser calls there. Spellings made to
+  beat the reader are on the runtime doc's open list.
+- **A navigate is read as a URL parser reads it** (core). The `navigate` tool called alone was never judged, and a
+  navigate's address was read as written while a browser drops tabs and line breaks anywhere in it and control
+  characters at its ends, so `java\tscript:` was a `javascript:` address to the browser alone. Every navigate, from
+  Claude in Chrome, the built-in pane or a driven browser, alone or in a batch, is now read that way, and one to a
+  `javascript:` address is the page script it runs, on the page it runs on. None appears among the 704 navigates of
+  the last 60 days. The built-in pane's own tab lists, `tabs_context` and navigate results are read for its page, and
+  each browser's tab ids are its own.
+- **A Codex code-mode script passes the guard on purpose, and its nested calls stay judged one by one.** In code mode
+  Codex runs nearly every call as one `exec` script (121,270 of 166,646 recorded calls from 2026-09-16 to 2026-11-15):
+  JavaScript in a V8 isolate with no file system, network or process of its own, each tool it calls on `tools` reaching
+  the hook as a call of its own (in those records, 792 script results held a hook's refusal, each of a nested call). The
+  guard counted `exec` among the shell tools, so a script reaching it was read as a shell line: a path in it could be
+  refused by its text alone, a path built at run time passed, and a bare-string payload crashed the guard into a hold.
+  A script is now passed on purpose and never read as a shell line: a bare string, or the text under `input` or `code`,
+  by its signs (the first-line pragma, a call on `tools`, a script helper); under `command`, where a shell's command line
+  also arrives, only when Codex's record of that very call (its `tool_use_id`, in Codex's own sessions folder) shows its
+  `exec` tool with that text, since a command line can be written to look like a script. A command line under the name
+  `exec` is still judged as one, and so now are a bare string and text under `input` or `code` that are no script. A sign
+  is a call of the script's own global (`tools`, or a helper such as `text(`), never a member of another object such as
+  `process.exit(`, and each helper counted works inside Codex by the tool's own description: on the script's result
+  (`text`, `image`, `audio`, `generatedImage`, `notify`, `yield_control`; a remote media URL is refused), its session's
+  store (`store`, `load`) or its run (`exit`).
+- **The browser page tracker reads the browser calls a code-mode script makes.** Codex records them only as
+  `item_completed` events, and the guard's reader of its records read only call records, so a step after a navigate
+  made inside a script judged its page as unknown. It now reads those events, under the name Codex's hook gives the tool
+  (`workspace-mcp` and `github.fetch` make `mcp__workspace_mcp__github__fetch`), and counts a direct call recorded both
+  ways once.
+- **The session archive's index of the files a call wrote reads a code-mode script's nested work, never its JavaScript.**
+  The index, which names the projects a session wrote into, read each `exec` script as a shell line: a comparison such
+  as `items.length > limit` became a file written into the session's folder and could tag its project, while the files
+  the script's nested patches and commands wrote were never seen, since Codex records those calls only as
+  `item_completed` events. A script now yields no files of itself, and the index reads its `FileChange` events (each
+  patched path, and where a file moves) and its `CommandExecution` events (what the command line writes, in the folder it
+  ran in). A direct call's event carries the call's own id and is read once, with its call.
+- **`synthesis doctor` proves that Codex still runs hooks on nested calls** (`codex nested hooks`), the only way the
+  guard sees code-mode work: from the newest rollouts, read only (each one's first line and its last 16 MB, at most 120
+  files and 128 MB from 30 days, newest first; one record had passed 1.8 GB), a hook's refusal in an `exec` script's
+  result, which only a hook run on a nested call makes. Codex offers no dry probe. The line names the Codex version and
+  the date it proves, and warns, never fails, when it finds no refusal inside a script, or only one from an older Codex
+  than the newest to run a script. It reads only a regular file, opened without blocking or following a link, and a first
+  line within 1 MB, so a FIFO named as a rollout, which held it until a writer came, or a line with no end never holds it.
+- **A local MCP server's tool, called from the shell, is judged as that tool's own call.** The meeting-transcripts
+  skill's `mcp_client.py` calls any tool of the local workspace-mcp server, whose default tier includes
+  `send_gmail_message`, and a write to this machine was no post to another host: neither the client nor a `curl` POST of
+  the same JSON-RPC waited (the review of the runtime's carried scripts, 2026-11-15, its problem A). A command that calls a
+  local server's tool, by an HTTP client to an address here or by a program that posts its JSON-RPC or calls a client's
+  `call_tool` (the client is one: its first argument names the tool), now takes the connector's own judgement, now one
+  function the dispatch and the shell share: a sending tool waits for the code the connector's identical call takes, a
+  reading tool passes, and a call whose tool or arguments the guard cannot read waits when it may send, for a code bound
+  to the exact command and the programs it runs.
+- **A program that hands osascript a script file is judged by that file.** An agent's own Python that read a script file
+  and passed it to `-e` ran with no code while `osascript <file>` waited; pointed at the local-messaging skill's
+  `messages_transport.js`, a Messages send (problem B). Each script file a program names or takes from its arguments is
+  judged as `osascript <file>` is; one it writes first, does not name or that cannot be read waits. A script built from
+  the program's own strings reads as before, so the plugin's notifications pass. The plugin's own sender as shipped is
+  judged by the send gate inside it, and a run the principal approved by its exact command is not asked about twice.
+- **A git command is judged as running the programs its configuration names.** `git status`, a read, ran the program a
+  repository's own `core.fsmonitor` names, and the reviewer's repository wrote into the state folder (problem D). The
+  repository's config (with what it includes, and its worktree's), a file the line points git at and the line's own
+  `-c`, `--config-env` and `GIT_CONFIG_*` are read, and each program they name (the monitor, the hooks folder's files,
+  the SSH command, credential helpers, pagers, editors, diff and filter drivers, an alias when it is the command run, and
+  more), and each the line's environment gives git, is judged by every shell guard where git runs it; a value the guard
+  cannot read waits.
+- **Review round 1 of the three.** D now reads git's user and system config (the global and XDG files or the one
+  `GIT_CONFIG_GLOBAL` names, the system file, with what each includes) and a submodule's config when the command reaches
+  it: one line in `~/.gitconfig` had made every git read run the agent's program. Hooks count only for a command that
+  runs them, never in synthesis's own installed git-hooks folder (the commit check's repository hooks count for a
+  commit), and a credential helper or an SSH command only for a command that reaches a remote, so the principal's own
+  setup holds no read. The plugin's scripts that run git themselves (the context doctor's `--project` and `--root`, the
+  rituals' `repo_state.py`) wait when a repository they reach names a program of its own. A program posting a request
+  body it reads to a local MCP server is judged by that body, as curl's `-d @file` is, and one built from parts the guard
+  cannot read waits. The local host is read in any case and with its trailing dot. A write into `.git/hooks`,
+  `.githooks` or a folder `core.hooksPath` names, by the file tools or the shell, or a `git config` that points
+  `core.hooksPath` at one, waits for the principal's code: the next commit would run it. Tests first (19 failed). The
+  same 268,723 recorded commands, replayed: the round's first run held 115 scanner runs, under a hooks folder the user's
+  own config names, which now takes that setting's scope; at its end 14 wait that main's guard passed, the 7 above, one
+  program posting a body it builds, and six writes that plant hooks in temporary test repositories.
+- **Review round 2 of the three.** A reads HTTPie's and xh's `:port` shorthand for this machine and a body on a
+  redirect, curl's URL in a variable the line sets or exports and its `-K` config file (read as cheaply as `-d @file`),
+  and a program's request with host and port given apart or its method and body by position (`http.client`, node's
+  `http.request`). Every carried script that runs git in a folder it is handed is a scanner: `stray_lessons.py`,
+  `pr_queue_scan.py`, `sharing_scan.py` and `portfolio_review.py` beside the context doctor and `repo_state.py`, and the
+  doctor given no folder reads the knowledge roots its setting names, as it does. `git config` of any key that names a
+  program git runs waits as `core.hooksPath` does. A write into any git dir's own `hooks` folder (a bare repository's)
+  waits, and a push to a repository on this disk counts its receiving hooks unless the hooks folder is synthesis's own.
+  Includes named on the command line (`-c include.path`, `GIT_CONFIG_COUNT`) are followed as in a file. Tests first (20
+  failed). Replayed: the round's first run held 26 more programs, through the line's readings, which now count only an
+  HTTP client's call; at its end 16 wait that main's guard passed: round 1's 14, and two curl posts to a local address
+  that is no MCP endpoint, with a header and a body the shell fills in, read then as an address the shell fills in (they
+  pass since the ruling's address-only reading, as any local app's API does).
+- **Review round 3 of the three.** A program's posts are read by what they hand over, not by how they are spelled. A
+  Python or node program whose text names this machine's MCP endpoint (two of a local host, port 8765 and an `/mcp`
+  path, written together or apart), or whose line hands it one, and makes any HTTP write (a call given a body by keyword
+  or by position, a request's `.write()`, `.end()` or `.send()`, a write method, a client it starts from a list or a
+  shell line) is judged by every body it hands over that the guard can read: what it spells, a request it builds (by its
+  method, its tools by name), a file it reads, its input and its arguments, followed through its names, its own
+  functions and each call of a helper. It waits when any body cannot be read: a value from the environment, the network
+  or a call the guard does not know, a name changed in place, a method or tool name it builds, a file it lacks. A
+  program that only reads (a GET, a liveness check) hands over no body, and a reading tool's call passes as that tool's.
+  HTTPie's and xh's `--raw` carry a body. An HTTP client's body in a variable the line does not set waits, and a
+  variable the line sets is put into the words that use it, so its value is read whole (put into the line's text, a JSON
+  value's quotes had split a reading call, which then waited). `--config-env` includes are followed as `-c`'s, with the
+  variable the line sets or the guard's own environment gives, and one whose variable neither gives waits. Tests first
+  (12 failed). Replayed against main at the merged head: the first run held 15 reading runs of the client given as
+  `"$C"`, now read, whose JSON argument a substitution fills had counted as a possible tool name; a word the shell fills
+  in now names a tool only when it can make a name. At its end 15 wait that main's guard passed: round 2's 16 less two
+  that now read right (a program whose tool call gives its method through a constant, and a liveness read whose `body =`
+  had read as a post), and one program of the day that holds a `send_gmail_message` request in its own text.
+- **A request to an address the environment gives waits as curl's does** (round 3's ruling). A Python or node program
+  whose request target comes from a variable an earlier command exported (`os.environ`, `getenv`, `process.env`, read
+  through its names and through the connection the write is made on) or from an argument the shell fills in is judged by
+  the bodies it hands that write: a send waits, a body the guard cannot read waits, and readable bodies that are no send
+  pass. A GET or a liveness check hands over none, and an address the line itself gives is read as it is, so one for
+  another host passes. An address goes where its host is: one that spells its scheme and a host other than this machine,
+  on a port that is no local MCP server's, before what the environment or the shell fills in (a path, a query) is that
+  host's, and a connection made to a host is that host's whatever path a request names. A module's own `open()`
+  (`os.open`) opens a file and is no request. A line a program hands a shell, or a client it starts from a list of
+  words, is judged as on the line, what it cannot read standing as a word the shell fills in. curl's rule reads only the
+  address: a body, a header or an HTTPie field the shell fills in, sent to an address spelled for another host, is that
+  host's post, judged by the web rule. Tests first (8 failed), and twice more for what the suite on a fresh clone found
+  (21 failed, then 1): five of the plugin's own scripts waited when run for their help or a dry run, through `os.open`
+  and the Drive publisher's query from the environment; a program that started curl from a list for such an address,
+  with a body from the environment or its input, passed; and a host spelled with the server's port, joined from parts,
+  read as another host's. Replayed against round 3's head: the first run stalled on a recorded line that took over a
+  minute, now 0.6 s. At its end 20 more recorded commands wait, on 5 days, 6 distinct programs, each posting a body the
+  guard cannot read to an address from a variable an earlier command exported or an argument the shell fills in: two
+  Codex node scripts run 15 times on one day, a Claude Code Python program run twice and a Codex one run once, and two
+  Claude Code Python programs that start curl, one with a config file the guard cannot read. The suite's corrections let
+  36 commands the ruling's first code held pass (26 whose programs open a file with a module's own `open()`, 10 whose
+  programs post to a host they spell), and the two curl posts above pass.
+- **How the three were checked.** Tests first, committed alone (31 failed for the local server's tools, 21 for the
+  osascript files and the git programs), with invented fixtures and stand-ins only. A harm check over the 60 days of
+  Claude Code and Codex records before 2026-11-15 (265,000 shell commands) found no message sent and no state written by
+  these routes: 251 runs of the client and 113 programs posting the server's JSON-RPC named only reading tools, no HTTP
+  client posted a tool call, no program but the local-messaging sender ran the Messages transport, and no repository a
+  recorded git command ran in (350), nor any under the workspaces (320), names a program in its config. Every distinct
+  recorded command (268,723) then went through main's guard and this one: the first replay held 150 more, mostly
+  programs the line writes or programs that read through the server by names they compute, and each shape it showed was
+  fixed, tests first; 7 still wait, 6 of them programs naming a script file that is no longer on disk and one that runs a
+  program its line writes while naming the server. The review's probes for the three now hold, the meeting fetcher's
+  reads, ordinary osascript and 1,284 git reads in 321 repositories need nothing new, and a program with 3,000 tool
+  calls is read in 0.2 s (its calls in 0.07 s, its bodies in 0.12 s).
+- **Every skill runs the runtime's copy of its scripts, and the guard trusts only the release it runs from.** Two seats'
+  day-ends ran skill scripts from the plugin cache, and the guard held them for the principal's code. The first version
+  of this fix carried those skills' scripts in the runtime and vouched for a plugin copy with the runtime's bytes. Its
+  review found that a copy's bytes say nothing about the code it loads from other folders, all of them writable: a
+  byte-identical `messages_send.py` beside a `synthesis/` the agent wrote reached its send call with no code, and an
+  unmodified importer wrote into the session archive when an argument named it. Now:
+  - The guard trusts only what lies inside the release it runs from (`releases/<hash>/`, a protected folder). A
+    plugin-cache copy is judged like any other script; when one of the runtime's scripts waits from a copy, the hold
+    names the runtime's own copy. A module of a script's own that the same line writes makes the script wait. A write by
+    a file tool or the shell to a file that is also one in a protected folder (a hard link) waits for the principal's
+    code, and a protected folder written as a pattern (`sta*`, `s?ate`, `[s]tate`) counts as that folder for any script.
+  - A script of the release keeps its exemption only while its line names no protected folder (its arguments, its input,
+    a value the line gives, the folder it runs in, or a configuration file it follows from there, such as the meeting
+    fetcher's `.agents/meeting-transcripts.yaml`) and the plain word of its interpreter runs it: no path to the
+    interpreter, wrapper, function, alias, `autoload` or file read into the shell; no builtin that gives a variable a
+    value (`export`, `read`, `printf -v`, `print -v`, `mapfile`, a parameter expansion that assigns and their like); no
+    assignment to a variable in the environment, to one that moves where a program loads from, or to zsh's tied arrays,
+    in any case of the name and by a subscript too (zsh's `PATH[1,-1]=`);
+    no HOME given a value the guard does not read (such a line, when it then uses HOME, waits); and Python run with
+    `-s`, `-S` or `-I`, so nothing in the user's own site folder loads into it, with no other option but those that only
+    take away what it loads. A file planted in the interpreter's own site-packages (a `.pth` file, a site customization)
+    or in a standard library the user can write still runs inside such a run: that is on the open list until trusted runs
+    use the sealed interpreter the guard's sandbox plans. What its own text names stays exempt. Otherwise it is judged like any other script. The
+    workspace-mcp kit's scripts that write or load a LaunchAgent or a systemd unit wait from the runtime too, and the
+    messages reader opens its lock without following a link.
+  - The runtime also carries `synthesis-meeting-transcripts` (the fetcher and the workspace-mcp server kit),
+    `synthesis-message-exports`, `synthesis-local-messaging`, `synthesis-context-lifecycle` and the Bitbucket helper
+    that `pr_queue_scan.py` loads: 59 files instead of 40. Never the installer and release kit (`setup.py`,
+    `workspace.py`, `release.py`), which write the trust base itself.
+  - Every skill text and script that runs one of those scripts names `$HOME/.synthesis/v5/current/skills/...`, a Python
+    one with `-s`
+    (checkpoint 2.0.3, chief-of-staff 2.3.1, context-lifecycle 2.8.2, daily-rituals 3.19.0, inbox-cleanup 2.0.2,
+    kb-edit 2.1.1, local-messaging 1.5.3, mac-sync 3.1.1, machine-sync 2.0.1, meeting-transcripts 1.2.1,
+    message-exports 1.0.1, promotion-gate 2.0.1, slack-sync 4.0.4). Two passages moved word for word to make room:
+    slack-sync's "When This Skill Runs" to `references/sync-protocol.md`, which also lets its SKILL.md take its
+    `category` line, and local-messaging's account of what the reader skips to `references/adapter-contract.md`.
+  - The runtime holds these files once this release's own installer installs it, as `release.py` and
+    `release.py --install-only` do.
+  - On a Mac that runs the workspace-mcp server under launchd or systemd, its doctor now runs from the runtime and
+    reports a unit installed from anywhere else; running the runtime's `install-autostart.sh` once points the unit at
+    the runtime's stable path, which plugin upgrades no longer move.
+- **One approval for a reviewed batch of sends** (core, synthesis-message-guard 2.13.0). `synthesis sends batch <file>` opens a
+  batch of 1 to 50 exact sends on the principal's code for its digest: the hold carries the whole listing, each text
+  quoted with every hidden character as its code, and the command spends the code itself, from any terminal. Each
+  entry then goes once, as written, within 12 hours, from the session that ran the granted command, whose own record
+  must show at every spend the principal typing the code the guard filed for that digest, which it records itself;
+  spent marks yield to an append-only spends ledger. An entry is a connector call (its tool and whole input, never one
+  whose connector fetches, reads or carries a file, one entry to a conversation), a send by the local messages sender
+  (its handle, or its members, service and chat, and its text, spent on the one-use ticket the guard files for the
+  session whose command runs the sender; it names no session of its own) or a Messenger send. Every listing prints as it
+  is only what draws a glyph, with every other character, the file's path, the batch's name and its project escaped. Every other check
+  runs first (the register scan, the format rules, an address that can change, a fresh calendar read for a time, and a
+  meeting placed on today never covered), a window and a batch never combine, and anything that differs waits for the
+  code per call.
+- **A batch's Messenger send is one step that reads and sends in the same run** (core). One browser_batch on a tab
+  this session made with tabs_create (no page holds a handle to it) and navigated to the conversation, untouched since by
+  any other session or any page script, loads its address there again, types the words, and last runs the entry's send
+  script (`synthesis sends script`), which finds the one message box (labelled `Write to ...` or for a message, with the
+  placeholder `Aa`, or a Lexical editor), compares its words, the one trailing line break Lexical adds left off, with
+  the entry's by SHA-256, reads the composer and its parent for anything staged and for a reply or edit banner, checks
+  the page is the conversation, and only then clicks the one `Press enter to send` control, in one synchronous run, so
+  no typist, other session or later script acts between the read and the send. On a Messenger site's tab (a page of
+  facebook.com or messenger.com, or of m.me, fb.com, fb.me or Business Suite's inbox), on one whose page no list of tabs
+  names, and on one a step earlier in the same call may have moved onto or from such a page, no page script runs but
+  the shipped read-only ones and that send script, whichever browser tool runs it, a navigate to a `javascript:`
+  address included. A step that may move a tab is a navigate, a click, a key, a drag, words typed with a line break, a
+  form value, an upload or a page script that acts or cannot be read, on any page, a local app's included; after any
+  other move a read runs, and a script that acts or cannot be read runs in a call of its own, as protection against a
+  redirect onto a chat (one more call, and no code). On every other messaging site's page main's rule judges a script:
+  a read runs, one that acts waits for the code (`window?.open(` among them), and one the guard cannot read is refused.
+  A time's code binds the exact step. The four Messenger
+  address forms (`facebook.com/messages/t/<id>`, `facebook.com/messages/e2ee/t/<id>`, `messenger.com/t/<id>`,
+  `messenger.com/e2ee/t/<id>`) are four conversations, named only in that form, one entry each.
+- **What review round 4 found** (core). The messages sender's ticket is filed for each run of the sender a command
+  makes (its program resolved as the write rules resolve one, through links), bound to that run's file, arguments and
+  folder, and taken only by that run: by a process of the harness whose hook filed it whose own command line, as the
+  system shows it, is that run's (round 5: a ticket filed for a run that never ran was taken by an identical run the
+  guard never saw), so a `cat` or a `grep` of the sender files none and two sends in one line take one each. Another session's call voids a send step only in the same browser, on its tab or naming none, when it can
+  change the page and no hook refused it, and only the extension's `Created new tab. Tab ID: N` makes a tab this
+  session's. The newest list of tabs across sessions decides a tab's page. A batch closes 12 hours after its code was
+  typed, as `sends status` says. The day's ledger reads a Messenger send's own report, so `synthesis sends log` names
+  one its script declined as not sent. A listing prints as its code any character whose name says it is a blank,
+  filler, joiner, subjoiner, conjoiner or selector.
+- **What review round 5 found** (core). The moved rule counts every step that may move a tab (above), honours `exact`
+  only on the guard's own steps for a driven browser, never on an agent's call, and on a Messenger site's page names
+  that page's rule (the read tools) rather than a second call that rule refuses too. A sub-agent's send step reads its
+  own record for the tab list and the tabs_create that make its tab its own. Two moves made to beat the reader are on
+  the runtime doc's open list.
+- **What review round 6 found** (core). As ruled, a page script moves a tab only when it can navigate (a location
+  change, by an alias or `Object.assign(location, ...)` too, `open`, a history step, and off a local app a click, a
+  submit or a dispatched event), not when it sets a value or writes by fetch, and on a local app's page a navigate or a
+  click moves nothing, so a click and then a script that clicks Save runs there; a local page that sends the tab on,
+  and a page that redirects itself, are on the open list. The sender's ticket reads the system's `/bin/ps` with a clean
+  environment, whatever comes first on PATH.
+- **What review round 7 found** (core). As ruled, a hook whose ancestors hold no harness process of the session's own
+  (shells alone, or a login, a remote login or a multiplexer every program of a terminal shares) files no sender
+  ticket, and each send waits for its code; round 6's binding to the topmost shell, which two sessions under it shared,
+  is gone. An entry spent by a call that is then held is given back, as a per-call grant is: an "undone" line in the
+  spends ledger and the batch's spent mark taken back; a call left with no answer keeps its spend.
+- **The guard reads every `synthesis sends` command in a line with the CLI's own parser** (core): each window or batch
+  request asks for its own code, a command it cannot read as the CLI would waits for one, a file goes only with `sends
+  batch`, and a held window or batch code no longer lets the rest of the line through unjudged.
+- **The Messenger importer reads the filtered chats from before the switch to encryption.** Meta's regular download files them under `e2ee_cutover_filtered`, as `filtered_threads` is to `inbox`; the importer refused such a download with "not a folder this layout holds". The section is now read like `e2ee_cutover`.
+- **A program that loads synthesis another way is judged as one that imports it, and a check a script or the CLI enters
+  reads a recorded transcript only inside a harness's own folders.** Review round 4 of this fix found the guard read an
+  agent's Python program as reaching synthesis only when a line began with `import synthesis` or `from synthesis`, the
+  same before this release: a program that loaded it through `importlib`, `__import__`, `exec` or `eval` of a string it
+  built, or `runpy`, from a clone or the plugin cache, could write the send ledger's lines, open a send window with no
+  code, void a grant, or point the session's recorded transcript at a record it wrote and grant itself what a check a
+  script enters releases, such as a send by the local-messaging sender. A program that hands a loader (`exec`, `eval`,
+  `__import__`, `importlib`'s and `runpy`'s, `pkgutil.resolve_name`, `pydoc.locate` and the like) a name or a text that
+  says synthesis as code does (the package's name alone or leading a dotted name, an import of it, a path to its folder
+  or one of its files), through its arguments, a name it assigns, its own function's parameters or the words it is
+  handed, or that runs a file or loads a module of its own whose code reaches synthesis, now waits for the principal's
+  code as a script file and is refused on the line or its input, as one that imports synthesis and reaches it in a way
+  its reader cannot follow; the modules of its own that a program on the line imports are read as a script file's are.
+  A program whose loaders are handed other code passes, whatever else it says about synthesis. With no transcript in a
+  hook's payload, a check reads the path the prompt hook recorded only inside the folders each harness keeps its
+  records in as the prompt hook's environment named them, recorded beside it; the environment of the command running
+  the check, which an agent sets, never widens them, now that the runners below are read too. A record from an earlier
+  release names none, so a script's check holds until the session's next prompt. Codex's archived rollouts count as its
+  records. Of 73,637 shell commands recorded over 60 days and judged under the hook's 3 s deadline, none newly waits or is
+  refused, while two planted programs that load synthesis through `importlib` do.
+- **A shell script a command runs, the test files pytest runs, and programs run through `ipython`, `uv run` and their
+  like are judged as the programs they hold.** The same review found the guard read a shell script's text only for the
+  protected folders it names, and never read the test files pytest collects, an `ipython -c` program, or what `uv run`,
+  `poetry run` or `pipx run` start: through any of them, a program could import synthesis in plain words and open a send
+  window, void a grant, or record a transcript under folders of its own. A shell script run by a shell, by its path or
+  sourced is now judged as the command lines it holds, three scripts deep, a script the line writes from a heredoc
+  by its text, and `$0` as the script's own path; one the guard cannot open waits. A line of Python in such a script, inline
+  or on its input, that reaches synthesis waits for the principal's code with the script's bytes bound to it, where the
+  same line typed on the command is refused. The release's own scripts are trusted as
+  before, the CLI's launcher among them where install wrote it, in the synthesis home's `bin`: a launcher anywhere else
+  is read as what it runs. A Python script run by its path, `ipython`, and what `uv run`, `poetry run`, `pipx run`,
+  `pdm run`, `uvx` and their like start are read as Python and as the command they run. The test files pytest collects
+  and the conftests it loads are read for one of the writers approvals rest on, or synthesis loaded another way, unless
+  each test file runs with the synthesis home at a temporary path for every test: under a fixture that sets
+  `SYNTHESIS_HOME` (or `HOME`) from the test's `tmp_path` and is autouse, in a conftest above the file or in the file
+  itself, or that every test in the file requests, as synthesis's own conftests do, so the suite runs from its checkout
+  or a worktree with no code. Only a test, and the function-scoped fixtures it uses, run under that fixture; a writer
+  named, a path of synthesis's taken (`STATE = paths.state()`) or synthesis loaded anywhere else leaves the file read:
+  at a test module's or a conftest's top level, in a class body, a decorator or a default, in the file's own functions
+  those call, in xunit setup and teardown (`setup_module`, `setup_class` and their like), in a fixture scoped wider than
+  a function, in pytest's hooks, or in a plugin of its own named with `-p`. A writer is read under any name it is
+  imported by, and through `getattr` with its name written out, and a program that only reads that way passes, also
+  under a `PYTHONPATH` whose folders are there when judged, hold nothing the program imports or that hides a module of
+  Python's own installation (its standard library and site-packages) but a synthesis byte for byte the guard's own, and
+  are neither written into by the line nor beside another of its programs that may fill them unseen. A module the
+  line writes where a program on it starts counts as one that could stand in, as a file already there does. An import
+  after `;` on a program's line counts as one at a line's start. Of 73,936 shell commands recorded over 60 days, 12
+  newly wait: 6 runs of probe and measurement tests with no isolation the guard can read, and 6 programs whose import
+  after a `;` names one of synthesis's writers, as the same program on separate lines already did. One that waited is
+  refused: three `python3 -c` programs typed on its line import synthesis's own code in text Python cannot parse. Four
+  more wait only in the replay, which moves the synthesis home to a temporary folder: the CLI's launcher in the default
+  home, reached by a path the replay does not move, which in use stands in that home's own `bin` and is trusted. A
+  planted shell script and a planted test file wait too.
+- **Prose that names the approval functions is not a reach of them** (22.22). A peer Codex seat's small program, which
+  only wrote its own project-management files, was refused as running synthesis's approval code: the self-grant rule
+  matched the names of the approval and send-window functions anywhere in a program's text, and strings it wrote to a
+  file quoted them. Now the rule reads the program's code: a string counts only where it is the bare name or a dotted
+  path to it (as getattr, a subscript or attrgetter takes it), an f-string only for its expressions, and comments not
+  at all. A program that runs a string as code (exec, eval, compile, runpy, a JavaScript Function), or starts a program
+  (node's child_process family, Python's subprocess, os.system, os.exec and os.spawn), keeps every string: a string it
+  hands that program, or writes to a file it then starts, is code, and one that starts `synthesis sends open` is refused
+  as one that opens the window (review round 1). A call, an import, an attribute reach, a getattr or subscript by the
+  name, and a program it starts that reaches them are refused as before. A script the same line writes with `cat`
+  from a heredoc (`cat > s.py <<'EOF'`) and then runs is judged by the heredoc's body, as the script it is: one that
+  calls the approval or send-window code waits as a script file's would (an older gap, the same on 5.23.1); one the
+  line writes any other way is not read (the runtime doc's open list). Replayed over 60 days of this
+  Mac's records, each guard from its installed runtime: of 257 commands the rule could fire on, 155 were refused for this
+  reason before and 66 after; 88 now pass, 1 waits on another rule, and 5 that passed now wait, each a heredoc script read
+  as its body. Of the 119 that review round 1's head let pass, 88 still do and 31 are refused again, programs that start
+  a program. Read by Python's own syntax tree (78) or its tokenizer (10), none of the 88 reaches the functions in code,
+  and four planted self-grant programs are refused before and after.
+- **A call Codex's hook refused is left out, as Claude Code's is** (core). The page tracker and the send step leave out a
+  call a hook refused, and knew only Claude Code's words for a refusal, so a call Codex refused (its result `Command
+  blocked by PreToolUse hook: ...` or `Tool call blocked by PreToolUse hook: ...`, direct or made inside a code-mode
+  script) counted as run: a refused navigate placed the page a browser tool then acted on, and another session's refused
+  call voided a send step.
+- **An autopilot run stops when its own work outruns the principal's, and the stop holds** (`synthesis-autopilot`
+  4.2.0, plan item 22.37(d), the principal's rulings of 2026-11-16). A review of a run's own fixes can always find one
+  more way around them, and each finding can become an item, so a plan could keep growing while the principal's own
+  work waited. Each checklist item now carries its origin: `origin: principal` when it delivers the principal's
+  request, their backlog or a build their ruling ordered (another session's request counts), `origin: self` when it
+  only fixes, reviews or re-reviews what the run produced. An item added after engagement carries `added <time>`, and
+  a checked item `closed <time>`; the template marks the items a plan starts with as principal, and a run that adopts
+  origins mid-run tags every item and stamps what closed in the last 24 hours. At every wake `cycle` counts, over the
+  last 24 hours, the principal items closed and the self-generated items added, prints both and writes them on the
+  wake's ledger line, and at each day's first wake writes the open principal items under a new `## Backlog count`
+  section. When the second outnumbers the first, or the open principal items rose two days running (the day before
+  yesterday, yesterday and today, each higher than the one before), the count stops the run until the principal
+  answers, past its 24 hours while the count's blocker is open and alerted with no answer after it, when the line says
+  the question is still waiting: `cycle --advanced` refuses the advance and prints the one line to bring them, ending
+  "Continue, narrow, or stop?" and naming any item whose origin or time it could not read; a cycle that only names a
+  wait is recorded and opens with "start nothing new until the principal answers", as does the hourly wake's prompt.
+  The stop is the one exception to never blocking a whole run on one question (binding rule 8 and the decision
+  protocol): the turn-end check asks for the line in any open status but paused, asks a run that has asked to set
+  `Status: blocked`, and names every item added or closed after the count blocker's alert until the principal is told
+  and alerted again. Only the principal's own reply lets the run go on: quoted on the `Principal answer:` line with
+  where and when they gave it, its first word continue or narrow (a reply such as "Yes, continue." is quoted from that
+  word, the whole reply kept on the checked blocker), dated after the count blocker's alert and inside the window, and
+  never written from the agent's own judgement, since the count's question is a checkpoint the principal reserved. A
+  time more than five minutes ahead, or one that cannot be read (a year such as 9999 used to end `cycle` with a
+  traceback and switch the turn-end check off), is rejected and named: a self item with such a time counts as added
+  now, a principal item as not closed, and both checks keep working. A plan written before origins counts nothing and
+  never stops, and `cycle` says so once; in a plan that counts, it names each item it could not read once. The
+  session-start brief, after compaction too, says a stopped run waits for the principal's answer and gives the line.
+  The check reads only the plan it already loaded, and each section's items once: on a 201-item plan with 2,000 ledger
+  lines and 60 days of counts the whole check took 1.0 ms under Python 3.12 and 1.4 ms under Apple's 3.9; on a real
+  620 KB plan of 146 items, with every item tagged as the run's own so the count stops it and reads each item against
+  the alert, it took 9.7 ms and 11.7 ms, and as a new process 32.3 ms where the hook budget allows 43.1, twice what
+  its standard-library modules take to load there (77.0 against 124.2 under 3.9). It imports nothing new. The fan-out
+  rules and binding rule 11 name the principal's cap of three agents at once. Binding rules 8, 11 and 14 carry these;
+  `references/plan-file.md` the convention, the answer and the template; `references/procedure.md`,
+  `references/turn-end-check.md`, the re-entry protocol and runaway control the rest. To make room for rule 14, the
+  Procedure's six numbered steps (1,313 bytes) moved word for word from SKILL.md to the new `references/procedure.md`;
+  SKILL.md keeps the helper path and a pointer, and is 7,479 bytes. The crafted ways past the count that remain (an
+  item of the run's own marked principal, a close stamped again later, one of the principal's items split in several,
+  work done during a stop without its time) are on the open list in `docs/runtime-integration.md`.
+- **A review has caps, and the coordinator holds them** (`synthesis-adversarial-review` 2.1.0). Two review rounds per
+  item, counted per item, so a fix, or a fix to a fix, never starts them again. After the second, the coordinator
+  applies the test: a finding blocks only if an honest agent would hit it in ordinary work or it appears in the
+  principal's records, and anything else goes on the open list, as the adjudicator records. The coordinator bounds the
+  review, not the reviewer. At most three agents run at once, and a release ships what has passed review and never
+  waits for another round. Binding rules 15 and 16, in full in the new `references/review-caps.md`; the findings
+  template gains a `Rounds:` line.
+- **One ordered backlog per project, and it must shrink** (`synthesis-project-management` 3.6.0). The plan CONTEXT.md
+  names holds it, each item marked with its origin as autopilot marks it. Its open principal items are written at each
+  day's first session; two rises running mean stop and re-plan with the principal. At every checkpoint, principal
+  items closed are counted against self-generated items added since the last; when, over a day, the second outnumbers
+  the first, new work stops for the principal's one line. Work goes top-down: finish, ship and install before anything
+  new, and a side quest only when it serves the principal's goals: it unblocks the current item, it is an important
+  issue that serves those goals, or the principal asked for it. Binding rules 14 to 16, in full in the new
+  `references/backlog.md`. The checkpoint's procedure leads to that count from its step 4 (`synthesis-checkpoint`
+  2.1.0).
+- **Decide what the goals already decide** (`synthesis-thinking-framework` 3.1.0). The principal's ruling of 2026-11-16:
+  when a recommendation follows from their goals, guidelines and wish for the best-quality work, the agent decides it,
+  acts, and reports it in one line. What still goes to the principal is the project's rule as the brief for this
+  change gave it: what needs their own authority (money, sends, deploys, their accounts and settings, their voice, an
+  approval only they can give, a checkpoint they reserved, whose answer is never written from the agent's own
+  judgement), or a real conflict between their goals that their rulings don't settle. The rule names its approval
+  item "an approval code", the runtime's typed approval; this skill ships in the hook-free directory package, which
+  has none and whose check refuses the phrase, so the skill says what the item means anywhere. Binding rule 10, in
+  full in `references/decision-ownership.md`. To make room, the last paragraph of "Decision ownership and execution"
+  (492 bytes, on the decisive-uncertainty method) moved word for word to the head of
+  `references/decisive-uncertainty.md`, its link now naming that file; SKILL.md keeps a one-line pointer and is 7,872
+  bytes.
+- **The deploy guard holds a deploy CLI's own script run by an interpreter.** A production deploy ran on 2026-11-16 with
+  no approval asked, as `node node_modules/wrangler/bin/wrangler.js pages deploy dist --project-name=<site>
+  --branch=main`: the guard read an interpreter's script from the start of its path, so `wrangler pages deploy` never
+  matched, while `npx wrangler`, `./node_modules/.bin/wrangler` and bare `wrangler` were held. A script an interpreter
+  runs by path is now also read by the names it answers to: its basename without a `.js`, `.mjs`, `.cjs` or `.ts`
+  extension (a `.bin` shim's name too), and the package it sits in under the last `node_modules`, by the name after
+  its scope; netlify-cli runs netlify, firebase-tools runs firebase, and npm's own `npm-cli.js` runs npm. Such a
+  deploy is held with the same words as `npx wrangler`, and a Python script by path is read the same way (`python3
+  venv/bin/twine upload`). A dry run, `--help` and the same CLIs' ordinary commands (`pages deployment list`, a draft
+  netlify deploy, `npm install`) stay free. A copy of a CLI under another name is not read as the CLI; the open list
+  in `docs/runtime-integration.md` says so.
+- **The skill format takes the current prompting guidance** (backlog item B2). `docs/skill-format.md` gains rules 8 to
+  22, each with its reason, on writing a skill's text the way current models read it, from Anthropic's and OpenAI's
+  current guidance, which its new "Where these rules come from" section names: normal volume, saying what to do, scope,
+  one home per rule, the rule as it stands, detail matched to risk, a named check, approval as the last step, when to
+  delegate, examples, an explanation rather than the reasoning, outside text as data, descriptions, what SKILL.md
+  holds, and measured rewrites. A linked file's own contents list starts at 100 lines, not 150, since a model may read
+  only the first 100 lines of a long file; CONTRIBUTING.md says the same. The format test checks the three parts it
+  can check with no false alarm on any skill today: a description in the first or second person, a SKILL.md that limits
+  tools or updates in general, and a SKILL.md that asks for the model's reasoning in its output. No skill's text
+  changes here; the rewrites that apply the rules come later, each measured against an evaluation.
+- **An agent's write of the guard's own settings waits for the principal's code, and one of a git hook is refused** (plan
+  item 22.20).
+  `~/.synthesis/v5/config.json` holds the guard's own settings: the commit lines he approved, his own repositories, the
+  hosts his action sheets upload to, the signatures a send window lets through, the forbidden phrases, the account each
+  workspace acts as and the turn-end judge's settings. `~/.synthesis/v5/git-hooks` holds what git runs before every
+  commit, merge and commit message in every repository. A review on 2026-11-15 found that a file tool rewrote either
+  with no code, and a second showed what a written setting reaches: the turn-end check made to run any program, the
+  cloud judge made to post to any host. A write of the settings now waits for his code for exactly that call; the git
+  hooks lie in the runtime's own protected folder, where a write is refused outright (A8). A file tool (Write, Edit,
+  MultiEdit, NotebookEdit, Codex's `apply_patch`, Muse's `write_file` and `edit_file`) is bound to the tool, the file
+  and everything it writes. A shell command is read as for the protected folders, with these two among them (a
+  redirect, `cp`, `mv`, `tee`, `install`, `ln`, `sed -i`, `rm`, `dd`, `curl -o`, a pattern that names the config, a
+  folder changed throughout, a Python, node or perl program that writes there or starts a command that does, a program
+  using synthesis's own `paths.config_file()`), and bound to the command, the folder it runs in, each script it runs and
+  each file it names as it stands, so a file changed after the approval makes it a new command. The copy that installs
+  his settings from his private repository after a pull request merges waits like any other write: a change to the
+  guard's settings changes what approvals mean, and no agent grants itself an approval. A path is judged where it really
+  leads and in any case, so a link made beforehand, `..`, `~`, `$HOME` or capitals change nothing. A command that also
+  reaches the state folder, its board or a harness's transcripts is still refused outright. Reading needs no code
+  (`cat`, `head`, `grep`, `jq`, `diff`, git's reads, Python the guard proves only reads, `cat` for a copy); `cp` and
+  `ln` of them wait, as for every protected file, since they can link as well as copy. Codex's and Muse's shells are
+  now judged in the folder a command names as its own (`workdir`), not the session's, so a bare name written there lands
+  where the guard looks. A config that cannot be read held every shell call and let every file tool through unjudged, so
+  a file tool could rewrite the config or forge a grant in the state folder; a file tool is now judged without it: an
+  ordinary write goes, the config's repair waits for his code, the state folder stays refused. The installer's own
+  route (`synthesis install`, `synthesis update`, the release script's install stage) is unchanged, by his ruling on
+  the sandbox that releases install from the protected tool without a code. Measured first, read only, over 60 days of
+  this Mac's records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, each call
+  counted once): no file tool wrote either; 19 shell commands on 12 days copied his settings into place from his private
+  repository (5 on 2026-10-22, 2 on each of three other days, 1 on the rest), 1 other shell command wrote the config,
+  and the guard's Python reader holds 15 programs on 6 days as writing one or the other. Replayed over the 39,360
+  recorded calls that name the settings, `.synthesis` or `v5-config`, and every file-tool call: 40 newly wait for the
+  code, 19 of them writes of the settings and 21 commands that name them while running a program the guard cannot prove
+  only reads or writing where it cannot read; 41 that already waited for a protected folder now wait for the settings'
+  code; none is newly refused and none newly passes; no file-tool call newly waits. Judging a shell command took a
+  median 3.0 ms against 2.8 before, and its 99th percentile 80 ms against 72; a file write through the hook is held to
+  the hook's budget by a test of its own.
+- **What Codex types into a session is judged as the line it is** (22.20, review round 1). Codex starts a long-running
+  process with `exec_command`, on a terminal with `tty: true`, and types into it with `write_stdin`. No guard read that
+  tool, so a shell started on a terminal and a write typed into it reached the guard's settings, its hooks and
+  everything else the shell guard protects with no code. `write_stdin` now reaches the hook: the PreToolUse matcher in
+  `hooks/hooks.json` names it, which makes Codex ask once more to trust the plugin's hooks (Muse runs the hook for every
+  tool, and its manifest does not change). A typed line is judged in the folder its session's `exec_command` named,
+  found by the session's number in the record (an `exec_command` whose output gave it, or a code-mode script that
+  started one command and whose output gave it): as a command line, by every shell guard, and for a program that is no
+  shell also as its input; typed into an interpreter started with no script, with all it was typed as its program. Text
+  typed before and not yet submitted joins the line, so a line split across calls is judged whole. A poll and keys that
+  start nothing new (Ctrl-C, Ctrl-D, Enter) pass; keys and history that edit or recall a line (backspace, Tab, an arrow,
+  `!!`, `fc -s`) wait. A session the record does not show, a shell whose folder or variables a typed line changed (`cd`,
+  an assignment, `export`, `alias`, a bare folder name), and a shell in a container or reached by ssh on this machine
+  let only a line that just reads go without a code. Measured over 60 days of Codex's records: no `write_stdin` as a
+  function call; inside 119,058 code-mode scripts, 15,325 polls, 143 keys, 804 submitted lines and 463 unsubmitted texts;
+  17 interpreters started on a terminal with no script, all on one day, and no shell. Replayed over the 1,276 typed
+  calls that were neither a poll nor quiet keys, each judged on the record as it stood then: 1,121 pass, 132 wait as
+  typed into a session the record does not show (on two days), 23 for keys or history that edit or recall a line, and
+  none is refused. An interpreter or a shell started on a terminal with no command is still not held at its start.
+- **An agent's write of a shell's startup files, Claude Code's shell snapshots or a harness program waits for the
+  principal's code** (plan item 22.26). Claude Code runs every command through zsh, which reads `~/.zshenv` after
+  sourcing a snapshot of the shell; Codex runs `bash -lc`, which reads `~/.bash_profile`. A review on 2026-11-15 wrote
+  those files with no code, and an ordinary `ls` then ran the agent's code first; it also showed `synthesis doctor`
+  running an agent-written `~/.local/bin/codex`, which wrote the runtime. A write now waits for his code for exactly that
+  call, bound and read as for the guard's own settings: `~/.zshenv`, `~/.zprofile`, `~/.zshrc`, `~/.zlogin` and
+  `~/.zlogout` (and the same in `ZDOTDIR`, from the environment or where `~/.zshenv` sets it), `~/.bash_profile`,
+  `~/.bash_login`, `~/.profile`, `~/.bashrc`, the files `BASH_ENV` and `ENV` name, Claude Code's `shell-snapshots`; and
+  `claude`, `codex`, `muse` and `gh` at every folder on PATH and in the vendors' known places that this user can write,
+  whether or not a file is there yet (one put there runs instead), each link on the way to the file it ends at, the
+  folder its installer keeps it in (Claude Code's versions, the desktop app's `claude-code`, Codex's app-server CLI, a
+  Homebrew keg or cask, an npm package, the Codex CLI folder inside an app) and the files muse keeps beside its launcher.
+  An installer told to change one of them waits too, since it writes where the guard does not see: brew or a Node
+  package manager installing, upgrading, removing or linking `gh`, `codex`, `claude-code` or their npm packages, a bare
+  `brew upgrade` or `npm update -g` while one is installed that way, and `claude update` or `claude install`. Reading
+  them, sourcing a startup file or a snapshot (what a shell's start runs anyway), running a harness program by name or
+  by its path (a launcher's text may name where its program is kept), and installing other tools need no code. A
+  harness's own variables that name its program or a startup file (Claude Code's `CLAUDE_CODE_EXECPATH`, `BASH_ENV`)
+  hold no program that reads the environment or hands it to a child, and a name that only begins with a protected path
+  (`muse-bin-<version>` beside muse, `ghostscript` beside gh) names another file. The vendors' known places now live in
+  `paths`, which the doctor and the guard both read. A protected path outside the home folder had a `~` spelling that
+  matched any `~` a program holds (reached only by these paths); a program's text is looked through only for the
+  protected parts it holds, and the protected paths, their real paths and the variables that hold one are
+  read once, so judging a command takes about as long as before with some 60 more paths (1,500 recorded commands: a
+  median of 2.3 ms against 2.0, 8.1 s in all against 7.5; 3.8 ms and 12.3 s without this); a variable given a
+  value (`XDG_DATA_HOME=…`) is no longer read as a path built from that variable; and a command that waits whatever is
+  protected (it names synthesis's own writers, or runs input the guard cannot read) waits for the protected folders'
+  code in those words, not as a settings hold that lists every kind of setting first. Measured first, read only, over
+  60 days of this Mac's records (Claude Code, Codex and Muse, each call counted once): 2 file-tool writes of a harness
+  program (the `codex` launcher in `~/.local/bin`, rewritten on one day), 1 shell write of a startup file (`~/.zshrc`),
+  and at most 8 installer runs told to change a harness program, on 7 days (brew naming gh, codex or claude 3, a bare
+  `brew upgrade` 3, npm installing a harness package 1, `claude update` or `claude install` 1).
+- **A claimed file written as `~/…` is a claimed path.** The shell's writes were joined to the folder a command ran in
+  before the home folder was put in, so `echo x > ~/…/notes.md` into a file another session had claimed was never
+  looked at, and the session export tagged no project for such a write. Each target now has `~` put in first, as the
+  shell does.
+- **A program under the name of a command the guard judges by name is read as what it is** (22.32). The guard read a
+  program the agent runs by its path when it had a name of its own, but one named like a command it judges by name (a
+  shell, an interpreter, `ls`, `git` and their like) was judged as that command and its file never read: by its
+  absolute path, by a relative one, or found first on PATH in a folder the user can write. A review (2026-11-15, C9)
+  replaced the runtime's guard that way in nine forms of nine. Now a command word the guard judges by name that
+  leads, by its path or through PATH as the shell looks it up, to a script (a text file, with a `#!` line or none)
+  rather than a compiled program is also judged as that script, under the rules for scripts: the command its `#!`
+  line starts, or a shell for a file with none, goes into what the line runs, and its judgment by name still applies
+  (a look-alike `npx` still has the deploy it is handed held). That holds for each wrapper's word (`env`, `nohup`,
+  `xargs` and their like), for the command a wrapper or `find -exec` starts from PATH (a builtin's name included:
+  `env echo` runs whatever `echo` stands first on PATH), for a PATH the line gives itself, for a word written as a
+  pattern, and for a look-alike the line writes before it runs it (a copy or a link is judged as what it copies, so a
+  real interpreter linked into a folder and run there passes). A builtin the shell runs itself is not looked up.
+  The commands that really are scripts pass by their name where their installer puts them: under its own name where no
+  program of the agent's writes (root's own, as macOS's `/usr/bin/cd`, `shasum` and `irb` and Linux's `which`, `egrep`
+  and `zcat`; the runtime's launcher in its protected `bin/`), and in a folder the user writes only under a name that
+  installer provides there (an npm package's bin such as `npx`, an interpreter's version manager shim, a Homebrew
+  formula's script in Homebrew's Cellar), the list in the guardrails' config reference, "Commands judged by name".
+  So does a script whose one line hands every word to a compiled program of that name root installed (`exec
+  /usr/bin/python3 "$@"`, as CI puts Apple's Python first as `python`), and the launchers keep `HOMEBREW_PREFIX`,
+  `HOMEBREW_CELLAR` and the version managers' roots that it reads.
+  Measured first, read only, on 60 days of records (2026-09-16 to 2026-11-15: 265,897 shell runs, 252,649 distinct
+  commands): no such word led to any other script; 6,211 led to the synthesis launcher, 2,050 to npm's `npx` and 535
+  to macOS's `shasum`. The guard looks a word up only for a name it judges by, once a call. A compiled look-alike (a
+  program built, copied or linked under such a name) is judged by its name, on the open list as crafted
+  (`docs/runtime-integration.md`).
+- **Site addresses follow the published sites.** The synthesis practices now share one site, synthesiswork.org, with a
+  collection for each, and the former synthesiscoding.org, synthesisengineering.org and synthesiswriting.org addresses
+  redirect to those collections. Each link now names the address its old one redirects to: the "synthesis writing"
+  footer link in 19 skill files (`https://synthesiswork.org/writing/`), the ecosystem footer of the slop-detection
+  manifest and prompt template and the homepage in the Claude Code plugin and marketplace manifests, the Codex
+  manifest and the directory package (`https://synthesiswork.org/engineering/`), and the README's related links,
+  including the two articles' new homes. synthesis-content-framing 2.0.1 routes topics to the coding, engineering and
+  project-management collections and keeps the replaced lines in its coverage map. The content-quality no-removals
+  allowlist records the seven frozen baseline lines whose link changed, each with its exact old and new text.
+  tools.synthesiswriting.org is unchanged.
+- **The date rules reach a site published from a JSON catalog by upload.** Three gaps let a page go live early or
+  move a published date unseen. `deploy_catalogs` names JSON catalogs whose articles' `published` time, or documented
+  `publishedInstantOverride` instant, the date rules now read beside front matter, as `<catalog>#<id>`: an instant
+  kept only in a catalog, which no front-matter date line shows, can no longer move on a live page or go live before
+  its time. A `deploy_also_renders` entry `{"variable": "NAME", "default": "<path>"}` follows the path the deploy
+  command hands its build in `NAME`, so a build that reads its source from another worktree has that tree checked; a
+  value the guard cannot follow to a checkout blocks the deploy, as does a renders map of another shape. And an
+  approved deploy's record now keeps the HEAD it was approved at: the next upload of that site, and the check of a
+  repository it renders, compare published dates with that commit, since a change can reach origin's main before its
+  upload; a push still compares with origin's main. The guardrails config and deploys references say so, and the line
+  budgets rise by the measured 74, itemized.
+- **What the integration review of 5.24.0 found** (core). Its four blocking findings, each with its failing test committed
+  first. CI's Linux runners: the install tests ask the interpreter the launchers pin for its compiled code (Ubuntu 26.04
+  pins its own system Python, a newer one than the suite's, so the suite's own tag found none), a test runs only the
+  shells a system has, sets `XDG_CONFIG_HOME` itself and reads module paths that hold only what it tests, and a command
+  found in a system folder through links root installed is that command whatever the file it reaches is named
+  (Ubuntu's `/usr/bin/open`, through `/etc/alternatives` to the script `xdg-open`, was read as a look-alike); a link in
+  a folder the user writes, or a chain through one, is still read. The folder rule reads an alias only where a command
+  on the line defines one, never a word in a message, a note or a heredoc's body (the private skills' installer, whose
+  comment calls its update step "just an alias", waited at every run), and now catches one whose value changes folder;
+  a function moves the folder only when its body (any compound command) does and it is called outside a command
+  substitution, so a helper that only reads, beside a `cd`, passes; a text the parser cannot read is still left
+  unplaced by a CDPATH it cannot read.
+  The HOME rule reads a heredoc's body only where a shell runs it (fed to a shell, `source` or `eval`, itself or down
+  its pipeline, or inside a command substitution), an unquoted body's substitutions always, and what `echo` or `printf`
+  only print as data. A process substitution (`diff <(…) file`) is a file's name to its command, where the line was
+  read as a subshell and then a command named `file`, which 22.21 ran as a script; and a `case` statement's patterns
+  run nothing (a list of notes there was read as scripts and ran the guard out of its time). A pytest command whose own
+  words put every home at absolute paths apart from every protected folder is not read (`env -u PYTHONPATH HOME=…
+  SYNTHESIS_HOME=… … python3 -m pytest -q tests`), and pytest asked only for its version or its help reads only the
+  conftests it loads at its start, for what they run outside a test. Re-judged on this Mac with the fix, every Claude
+  Code call of the review's replay in those classes passes: the 56 the folder rule held (the private installer's runs
+  among them), the 20 the HOME rule held, the 12 pytest runs and the four that ran out of the guard's time, one of
+  them a line of two nested scripts now judged in 2.1 s where it took 2.8: a pytest reading is made once a call, and
+  the transcripts' folders once for the variables that place them. The guardrails' config and deploys references and
+  `docs/runtime-integration.md` say so: `deploy_also_renders`' default names the checkout itself, never a file in it;
+  the open list records how the merges narrowed the reading of scripts a line writes (parked for the sandbox on
+  2026-11-16) and gains the ritual-script holds' wording and three `eslint`/`tsc` holds. The line budgets rise by the
+  measured 203, itemized. And CI runs the suite in six jobs for each system and Python, the core's tests in four parts
+  by file name and the skills' in two by the skill's name: the second half of 5.24.0's core tests (361 of their 530
+  seconds on this Mac) was cancelled at the ten-minute limit on every macOS runner, at 9527c158 as at the fix, and the
+  skills' job (203 seconds here) once on Apple's Python. Each part is now at most 169 seconds on this Mac, and the source
+  lint holds that each test file runs in exactly one job. Run to its end on macOS for the first time, that half showed
+  three pinned-interpreter tests failing there: they plant `DYLD_INSERT_LIBRARIES`, which macOS's loader strips from
+  `/bin/sh` where System Integrity Protection is on, so a launcher clears it; GitHub's macOS runners have it off, and
+  the loader stops `/bin/sh` itself on a planted library before any launcher line runs. They plant it only where the
+  loader strips it.
+
+## [5.23.2] - 2026-11-15
+
+- **The signature check reads the message, never its addressing** (plan item 22.31). An email the principal had approved
+  was refused before it went: the check that a persona signature makes the persona's name the link read every field of
+  the call as the message's text, and the recipient's address was at a persona domain, so the address counted as the
+  domain shown in words. The check now leaves out, at any depth, what addresses a message rather than says it: the
+  recipients and the account the call acts as (`to`, `cc`, `bcc`, `recipient`, `recipients`, `space_id`, `space_name`,
+  `user_google_email`, `from_account`, `from_email`, `account`, `user_email`, `sender`, `calendar`), the sender and reply
+  address (`from`, `from_name`, `fromName`, `fromEmail`, `reply_to`, `replyTo`), the message it answers (`in_reply_to`,
+  `references`, `inReplyTo`, `in_reply_to_id`), the `subject`, and an invitation's guests and calendar (`attendees`,
+  `attendeeEmails`, `addedAttendees`, `addedAttendeeEmails`, `removedAttendeeEmails`, `calendar_id`, `calendarId`),
+  beside the RSVP comment fields it already left out. The marker that starts the check and the domain it looks for are
+  both read only in what remains: a marker found only in a sender field or the subject starts no check, and a domain
+  there is not the signature showing it. Every other field is
+  read as before, so a footer that shows a persona domain as text, in an HTML or plain body, a calendar description, a
+  comment or a chat message, is still refused on a channel that renders links. The message guard's config reference
+  names the fields under `signature.domains`. The second walk of the call costs nothing measurable: an invented 60 KB
+  email takes 12 ms through the whole message check before and after. Replayed, read only, over 60 days of this Mac's
+  records (Claude Code, Codex and Muse, the transcript archive for what Claude Code had deleted, and the connector calls
+  a Codex session writes in a code cell, read from their literal arguments; each call counted once): of 1,306 connector
+  sends, the check refused 13 before and 12 after. The one it no longer refuses is a send whose only persona domain was
+  in `to`; the 12 refused for a domain shown as text in the message's own text are all still refused, and none it passed
+  before is refused now. 16 sends written in code cells with arguments that are not literals could not be read, and were
+  not judged.
+
+## [5.23.1] - 2026-11-15
+
+- **The daily rituals' skill file holds the Messenger rule** (`synthesis-daily-rituals` 3.19.0), by the move the principal
+  approved in his decision packet of 2026-11-15. Two passages that describe the skill (its introduction and its
+  Procedure section) moved word for word to the head of `references/procedure.md`, so SKILL.md could take rule 17:
+  Messenger's chat list is read at its own address, beside "No chats selected", and the daily read opens no chat, since
+  opening one marks it read. Messenger's section moved word for word from `references/linkedin-messages.md` to its own
+  `references/messenger-messages.md` (its headings one level up), listed in Contents, and the four checklists point to
+  it. The moved Procedure sentence's link now names `procedure.md`, the file it sits in. SKILL.md is 7,849 bytes.
+- **The guard asks where a path leads once a call.** Judging a long shell command, it asked the file system where the
+  same paths lead again for each of the command's readings and each of its words: one recorded heredoc of
+  substitutions in a loop asked 11,746 times over 102 paths, which took 0.31 s on a Mac under Apple's Python 3.9 and
+  1.11 s on CI's macOS runner, past the 1.0 s its test allows. The guard writes nothing while it judges, so each
+  answer now holds for the call: 123 questions and 0.105 s. A test counts the questions, so it holds on any runner.
+- **An approval is spent only once it is confirmed, and confirming it reads only the record written since it was
+  granted.** A Codex session's record had grown to 1.9 GB. The principal typed two codes; the guard deleted each grant
+  and then read the record from its start for the prompt, which took 4.6 s, past the hook's 4 s deadline. The calls
+  were held with the grants gone, so each identical retry asked for a new code and neither call ran. The guard now
+  reads the grant, finds the prompt, and only then spends it; a grant changed while it was checked is never used. The
+  prompt hook records how long the session's record was when the principal typed, and the check reads back from the
+  end to 16 MB before that point, and the whole line there, so older lines written after the prompt (a compaction
+  block) cannot hide it: 0.02 s on that record. A grant filed before this release, or by a harness whose prompt names
+  no record, keeps the approval window's time rule. Nothing a call's decisions record stands until its answer (a
+  window's send is counted at once and marked settled or undone then): a call that is held, at the deadline or by a
+  later check, ran nothing, so it gives back the grants it used and leaves no record of a send, a send window's count,
+  a deploy for the 45-minute brake, or a grant voided by the code that released it; the hook settles them as it
+  answers, and a check a script enters itself (the local-messaging sender's) settles them when it returns. A record
+  that cannot be written holds the call, undoes the records written before it (a deploy another call recorded
+  meanwhile stays, and a desktop page's record of typed words released by their code is not undone) and gives back
+  its grants, and the answer still goes out. In one process, one thread judges at a time and another waits its turn,
+  the send lock too, and the hook settles only the call its own check judged. A grant given back appears whole or not
+  at all. A window closes once its last planned send has gone, so a send held after another went leaves its place to
+  the window, and desktop window sends are judged one at a time like the others. The guard's 4 s deadline counts from
+  when the hook process loaded, and an alarm that lands as the deadline is taken down still holds the call; a hold
+  answered more than 4.5 s after that may reach a harness after its 5 s, when it lets the call through, so then the
+  records stand and the grants stay spent. A grant spent before this release cannot be brought back; its call is
+  approved again once.
+
+## [5.23.0] - 2026-11-15
+
+- **Messenger's chat list is a ritual surface** (`synthesis-daily-rituals` 3.18.0). A workspace declares
+  `.agents/messenger-sync.yaml` (`workspace`, and `inboxes` from `chats`, `requests` and `archived`, all three when left
+  out). `messenger_messages.py plan` prints what to open and how far back to scroll: every inbox at the list's own
+  address, beside "No chats selected", with Message requests and Archived chats opened from the menu over it, since a
+  chat's own address opens the chat and marks it read; the daily read opens none. `extractor` prints a read-only
+  script for the browser's JavaScript tool that saves the grid named for the inbox (a hidden panel's rows have empty
+  text), and the browser guard lets it through as a read. `parse` lists the chats that end with someone else, the
+  unread marks and Messenger's `Follow up?` nudges, and prints one coverage line. A row shows an age, never a date, so
+  each is dated the latest its age allows and a row with no age moves nothing. A sign-in page, a security check or a
+  PIN prompt stops the read; `--empty` and `--end` (a short list read to its bottom) are the reader's word, each
+  checked against what the page showed. The `messenger` watermark moves only with a complete read's coverage. The
+  surface's reference is the closing section of `references/linkedin-messages.md` until a move of whole passages gives
+  SKILL.md room for its rule and its own file; the move is proposed, not made.
+- **One chat saved from its page when an export lacks it** (`synthesis-message-exports`). `scripts/chat_page.py
+  extractor` prints a read-only script for one open chat's message log, and `save` writes what it saved into the
+  importer's transcripts, in its format and identity scheme: each message keyed by the minute the page shows, in the
+  browser's time zone as the script records it, and the importer's digest of its text, its block marked as read from
+  the page. A later import of the same chat pairs each of its messages with such a block by sender, minute and the
+  digest of its text alone and adds nothing the transcript holds, and a page read after an export pairs with the export's blocks the same way. A
+  page read joins another chat's transcript only on evidence about that chat: the person or title its log names is
+  among the transcript's people, and every message of it inside the read's span pairs; an import takes a
+  conversation into a page-read transcript on the same evidence. The coverage line says how far back the read reached and whether it reached the day asked for.
+  Opening a chat marks it read, so the fallback runs on the principal's word for that chat (rule 9).
+- **How the two were checked.** Tests first, committed alone (31 failed and 20 errored at setup while both scripts
+  were missing), with invented fixtures only: every row shape, the three inboxes, an empty archive, a hidden panel,
+  walls, a short read, both label forms, the narrow no-break space, the principal's own messages, emoji, the
+  encryption notice, a read short of its day, the hour the clocks went back, and an export of the same chat adding
+  nothing in either order. Each extractor runs on an invented page in a headless Chromium where one is installed, as CI
+  installs it. Both then ran on the live pages, their output masked: the list read parsed whole, and two defects
+  were fixed, tests first. The list's scroll container sits inside its grid, where the extractor did not look, so it
+  reported the list at its bottom when it could not see it; it now looks from the first row up and, finding no
+  scroll container, reports the list not at its end. The notice where a chat became end-to-end encrypted carries a
+  message's label dated at time zero, by `a participant`, in the middle of the log, and was taken for a message of
+  1969; it is now a notice, and any label dated before 2004-02-04 is held for a person, never written.
+- **Review round 1 of the two, 21 findings, each fixed after a test that failed first.** Coverage compares moments,
+  not days, on Messenger's list and LinkedIn's: `plan` names the moment the inbox's own last read reached, a day given
+  as `--since` stands for its first moment, a read with no `--since` moves no watermark, and a `--since` that names no
+  day is refused. A read's coverage names its inbox and moves that inbox's watermark alone. Messenger's list: the read
+  reaches back to the last row read in the list's order (a pinned row above newer ones is named); the read's own clock
+  is its time; `--empty` needs the page's own words for that inbox's empty list; `You` marks the principal only in the
+  page's forms; names and previews are shown on one line and marked as untrusted, and `--json` escapes line
+  separators; a dialog is judged by its heading, never by message text, and a chat open in a pop-up counts as opened.
+  A chat saved from its page: messages pair on sender, minute and text alone, so a link takes no part and two people's
+  `ok` in one minute stay two; what pairs only in part, an item whose labels match no message and a possible twin where
+  two reads meet are held for a person, never written twice and never dropped; reads that share fewer than two
+  messages are not one read; a day is reached only when a message from before it was read; a sender's name may hold
+  `: `. The importer joins a page-read transcript only on evidence about the chat, keeps the header a page read wrote,
+  and imports a conversation split between a page read and its own transcript instead of skipping it on every run.
+  The browser guard holds a page script that moves the tab on a messaging site (a location assignment, `assign`,
+  `replace` or `window.open`), since a chat's address opens it; both extractors still pass as reads.
+- **A word names a protected folder only by its own path** (core). 5.22.1 joined the parts of a folder's path across
+  the whole command line, so a skill script run from Claude Code's plugin cache with a project's path anywhere on the
+  line was held as naming the transcripts, whenever the script's text could write; the action sheet's publisher was
+  the first seen. On the command line a word now names a protected folder only by its own path, after `~`, variables,
+  `..` and links: inside it, the folder itself, or a folder above it; parts in two words never join. In a program's
+  text, parts still join within one statement however they are joined, but not from two separate paths written whole,
+  and one path written whole names a folder only where its parts stand one after another in it.
+- **A key, a click or another app driven from the shell waits for the code, and so does any browser server's tool**
+  (core; `synthesis-message-guard` 2.12.0, references/config.md). Round 3 of the batch approval's review found that
+  words typed into a Messenger box with the browser tool, then Return pressed through `osascript` (System Events `key
+  code 36`), went out with no code, and that the Playwright plugin's browser tools reached no send rule. A shell command
+  that presses keys or clicks in whatever app is in front (System Events' UI verbs through `osascript` or JavaScript for
+  Automation, `cliclick`, `xdotool`, Hammerspoon's Lua, `skhd -k`, `shortcuts run`, `automator`, an input library in a
+  program), types into another terminal (`tmux send-keys`, `screen -X stuff`, `kitty @ send-text`, `wezterm cli
+  send-text`), opens a terminal or an automation link (`open -a Terminal`, a `.command` file, `shortcuts://`), sends
+  through a scriptable app (a `send` in Messages, Mail or Outlook, read across all of a script's lines where a pattern
+  read one), or runs code in another app (Terminal's `do script`, iTerm's `write text`, a browser's JavaScript, Keyboard
+  Maestro, Alfred, Shortcuts) now waits for the principal's code for that exact command. The command is read through
+  `bash -c`, `watch`, `script`, `launchctl asuser` and `arch`, heredocs, pipes, shell files, `make` and package-script
+  recipes, the variables the line gives, the commands a program starts (from its calls, its command spans and its
+  strings, in Python with the modules of its own it imports, and in Perl, Ruby, Tcl, Node, Deno, PHP and Swift), and a
+  file the same line writes, read as the line's own heredocs. What a script cannot show waits too: a
+  compiled script, words the shell fills in, `do shell script`, `run script`, a script library, a raw `«event»` code, a
+  bridge to the system's classes, an app or member named only when it runs, a string or comment it never closes. Words a
+  command types or sends pass the register scan first. A browser tool from any server whose name says it drives a
+  browser (Playwright, Chrome DevTools, Puppeteer) is read as the steps it performs, on the page its own results or its
+  own last navigate show, in Claude Code's records or Codex's: a click by the control the page's newest snapshot names
+  (Playwright's `target`) as well as the agent's words; a Return, a submit, a click that sends or a page script that acts
+  waits on a messaging site as Claude in Chrome's does; a tool the guard does not know, or any step where nothing shows
+  the page, waits as one that may send; `browser_run_code_unsafe` waits when it loads a file or its code starts a command
+  that acts; and the code binds the call itself. Sixty days of Claude Code and Codex records held no message sent either
+  way (the one osascript Return was the review's own scan; Playwright pressed Tab twice, on local pages). Over the
+  276,500 shell commands they hold, the reading holds 39 the old guard passed, none a message sent or a key pressed:
+  osascript whose script comes from another program's output or from words the shell fills in, and programs whose
+  strings run such a script; 154 more ran script files since removed, judged live by their text. It takes 0.17 ms on a
+  typical command and 307 ms at worst. Tests first: 66 of the 95 first cases failed on main; review round 1 then found 15
+  more ways through and 16 false holds, all pinned by its probes (125 cases, 113 failing on their own commit) and fixed.
+
+## [5.22.1] - 2026-11-14
+
+- **A command that names a protected folder passes only when its program is one the guard knows to only read** (core).
+  Every approval rests on two records an agent must not write: the harness's transcript, which shows the principal
+  typing `approve <code>`, and the grant the prompt hook files under the synthesis state. Two reviews on 2026-11-14
+  found programs that could write both: a short program in a language the guard does not read, calling a standard copy
+  routine its list of writing calls did not know; a launcher, or an interpreter none of its lists named; git with an
+  option that writes; a hard link; an archive whose members carry their own paths; a copier's own options; and shell
+  syntax the guard misread (brace lists, zsh's clobber redirects). The guard no longer judges a program by lists of what
+  writes. A command any of whose words, options or program text names a protected folder or a folder above one, in any
+  spelling and after the shell's own expansions, passes only when its program is a known reader: the usual readers with
+  none of their own options that write or run, git with a read subcommand and none of its options that write or run
+  (an output file, a work tree, configuration, a pager, an external diff), an awk or sed program read with certainty
+  that writes no file and runs no command, a shell whose script is on the line, on its input or in a file `cat` pipes
+  to it (each of its commands is judged), Python its reader proves or whose script shows no write it cannot place,
+  and the plugin's own scripts (inside the runtime
+  release the hook runs from, or byte for byte its copy, which is now a protected folder with `current` and `bin`). Anything
+  else, wherever it sits behind a launcher, waits for the principal's code for exactly that command, the folder it runs
+  in and the scripts it runs, so a script rewritten after the approval is a new command; the hold names the program that
+  runs and says how to read with no code. A folder's parts count wherever they stand in one program, however they are
+  joined. Every refusal from before stands; copying a file out of a protected folder with a copier now waits too (a
+  redirect of `cat` passes), and so does an archive tool that unpacks where its members say.
+- **Python on the line passes when its reader proves it; a script file is judged by what its text shows** (core). A
+  program given with `-c` or on Python's input passes without isolation only when its reader proves it, no file in the
+  folder it starts from could stand in for a module it imports, and the line sets none of the variables that move
+  Python's module path; a hold for want of only that says that `-I`, or such a folder or line, needs no code. A script
+  file, or a module run with `-m` from the folder that holds it, is read whole (up to 4 MB) with each module of its own
+  it imports, and waits only when the command or that text names a protected folder and the text holds a write or a run
+  the reader recognizes that it cannot place outside them (a module of its own: any such write). A file beside it named
+  like a module found elsewhere stands in and waits; a module run with `-m` that is found anywhere else waits whenever
+  the command names a protected folder, since its first file is not the program it runs. A git read it spells whole
+  is a read wherever it points. A writer named without being called (handed to `map`, a thread, `atexit`, a lambda or a
+  table), or reached through `sys.modules`, `__call__`, a built name, `vars()` or a module's `__dict__`, is taken to
+  write, and so is a file argparse opens to write; a value a program builds from itself no longer stops its reader. A
+  script, module or inline program that uses synthesis's own code from outside the installed release waits only when it
+  names one of synthesis's functions that write its state, approvals, windows and batches, board or archive (a test
+  keeps the list to what the source shows), reaches that code in a way its reader cannot follow, or writes where
+  synthesis's own paths lead; reading it by name passes, and an inline program that reaches it unfollowably is still
+  refused. The release script and onboarding's setup, run from a checkout, name such writers, so each run of either
+  waits for the code. `df` is a reader.
+- **The guard answers in its time** (core). It reads only regular files a command runs as scripts, bounded in size,
+  opened so that none can stop it; it reads each script and its own modules once a call, at most eight scripts, stops
+  reading a program at the call's deadline, and a command it cannot finish judging in its time waits for the
+  principal's code instead of leaving the verdict to the harness.
+- **The send window and a lost transcript need the principal's code from any terminal** (core). `synthesis sends open`
+  and `synthesis sessions export --lost` each went ahead with no code when they saw no harness in their environment and
+  a terminal on their input, and an agent's shell can supply both. Each now spends the principal's granted code for
+  exactly what it does, read from the session's own transcript, which the command line finds only where the prompt hook
+  recorded it, never through folders the caller's environment names; the second clears the archive's record of a
+  transcript it could not copy, which the day's checks report. The guard judged only the first window request in a
+  command line; it judges every one now, each against its own code, and a post on the same line as well.
+- **The provenance scan spells each git read whole** (agent guardrails), so the guard proves that the day-end scan of
+  the records only reads.
+
+## [5.22.0] - 2026-11-14
+
+- **The guard judges a long heredoc of substitutions in well under a second** (core). On 2026-11-14 three ordinary
+  commands of 10 to 13 lines, each a `bash` heredoc whose loop held nested `$(...)` substitutions, took the guard 7
+  to 13 seconds, past the hook's 5: Claude Code held them (`onFailure: block`, 5.21.0), and before 5.21.0 a timeout
+  had let such a call through unjudged. The cost was one search over the whole script repeated for each of its
+  characters; it now runs once, with the same result. The three recorded commands now take 0.13 to 0.71 seconds.
+  Tests first.
+- **A public standard for what goes into a shared knowledge base** (`synthesis-kb-edit` 2.1.0). An organization that
+  names its knowledge repository gets the general rules by default and keeps only what is its own in its repository.
+  `references/sharing-standard.md` sets out two audiences, extraction as the way information goes in, one test for
+  each fact (could it cause real harm if it left the organization?), nine default classes that stay out, each with what
+  still goes in, figures by the level at which they were shared, a project recorded without the element that stays
+  out, and enforcement in layers. `assets/sharing-policy.template.md` is the policy an organization fills in; its own
+  parts (its audiences, rulings, examples, added classes, where excluded material lives, and its phrases) are marked
+  and empty.
+- **No phrase list ships.** The contract gains `confidentiality.sharing_policy` and `confidentiality.backstop_phrases`,
+  the organization's own phrases, and `confidentiality.unread_allowed`, the files only people read.
+  `scripts/sharing_scan.py` holds every line, file or folder name and commit message a change adds under the bundle
+  that contains one: `--range BASE...HEAD` for a review request or a pipeline, `--staged` and `--message` for a
+  commit's hooks, or whole files and folders. It reads a phrase as words, in any letter case, through Unicode variants
+  (decomposed accents, typographic apostrophes, soft hyphens, zero-width characters), in slugs, paths, snake_case and
+  CamelCase, and wrapped across two lines. It prints where and the phrase, never the rest of the line; judges the policy
+  and the contract's values, all but the phrase list itself; holds for a person a file it cannot read as text, unless
+  the contract exempts it; never follows a link; and is governed by the stricter of the contract before a change and
+  after it, so a change cannot loosen what judges it. It refuses to run (exit 2) with no phrases, no policy or one still
+  the template as written, a bundle git tracks no file under, or no valid contract. It needs only the standard library
+  and the checkout's own YAML reader, so a pipeline runs it by path from a checkout pinned to a tag. The standard shows
+  the two hooks and the pipeline step that call it; the plugin installs no hook in a knowledge base, and the stable
+  runtime now carries kb-edit's scripts, so the hooks run as printed.
+- **The contract refuses a key it does not name,** at the top level and inside `review`, `frontmatter` and
+  `confidentiality`. A misspelled optional key had switched off what it configured while the configuration gate said
+  VALID. A contract that carries a key of its own fails the gate until that key moves into `notes`, and the error says
+  so, offering a near spelling where there is one. The gate also reads each configured path as the disk spells it, as
+  git does, and refuses a named policy that is still the template as written.
+- **Extraction is a binding rule** in `synthesis-kb-edit` (rule 12) and `synthesis-knowledge-capture` 2.1.0 (rule 10):
+  each fact goes into the concept that owns it, cited, and every import's review request lists what was left out, by
+  class and count, never the facts. Validation runs the phrase scan when the contract names a sharing policy.
+- **Knowledge capture shares by default where a sharing policy decides** (`synthesis-knowledge-capture` rule 6). Where
+  the target's contract names a sharing policy, a fact goes in unless the policy's harm test or one of its classes keeps
+  it out; the most private tier stays the default for a fact whose tier is unknown and for a repository with no policy.
+  The routing reference keeps its earlier bullet word for word and adds this one after it.
+- **Adopting is deliberate, and a new knowledge base ships as before** (`synthesis-onboarding` 3.6.0).
+  `setup.py workspace --new NAME` seeds the template at `.agents/sharing-policy.md`, but the new contract names no
+  policy, so the phrase scan does not run and edits ship as they always have; the output names the step that adopts it.
+  `kb_config.py adopt-sharing-policy <repo-root> --phrase PHRASE` (one `--phrase` for each) is that step. With no policy
+  file yet, it writes the template where the contract says and stops, since naming the policy switches knowledge capture
+  to sharing by default; once the policy says who reads it, it names the policy and lists the phrases in the contract,
+  in place, keeping every line and line ending and replacing a key left null or empty; never writes over a file that is
+  there, or names a folder; writes the contract only when the result passes the configuration gate; and commits
+  nothing. Given no phrase while the contract lists none, it writes nothing. A contract that names a policy with
+  no phrases fails the configuration gate, holding every edit, and the error says to list one or remove the policy.
+- **How it was checked.** Tests first for the contract, the scan, adopting and the seed, each committed failing for
+  the reason its code then fixed; every phrase in them is made up. The first pass named the policy in every new
+  knowledge base's contract, with no phrases, which would have held its edits; adoption was made deliberate before
+  review, its tests again committed first. The review round's sixteen findings on the scan, the contract and adoption
+  (three of them blocking: a bundle the scan could not see, files it could not read passing as clean, and the change
+  under review controlling its own judge) were each fixed behind a test committed first, failing for its reason, and
+  the reviewer's probes now find each case held or refused, on Apple's Python 3.9 too.
+
+- **Five collections beside the whole set** (`synthesis-skills-manager` 3.6.0, `synthesis-onboarding` 3.6.0; plan item
+  12.1, ruled 2026-11-14). Someone who wants one discipline can now install a collection instead of every skill: core
+  (17 skills, which the other four build on), project management (7), engineering (13), writing (18) and chief of staff
+  (18), each a plugin of its own (`synthesis-skills-<name>`). The whole set stays the way to install synthesis, and the
+  README lists it first. A collection registers no hook and runs no synthesis runtime, so installing one asks for no
+  approval and changes nothing else on a Mac; each collection's description names the whole set as the way to the
+  guards, the board and the rituals.
+- **Each skill names its collection.** `metadata.category` in every SKILL.md frontmatter, from the collections listed in
+  the skills manager's `assets/collections.json`. A test holds that every skill is in exactly one, depends only on its
+  own collection or the core, and has any dependency its scripts load in its own collection, since the core installs in
+  a folder of its own. Five SKILL.md files have no room for the line under 8,000 bytes (the message guard at 7,990,
+  git hooks and Slack sync at 7,992, waiting at 7,993 and the knowledge-base distribution at 7,996); their words are kept, and the file names
+  their collection under `awaiting_room` until a reorganization makes room, which a test then reports. The daily
+  rituals, which 5.21.0 brought to 7,844 bytes, carry their line. Knowledge-base editing and the Open Knowledge Format
+  are in the core, since onboarding seeds a new workspace's sharing policy from knowledge-base editing's template (the
+  sharing standard, above). Autopilot declares as dependencies only what it always uses (4.1.1): fact-checking and
+  writing craft apply when its task is writing, as its references say.
+- **`build_collections.py` builds them** from the flat folder, each into a folder of its own: its skills whole but for
+  their tests, byte for byte, the two license files, and its own manifests for Claude Code, Codex and Muse at the
+  repository's version, none registering a hook. Every collection but the core declares the core as its Claude Code
+  dependency; Codex and Muse resolve none, so their install lines name both. `--check` builds and checks and writes
+  nothing; a build into a folder is cut from the last commit and written whole or not at all. It reads files with the
+  directory package's code, now one function both builders share.
+- **The release publishes them as the `collections` branch.** Before it tags anything, `release.py` builds the
+  collections from the commit it releases and checks them; any failure stops it with nothing published. The branch's
+  commit holds the built folders and two marketplace files as its tree, on top of each remote's head of the branch, and
+  goes in the same atomic push as `main`, `stable` and the tag, read back from each remote. A run again reuses the head
+  that already holds the folders.
+- **A collection's scripts run where it is installed** (`synthesis-context-lifecycle` 2.8.1,
+  `synthesis-local-messaging` 1.5.2; the first review's R1-3). 34 collected scripts imported the synthesis runtime, which
+  no collection carried, so each exited 2 in every collection install, the core's knowledge-base gate among them. 23 of
+  them read only the runtime's YAML reader, which uses the standard library alone and keeps no state: a collection whose
+  scripts read it now carries it, byte for byte, where the whole set holds it, and they run from its folder. The eleven
+  that need the runtime itself (its board, approvals, the rituals' records, installing or releasing the whole set) are
+  named in the collections file with why, and each says so in one line. The build reads every collected script's imports
+  from its syntax, through the modules beside it, and refuses one that cannot start in its collection unless it is
+  named, or that imports the runtime inside a function with nothing to catch the absence. The context doctor's claims
+  and citations checks and the message reader's review step now say what they cannot do without the runtime, where they
+  ended in a traceback.
+- **A path into another collection's skill is named** (R1-20). The build's rule saw only declared dependencies; it now
+  reads every string of a collected script's code for a path into another skill's folder, and refuses one that leads out
+  of its collection unless the load is named as optional, with what the script does without it, or the script needs the
+  whole set. The rituals' pull-request scan reaches the Bitbucket skill's helper: without it, a Bitbucket repository is
+  reported unscanned.
+- **No link leads out of a collection's folder** (R1-21). 42 relative links led nowhere inside a collection; in the built
+  copy alone, each now points at the repository's file at the release's tag, every other byte unchanged, and the build
+  names any link left leading out.
+- **One collections commit for one release** (R1-22). Each remote got its own commit, stamped with the time of the call;
+  the commit now takes the release commit's identity and time, unsigned, and names that commit, so every remote that
+  shares a head gets the same one, on this run or a run again. A refused push says where the branch should point.
+- **How to install one** is in the README, after the whole set, and in onboarding's harness reference: Claude Code adds
+  the repository at `@collections` and installs a collection, which brings the core; Codex adds it with
+  `--ref collections` and adds both; Muse adds its URL with `#collections` and installs both. Updating, removing one, and
+  moving to the whole set are there too.
+- **The README counts what the skills declare.** It said 45 skills under CC0 and 25 under Apache 2.0, where they declared
+  46 and 26 (Apache 2.0's 27 with synthesis-message-exports, below); a test now holds the counts.
+- **How it was checked.** Tests first, for the collection rules, the builder and the release's new stage. The route was
+  probed in isolated harness homes (Claude Code 2.1.316, Codex 0.167.0-alpha.4.1, Muse 1.4.20) against a local copy of
+  the branch served over HTTP, with the real installs unchanged before and after: each harness added the branch by its
+  ref, installed a collection and the core, listed only their skills, registered no hook and asked for no approval, and
+  each install held exactly its folder's files. The probe also found that Claude Code shows a plugin's marketplace entry,
+  not its manifest, before an install; the entry now carries the whole description. The first review round found four
+  more defects, R1-3 blocking; each was fixed with a test committed failing before it. A test now runs every collected
+  entry point with `--help` from a built folder on a Mac with no runtime, and the rebuilt branch was installed again in
+  isolated Claude Code and Muse homes, where the core's knowledge-base gate validated a configuration from its installed
+  folder and one script of each collection ran from its own.
+
+- **New skill: synthesis-message-exports 1.0.0, a message export the principal authorized, imported into private
+  transcripts.** `synthesis-local-messaging` keeps each conversation in its app and records pointers only; this is
+  the other mode, for an owner who has authorized a copy of a whole export, to clear a backlog for example.
+  `scripts/import_messages.py EXPORT --out FOLDER [--since YYYY-MM-DD] [--dry-run]` reads Facebook Messenger's two
+  downloads: Meta's "Download your information" export of Messages in JSON, in each folder layout it has used
+  (`messages/`, `your_activity_across_facebook/messages/`, `your_facebook_activity/messages/`) and from every section
+  (inbox, archived, filtered, message requests and `e2ee_cutover`); and Messenger's secure-storage download of
+  end-to-end encrypted chats, one JSON file per conversation at its top, its timestamp unit decided per file. Each
+  conversation becomes one markdown transcript laid out like a Slack sync's, named by its id and its source
+  (`messenger-dyi-<id>.md`, `messenger-e2ee-<id>.md`). Its text sits in fences marked `untrusted` that no line of a
+  message can close, hidden characters are shown as `[U+XXXX]`, and attachments are named by their place in the
+  export, never copied. The regular export's text quirk (UTF-8 bytes written as Latin-1 escapes) is repaired once per
+  file, only in a file whose text shows it. A re-import keeps every message written before, byte for byte, and adds only new ones; with
+  nothing new it writes nothing. Standard library only, no network: it reads only the export and its own earlier
+  transcripts, and writes only in `--out`. The README (73 skills), the Muse manifest and the skill router list it, and
+  it is in the chief-of-staff collection, beside `synthesis-local-messaging`.
+- **What it will not do.** It never sends and never copies media. An export in a shape it does not know is refused
+  with a listing of file names and sizes and no message text, so that a reader can be added; so are a ZIP entry
+  whose name could lead outside the archive, a link entry, a name given twice, a message file over 256 MiB, a link
+  inside an export folder, an output folder inside the export, and two conversations that would share a file name.
+  A file in `--out` the importer did not write, a transcript edited since, and a secure-storage conversation whose
+  messages sit in two transcripts are left alone and named.
+- **The formats are written down with their sources** (`references/formats.md`): what Meta's own pages confirm, what
+  a real secure-storage download showed, what independent open-source importers agree on, and what is still
+  inferred, with how the importer handles each open question.
+- **How it was checked.** Tests first, with invented fixtures only: each layout and section, both timestamp units,
+  the repair and the text it must leave alone, threads split across files, group chats, attachments, reactions,
+  unsent messages and calls, untrusted text that tries to leave its fence, unsafe and oversized ZIP entries, unknown
+  shapes, re-import, dry runs, `--since`, and Python's audit events showing nothing read outside the export or
+  written outside `--out`. Review of the first version found three defects, each fixed with a test that failed
+  before its fix: an archive whose only JSON held no conversation was taken for an export, one id reached twice
+  wrote one file twice, and names that differ only in case could be listed in another order on another run.
+- **The importer after review round 1** (`synthesis-message-exports`; seven findings, each fixed after a test that
+  failed first). A re-import no longer adds a message again when a sender's name, the export's layout or the
+  thread's section has changed: a message is known by its time, text, link, call and unsent facts and its
+  attachments' file names, never by the sender's name or an attachment's folders (R1-10; transcripts move to format
+  2). Two secure-storage chats with one display name and the same people never mix: a conversation goes to the
+  transcript already holding its messages, and a new one is named by its display name and first message, never by
+  the download's running index (R1-11). The encoding repair is decided once per file, so correct text such as `CAFÉ
+  !` with a no-break space stays as written (R1-12). A ZIP's message files are bounded before any is read (100,000
+  files, 2 GiB inflated in all, stored or deflate only, none over 1 MiB inflating past 200 times its compressed
+  size), so a few kilobytes no longer inflate hundreds of gigabytes (R1-13). Every character that shows nothing is
+  shown as `[U+XXXX]`, from Python's own Unicode tables, in text and in names (R1-23). `--out` inside the export is
+  caught in any letter case (R1-24). A refusal says its listing holds the names of the people in these
+  conversations, and `--listing-redacted` lists the same files with every name replaced by a token (R1-26).
+
+## [5.21.1] - 2026-11-14
+
+- **A click whose summary says it publishes waits for the code in every app and on every page, not only on messaging
+  sites** (`synthesis-message-guard` 2.11.1). On 2026-11-13 a public review typed and submitted through the browser on
+  a site that is no messaging site went out with no code: its control was labeled Submit rating, and outside messaging
+  sites only a click on Send counted. The rule is a list of labels and verbs, not every control that publishes: a
+  click waits when its summary names Send, Post, Comment, Reply, Repost, Share, Publish, Submit, Tweet or Done after a
+  click verb in any form, a word or three before the label allowed, or starts with submits, reposts, retweets, quotes
+  or rates, as the tools' own effect-first summaries do. A click that only opens or closes a box, menu or dialog
+  passes, as do a sign-in, a search, and the principal's own app on a local host. As first written, 5.21.1 wanted a
+  click verb right before the label, and its measurement found no such click in 30 days. The records do hold the
+  incident's two clicks on Submit rating, at 12:56 and 12:57 EST, each summarized "Submits the five-star public review
+  of" a person, which that form did not hold. Measured again with the rule's own code, over the 30 days to
+  2026-11-14: of 1,506 browser clicks and 37 computer-use clicks, it holds 12 that no rule held before, in 3
+  transcripts, the incident's two clicks on Submit rating and four on its stars among them. Tests first.
+- **After the second review: keys and page scripts that submit, records without typed words, and the hosts a person
+  types** (`synthesis-message-guard` 2.11.1).
+  - On a page that is no messaging site, a call that types words and then presses Return, Space or Return after Tab,
+    or types a line break, waits for the code when its summaries name a message, comment, review, post, reply or
+    tweet; a call that names none passes, as before (the principal's ruling of 2026-11-14), and so does one on a
+    local app. Measured: it holds 16 calls in 3 transcripts in 30 days and passes 30, 23 of them naming no post.
+    With the clicks and page scripts below, the second review's holds come to about 57 codes a month.
+  - A page script and a form fill alone reach the send guard. On a messaging site a script that clicks, submits,
+    sends a key or an event, writes by fetch or sets a value waits (5 of 118 in 30 days); elsewhere one that submits a
+    form, sends a key or an event, writes by fetch, or clicks a control that publishes waits, unless it searches or
+    signs in (24 of 459).
+  - The text a call types and the values it fills in never go into a stored request or the send log, where a test
+    form's password had landed in plain text. A register hit in a send on a page that is no messaging site goes on the send's own code, which names it,
+    instead of an outright refusal, since the guard cannot tell a review from a search there.
+  - Words released by the typed-words code are shown, with the rules they broke, in the hold of the next send from
+    the same page, and bound to its approval.
+  - Gmail and Outlook by the hosts a person types (`gmail.com`, `google.com/gmail`, `outlook.com`, `hotmail.com`,
+    `live.com/mail`) and Google Voice's texts (`voice.google.com`) count as their sites.
+  - Rule 12 says this in brief. Gmail's search box keeps the outright refusal on purpose, as the reference now says.
+    The 5.21.0 entry below loses a stray copy of the browser bullet's measurement that a merge left behind.
+    Tests first.
+- **A click on a control that publishes waits for the code on every page, not only on messaging sites**
+  (`synthesis-message-guard`). On 2026-11-13 a public review typed and submitted through the browser on a site that
+  is no messaging site went out with no code: its control was labeled Submit rating, and outside messaging sites only
+  a click on Send counted. A click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or Submit
+  right after a click verb now waits on any page; one whose summary says it only opens a box still passes. Measured
+  first: over 30 days of records, no click named one of these controls on any site, so the hold costs nothing
+  measured. Tests first.
+- **A declaration in Codex's own `hooks.json` covers the plugin's guard only as the guard's own invocation**
+  (`synthesis-onboarding`, `synthesis-agent-conformance`). Setup and the doctor judged a user-level command by its first
+  two words, and read `~` and `$HOME` as expanded even inside quotes. So a guard whose answer went to `/dev/null`, was
+  swallowed by `|| true` or ran in the background was taken as covering: setup switched the plugin's fail-closed copy
+  off and the doctor said ok. A path `sh` never finds (`"~/…"`, `'$HOME/…'`) passed for a call. Now a group covers only
+  with the plugin's settings and each command the stable hook as `sh` finds it (`$HOME` or `${HOME}`, bare or in double
+  quotes, or a bare `~`), followed by the plugin's own words, for the guard its fail-closed tail: without the tail a
+  missing runtime exits 127, which Codex lets through. Anything else keeps the plugin's copy on, and the doctor names it
+  as a fault; a path `sh` never finds is no declaration. 5.21.0's notes said a
+  narrower declaration never leaves a tool unguarded; until now that held for the matcher alone. Tests first.
+- **The runtime stays while Codex's own hooks run it** (`synthesis-onboarding`, core). With the option on, the
+  plugin's own session start, the one that reinstalls a missing runtime, is switched off, and once the runtime is gone
+  the user-level guard holds every guarded call, setup's own command included. `synthesis uninstall` removed the runtime
+  under setup's declarations, `setup.py uninstall` removed it under declarations of the person's that run it, and on a
+  new Mac setup declared before installing the runtime, so a failed install left the declarations behind. Now
+  `synthesis uninstall` removes nothing and exits 1 while anything in Codex's `hooks.json` runs the stable hook, and
+  names `setup.py uninstall`; `setup.py uninstall` refuses the same way while a hook of the person's there runs it; and
+  setup installs the runtime before any harness's plugin and declares only where the stable hook is in place. Tests
+  first.
+- **The guard answers within 4 seconds, closed** (core). A guard slowed past a harness's 5-second limit by a cold
+  repository read or a lock was let through by Codex and Muse, and its own `git` calls were allowed 20 seconds. The
+  PreToolUse hook now sets a 4-second deadline before it loads the guards: past it the call is held with the reason,
+  and git or any other process the guard started is stopped. What still lets a call through in Codex and Muse is a hook
+  whose start uses up more than about a second before the deadline is set. Tests first.
+- **Setup names each event it leaves running twice** (`synthesis-onboarding`). A declaration of the person's beside
+  setup's own read as "already declared", and turning the option off over the person's own declarations said only that
+  the plugin's hooks run once approved, while each event then ran twice. Where two copies of the guard judge one call,
+  one spends the approval and the other holds the call with a new code, so an approved call never goes. Setup now
+  names those events, in its note on a narrower declaration too, with what two guards do to an approved call. A CRLF
+  `hooks.json` now keeps its line endings, as 5.21.0's notes said every write did; only `config.toml` had. Tests first.
+- **The doctor judges every Claude Code on the Mac** (`synthesis-agent-conformance`). `claude fail closed` checked the
+  first Claude Code it found, while the plugin loads in each, the desktop app's own copies included. It now judges the
+  oldest and names its path when there are several. Tests first.
+
+## [5.21.0] - 2026-11-14
+
+- **One approval in Codex lasts through releases, as a setup option** (`synthesis-onboarding`,
+  `synthesis-agent-conformance`; plan item 13.7, part 2). Codex ties its approval of a plugin's hooks to the plugin's
+  files, so after each release it ran none of synthesis's four hooks until the person approved them again in `/hooks`
+  (six times on 2026-11-13). `setup.py plugin --codex-user-hooks` declares the four in Codex's own `hooks.json`, each
+  calling the stable hook, which Codex trusts by its declaration alone, and switches the plugin's own copy of each
+  covered event off by its state key with a line marked as setup's, so no event runs twice; the person approves the
+  four once. A declaration of the person's stays as written, and the plugin's copy of its event goes off only when it
+  holds the plugin's declaration, so a narrower one never leaves a tool unguarded. Setup records the groups it wrote and
+  treats only those as its own. A rerun changes nothing. Before writing anything it refuses a `hooks.json` Codex would
+  not read, a `config.toml` that does not parse, hook state held as an inline table, an edit that would not parse once
+  composed, and a file changed meanwhile; turning the option on writes `hooks.json` first and off `config.toml` first, a
+  write that fails midway puts back what was written, and writes keep each file's mode, symlink and line endings.
+  Setup's `plugin` command and the release script keep the declaration in step with the plugin after each install or
+  update. `--no-codex-user-hooks` works offline, and it and `setup.py uninstall` take out the groups setup recorded and
+  the lines it marked, nothing of the person's; uninstall does so before it removes the runtime, or removes nothing and
+  exits 1. It gives up Codex's second look at a hook whose code changed, which protects anyone installing someone else's
+  plugin: recommended for a publisher's own machines, off unless asked for. Codex's startup review still lists the
+  plugin's switched-off copies after a release; the user-level hooks run whatever the answer there.
+- **The doctor reads that declaration.** With it present, `codex hook trust` judges the user-level hooks, keyed by
+  `hooks.json`'s path under Codex's home's real path, and treats the plugin's switched-off copies of covered events as
+  intended. It fails, as faults rather than approvals, a copy left on beside a covering declaration, an event declared
+  twice, a declaration that does not hold the installed plugin's (advising setup for setup's own and an edit for the
+  person's), setup's switch with nothing covering its event, a `hooks.json` Codex would not read while the option is
+  on, and hook state held as an inline table. Without the option the line is as before, and the person's own unreadable
+  `hooks.json` is a `codex hooks file` warning. `read_toml` reads lines at line feeds alone, and gains a strict reading
+  that refuses what Codex refuses: a line it cannot place, a key set twice, a table defined twice, and any table or key
+  inside a value.
+- **How it was checked.** Tests first. Codex's source at the installed build (0.167.0-alpha.4.1) and probes in homes
+  of their own: approving in `/hooks` writes `trusted_hash` alone for a user-level hook, the state written by hand
+  before, and the doctor's hash equals what Codex lists for all four; a plugin hook switched off by its key stays off
+  across a change of the plugin's files and version, and through the startup review's "Trust all". Then end to end:
+  the plugin installed with Codex's own commands, the option turned on, the four approved as `/hooks` approves them,
+  and a release that changed the plugin's files and version, with the user-level hooks trusted throughout. Review
+  round 1 found fourteen faults in the option and the doctor's line, each fixed after a test that failed for it, and
+  each reviewer's probe run again against the fix.
+- **A fault of setup on an approval line no longer reads as waiting on the person.** The release counted any failing
+  Codex or Muse approval line as waiting on the person. With the user-level option the same line can name a fault (a
+  plugin copy left on, a declaration unlike the plugin's, a plugin Codex cannot fingerprint), which no approval fixes;
+  `doctor.waits_on_person` tells the two apart, and the release now holds on a fault. Tests first.
+- **Room for rules in three skill files, by whole passages moved word for word** (daily rituals 3.17.0, waiting
+  1.2.0, message guard 2.11.0). The daily rituals' contents entry for the rewrite moves to the head of its coverage
+  map; the waiting skill's last two sentences move to its watchers reference; the message guard's procedure moves to
+  `references/procedure.md`. Then the rules whose mechanisms had shipped: daily rituals rule 6 says a date after
+  today is refused and rule 16 that a `NOT CHECKED` line is said first, never read as all clear; waiting rule 9 says
+  a message to a person is a wait; message guard rules 16 and 17 say that an address that can change never goes to a
+  person and that a time in a message rests on a fresh calendar read.
+- **The browser guard holds Return on every page of facebook.com, instagram.com and linkedin.com.** It knew
+  www.messenger.com and LinkedIn's `/messaging`, but Messenger also runs inside facebook.com, in its own page and in
+  chat pop-ups on every other page, Return in a comment box posts in the person's name, and LinkedIn's messages open
+  in an overlay on every page. A page cannot show which box has the focus. Measured first, over 30 days of recorded
+  browser calls: none of the 55 Return presses in all was on these sites (43 were on other sites, 12 on pages the
+  record does not place), and the control counted 320 browser calls on LinkedIn in all, 290 of them on its messages
+  and 30 elsewhere, and 10 on facebook.com, so the hold costs nothing measured. Tests first.
+- **A guard that cannot answer holds the call in Claude Code** (`synthesis-agent-guardrails`, `synthesis-message-guard`,
+  `synthesis-onboarding`, `synthesis-agent-conformance`). On PreToolUse, Claude Code let a call through when the hook
+  timed out (its limit is 5 seconds), crashed, printed output it could not read, or could not start because the stable
+  hook was missing, so a send, a deploy or a write could go ahead unguarded, against the rule that protective checks
+  fail closed. The plugin's PreToolUse handler now sets `"onFailure": "block"`, which Claude Code honors from 2.1.295: the
+  call is held, and Claude Code names the hook and says `failed` or `timed out`. UserPromptSubmit, SessionStart and
+  Stop keep the default: holding a person's prompt or a session's start on a hook failure costs more than it protects,
+  and Claude Code ignores the setting on Stop.
+- **What each harness reads stays readable.** Claude Code 2.1.316 validates and installs the plugin with the field and
+  refuses a value it does not allow; 2.1.293, from before the field, ignores it and keeps all four hooks. Codex
+  0.167.0-alpha.4.1 reads all four hooks with it, and the field itself leaves the guard's hash as it was. The user-level
+  declaration from `setup.py plugin --codex-user-hooks` carries it too, and setup says an approval stays when a
+  declaration changes only in such a field. Muse 1.4.20 reads only its own manifest, which refuses the whole plugin for
+  the field, so it is not there. Codex and Muse have no such setting; the next entry says what holds a guard that
+  cannot answer there.
+- **A guard that cannot start or crashes holds the call in Codex and Muse too** (`synthesis-agent-guardrails`,
+  `synthesis-message-guard`, `synthesis-onboarding`). Both let a call through when a hook exits with an error, but block
+  on exit 2 with a reason. The guard's command, in `hooks/hooks.json`, Muse's `pre-tool-use.sh` and the user-level
+  declaration setup writes, now ends so that a stable hook that is missing or crashes is exit 2 with one line of
+  reason; a deny the guard gives exits 0 with its own reason, as before. Codex hashes the command, so 5.21.0 asks for
+  the guard's approval once again there: the one approval a person gives when switching to the user-level option in
+  this release, and setup says so for a declaration it brings in step. A guard that times out in Codex or Muse still
+  lets the call through. Probed in homes of their own on 2026-11-14: Claude Code 2.1.316 validates the plugin; Codex
+  0.167.0-alpha.4.1 reads all four hooks of the plugin and of the user-level declaration, listing the guard's new hash
+  as the doctor computes it; Muse 1.4.20 validates and installs it, and its hook test blocks for a missing stable hook
+  and for one that exits 1, with the reason. Tests first.
+- **The doctor checks it.** A new `claude fail closed` line fails when the installed plugin's PreToolUse hook lacks the
+  setting, and warns when the installed Claude Code (by `claude --version`) is older than 2.1.295 or names no version.
+- **Measured before it shipped.** Over the 30 days to 2026-11-14, the Claude Code transcripts on the Mac it was measured
+  on (1,113 files) hold no PreToolUse hook call that failed or timed out, of 140,417 tool calls the guard's matcher
+  takes: the change would have held none in that window. Claude Code writes those failures into its transcripts (544
+  Stop and 53 SessionStart hook errors and 131 PostToolUse cancellations in that Mac's history), so none is a count,
+  not a gap in the record.
+- **How it was checked.** Tests first. Probes in homes of their own (each harness's config, data and synthesis folders
+  set to temporary ones): `claude plugin validate` and install with 2.1.316 and 2.1.293; Codex's own `hooks/list` for
+  the plugin with and without the field, the user-level declaration, and a home approved before the field through the
+  release that adds it; `muse plugins validate`, install and `plugins hook test` with the stable hook missing, exiting 1
+  and sleeping past its limit, beside a stub that denies as the control. What Codex does with a failed hook was read in
+  its source at 0.167.2 (its runner marks the hook failed and blocks nothing). Two assertions in the onboarding tests that
+  passed on the path `.../hooks.json` alone now read the note's own words.
+- **After the release's review: every host of these sites, the controls that publish, Gmail's chat pop-ups,
+  Messenger's channel and searches** (message guard 2.11.0).
+  - A site is its host and every host under it, as the browser lands on them: a batch that opened `linkedin.com/...`,
+    `uk.linkedin.com`, `messenger.com`, `m.me` or `fb.com` and pressed Return had gone out with no code. The short
+    hosts that land on a messaging site count too (`fb.me`, `instagr.am`, `ig.me`, `wa.me`, `t.me`, `discord.gg`,
+    `discordapp.com`), as do the new addresses of Teams and Outlook on the web (`teams.cloud.microsoft`,
+    `outlook.cloud.microsoft`), X's chat (`chat.x.com`, `/i/chat`) and every page of x.com and twitter.com, since
+    X's messages can open in a drawer beside its other pages, as LinkedIn's open in an overlay. For the send guard, a
+    `navigate` that names no host (`back`, a path) keeps a messaging site's page; the account check still takes that
+    page as unknown.
+  - On a messaging site's page, a click whose summary names Send, Post, Comment, Reply, Repost, Share, Publish or
+    Submit right after a click verb waits for a code, unless the summary says the click only opens a box; a click "on
+    Send" waits on any page. Measured first: over 30 days, 1,506 recorded browser clicks and 37 computer-use clicks
+    held no summary of that form, on any site.
+  - Every page of Gmail holds Return and a typed line break, as a chat page does: Google Chat runs in pop-ups on
+    Gmail's own pages, which counted as email, where Return writes a line, so Return in a pop-up went out with no
+    code. The send shortcut and a click on Send waited already, and words typed there that a rule stops stay refused
+    outright; Gmail's pages take both `email` and `google chat` rules. Measured first: over 30 days no browser call
+    pressed Return or typed a line break on Gmail's pages. Outlook on the web keeps the email rule.
+  - Messenger is `messenger` on every facebook.com host's `/messages`, on `fb.com`'s, on `messenger.com` and `m.me`;
+    Business Suite's inbox is `facebook`, `messenger` and `instagram`; facebook.com's other pages are both `facebook`
+    and `messenger`, since a pop-up may hold the focus.
+  - On these sites' pages outside their messages, a box may be a search: words that break a register rule in a call
+    that only types wait for the principal's code instead of being refused, and the hold names the rule. A call that
+    sends or does more is still refused outright, so a comment's words are scanned before any of them is typed.
+  - Message guard rules 12, 16 and 17 say what the code does: the labels that hold; an address that can change is
+    released only by the principal's code for it, after which the message needs its own; the calendar read counts
+    within `fresh_calendar.minutes`, and in Codex, Muse and a sub-agent only the hold's own code releases the message.
+    The procedure's reference to `composing.md` links from its own folder. Tests first.
+
+## [5.20.1] - 2026-11-13
+
+- **The deploy guard holds neither a syntax check nor too little** (`synthesis-agent-guardrails` 2.9.2). A seat's local
+  test that ran `sh -n` on two scripts was held as a deploy, and once approved it recorded a deploy that set off the
+  rapid-redeploy brake for the real publish after it. A shell's options are now read in order up to its script:
+  `-n` or `-o noexec`, not undone by a later `+n`, `+o noexec` or zsh's `-o exec`, runs nothing and is no deploy; an
+  `-n` that is another option's value (`--rcfile -n`), or an option the guard does not know, reads the script. The
+  other way round, a script sourced with `.`, `source` or `builtin source` was not read at all; it is now read whole,
+  as a run script is, so a deploy anywhere in it is held. An alias is read for what its value runs, and a script too
+  large for the guard to read (over 256 KB), run or sourced, is held rather than let through.
+- **A deploy's hold says what its approval binds to:** the command and the HEAD of each checkout it deploys, so the
+  same command after a commit meets a new code with the reason in front of it.
+- **The sender is told of a watcher that takes its message at once.** `synthesis msg` posted first and asked who
+  watched after, so a watcher that read the message and left in between was missed and the sender was told it waits
+  for the next prompt; who watches is now read before the message is posted.
+- **No test reads this Mac's synthesis home.** Once 5.20.0's hourly sync had written this Mac's ritual history into
+  its sessions repos, seven ritual tests read it through the person's own config and failed on this Mac alone; every
+  test, a skill's included, now has a synthesis home of its own.
+- **How it was checked.** Tests first, and one review round. The first fix set a sourced script's function bodies
+  apart and stopped at the first `-n`; the review showed both opened real holes (`bash -n +n`, `--rcfile -n`, deploys
+  at a sourced script's top level missed in several forms, and a pattern that could run past the hook's time limit),
+  so the reading was made whole and the options read in order, each case with a test that failed before its fix.
+
+## [5.20.0] - 2026-11-13
+
+- **A durable message travels with the project** (`synthesis-project-management` 3.5.0; the audit of 2026-11-11, gap 6).
+  The board lives on one Mac, so a message no session there had read was lost to a session resuming the project on
+  another. `synthesis handoff` now writes each durable message that no session on this Mac other than its sender has
+  been shown into `projects/<p>/inbox/<message id>.md` and commits it with the records, when the session's claims cover
+  that folder; it counts as carried once its file is committed. A project it cannot carry, a linked `inbox/` and a
+  message over 64 KB are named in the report, and none stops the handoff.
+- **What a project's inbox holds is a record, read on request.** A file in a repository says what its writer made it
+  say, so it never becomes a board message. A session that binds the project (its start, `synthesis resume`,
+  `synthesis use`) is told how many carried messages this Mac has not shown, and a bound session is told at its next
+  prompt when a pull brings new ones; never their words. `synthesis inbox` shows them twenty at a time, each under a
+  line naming its file and its header's sender, its words quoted line by line so none can pass for a board message,
+  once on each Mac.
+- **Ritual history is kept for each host** (`synthesis-daily-rituals` 3.16.0, `synthesis-context-lifecycle` 2.8.0).
+  A record commits nothing. The hourly `synthesis sessions sync` writes this Mac's records of each workspace whole
+  into that workspace's sessions repo as `rituals/<host>.jsonl` (a name two Macs never share: the host name and a hash
+  of it with the machine's own id), commits that file alone and pushes it with the transcripts; a refusal is said and
+  undone and never holds the transcripts back. Every view reads this Mac's log and every host's file, each record
+  once; a link, an unreadable file or a line of another shape costs only itself; and the latest of two records on one
+  day is the later moment, whatever each Mac's time zone. `record` says where its history goes.
+- **The unsaved count names what can be acted on** (`synthesis-agent-conformance` 2.2.1, `synthesis-agent-guardrails`
+  2.9.1). Installed, 5.19.0's line named 54 repositories on one Mac: it read every session's claims, stale ones
+  included, and every local branch, which worktrees share. It now reads live seats' claims and each checkout's own
+  branch (2 of 48 on that Mac), with the repositories read side by side.
+- **How it was checked.** Tests first, and two review rounds by fresh reviewers given the code and no conclusion. The
+  first found four serious defects in the first design: a file in a repository could pose as a peer's message, an
+  arriving session never saw what was carried, a sender's own read hid its message, and a commit per ritual record
+  split two Macs' branches. Both parts were redesigned. The second found four more (carried words could still mimic a
+  board message, a refused history commit held back the transcripts' push, two Macs sharing a host name shared a file,
+  and a session bound before a pull was not told) and nine smaller ones. Every finding was fixed with a test that failed
+  before its fix.
+
+## [5.19.0] - 2026-11-13
+
+- **A snapshot keeps untracked files, and every snapshot is one commit through a temporary index**
+  (`synthesis-project-management` 3.4.0; the audit of 2026-11-11, §3.2). The journal kept tracked changes alone
+  (`git stash create`), so a record no commit had taken yet was in no snapshot when something removed it. At a claim,
+  a release and a commit, the snapshot now also holds the untracked files `.gitignore` does not exclude, each up to
+  2 MB and 20 MB or 1,000 files in all, the claim's own first. A file past a limit, one git cannot read and one
+  holding a credential (the commit check's built-in patterns, now in `synthesis/credentials.py`) are named in the
+  journal and not kept; every such file under the claim is named, and `synthesis journal <path>` finds it. The
+  session start keeps tracked changes alone, inside the hook's budget, and its line says so. The snapshot is written
+  from a copy of the index, so the index itself is never written (`git stash create` rewrote it), even while another
+  process holds its lock; what the index held is the snapshot's second parent, as with `git stash create`; it needs
+  no identity, is never signed, and keeps a checkout with no commit yet or one in the middle of a merge.
+  `synthesis journal --show` writes a file back byte for byte. A commit takes one snapshot, not one at each of its
+  hooks, and the journal's lines go with their snapshots after 14 days. What Finder writes is not a record.
+- **Release and claim count an untracked file under the claim**, and the work of a repository inside a claimed folder.
+  `synthesis release` refused only for tracked changes, so a new record under a claim was released unowned, and the
+  next claim over it said nothing; it now also refuses when git cannot read the checkout at all.
+- **A counted alert for claimed records left unsaved** (`synthesis-agent-conformance` 2.2.0,
+  `synthesis-agent-guardrails` 2.9.0, `synthesis-daily-rituals` 3.15.0; the audit's gap 4). `synthesis doctor` warns,
+  never fails, when a file under a claim on the board has stayed uncommitted, or in a commit on any local branch that
+  no remote holds, longer than the config's `unsaved_hours` (24 when absent; false turns it off), counted per
+  repository with the oldest age, and names a claimed checkout git cannot read. The weekday evening job shows a fixed
+  banner for one such repository, or more than one, naming none; `synthesis doctor --unsaved` prints that count.
+- **The hourly job fetches** (`synthesis-context-lifecycle` 2.7.1, `synthesis-onboarding` 3.5.4). The scheduled
+  export also runs `git fetch` in each knowledge root and each sessions repo, never merging, writing no `FETCH_HEAD`
+  (a person's `git pull` reads theirs), with no maintenance after it and nothing asked: no terminal prompt, no
+  credential window, ssh in batch mode unless the person set an ssh command. So `git status` says how far a checkout
+  is behind its remote without an agent fetching first. The doctor's `scheduled fetch` line says when each was last
+  fetched and git's reason when one could not be; config `scheduled_fetch: false` turns it off.
+- **How it was checked.** Tests first, and one review round by a fresh reviewer given the code and no conclusion: one
+  serious finding (the file budget, spent in path order across the repository, could leave a claim's own record
+  neither kept nor named), ten moderate and twelve minor, with eleven statements in the docs that did not match the
+  code. Each was fixed with a test that failed before its fix. On a checkout of 46,680 files the session-start
+  snapshot's git work measured 316 ms, of which `git status` alone takes 147 ms.
+
+## [5.18.0] - 2026-11-13
+
+- **The Claude desktop app's local agent-mode sessions are archived** (`synthesis-context-lifecycle` 2.7.0, the
+  audit's gap 14). Each such session runs with a Claude Code folder of its own under the app's data folder
+  (`~/Library/Application Support/Claude/local-agent-mode-sessions/<account>/<org>/local_<session>/.claude`, or
+  `SYNTHESIS_CLAUDE_DESKTOP_DIR`), and the archive read only `CLAUDE_CONFIG_DIR`'s: on one Mac, five sessions and six
+  of their sub-agents were in no record. The export now reads them as Claude Code's. A desktop session is named with
+  its `local_<session>` folder before its own name, so a CLI session of the same file name stays another session;
+  one that ran in a virtual machine's folder is in no workspace, and is kept and never synced.
+- **What it reads, it says it could not.** The desktop folders are read level by level, and one on the way that
+  cannot be listed is named in the run's report and stamp, never taken for an empty one, so no transcript behind it
+  is called removed.
+- **The guard protects their transcripts** as it does the CLI's (one protected path, nothing listed on the hook's
+  path), and reads a desktop session's memory folder and saved tool results as the CLI's.
+- **The scheduled copy carries `SYNTHESIS_CLAUDE_DESKTOP_DIR`** where it is set (`synthesis-onboarding` 3.5.3), as it
+  carries each harness's folder; no test reads the desktop sessions of the Mac it runs on.
+- **How it was checked.** Tests first, and one review round (two defects and two smaller gaps), each fixed with a
+  test that failed before its fix, or kept with its reason stated: the approvals reader and the hook's strike do not
+  know a desktop session, which matters only if synthesis's hooks run inside one, and nothing shows they do.
+
+## [5.17.0] - 2026-11-13
+
+- **A record's number names the same record for good** (`synthesis-context-lifecycle` 2.6.0). Project records cite a
+  conversation's record as `<session> #<n>`. `synthesis sessions export --rebuild` moved the archive aside and
+  numbered every session anew, so under a reader that files more than the one before it every later number moved:
+  counted on one machine before the change, 157 of the 373 record numbers that project records cite would have named
+  another record. A rebuild now reads each session again from its start and appends only what the archive does not
+  hold (the same kind, time, words and source, read as today's reader would write it, so a secret pattern added since
+  makes nothing new), after the archive's last number; no line it holds is changed or moved. Run on a scratch copy
+  of the cited sessions of that machine's archive with this release's code: 373 of the 373 cited numbers name the
+  same record, and 841 records are gained, none lost.
+- **An export reads a session again the same way wherever it must**: where the archive holds more than its state
+  counts (a write cut short after its lines, a state lost) and where the harness rewrote its transcript smaller.
+  Nothing is dropped by count, and nothing is filed twice.
+- **A Mac with no archive of a session begins it from another Mac's synced copy**, where a sessions repo cloned there
+  holds it (the copy in the workspace and month that Mac files the session in): the copy's records keep their
+  numbers, and what it does not hold is numbered past every number the other Mac had given (`next`, now in
+  `meta.json`). `numbers_from.own_from` says where that Mac's own numbers start, and `synthesis sessions show --seq`
+  says when a number names a record only the other Mac holds, and when it is this Mac's own. `peek` reads a copy's
+  numbers too, and writes nothing.
+- **A sync pulls before it writes.** A session whose copy another Mac numbered or extended is refused alone, with
+  why, while the workspace's other sessions sync, and a pull that fails is undone, so the repo stays on its branch.
+  Clone a new Mac's sessions repos before its first export.
+- **A session is shown in the order said**: `show`, the records around a cited one, and `recent` order by the moment
+  each record's time names, whatever its fraction of a second, on every Python; so does the day's list of prompts.
+- **A commit policy the config names and that cannot be read masks nothing and writes nothing**: the session is not
+  exported, and the export's stamp says why, as for any transcript it could not copy.
+- **How it was checked.** Tests first, and one review round by a fresh reviewer given the code and no conclusion:
+  ten findings, three serious (a second Mac gave the first Mac's numbers to other records; a write cut short, then
+  a rebuild or an export, dropped records; two Macs wedged a workspace's sync), each fixed with a test that failed
+  before its fix, or kept with its reason stated.
+
+## [5.16.0] - 2026-11-13
+
+- **A lapse is written in one step** (`synthesis-daily-rituals` 3.14.0). When a dated item passes its date with no
+  decision from the principal it lapsed, and the day-end asked for two things by hand: a `**Lapsed:**` mark where
+  the item sits, and an appended row in the workspace's lapse register. An audit found no script that wrote either,
+  nothing that held one to the other, and no place in a row for whom the lapse affected or what can still be done.
+  `lapse.py` takes the item, by its Decay ID or by the file and line the sweep prints for one that has none, and
+  the three answers only the agent has: why it lapsed, whom that affected, what can still be done. It appends the
+  row to the file the ritual config names (`"lapse_register": "<file>"`), in a table of seven cells beneath the
+  register's own, and reads the row back; then it writes the mark on a line of its own under the item's tag. Before
+  anything is written the item is read again by the sweep's own reader (its file's last copy, still open, with the
+  date the sweep read and no mark since), and the plan with its mark is written beside the plan and read by that
+  reader too, so a mark that would stand as an entry of its own is refused. One helper writes at a time. A row is
+  never rewritten: what came of a lapse later is said with `--came`, a row for the same lapse on its day; where the
+  rows it finds are those of more than one item, or the line it is given now holds another item, it asks which lapse
+  with `--row`. An interrupt, or a stop the system asks for, leaves nothing beside the plan.
+- **What it refuses, with both files as they were:** a critical item (it never lapses), an item closed or not
+  found, a date not yet passed, words that say nothing, a gap of the sweep where a copy of the item could stand, a
+  tag in a table's row, a plan, its folder or a register it may not write, and an item whose row and mark both
+  stand, and a plan holding a character some readers take for the end of a line and an editor does not. It does not
+  guess: an item already marked whose row it cannot find is asked about (`--row-missing`), and so is an item with no
+  ID that the register holds a row of its title for at another place, another line of its plan or another plan that
+  carries a copy of it (`--row <line>` or `--row-missing`), whether it is still to be marked or already marked; a row
+  whose line still holds a marked item of that title is that item's, and is not taken for this one.
+  Where the row is written and the mark could not be put in place it exits 1 and names the row, and the next run
+  with `--row` writes the mark alone.
+- **The register is read for a review** (`lapse_review.py`): the lapses of a window (the last fourteen days, a
+  quarter, six months, a year, or any days given), what repeats among them (the same item more than once, the
+  weekday a lapse was recorded on or a place it waited at three times or more, how many outcomes are still open),
+  then each lapse's last row, newest first. A lapse and the rows that say what came of it are one lapse. A line it
+  cannot read as a row is said by its line and never passed over.
+- **Everything open for a seat in one list** (`plate.py`), built from the sweep and not from memory: the critical
+  deadlines, what reads like one and is not classified, dated items due or past and ahead, the newest plan's
+  commitments with no date and no park, a ledger's open rows, and the choices put with no decision, each with its
+  file and line. Copies of an item with no Decay ID in several plans are listed once, at the newest copy, and said to
+  have passed with nothing written only where no copy carries a mark for its date, as the sweep reads an item with
+  an ID. It is not built over records the sweep did not take in full unless asked (`--with-gaps`), and it is never
+  written into a folder the workspace declares, by whatever name the file system takes for it.
+- **The sweep, where these three lean on it.** A field written as a list entry, under any mark, is the field of the
+  item it stands under (directly under a heading, or deeper than the open entry); at the open entry's level it is
+  an entry of its own, which closes nothing of its neighbour's and is no commitment. Until now a sibling
+  `- **Resolved:**` about something else closed the item above it. A gap on a line of one item says whose it is
+  (`identity`), so another item's date that is on no calendar no longer stands in the way of a lapse. A link the
+  sweep would not read by its name, or one that leads to a file it reads under that file's own name and as the same
+  kind of record, is listed as excluded and is no gap: a `latest.md` kept beside the plans had left every sweep
+  blocked. The gap for a declared folder with no dated file says how many files it holds that the sweep could read
+  (a `.gitkeep` or `.DS_Store` is none), and a ledger's rows too short to read are counted by ledger
+  (`owed.unread_in`).
+- **To use it** a workspace names its register in the ritual config. Until it does, `lapse.py` and
+  `lapse_review.py` say how, and nothing else changes. The day-end's lapse step, the weekly and longer reviews and
+  the day-start's list are written for the three scripts ([day-end.md](skills/synthesis-daily-rituals/references/day-end.md),
+  [weekly-and-longer.md](skills/synthesis-daily-rituals/references/weekly-and-longer.md),
+  [scripts.md](skills/synthesis-daily-rituals/references/scripts.md)).
+- **How it was checked.** Tests first throughout, and three review rounds by fresh reviewers given the code and no
+  conclusion: sixteen findings, fifteen, then nine with four contrived cases, each fixed with a test that failed
+  before its fix. Two of the first round's and two of the second's could put a false row into a permanent register,
+  or lose one, with no error; the third's worst was the second's own widening of where a field belongs, which let a
+  sibling entry close the item above it. Counted on real records (counts only): with the fixes, the sweep reads
+  three seats' plans exactly as 5.15.0 does (the same items due and undated, no gap), and three registers of 355, 64
+  and 1 rows read the same lapses with no line unread.
+
+## [5.15.1] - 2026-11-13
+
+- **The connector asks Google for its account chooser at every sign-in** (`synthesis-kb-distribution` 1.2.4). Found
+  by an end-to-end test of a production connector from a personal ChatGPT account: in a browser that held only a
+  personal Google account, Google signed that account straight in and refused it (`Error 403: org_internal`, the
+  client's audience being Internal), with no account chooser and no "Use another account", so a person whose browser
+  knows only their personal account could not reach their work one. FastMCP's `GoogleProvider` sends Google
+  `prompt=consent` and `access_type=offline` by default, and the connector passed nothing of its own. It now sends
+  `prompt=select_account consent` with `access_type=offline`: the chooser every time, and Google still returns a
+  refresh token. A test reads the address the consent step sends to Google and checks both; against 5.15.0's
+  connector it fails with `prompt` `consent` alone. `references/connector.md` 5.2 says what a person sees. Nothing
+  changes for a deployment until it is deployed again.
+
+## [5.15.0] - 2026-11-13
+
+- **The deadline sweep lists the commitments a plan carries with no date** (`synthesis-daily-rituals` 3.13.0). The
+  sweep kept in view only what carries a `**Decays:**` tag, and a rule asked whoever wrote the plan to tag the rest;
+  an audit found that a commitment written with no tag never reached it, so it was carried for as long as someone
+  copied it and no longer. Counted on three seats' newest plans before anything refused: 12, 0 and 11 open entries
+  under the task, waiting and carried headings with no date and no park. The sweep now reads the newest plan's
+  entries under a heading the plan format places among tasks, things waited on or things carried (each top-level
+  list entry, and each row of a table directly under the heading) and lists every open one that has neither a
+  `**Decays:**` date nor a park that says why (`untagged`, with its file and line; `commitments` is how many it
+  read, `plans_read` which files). An entry is closed where a mark stands as its status: a tick box, a tick, DONE
+  or SENT at its start, its whole title struck, a tick at its end, a dated Sent, Released or Resolved line. A tick
+  or a word inside a sentence closes nothing, and neither does one word struck out of a title. A table's row is
+  closed by its title's mark or by its own status, the cell under a header that names one or the last cell where
+  none does; a tick in another column says something else. A heading of things finished holds none, and one that
+  says what is still to get done is no such heading. Listed entries make the status REVIEW.
+- **An open dated item with no Decay ID, and a date that passed with nothing written, are listed** (`no_id`, and
+  `unannounced` on a due item). Without its ID each copy of an item is another item to the sweep, and closing one
+  closes no other. A due item is unannounced where its date is behind the sweep's day and no copy carries a
+  `**Lapsed:**` mark for that date or a later one. A seat that runs its rituals re-dates what it carries each day
+  (every due item was dated today in two seats, 29 and 73 of them), so this is the mark of a day with no ritual:
+  the weekday job that runs with no ritual counts them over every declared workspace, an item two workspaces share
+  once, and posts one banner with the count.
+- **A correspondence ledger's open rows are a view of their own** (`owed`). In a records folder, a table whose
+  header has a `Status` and an `Owed since` cell is read row by row: how many are open, the oldest date, how many
+  have been owed over fourteen days, how many carry no date, then the rows. Counted in the one seat that keeps one:
+  141 open rows of 341, the oldest four months old, beside a due list of 73. A row is closed by a tick or by a
+  closing word at the head of its status, where nothing after takes that back (`Paid in part`, `Done, but
+  reopened`); a seat adds its own words and phrases (`ledger_closed_words` in the ritual config), and a status the
+  reader does not know is open. The view changes no status and refuses nothing.
+- **A workspace can have its day refuse to close clean over the first two** (`"commitment_check": true`, or
+  `{"from": "YYYY-MM-DD"}` for its first day, in the ritual config; off unless set, since on the day this was
+  counted it would have refused two of three seats' closes). `ritual_state.py record` then refuses a clean outcome
+  while a commitment has no date and no park or an open dated item has no ID, names each with its file and line
+  and says how to finish each kind; any other outcome records and says how many. The plan read is the newest on or
+  before the record's day, and what is closed is judged as of now, so a record made after midnight for the day
+  before takes a closing mark written since.
+- **A refusal over a source the sweep did not take in full names it.** The record's refusal gave a count and said a
+  plan could not be read whole, also where the plan was read and one line of it was refused (a mark dated ahead).
+  It now names each source once with the sweep's reason, the first five and how many more. A plan or a ledger
+  whose shape either new reader fails on is a gap for that file alone, and everything else is still read.
+- **The note of hook approvals says when the doctor could not tell** (`synthesis-agent-conformance` 2.1.1). A
+  third review of 5.14.0 found that what another release saw of a harness could stay for ever, under a sentence
+  that said the doctor checks it: where Codex's listing did not answer, where Muse's trust could not be read, or
+  where the plugin had been removed. Every run of this release now writes what it saw in such an entry's place.
+  Where the harness's own line says the plugin is not installed there (Muse is asked by its own code for an
+  unknown plugin, not by its words), no approval waits and the entry is dropped. Where the run could not tell, it
+  writes that, with the line that says why, dates it again on each run that still cannot tell, and keeps what
+  hooks have struck since; a session's start says that the doctor could not tell and why, and the evening's count
+  takes such a guard as not confirmed. What this release saw within the day stands while a later look cannot
+  tell, so a run from inside a sandbox spoils nothing. A harness the run did not find is said for a day in place
+  of another release's entry, where it used to be dropped unsaid.
+- **A hook strikes once its handler has answered, and does not wait for the note.** The strike was made before the
+  handler ran, so a guard that could not be loaded had already said that it runs; and a hook with something to
+  strike waited for whoever held the note's lock. It now asks for the lock once and leaves a held note for its
+  next call; a session's start strikes its own event before it reads the note, so a harness's own start does not
+  name the hook that is running. The doctor reads the clock under that lock, so a strike made while it waited is
+  kept. 5.14.0's entry said a harness approved in the middle of a session stops being named at its next guarded
+  call: what stops then is the word that nothing guards a send, and each other hook is named until it has run.
+  The session's note ends by saying that a harness's hook approval is the person's to give in that harness, and
+  that an agent gives none.
+- **The doctor reads Codex's model cache by its first whole value.** Codex's clients share that file, and in the
+  minute after 5.14.0's release it held one whole fresh copy followed by the tail of a longer one. Read as no
+  cache, the configured model's window was unknown, and `codex skill catalog` failed at 2,794 of 2,000 tokens
+  where it reads 2,794 of 10,000; Codex rewrote the file when it was next asked for its models. A cache with
+  nothing to read is now a warning that the budget cannot be told, and no failure.
+- **Smaller repairs.** A state file's temporary copy is each call's own and is removed when the write fails: two
+  threads of one process shared one, and a reader could find half a file. The context doctor says it cannot tell
+  which entries cite a record where the only folders named for sessions hold none (`synthesis-context-lifecycle`
+  2.5.1). No test reads a rituals folder named in the shell that runs the suite: sixteen core tests failed under
+  one, and a skill's test read the config it found there. The hook budget times a call that is over its allowance
+  for a second and a third block of rounds, every round counted, before it calls the call slow: on a shared
+  runner at half its usual speed the guard hook's fastest of fifteen read 92 ms beside 45 for its modules, with
+  nothing in the hook changed.
+
+## [5.14.1] - 2026-11-13
+
+- **The connector's Firestore fix, tested on the path that failed, and the cleanup after an upgrade**
+  (`synthesis-kb-distribution` 1.2.3), from 5.12.1's review.
+  - A test sends `/authorize` a client ID that is a URL, through the real Firestore store over an in-memory client
+    whose references the real client library builds, so its own path check applies. Against 5.12.0's connector it
+    answers 500, the deployment's error; with the fix the lookup goes on to the metadata document, which the test
+    never fetches, and the unknown client gets a 400. 5.12.1's tests stored a URL client directly, which the proxy
+    never does, through a stand-in that refused any "/" where the library refuses an odd number of path elements.
+  - Another test pins what an upgrade does: a record stored under its raw key is not read again. A third shows the
+    library itself refusing the URL as a document ID, and that a hashed store keeps no key in a document.
+  - `references/connector.md` 5.7 says what an upgrade from 5.4.0 to 5.12.0 on Firestore does (each client
+    registers again and each person signs in once more) and gives the command that removes the old documents, which
+    are named by codes and token IDs in clear text: `gcloud firestore bulk-delete` on the seven collections.
+  - The settings check refuses a `KB_FIRESTORE_COLLECTION_PREFIX` that begins with `H_` or `S_`: Firestore's
+    collection strategy keeps those for itself and, since 5.12.1, refused every collection under such a prefix.
+  - A key that holds an unpaired surrogate hashes instead of raising.
+  - What 5.12.1 said wrongly, now corrected in its entry and in the code's own words: the proxy looked the client
+    up, it never stored it; only one of its two tests failed with the deployment's error; its stand-in client did
+    not keep Firestore's rules as the library does; and the key strategy builds on the public Firestore strategy for
+    its type only, both methods being its own.
+
+## [5.14.0] - 2026-11-13
+
+- **A harness whose hooks wait for approval is said where someone will see it** (`synthesis-agent-conformance`
+  2.1.0, `synthesis-daily-rituals` 3.12.0, `synthesis-onboarding` 3.5.2). A hook that waits for the person's approval
+  does not run: no send guard, no deploy guard, no reply check. Codex asks again after every release, there were
+  nine on 2026-11-13, and the doctor said so on one line of forty, to whoever read the doctor. Each run of the
+  doctor now writes down, for Codex and for Muse, which of the four hooks were not running: the ones its own line
+  names, all four where it names none, with the line itself, each harness's entry with its own date and the release
+  it was seen under. A harness the run could not look at, or could not tell of, keeps its entry, and an entry of
+  this release says nothing once it is a day old. A session's start says which hooks in which harness were not
+  running when the doctor looked and have not been seen to run since, with the doctor's own line for what mends it;
+  where the guard's hook is among them it adds that nothing is known to guard a send or a deploy made from there.
+  The weekday evening job shows a fixed banner for one harness whose guard has not been seen to run, or for more
+  than one. `synthesis doctor --waiting` prints that count and the names, running no check and writing nothing.
+- **A hook that runs strikes itself from that note, and only itself.** It shows that one hook approved, so a
+  harness approved in the middle of a session stops being named at its next guarded call, with no run of the doctor
+  between. The harness is the one in whose own folder of session records the hook's transcript is a file, never
+  the environment's: the doctor's own self-test runs the installed hook from whatever shell the doctor is in, and
+  from Codex's shell that would have read as Codex's guard running. Muse hands its hooks no transcript, so only the
+  doctor's next look clears Muse. A change to an entry is made under a lock from what the note holds at that
+  moment, and a hook that ran after a look of the doctor began stays struck when that look is written.
+- **Seen under another release is said as not checked, until this release looks.** A release can be installed
+  with no run of the doctor (a harness that pulls it, a second Mac), and a harness can ask for its approval again
+  when the plugin changes. An entry written under another release is reported as not checked since synthesis
+  changed, at any age, by a session's start, which names `synthesis doctor` as what checks it, and by a banner of
+  its own. It goes when a run of this release looks at that harness, or finds no line of it on the machine.
+- **The doctor says where the day's prompt check is on.** One line names the workspaces whose day does not close
+  while something the principal typed is cited by no record, and the ones where it is off (measured: on for one
+  workspace of three). The setting is read in one place for the day-end and for this line (`rituals.prompt_check`),
+  with the config's defaults under each workspace, so a setting every day-end refuses is a warning here and not
+  `on`, and a check the defaults turn on is named for any workspace the config does not list. A rituals config
+  whose workspace is a string, a number or a list of things is refused in words by its reader; it raised a
+  TypeError that no caller expected.
+- **The context doctor counts the session entries that cite a record** (`synthesis-context-lifecycle` 2.5.0). An
+  audit asked for a warning on each entry that cites none; counted first, that was 259 lines of 267, in a report
+  nobody reads at that length. The report carries one counted line for each knowledge root, or for the one project
+  asked for, and no finding. A citation is counted where its id names one session of the archive, by the rule the
+  day's prompt check reads an id by, so a commit's hash or an order number before a number is none; a machine with
+  no archive says it cannot tell. On one root: 6 of 102 entries in fourteen days.
+- **The evening job leaves no compiled files beside the runtime it reads** (`-B`), which a test now holds.
+
+## [5.13.0] - 2026-11-13
+
+- **What the principal typed is filed as a prompt in every shape a transcript holds it** (`synthesis-context-lifecycle`
+  2.4.0). The session archive filed a `user` record only for a prompt that begins a turn. A prompt typed while a turn
+  runs, which Claude Code keeps as a queued command and in no row of its own, was a `system` record; so was what was
+  typed after a system reminder that the harness put before it in one block; and a slash command that reaches the
+  agent was a `system` record the first time and nothing the second, dropped as a copy. Measured on thirty days of
+  transcripts, each row given to the export's own reader: 578 of 3,327 things typed, 17 in every 100, were in no list
+  of prompts, 32 of them with no record at all. The day's list of prompts (`synthesis sessions prompts`) is read from
+  these records, and a day's close that accounts for every prompt was missing those. Each is a `user` record now: a
+  queued prompt, at the time it was typed; a slash command as the harness records it, its name and arguments with
+  any words beside them (`/review the last change`), and the same command typed twice is two prompts; and the typed
+  words with their reminder kept apart as a `system` record.
+- **Whether a row can be the principal's is the approval reader's own test.** A row or a queued command the harness
+  marks as its own (a tool's result, the tool call it came from, a synthetic or a transcript-only row), one whose
+  origin is not a person, and words beside a tool's result are `system` whatever they say; some of these were `user`
+  records before. A command to the harness (`/model`) and its output stay `system`, as do a command run in the
+  harness's bash mode with its output, which had been a `user` record, a task's notification and a CI event. Another
+  agent's or another session's message is a `brief` whether it comes in a row or queued, and so is what is said to
+  a session a program drives. Measured against the approval reader row by row on the same thirty days: the two
+  agree on 3,598 rows, and where they differ the text is a wrapped block with no words outside it or the harness's
+  own line that a request was interrupted.
+- **A session belongs to the projects it wrote into.** `projects` in a session's `meta.json` held the project the
+  session-start hook named and the one the board had for it at export: of 147 archived sessions that wrote into a
+  project's folder, 134 named no project. A session is now tagged with each project whose folder one of its tool
+  calls wrote into (`<a knowledge root>/projects/<id>/`, a folder that holds its `CONTEXT.md`): a file tool's
+  target, or what a shell line writes, read with the guard's readers; Codex's arguments kept as JSON text are read
+  with their working directory, and its patch as text. Reading a project's files adds none, and a shell line the
+  reader cannot read is counted in `meta.json` among what was skipped. Replayed over thirty days of Claude Code
+  transcripts, with the same rows read a second time without it: 47 of 120 sessions end with a project where 12 did;
+  150 of 100,800 tool calls were shell lines the reader could not read, and are counted; the reading costs under half
+  a millisecond a call.
+- **A rebuild numbers records anew, so it is not asked for.** Sessions already in the archive keep the records they
+  were given, and every row exported from this release on follows the new rules. `synthesis sessions export
+  --rebuild` files the past again, and where a record now exists that did not, the later records of that session
+  move up: a citation written before the rebuild then names another record. The reference says so; rebuild only an
+  archive whose records nothing cites yet.
+- **The guard reads a patch from the key Codex gives its hook** (`command`, by Codex's source; it read `input` and
+  `patch`, and found no file in such a call), and takes a tool named `shell_command` for a shell; the hook's matcher
+  names it too, so that such a call reaches the guard.
+- **A lint: no Python file defines a function or a class twice**, at its top or in a class's body. Renaming a helper
+  in a new test file gave two functions one name; a second definition replaces the first without a word, and a test
+  defined twice never runs. An overload's stubs and a property's setter share a name by design. 5.12.0's lint read
+  the core alone.
+
+## [5.12.2] - 2026-11-13
+
+- **`synthesis doctor` can tell again whether Codex holds the plugin** (`synthesis-onboarding` 3.5.1,
+  `synthesis-agent-conformance` 2.0.5). The doctor and the installer asked Codex for its whole plugin listing, which
+  takes in Codex's remote catalog. Codex fetches that catalog again when its copy is over three hours old (73 MB and
+  52 s on 2026-11-13), and the doctor's limit of 45 s stopped it before the fetch finished, twice running on the
+  morning this was reported: the Codex lines said `cannot tell`, and the day's first look at Codex's hooks did not
+  happen. Both now ask for the plugin's own marketplace first (`codex plugin list --json -m synthesis-engineering`),
+  for which Codex fetches no remote catalog, so the doctor's daily run and every release's update no longer wait on
+  it. "Not installed" is said only from the whole listing, which is asked when the marketplace's own shows no plugin
+  or a Codex does not know the option; the installer gives that one five minutes, and where it does not answer the
+  doctor in time, the doctor's line says to run `codex plugin list` once, since its limit stops the fetch each time.
+- **A Codex that is slow to say its version is still the Codex on the machine.** Before a Codex command is used it
+  is asked for its version, with a limit of two seconds, so that a launcher which outlived its app is passed over for
+  another install. Where no other install answered, Codex was taken for absent: the doctor printed none of its nine
+  lines and nothing said they were missing (seen once, on a busy machine, in a test), and the installer, a release
+  and the dispatch script would each have skipped Codex as not on the machine. A command that gives no answer in
+  time is now passed over only for an install that answers; with none, it is the one, and its own commands say what
+  is wrong if it answers nothing. A command that exits with an error is still no Codex.
+- **The installer does not add a second copy beside one from another marketplace.** A plugin installed from a
+  fork's marketplace is found by the whole listing; the installer stops, names that copy and the command that removes
+  it, and uninstall removes the copy that is there by its listed name. A listing that does not answer within its
+  limit stops the install with that said, the next listing is not started after it, and a listing that is no JSON is
+  reported with the harness's own last line.
+- **The doctor keeps reporting when a listed plugin's folder is missing.** A Codex listing with no version, or one
+  that names a folder that is not there, ended the doctor with a traceback and no report; it fails the package line
+  now. A listing is read past any words a command prints before it (from a brace or a bracket that opens a line),
+  where the first brace anywhere was taken and an installed plugin could read as not installed.
+
+## [5.12.1] - 2026-11-13
+
+- **The knowledge-base connector signs in ChatGPT and Codex on Firestore** (`synthesis-kb-distribution` 1.2.2). Its
+  first deployment answered every sign-in from ChatGPT and Codex with a server error: both identify themselves by
+  a client metadata document, so their client ID is a URL, and the OAuth proxy first looks a client up in its store
+  by that ID. py-key-value's Firestore store passes keys through unless it is given a strategy, and Firestore's
+  client library refused the URL as a document ID before any request was sent ("A document must have an even number
+  of path elements"), so the lookup raised instead of going on to fetch the metadata document. The connector now
+  stores every key under its SHA-256 hash (the OAuth proxy only gets, puts and deletes by key) and passes Firestore's
+  own collection strategy; records written since keep authorization codes and token IDs out of document names.
+  Every release from 5.4.0, the skill's first, to 5.12.0 has the defect on `firestore`; the operator's own test
+  (`memory`) never saw it. A store that already holds records under unhashed keys keeps them and never reads them
+  again: a client registered by dynamic registration (Claude) is told its ID is unknown and registers again, and
+  each person signs in once more; 5.14.1 gives the step that removes the old records. (Corrected in 5.14.1, which
+  says what this entry first said wrongly.)
+
+## [5.12.0] - 2026-11-13
+
+- **A status in a record carries its evidence, or says it is unverified** (`synthesis-git-hooks` 3.4.0). Off unless
+  the config has `status_evidence` (`{}` turns it on; `skip` names folders it does not read). On 2026-11-12 statuses
+  said colleagues could use a tool "now" when none of them could: they had been written from an assumption, and
+  nothing asked what they rested on. The commit check cannot know that a line claims a thing works. It can hold a
+  table to its own header: a row a commit adds to a Markdown table that has a column headed `Status` and a column
+  for evidence (`Evidence`, `Proof`, `Verified`, `How we know`) is refused when it gives a status and leaves the
+  evidence empty, unless the row says `unverified`. No approval clears it, so only a header that can mean nothing
+  else refuses: a `Source`, `Checked` or `Basis` column never does, and a filled one counts as pointing somewhere.
+  In a table with a Status column and no column for evidence, a row that says a thing works or is done and holds
+  no link, no code span and not the word `unverified` gets one line of note for its file, and the commit goes
+  through: that part reads a list of words, so it only informs. A table is read in a block quote, under a list
+  item and in a file with CRLF endings, and not in a code fence or an indented code block; one written without
+  its outer pipes is not read. Replayed over thirty days of commits to twenty-seven knowledge repositories:
+  12 rows refused in 6 of 1,110 commits, and 11 rows noted in 7.
+- **The account a site shows in a workspace's browser profile** (`synthesis-agent-guardrails` 2.8.0,
+  `synthesis-agent-conformance` 2.0.4). On only where a workspace's `browser_routing` entry names sites under
+  `accounts`, each with the workspace's address there; a key may name the page of the site that shows the
+  signed-in account. On 2026-11-12 a work browser profile was signed in, on a site where an AI assistant is used,
+  to the principal's personal account, and the agent reported that the work could not be done from there. The
+  right profile can show the wrong account, and what is typed or uploaded there goes into an account the workspace
+  does not own. The guard sees no browser; it reads the session's record, where each browser result names the tab
+  it ran on and a page read holds what the page showed. A call that types, sets a form's value, uploads or runs a
+  script on a page of a named site, alone or as a step of a batch, waits until a read of that site has shown the
+  workspace's address and none of the principal's others. Going there, reading, clicking and signing in never
+  wait, since the account often sits behind a menu, and neither does a key that only moves, selects, copies or
+  reloads. A put on a tab whose page the record does not show waits for a call that lists the tabs. A read that
+  shows another of the principal's addresses is called a misconfiguration to tell the principal about, not a limit
+  on the work: the hold says so (firmly where the key names the account's page, as a condition where it names the
+  site alone and a page may only mention the address), a turn that read it has its reply sent back once with the
+  same words, and `synthesis doctor` warns (`browser accounts`) until a later read shows the right account. A map
+  of another shape blocks the workspace's browser calls. What the guard cannot see is stated in the reference: an
+  account shown only in a picture, an address the config does not name, a page's text that runs the address
+  together with the words beside it. Replayed over thirty days of recorded browser calls: none of the 261 reads, clicks and navigations on such sites is held, and of the 88 calls that put
+  something into a page there, 22 came after a read that had shown the account and 66 before any, in four sessions.
+- **The two rules of 5.11.0 after a second review** (`synthesis-message-guard` 2.10.0, `synthesis-waiting` 1.1.1).
+  Both are still off unless the config turns them on. A message to a person is now a call whose own name says it
+  sends, replies, forwards or drafts a message: a reaction, an out-of-office note, a canvas, a comment on a file
+  and a share had each counted. From the shell it is `osascript` to Messages or Mail, a command `send_commands`
+  names for messages, mail, Slack or chat, and the local-messaging skill's sender, and both rules ask the same
+  thing of a command. A range of hours written with a hyphen (`2-3pm`) names a time. A `reads` pattern over a whole
+  server names its reads, a calendar write is never a read, and a server that only has `workspace` in a longer
+  name is no calendar's. A sender that asks from a script is judged by the record its session id finds, where
+  its hold had said the session read no calendar whatever it had read. A sub-agent's hold says its own reads are
+  not seen. Sends are judged one at a time, so two identical calls made at the same moment cannot each go on one
+  of a message's two codes. At the turn's end a connector's own answer that it failed is no send, a prompt that is
+  only a picture begins a turn, a statement dated ahead of the clock covers nothing, and the file of statements
+  keeps its last 64 KB. Replayed on the fixed code: the first rule holds 130 of 811 recorded calls to a person and 89 of 143 sends
+  that name a clock time at their last call; a message to a person went out in 275 recorded turns, 33 of them a
+  text by the local sender, and the second rule sends back 261.
+- **An entry's own time is read in a fourth place** (`synthesis-git-hooks` 3.4.0): a line that opens with a word
+  for what was done and then the time, with a weekday or a day between them or neither (`**Revised Fri 07:15
+  ET:**`, `Written 18:52:`). The morning the check first ran for a principal, a revision stamped with a weekday
+  and a placeholder minute was committed and no stamp was read. `revised` joins the words. A weekday that is not
+  today's names another day and is not judged. Replayed over thirty days of commits, it refuses 213
+  lines in 149 of 1,111 commits where 191 in 137 were refused before; each of the 22 more was read, and each is an
+  entry's own time, rounded or a few minutes ahead.
+- **The list of tabs is read in both of the browser extension's forms** (the address in quotes, and without them
+  as it was written until August 2026), for the browser rule above and for the rule that takes a page on a
+  messaging site for that messaging app; a new tab's empty address is a page that is known.
+- **A lint: no core module binds a name twice at its top.** Twice in one day a new helper took the name of an
+  older one further down the same file, and the later one won without a word.
+
+## [5.11.0] - 2026-11-13
+
+- **A message that names a clock time goes out on a fresh read of the calendar** (`synthesis-message-guard` 2.9.0).
+  Off unless the config has `fresh_calendar` (`{}` turns it on; leaving the key out, or `false`, turns it off, and
+  any other shape blocks messages and is named). A message to a person whose words name a clock time (`3:30`,
+  `15:30`, `3 pm`, `7.30 pm`, `15h30`) is held unless this session read a calendar, and the read succeeded, in the
+  ten minutes before the call. A message to a person is a send or a draft on mail, Slack, chat or texts, or by a
+  connector the guard has no name for, and a text or a mail sent from the shell; a calendar write, a harness's own
+  tool, a ticket and a document are none. The question is asked at the first call, before any approval code, and
+  again at the approved call, where the approval already typed stands: on 2026-11-12 an offer of a time went out
+  on a calendar read half an hour old, past a new invitation. A code of its own releases a message whose time is
+  no calendar's, or one from a session with no calendar to read; the ordinary approval and a send window do not
+  waive the read, and a message that goes on one code spends the other. A calendar's tool is known by its name
+  (`calendar`, `gcal`, `caldav` or `workspace` in it, or a free-busy query), and `reads` names others. In Codex
+  and Muse the guard does not see a calendar read, and the hold says so: there the code of its own is the release.
+  The guard cannot know that a message proposes a meeting. Replayed over recorded messages, about six in ten of
+  those that name a clock time were about when people meet, and a hold on one of the others costs one calendar
+  read and reaches no one.
+- **A turn that sent a message to a person ends with a watch for its answer, or says that none is awaited**
+  (`synthesis-waiting` 1.1.0, `synthesis-agent-guardrails` 2.7.0). Off unless the config has `reply_watch` (`{}`
+  turns it on, and it takes no key). `synthesis wait none "<why>"` is the statement: it arms nothing and leaves one
+  line on the board with its reason. In a Claude Code session, where a message to a person went out in the turn
+  and nothing answers it, the reply check sends the reply back once. What answers it: a timer or a monitor that
+  started after the last such message, the statement made after it went (read from the line the command wrote,
+  not from a shell command's words), or a wait the session still holds on the board. What a message to a person
+  is, the send guard says, a draft and a scheduled message left out; a call the guard held went nowhere, and a
+  turn begins at a prompt or a notification, not at a skill's text or a compaction. No hook judges whether a
+  message asked for something today: the seat that sent it says what it awaits.
+
+## [5.10.0] - 2026-11-13
+
+- **The commit check can hold an entry's own time to the clock** (`synthesis-git-hooks` 3.3.0,
+  `synthesis-agent-guardrails` 2.6.0). Off unless the config has `record_times` (`{}` turns it on; leaving the key
+  out, or `false`, turns it off, and any other value, `null` among them, blocks the commit and is named). In a
+  Markdown record an entry states its own time where a line opens with the day and a time, where a parenthesis
+  opens with them or with one of a closed list of words that say what was done then (`added`, `as of`,
+  `updated`), and, in a session log, where a list item opens with a time under a heading that names today. A
+  commit is refused when such a stamp stands 1 to 30 minutes after the commit, or rounds a moment from 15 minutes
+  back to 30 ahead (`18:3x`, `about 18:35`): the clock could be read. Counted over thirty days of real commits
+  before it shipped, every stamp that was later than its commit stood within that half hour; a time farther ahead
+  is a deadline, a schedule or a zone read as local, and passes. Not read: a time inside an entry's text, a
+  parenthesis that opens with any other word (`(scheduled 11-12 18:55)`), the time an unchecked box opens with, a
+  code fence, a folder of transcripts; outside a session log, a span that had begun (a meeting's hours, in the
+  notes written while it runs); and a commit that brings lines written before (a merge, a squash merge, a
+  cherry-pick, a revert, a rebase that stopped). A zone the stamp names is honored: `UTC`, an offset, and the
+  four regions of the United States, where a winter or summer label names the region's clock on that day. A zone
+  the check names and does not place (`IST`, `CET`) lets the stamp pass. No approval clears a refusal: the remedy
+  is the time `date` prints, in the command that writes the entry, or, for a time that is not when the entry is
+  written, the words that say what it is before it.
+- **A test's teardown list** (`synthesis-agent-guardrails` 2.6.0, `synthesis-agent-conformance` 2.0.3).
+  `teardown.py add "<what>" --remove "<how>"` writes down each thing a test sets up before it is made, `list`
+  shows what is still in place, and `done <number>` takes one off once it is gone. The list is a log that is only
+  appended to: a number is never given twice, a line written into it by hand stays as it was written, and a byte
+  that is no text stops nothing. `synthesis doctor` reads it at every run, in whichever session, and warns while
+  a thing on it is not taken off, with the oldest's age where it has one and the three oldest. It refuses nothing,
+  runs nothing a line names, and prints nothing a terminal would obey. The knowledge-base connector's test mode
+  asks for it (`synthesis-kb-distribution` 1.2.1): its `TEST ONLY` start line ends with the instruction, and its
+  reference names what such a test sets up (the address, a tunnel, a redirect URI, a deploy key, each client's
+  entry).
+- **A file that needs the runtime says so in one line when it is not there.** Run from a copy with no
+  `synthesis/` beside it, 27 skill scripts ended in a traceback, even for `--help`. Each now prints one line that
+  names the file whose import failed and exits 2, and a lint holds that every such import is guarded and that the
+  guard says so. Some of the 27 are imported, not run (the connector's `corpus.py`, the inbox scripts' `_lib.py`):
+  there the line names that file, and whatever imported it ends with it. A runtime that is there and fails as it
+  loads keeps its traceback.
+
+## [5.9.0] - 2026-11-13
+
+- **What the principal asked is accounted for** (`synthesis-context-lifecycle` 2.3.0). The archive holds every
+  prompt the principal typed, and until now a request, a decision or a correction reached a project record only
+  if an agent remembered. `synthesis sessions prompts --workspace <W> [--date YYYY-MM-DD]` lists what was typed
+  on a day, each as `<harness> <session> --seq <n>  HH:MM  <first words>`: what follows the harness is what
+  `synthesis sessions show` takes. With `--records <folder>` it lists only the prompts that no record under that
+  folder cites, says where it looked, and exits 1 while one is left. A brief one agent wrote for another,
+  injected text, a tool's result and the prompt a command line hands a run are not the principal's prompts; in a
+  Codex session a prompt and its mirrored copy are one prompt, and the same words typed again are another. The
+  listing first copies every transcript written since that day began, and lists nothing (exit 2) while one that
+  may hold that day's prompts is not copied.
+- **A record cites a prompt, and the listing never does.** A record accounts for a prompt by citing it as
+  `<harness> <session> #<n>`, alone or in a range (`#12-40`, `#12 to #40`), by the session's id in full or by
+  eight or more of its first characters that no other session listed shares. The listing, its JSON answer and
+  the list the day-end record prints when it refuses name a prompt with `--seq`, which is no citation: no copy of
+  them accounts for anything, however it is kept. In the prompt's own words, which the listing prints, every
+  number is set apart from its `#`, and every line `sessions show` prints begins with its session, as `recent`
+  and `search` do, so no layout of a tool's output makes a citation. A citation is written by whoever writes the
+  record, and it
+  counts where it stands. The end of a range carries its `#` unless the dash is tight, so `#12 — 2027 planning`
+  cites #12 alone; a record's number has at most nine digits; a string that carries an escape is read as the text
+  it holds, so a dash an encoder escaped still joins its range.
+- **Which records are read.** `--records` reads the files under a folder that end in `.md`, `.markdown`, `.txt`,
+  `.json`, `.jsonl`, `.yaml` or `.yml` and changed since the day began, and none on a day with no prompt. A
+  folder that is not there or may not be listed, a record that may not be read, and a sessions repo named as a
+  folder of records are each named, and nothing is listed (exit 2): read as empty, a folder would leave every
+  prompt open with no word of why. A sessions repo under a folder of records is passed over, since it holds the
+  conversations themselves, and so are a folder reached through a link, a link that leads nowhere and a file that
+  is no regular file.
+- **A day is not closed clean over a request that reached no record** (`synthesis-daily-rituals` 3.11.0). Where
+  a workspace's ritual config has `"prompt_reconcile": {"records": ["<folder>"]}`, the day-end record runs the
+  listing itself and refuses a clean close while a prompt is cited by no record, naming each as the listing does
+  and the folders it looked under; `--outcome partial` records the day and says how many are open. Only a
+  missing key or `false` turns the check off: any other value is refused and named, and so is a folder written
+  from no fixed place. Nothing is recorded when the listing cannot be made, or when its answer is for another
+  workspace, day or set of folders, or does not agree with itself. A ritual record takes its day only as
+  `YYYY-MM-DD`, and never a day ahead.
+- **Session transcripts are copied every hour, whether or not a session remembers to** (`synthesis-onboarding`
+  3.5.0, `synthesis-agent-guardrails` 2.5.1). `setup.py plugin --sessions-export` installs a LaunchAgent that
+  runs `synthesis sessions export --all --scheduled` and then `synthesis sessions sync` every hour and at
+  login, with the folders the install was made with; `setup.py uninstall` removes it only when it runs this
+  install's command. Every export leaves a stamp, and `synthesis doctor` fails when the schedule is not loaded,
+  runs another install's command, or has finished no export in a day or none of its own; and, on any Mac, when
+  a transcript could not be copied, a folder of transcripts could not be listed, or a transcript was removed
+  before any run copied it. Only the principal can accept such a loss: `synthesis sessions export --lost
+  <session>`, which an agent can run only with the principal's approval code. `synthesis sessions export` exits
+  1 when something it was asked for was not copied, and the audit log names each export.
+- **The archive reads back what it wrote.** A record that holds U+2028, U+2029 or U+0085 is read back whole:
+  split at those characters it could not be listed, opened or synced. A line torn by a cut write is finished as
+  a whole record, and a copy cut before its state was saved repeats none. On Python 3.14 a transcript that
+  cannot be looked at is named as not copied, where it had been passed over.
+
+## [5.8.2] - 2026-11-13
+
+- **A package of the method skills for a plugin directory that takes no hooks** (`synthesis-skills-manager` 3.5.0).
+  OpenAI's public plugin directory lists no plugin that registers lifecycle hooks, and this plugin registers four.
+  `build_directory_package.py` builds a second package for that directory from the same commit: the 32 skills that
+  need nothing from the runtime (writing, review, fact-checking, planning, thinking), each file byte for byte, one
+  manifest that registers no hook, and one mark as its logo and its composer icon. A ZIP that is written is read
+  from the last commit itself, each file as git holds it. Its name and description say what it is not: no guard
+  checks a send, a deploy or a commit, and there is no board and no ritual. `--check` reads the built ZIP and
+  fails on a hook; a file that is no listed skill's; a listed name that is no skill here; a listed skill that
+  depends on one outside the list; a file that differs from its source; a version that is not the repository's; a
+  text that claims a guard, a hook or an approval code at work, sends its reader to the coordination board or
+  needs the runtime; a manifest without its two images; an image no field names; and an image that runs a script
+  or loads from outside itself. The claim rule reads a file a paragraph at a time, so a claim that wrapping
+  splits is caught, and it knows the runtime's commands with or without backticks; the ordinary senses of the
+  same words pass (a writer's hook, a guard clause, a board of directors), and the tests pin both. A skill that
+  gains such a claim leaves the list in the pull request that adds it; its text is not edited to pass.
+  `--changed-since TAG` names what changed in the package since a release, so a new submission is made when one
+  is due. Building submits nothing: the upload is the owner's step, and the reference lists what a submission
+  asks of them.
+- **Nothing the core does warns under Python 3.13 or 3.14.** Three calls passed a split's limit to `re` by
+  position, which Python 3.13 deprecates and a later Python will refuse; they name it now, and a lint test reads
+  the repository's own Python files for the same. The doctor closes the three pipes it opened to a harness CLI when it stops it,
+  where it had left them to the collector. `pytest.ini` turns a deprecation met in a line of the core, in a
+  test's own process, into a failing test on the Python that deprecates it: the three calls had warned at every
+  use, in a summary at the end of a run.
+
+## [5.8.1] - 2026-11-13
+
+- **A guard's check takes half the time** (core). A hook is a new Python process on every tool call, and a session
+  whose environment tells Python to write no bytecode cached nothing it compiled: the guards were compiled from
+  their source on every call. On one Mac a shell command's check took about 72 ms against the 50 ms budget, and
+  `synthesis doctor` said so (`hook self-test`). The installer now compiles the runtime once, for the interpreter
+  that installs it, and the same check takes 33 ms. The plugin folders stay as each harness installed them, the
+  runtime's hash is of its source as before, and an install over a runtime without compiled code adds it. So
+  does a session start: an upgrade through a harness is made by the installer of the release already there,
+  which before this release compiled nothing, and the interpreter a hook runs on can change under a runtime; the
+  check costs a session start about 1 ms. Each compiled file carries its source's hash and is checked against it
+  when it is loaded, not against its date and size, and nothing that goes wrong while compiling stops an install.
+  An interpreter that keeps compiled code under one folder of its own (Apple's Python) finds the runtime's there,
+  under the path a hook imports from; a test run under such an interpreter keeps its compiled code in a
+  temporary folder.
+- CI runs the suite in three jobs for each system and Python: the core's tests in two halves by file name, and
+  the skills'. The whole suite had come to take up to 526 seconds on a macOS runner, and on main one job was
+  cancelled at its ten-minute limit with no test failing; as two jobs, the core's tests still ran over the limit
+  on one slow runner. A lint test holds that the three jobs together miss no test file, by either name pytest
+  collects (`test_*.py` and `*_test.py`) and in any folder.
+- The tests' time bounds follow the machine that runs them. The guard hook was held to a fixed 150 ms: one slow
+  runner failed it with nothing changed, and the 72 ms above had passed it. Its test now runs the installed,
+  compiled runtime as a session runs it, told to write no bytecode, and allows twice what a fresh interpreter
+  takes, on that machine at that moment, to load the standard-library modules the hook needs. It names those
+  modules and fails when the hook's own code imports another while the call runs, at a module's top or inside a
+  function; and it fails a runtime that is not compiled (2.7 times, where the compiled one takes 1.3 to 1.5).
+  The turn-end check's test does the same, and eight bounds on work inside the test process stretch by how much
+  slower the machine runs a fixed piece of work.
+
+## [5.8.0] - 2026-11-12
+
+- **Nothing another person is given stands on an address that can change** (core, message guard 2.8.0, implementation
+  integrity 2.1.0, knowledge-base distribution 1.2.0, daily rituals 3.10.0, autopilot 4.1.0). A connector tested on a
+  laptop behind a quick tunnel, with sign-ins kept in memory, was handed to two colleagues in direct messages that
+  carried the tunnel's address. One relied on it for real work. When the laptop's app restarted the address was gone
+  for good, and two scheduled check-ins ran without looking at it.
+  - **The send guard.** With `temporary_addresses` in the config, a send, a draft, a shell command that posts and
+    words typed into a messaging app are refused, before any approval is asked for, when they hold a quick tunnel's
+    host (twenty-four services, and a service's own host with a port, as bore hands one out), a local name or a
+    private, shared or link-local address written with any scheme or a port, a loopback address or a private IPv6
+    literal however written, or a wildcard-DNS name that carries one (`192.168.1.20.nip.io`). A host is read
+    whole: a public name that begins like a local one, a file's name with its line number (`config.local:7`) and
+    a range written with a prefix length (`10.0.0.0/8`) go on to the ordinary approval. The approval of the
+    message does not release an address: only the principal's typed approval of the addresses themselves does,
+    for fifteen minutes, and the message then still waits for its own. `{}` turns the rule on, `hosts` adds host
+    names, `local: false` leaves local addresses out, and a key that is there and null stops sends as a setting
+    that cannot be read. On 2,562 recorded sends of thirty days it would have fired six times: four on that
+    tunnel's address, two on a database port on localhost in a ticket.
+  - **Starting a quick tunnel** (`cloudflared tunnel --url` or `--hello-world`, `ngrok http`, `devtunnel host`,
+    `localtunnel`, `bore local` to bore.pub, `tmole`, `loophole http`, `tailscale funnel`, a reverse `ssh` or
+    `autossh` to a tunnel service) waits for the principal's code and says what a quick tunnel is for: their own
+    test, with an address that is never given to anyone. The program is read however it is named: outright,
+    through a variable set in the same command, by a package runner with its options and a version, or as a
+    container's image. A named tunnel is not held (`cloudflared tunnel run --url ... <name>`), nor is a lookup
+    (`tailscale funnel status`), nor a reverse forward to a host that only ends with a service's letters.
+  - **The knowledge-base connector** refuses to start when `KB_PUBLIC_URL` is on one of those services, a local
+    name, a name under a wildcard-DNS service or an address the internet cannot reach, outside an operator-only
+    test mode (`KB_OPERATOR_TEST=1` with `KB_OPERATOR_ADDRESSES`, three addresses at most: one person's own
+    accounts). In the mode nobody but the operator signs in, a refresh by anyone else is refused at the token
+    endpoint, a line that begins `TEST ONLY` is logged whatever the log level, and `/health` says
+    `test_only: true`. **A deployment must keep its sign-ins in a store that survives a restart:** outside the
+    mode `KB_OAUTH_STORE` left unset or set to `memory` refuses the start, and memory is allowed only in the
+    mode. **`KB_PUBLIC_URL` is an origin and nothing more:** with a path, a query, a fragment or a user-info part
+    the start is refused, each part named and never shown, with the origin to write. An address in an old
+    numeric spelling is refused whatever it denotes, and a host no address could have, a port that is no port
+    and an address that cannot be parsed are malformed and raise nothing. A `KB_LOG_LEVEL` that is no level
+    refuses the start. A test holds the connector's list of tunnel services and the guard's equal.
+  - **The handoff gate** (implementation integrity, `references/handoff-gate.md`, rule 10): before anyone but the
+    principal is given something to use, five lines pass with evidence read that session (where it runs, a
+    permanent address, state that survives a restart, a watched health check, a named owner), each recipient's own
+    access is proved, and every outside dependency is listed with where its notices arrive. A miss blocks the
+    handoff. Each line names the evidence that proves it and the look-alike that does not: a preview deployment
+    has a project and a revision too, a restart of the process keeps a temporary folder, and an alert can come
+    from a check run by hand.
+  - **A standing health check.** A workspace declares what other people rely on in the ritual config (`relied_on`:
+    what, by whom, and a check as a list of words). `relied_on.py` runs each check, prints whatever is down first
+    and exits 1 on any failure. The day-start, the mid-day sync and the day-end run it first; a `DOWN` line opens
+    the plan (`## Down: needs your attention`, above the critical deadlines) and the reply, and is an incident
+    the principal hears first. An autopilot run's standing checklist gains `others-rely-on`, and every wake runs
+    the check before its next item. A check is a standing command, so each is put to the guard first: one the
+    guard would hold for an agent is reported down and never started. A declaration of the wrong shape is
+    reported as down, and a checker that cannot run (no runtime to import, a guard config it cannot read) prints
+    one `NOT CHECKED` line and exits 2, which a ritual or a wake reports first and never reads as healthy.
+  - `synthesis doctor` proves the address rule reads a quick tunnel's address under the installed config
+    (`temporary addresses`).
+  **Every seat:** do not hand anyone a test's address, and pass the handoff gate first. Declare what other people
+  rely on under `relied_on` the day it is handed over.
+- **A send's attachments are read before the approval, as the connector reads them** (core, message guard 2.8.0,
+  agent correspondence 4.2.0, meeting transcripts 1.2.0, onboarding 3.4.0). A mail send with a file attached was
+  approved and then refused by the mail connector, which reads a local file only from its own attachment folder
+  and the folders it was started with; beside a file it could read, the mail went out without the other.
+  - Agents stage outgoing files in one folder, the outbox under the synthesis home. The connector's `start.sh`
+    makes it and adds it to `ALLOWED_FILE_DIRS`; Codex's sandbox is granted it.
+  - Before any code is issued the guard refuses what the connector would refuse or silently change: an attachment
+    whose file is outside the outbox and the connector's own attachment folder, is named under a key the
+    connector does not read, gives two sources, gives `content` that is not standard base64 or has no
+    `filename`, or whose name or folder marks secrets; a `url` that is the connector's own download link, one it
+    does not fetch (anything but http or https, a `file://` URL among them) or one on a host it fetches nothing
+    from (a local one, or an address that is not on the internet); an entry that carries a key the connector
+    sets itself, a name or a type with a control character, or a content id it rejects; a linked path with no
+    `filename`, which would go out under the link target's name; an `attachments` value in a shape the connector
+    refuses. Five Drive tools that read a local file follow the same rule, a Drive call that gives a file's
+    content twice is refused, and the ones that ask for no code refuse a file that cannot be read. A source that
+    cannot be parsed is a refusal, and nothing raises out of the guard. The guard counts nothing its own process
+    has in `ALLOWED_FILE_DIRS`: that is the session's setting, and a connector a supervisor started carries its
+    own.
+  - An approval binds the bytes of each file the connector will read. A file replaced, or a link pointed
+    elsewhere, between the approval and the call needs a new code. The read is bounded: a file that cannot be
+    read within two seconds is refused at that limit.
+  - `synthesis doctor` has an `outbox` line: the folder is there to write, and a connector kept running by its
+    auto-start was started with it and without `WORKSPACE_MCP_DISABLE_LOCAL_FILES=true`. It reads what the
+    connector was started with from the process record itself, so a value that holds a space is read whole.
+  - `start.sh` runs one release of the server, `workspace-mcp@2.1.0`, the one whose rules for a local file the
+    guard copies; `WORKSPACE_MCP_VERSION` names another. The installer escapes every value it writes for a plist
+    or a systemd unit, quotes a start path systemd would misread and refuses a value that holds a control
+    character. Run over an installation that is already there, it leaves the installed unit as it was until the
+    answer is yes (a no once removed it), then replaces what the service manager holds: a loaded launch agent is
+    booted out before the new one is loaded, a running systemd unit is restarted, and what launchd holds is read
+    back.
+  **Every seat:** copy a file you attach into the outbox and give that copy's full path. **Once per machine:**
+  restart the mail connector after this release, since a running one keeps the folders it was started with.
+- **Waiting for an expected event is a task** (core, new skill synthesis-waiting 1.0.0). A session told to expect a
+  peer's message ended its turn with nothing armed: a board message reaches a session only when a prompt is
+  submitted, so it sat until its principal typed. Its first watcher then polled `synthesis inbox`, which marks what
+  it prints as read, and waited half an hour beside mail addressed to a project its session was not bound to. Now:
+  - `synthesis wait message|file|run` blocks until its event or its bound (`--for`, at most twelve hours) and holds
+    a record on the board while it runs, so the watcher is its own registration. On the event it prints one line and
+    exits 0; at the bound it exits 3 and says nothing arrived; a bound it cannot read, or a command whose program
+    cannot be started, exits 2 at once with the reason. A try of `wait run` runs in a session of its own, reads
+    nothing from the terminal, and is stopped with all it started unless it succeeds in time. `wait note` records
+    a wait the harness itself holds, `wait clear` withdraws this session's notes, and `wait list` shows every
+    session's.
+  - `synthesis inbox --peek` lists unread mail and marks none of it; `wait message` reads the same way and names the
+    sender, never the message.
+  - `synthesis msg` ends with what will deliver the message: the recipient is watching (and how often its watcher
+    looks, when that is not within seconds), it reads it at its next prompt, or no session is bound to that
+    project. `--wake` nudges an idle recipient through its own harness where a command can, with one fixed line
+    that carries no instruction; with `--durable`, each live session on the project. A session that holds a live
+    wait stays addressable for the wait's whole bound, and `who`, `resume` and an address error's list of seats
+    mark it `waiting until HH:MM`. A message whose text is `wait` or `doctor` is a message: the command is the
+    first word that is no option of the CLI's own.
+  - The turn-end check sends back, once, a final reply that announces the session's own wait with nothing armed.
+    It reads the reply clause by clause: a first-person wait ("I'm waiting for", "I'll wait"), a first-person
+    future tied to an event still to come ("I'll merge once the checks pass", "when the bank confirms, I'll record
+    it"), or a sentence that opens "Waiting on". Armed means a live `synthesis wait`, an autopilot run the session
+    owns, or, in Claude Code, background work the session started that has not reported yet (an agent, a shell
+    task, a workflow, a monitor), which it reads from the last 32 megabytes of the transcript: only the harness's
+    own entries start and end such work. A reply that hands the principal the turn passes: it ends by asking,
+    offers an approval code to type (one named as spent offers nothing), asks them to act in so many words, or
+    says plainly that nothing wakes this seat until they prompt it. So does a list of open loops (a wait with no
+    subject as a label before a colon, in a heading or in a table row; a wait after a dash or a semicolon), a
+    rule for next time, an explanation, a clause that awaits the principal's own move, a wait whose next clause
+    asks them to hand the thing over, and a continuation on the session's own next step. A first-person wait is
+    read wherever it stands, and the text between a `BEGIN` and an `END` line is set aside as quoted text is. It
+    was measured on recorded replies, not invented ones: of 4,443 turn-ending replies from thirty days on one
+    machine it reads 542 as a wait, finds background work out in 463, and sends back 79, under three a day; read
+    one by one, three in four of those are the session's own wait with nothing to end it. The first form of the
+    check would have sent back 815. Config `wait_phrases` adds phrases.
+  - A session bound to no project is told at its start which projects hold mail its inbox would deliver, the newest
+    first, and `synthesis doctor` runs the turn-end check on a canned reply.
+  - The skill holds the rule, the commands and, harness by harness, what wakes a session and what a watcher costs,
+    each line with how it was learned. **Every seat:** a reply that ends on "I'm waiting for…" or "I'll do it
+    once…" now needs a watcher armed (`synthesis wait`, or `synthesis wait note` for one the harness holds), the
+    wait said to be the principal's, or a plain statement that nothing wakes the seat.
+- **The provenance scan reads the folders a workspace keeps its plan in** (agent guardrails 2.5.0). A workspace
+  kept its daily plan in `ritual-workers/`, so neither its plan nor its close was ever scanned.
+  `provenance_scan.py` now also reads `ritual-workers/` and `drafts/`, a file named outright whatever its suffix,
+  and every file under a folder given with `--records` (a plan folder under another name), at any depth and in
+  hidden folders. A record it cannot open is named and the scan exits 1; a file that is not text is counted and
+  fails nothing; a path that does not exist exits 2. The day-end step says to pass each declared plan folder.
+- **One passage moved, nothing trimmed** (thinking framework 3.0.1). The two sections of
+  `references/decisive-uncertainty.md` that describe an autopilot run's journal moved word for word to the
+  autopilot skill's `references/uncertainty-journal.md`, with one sentence left in their place: a package of the
+  method skills alone does not carry that runtime.
+- The checklist before an approval says to read how a form takes its input before a send through it is staged
+  (five addresses typed into one field were rejected after the code was used).
+- The reader of inline Python programs no longer passes on Python's own warning about a program's escapes, which
+  a replay showed the hook printing.
+- A config file that is JSON and no object is unreadable to every reader of it, as one that is not JSON is, and
+  a `synthesis` command that reads an unreadable config says so in one line with the file to fix
+  (`synthesis resume` and `synthesis sessions list` ended in a traceback). `synthesis resume` on the project a
+  session already works names the live seats there, a waiting one with its bound.
+- The audit reference lists every check the doctor runs, held by a test that reads the names from the code
+  (agent conformance 2.0.2). The README's command table gains `wait`, `journal`, `index set` and `sends`, and
+  lists `synthesis-waiting` and `synthesis-kb-distribution`: 72 skills. Checkpoint 2.0.2, project resume 2.0.1
+  and the skills manager 3.4.1 say what a waiting seat's row shows.
+- A second model read the release branch and returned 42 findings, every one in the pieces this release adds.
+  Each was fixed with a failing test first, with what the fixes' own probes found beside them, and the suite
+  and the replays were run again before the release.
+- The thirty days of commands then recorded (114,398) were replayed through this release's write guard and
+  5.7.0's: 60 refused before and after, none newly refused or newly passed, and none on which it raised.
+
+## [5.7.0] - 2026-11-12
+
+- **An in-person commitment is not on the calendar until its travel is** (chief of staff 2.3.0, daily rituals
+  3.9.0, message guard 2.7.0, core). A principal who owns no car found an evening event 28 miles from home that
+  had been on his calendar for six days with no travel time, no route and no fare, its location a town and
+  "address on the card". It had been carried through three daily plans, a guest's arrival logistics and that
+  morning's day-start; two estimated times had gone out, and the real train got him home 48 minutes later than a
+  draft had promised. A rule about realistic travel was in his preferences under calendar rebuilds, so nothing
+  ran it when one event was added. Now:
+  - `travel_check.py` (chief of staff) reads a saved calendar read and the `travel_policy` in the preferences and
+    lists each in-person event with what its travel lacks: an exact address (a house number with its street, or a
+    postcode with its town), the event's own `Travel:` line in one of three forms (`blocks`, `local, N min`,
+    `none, <why>`), a travel block on each side with every line a traveler needs (who pays, leave, route, arrive,
+    backup, fare, ticket), an arrival early enough, and four things only the principal settles (a return that
+    leaves before the end, one that ends after the latest hour, a night shorter than the policy keeps, a car on a
+    personal trip). A block serves the events its `For:` lines name, or, naming none, the one event nearest it. An
+    entry beside the event that is titled like a trip but is not in the labeled form is named as that, not
+    reported as no block; a block is known by the form of its title (the block's word alone, or followed by a
+    colon, a dash or a direction) or by its lines, so an event whose title only begins with that word is an event, with clock times or without; and an event at a place whose start cannot be read stops the check and is named. It
+    plans no trip: an agent does that from a live source.
+  - `slot_check.py` takes `--travel-before` and `--travel-after`, counts the trip as taken time and says when
+    the principal is home; `--in-person` with neither is refused. An event is taken time on each day it covers (a
+    block that began the night before is part of this morning, and a trip back past midnight meets the next day's
+    first entry), and a slot on top of another event says so.
+  - Daily rituals: where a workspace turns it on (`travel_check` in the ritual config), day-start, mid-day and
+    day-end run the check over that day and the six after and put each flagged event in the plan, and
+    `ritual_state.py record --travel` refuses without today's result, with one that does not agree with itself
+    (an event that ends before it starts among them), or while an event lacks its travel. A leaving or returning time in a plan or draft is taken from a travel
+    block.
+  - The guard: with `in_person_travel` in the config, a calendar write that creates an event at a place, or gives
+    one a place, is refused unless the call carries the travel line. It asks for no approval and holds no copy of
+    the travel rules: it asks the chief of staff's check and the principal's policy, which it reads only for a
+    call that names a place. That call is refused when the policy cannot be read.
+  - `preferences.example.json` gains a `travel_policy`; the step is `references/in-person-travel.md`.
+- **The trip is seen at the ask, and every choice is put with a view** (chief of staff 2.3.0, daily rituals 3.9.0,
+  decision packet 2.4.0). Shown the repaired plan, the same principal said the trip was a burden he had not seen
+  when he agreed, that a late return before an early morning is a cost of its own, and that a chief of staff
+  would have warned him. The invitation had been put to him as a bare accept or decline: no recommendation, no
+  trip, no time home.
+  - The trip is worked out before an invitation is brought, not after the yes. With the trip's minutes,
+    `slot_check.py` gives a `return` line (home after `travel_policy.latest_return` is the principal's decision)
+    and a `sleep` line (less than `travel_policy.sleep_hours` before the next morning's first commitment, or
+    before the hour `travel_policy.morning_starts` gives the morning if that is earlier: a morning that begins at
+    a fixed hour with nothing on the calendar cost nothing the check could see). A commitment already begun when
+    the principal gets home leaves no night at all, and with no hour for the morning an outing that begins and ends
+    on one morning is judged against the next night. An all-day commitment at a place the next morning gives no
+    hour, so both checks say the night cannot be judged and neither calls it enough; an all-day block the
+    principal marked as their own, or one that says it is busy, takes its whole day; and of several events at a
+    slot's own hours one is the slot and the rest are other events. The night before an all-day commitment at
+    the principal's own office is unjudged too, a trip back that runs into a day blocked whole is no clear trip,
+    and the agent's own hold kept all day is still a hold.
+  - Chief of staff binding rule 14 and `references/asks-and-decisions.md`: every invitation, request or choice
+    carries what it costs, a recommendation, and a plain challenge when the costs outweigh the event.
+  - `ritual_state.py record` reads the day's plan in each declared plan folder and refuses while an open item that
+    offers options (under a heading of its own, or as an entry of a list under a shared heading) has no
+    `Recommendation:` line, or, when it is an accept-or-decline or carries a `Commits:` line, no `Consequences:`
+    line. Options indented under their entry, at any depth of a list, are that entry's own; an example is not read
+    (a fenced block, quoted or not, closed or not, or a block Markdown shows as code, also inside a quote under
+    a list entry), nor is an HTML comment; emphasis may be written with asterisks or underscores, and a title
+    struck or ticked inside bold is closed. A line may be a quote inside a list entry, a task-list box, a heading or
+    a row of a table; a choice is titled by its own heading at any depth, by the entry its options and any sentence
+    of explanation stand in, or by a line all in bold; a recommendation is also read as `Recommended:`, as
+    `My recommendation:`, with a dash, or marked on the option; a sentence that begins "Option A was fine" is no
+    option; and a closing line closes a choice when it says what was decided. Each deeper heading or bold title
+    begins its own choice whatever its options are lettered, a recommendation or a decision that only puts the
+    answer off ("pending", "undecided", "not yet") is none, a pin or a tick before the label does not hide it, and
+    a fenced example that begins a list entry is an example (the deadline sweep reads such a fence the same way). **This applies to every workspace that declares plan
+    folders,** from its next ritual record.
+  - The decision packet generator refuses a row that is not blind and recommends nothing. Until now one
+    recommended row covered for rows with none.
+- **The meeting load counts meetings, and protected windows stand beside prose** (chief of staff 2.3.0). A seat's
+  slot was refused at 7.08 hours of meetings against a limit of 5, where 2.58 were meetings: `slot_check.py` added
+  up every event of the day, the principal's own blocks included, and the same read feeds the free-time checks,
+  where those blocks belong. A meeting is now an event someone else is on. An event with no other attendee, with
+  only the principal's own addresses (`principal_addresses`, or the calendar's own mark), or with a title carrying
+  a personal marker (`calendar_guardian.personal_markers`) is taken time for every other check and left out of
+  the load, and the line says how many it left out. A marker is a tag the principal puts on their own blocks
+  (`#reserved`), matched as a whole word: a plain word that a meeting's title might carry stops the check. A read
+  that names no one else on any event counts each one, and says so. Protected hours may also be a section that holds a list of `windows` beside lines of prose another
+  reader depends on: a line of prose is named as unchecked unless a window gives it as its `source`, a slot is
+  checked against the windows of each day it touches, and `24:00` ends a day.
+- **The write guard reads a path however a command names it, passes a protected path only to a program it knows
+  to only read it, and reads an inline Python program by its syntax** (core). It began as two faults: a write
+  through a variable the command had just assigned was judged as a write somewhere else, and the file tools were
+  refused in a project's memory folder. Twelve rounds of review by a second model, and this project's own probes
+  (more than 2,100 plain commands and programs) and replays while answering them, showed the guard was narrower
+  than what it guards against in four ways.
+  - **How a path is read.** Every write in a command is resolved and judged, whether or not the command spells a
+    protected folder out: relative to the session's folder, to a `cd` (`cd -`, `pushd` and `popd` are followed) or
+    to where `env -C` or `sudo -D` sends the command, through a variable, through a link the same command makes (a
+    relative one read from the folder it is made in). A command is read once for each value it gives a variable
+    (an assignment, `+=`, after `export`, `readonly`, `declare` or `env`, in a `for … in` list, inside a quoted
+    script), with the environment's value for one it does not set, the default a use carries and an end trimmed by
+    `%` or `#`. The words after a shell's script (`sh -c 'script' name word`, `sh -s word`) are put where the script
+    uses them, quoted for where they land, a substitution's own quoting included. `$PWD` and `$OLDPWD` are the
+    folder each command is in and the one before, not the guard's own. A word that starts with a substitution the
+    guard can read is read with what that names put in (`$(dirname <path>)`, `$(mktemp)`, `$(pwd)`, the top of the
+    repository), for a `cd`, a target and a variable given one; after a `cd` it cannot read, a bare file name
+    written in a command that names a protected folder is a write the guard cannot place, and is refused. A
+    keyword argument in a program (`env=dict(os.environ, OUT=target)`) is that program's text, not the command's
+    `OUT=…`. A path is compared the way a Mac's file system finds it, whatever its case. A target outside a
+    protected folder that changes one is judged so: a folder changed throughout that holds it (`rm -rf` of the
+    folder above the transcripts, that folder moved away, a tree copied over it, a `find -delete` across it), and
+    a pattern that may name what lies in it. The destructive-command guard and the claim check read the same
+    readings, so a recursive delete, a force push or a write into another session's claim through a variable or a
+    loop is seen. `~` and `$HOME` are the home a command gives itself when it sets `HOME`.
+  - **What counts as a change.** A list of the programs that write never ends (a move's source, `find -delete`,
+    `xargs rm`, an archive unpacked into the folder, a download saved there, a file compressed in place), so the
+    rule is turned round: a path inside a protected folder may be handed to a program the guard knows only reads
+    it, to an interpreter or a shell (judged by the script it is given), and to `git` and the `synthesis` CLI. Any
+    other program is refused and told to read the file with `cat` and pipe it in, or to copy it out. What a file
+    utility changes is read from its own words: a copy's destination, both ends of a move, what `find` deletes or
+    runs a changing command on, what an awk program writes or what a command it is given as a plain string writes,
+    the files `xargs` hands on. Each command `find` runs is also read as a command of its own, for what it writes
+    besides the files found, in the folder of what it found when `-execdir` runs it (the top of the search and each
+    protected folder under it). What `printf` prints into a shell is its format with its words put in, and an inline
+    program for an interpreter the guard does not read (`php -r`, `lua -e`) is held for each path it names. A word
+    handed to a program the
+    guard does not know (`watch`, `ssh`, `osascript`) is read as a command line where it starts with a program
+    the guard has a rule for (a shell, an interpreter, a file utility, `awk`, or a reader that redirects, as in
+    `date >> file`) and held for what it would
+    write, run or start; the value of a message option (`--body`, `-m`, `--prompt`, attached or not) and a
+    sentence that mentions a folder are words for a reader. What `trap` keeps to run when the shell ends is
+    read as a script, also after `--`, and an operand that is `-` is a command's input, so the operand after it is still its
+    output (`uniq - <file>`).
+  - **How a Python program is read.** A program given to Python inline or on its stdin is read by its syntax and
+    alone, since a pattern over its text stopped at the first closing parenthesis and every heredoc of a line was
+    read as one program. A write is a file opened to write, a `pathlib` call that changes a file, a call into
+    `os`, `shutil` or `subprocess`, a database opened, an archive unpacked or made (judged where it lands), a call
+    named as a writer in any library, a store or a file a library opens to be written (`shelve.open`,
+    `h5py.File(path, "w")`, `ExcelWriter(path)`), however the call was imported or renamed. A writer by its name is
+    judged at the argument that writer takes as its path: the first (`df.to_csv`, `arr.tofile`, `savefig`, a
+    thing's own `save`, numpy's), the second (`dump`, and `save` where the library takes the thing first, as
+    `torch.save` does), either when the reader cannot tell; a bare name is a file where the program stands, what
+    is handed besides the path is content whatever it spells, and a function of the program's own named like a
+    writer is read as it is written. A link a program makes is judged at both ends. A
+    target the program spells out is judged where it leads. A name is read through every value the program gives
+    it: where it is read, the value its own body last gave it, with what a branch, a loop or another function may
+    have given it since, and before any, what each caller handed the function. Each function is read by its own
+    names, and a call of the program's own function by what that call hands it. A member (`job.out`,
+    `cfg["out"]`, `rows[0]`, `os.environ["OUT"]`) is read by the thing that holds it: each object, table and list
+    the program makes is one thing, known by the place that makes it however many names it is kept under, and it
+    holds what it was made with (a table's entries; what the `__init__` that runs, its own or an inherited one,
+    gives each field from what that call hands it; the class's constants and properties) and whatever any
+    statement gives it afterwards. Along one path from one name, in statements that run once and in order, the
+    last plain gift stands for those before it; the environment is read the same way, and a home the program gives
+    itself counts from where it is given. One of two values, what a loop or a walk visits and a template filled
+    are read the same way, and a target lands in a protected folder if any reading does. (Each review round had met one or two
+    needless refusals with one cause, a name read only when it was given one value, once, in one place: of the
+    first hundred everyday programs this project then ran from inside a transcript folder thirty were refused for
+    it, and of the second hundred nineteen. The eleventh round then found the same merging one level up: a field
+    or a key had one set of values whatever carried it, so two objects of one class, a reader and a writer that
+    each keep a `path`, and a table whose entry is replaced before it is written were refused, and of two hundred
+    programs this project wrote on objects, tables and the environment 68 were judged wrongly, four of them
+    writes let through: a class that inherits its `__init__`, a field set through `__dict__`, a table reached
+    under a second name, a home set before it is asked for. A third pass found one more that had been there since
+    the tenth round: a function that gives its own name another value in a branch and hands it back was read by
+    the caller's value alone. The twelfth round found one write the member model itself had let through (a table
+    made from pairs, `dict([("out", path)])`, was read as holding nothing, and nothing is no target) and eight
+    kinds of everyday program refused: a mode kept in a name, a factory called once for the transcript and once
+    for the file elsewhere, an inherited data-class field, a table filled from literal rows, a union of two
+    tables, the environment given a value through `update`, a template kept in a name. Each is fixed with a test
+    that failed first. No round was clean; the release goes out on the principal's ruling that every finding is
+    fixed and nothing measured got worse, with review continuing after it.) A target the reader cannot read is judged by what it is built from, a
+    name followed through assignments, loops, `with`, defaults, the program's own functions, lists, attributes, a
+    class's fields, a parser's defaults and the environment the program sets. The words after the program are placed where it reads
+    `sys.argv[n]`, and a variable of the environment where it reads it by name; taken another way, one that names
+    a protected path makes any write a refusal. What the program reads from a file is content and names no path
+    (the `.name` of a file it opened is that file's path). A copy out of a protected folder changes only the copy.
+    The folder a call is made in is followed in the order the program's statements run: a folder change that is a
+    statement of the program is sure; the body of a `with`, a `try`, a branch, a loop and the program's main
+    block is followed the same way (a branch may not be taken, a loop may run no times, and the body of `with
+    contextlib.chdir` runs in that folder); one inside a function may come at any time; and a descriptor stands
+    for the folder it was opened on, as it stood then. A command the program spells whole (`subprocess`,
+    `os.system`, asyncio's and pty's ways to start one) is judged as the shell guard judges that command, with
+    what the program gives it: the folder, the variables it keeps for it however the mapping is kept, the words
+    after a shell's script, a script fed on its input or written down a pipe to that process, piece after piece.
+    A relative path the program makes whole (`abspath`, `resolve`, `getcwd`) is whole from where the program stood
+    at that call, wherever it stands when the path is used. A word of a list built round a path the program found
+    keeps that path; what is written to `os.popen(command, "w")` is that command's input; the standard library's
+    own writers count (a log file, a download, a temporary file made in a folder it is told). The last part of a
+    path, one part of it, a path taken relative to a folder that holds it (`relative_to`, `relpath` with its
+    start), a path flattened into a name and a digest name no folder, and a fresh temporary folder is a folder
+    somewhere else, so a tree of transcripts can be mirrored or summarized into another folder. A tree removed,
+    moved or copied over
+    whole that holds a protected folder, and what a walk or a pattern over such a folder finds, are judged as a
+    change to it. A program that runs code it builds (`exec`, `eval`, a module named at run time) is taken to
+    write. A script on stdin for another interpreter is judged by its own heredoc.
+  - **Standing in a protected folder.** A program can write where it stands without naming a file. Inside the
+    state folder, the board or the sessions archive only a command the guard can read runs: a reader, a file
+    utility, a script given inline, `git` only reading. Inside a harness's transcript folder, where sessions work
+    on saved tool results, other programs run, and an inline program's writes must each be led by a plain folder
+    somewhere else. Applied to transcript folders as well, the rule refused 17 real commands in the replay, all
+    needless.
+  - **What is the agent's own.** A project's memory notes (`*.md` under `<project>/memory/` in Claude Code's
+    projects folder) and a session's saved workflow scripts (`*.js` in `<session>/workflows/scripts/`) are the
+    agent's to write, move and remove, by file tool, shell or inline program; a link made there is refused. A
+    tool result the harness saved beside a transcript is material any program may be given; changing it where
+    it lies stays refused. The hook is run when it is the script an interpreter runs, not when another program
+    is handed its file.
+  - **Measured before release.** 112,964 distinct shell commands from 30 days of one machine's transcripts were
+    run through the 5.6.0 guard and this one, again after each change, and every command whose verdict changed was
+    read. The needless refusals each pass showed are now tests. At the end the new guard refused 9 commands the
+    old one passed (three runs of a property-list tool from inside the sessions archive, a database tool opening a
+    session store, a move of a saved tool result and a subagent's transcript to the Trash, and four programs that
+    ran the hook through `subprocess`, which the same command typed in the shell always was) and passed 85 the old
+    one refused: 54 inline programs that read a protected path and write somewhere else, 21 commands that write what
+    is the agent's own (memory notes and saved workflow scripts, 15 from the shell and 6 by program), 3 writes
+    from inside a protected folder to a path elsewhere named through a variable, 5 programs judged by their own
+    text where a file the same line wrote named the guard's code, and 2 programs handed the hook's file. Of the 62
+    it still refuses, 45 are commands whose own program names the guard's approval code (work on the guard
+    itself), 8 run the hook, and 9 are the ones above. The rules added last (a folder that holds a protected one,
+    a folder the guard cannot read, words read as command lines, `$PWD`, `find -execdir`, a keyword in a program)
+    refused nothing in those 30 days, and neither did the reading of a program through every value a name may
+    hold, once the replay had shown two faults in it that the probes had not: the reader stopped on 180 recorded
+    commands that loop over an attribute or an entry, and `export` taken as a writer's name refused 4 that exported
+    a transcript into another archive. On the 300 longest recorded Python commands (9 to 32 thousand characters)
+    the guard takes 9 ms at the median and 46 ms at the ninetieth percentile, where it took 5 and 10. After the eleventh
+    round the 30 days then current were replayed again (110,444 commands): eight of those nine newly refused, 79
+    newly passed, and none on which the reader raised, once the replay had shown two recorded commands on which
+    the member model raised and two on which it did not come back (a table rebuilt from itself). Over all 27,497
+    recorded commands that hand Python a program the guard takes 6 ms at the median, 14 ms at the ninetieth
+    percentile and 52 ms at the ninety-ninth. The destructive guard newly refused 2 recursive deletes of
+    a scratch clone named through a variable, which it always refused when the path was written out.
+    `docs/runtime-integration.md` says what the reader does not follow.
+- **The plugin's own Drive publisher waits for a code** (core, agent guardrails). A script wrote 36 files into a
+  shared Drive folder in a principal's name with no hold, while a read-only request by `curl` was held the same
+  afternoon: the guard reads a command's text and cannot see what a script sends. The knowledge base's
+  `publish_drive.py` is now among the default deploy patterns, as the action sheet's publisher is, and is found
+  past the interpreter's own options (`python3 -W ignore`, `-X dev`); `--dry-run` and `--help` pass.
+- **One SKILL.md reorganized, nothing trimmed.** Chief of staff's four points under the prime directive moved
+  word for word into `references/meetings-correspondence-travel.md` to make room for binding rules 13 and 14.
+- synthesis-kb-distribution: the connector's no-token-logged test captures FastMCP's own log lines under pytest
+  8 as well as 9 (test code only, from its own pull request).
+
+## [5.6.0] - 2026-11-11
+
+- **LinkedIn messages as a declared ritual surface** (daily rituals 3.8.0). A principal found messages on LinkedIn
+  that no ritual had shown him: the rituals saw LinkedIn only through notification emails, which often hide the
+  text and never cover InMail. A workspace now declares `.agents/linkedin-sync.yaml` (the workspace and the
+  inboxes to read: the focused inbox and the other inbox, where LinkedIn files messages from people the account is
+  not connected to; both unless it says otherwise). `linkedin_messages.py plan` prints, per inbox, the address to
+  open and the day to scroll back to;
+  `linkedin_messages.py parse` reads the saved text of the conversation list, lists the conversations that end
+  with someone else (with unread counts, InMail and LinkedIn's own reply nudge) and prints one coverage line that
+  names no one. The `linkedin` watermark moves only with a complete read's coverage. **The read opens LinkedIn's
+  new-message view, never the bare messaging page,** which opens the newest conversation by itself and marks it
+  read; the new-message view shows the same list beside an empty composer and opens nothing. The read stops at the
+  day the plan names, because the list loads older conversations for as long as it is scrolled. A thread is opened
+  only when its preview cannot show whether something is owed, and each one opened is counted and named.
+  Day-start, mid-day and day-end carry the step; the ritual itself sends nothing. Checked against both inboxes of
+  a live account.
+- **A deadline that lives only in a draft or a ledger is swept too** (daily rituals 3.8.0). The sweep read only
+  dated plans and the three ritual artifact names; nine draft files and a ledger that carried their own
+  `**Decays:**` lines were listed as excluded and never read. A workspace can declare `records_dirs` in the ritual
+  config (`decay_sweep.py --records-dir`): every Markdown file under it is read with the same item grammar, as of
+  the date in its name or of the sweep's day. A plan outranks a record: once a plan or ritual artifact carries the
+  item's Decay ID, the plans decide it.
+- **One `approve` can carry several codes, and nothing typed is passed over without a word** (core, message guard
+  2.6.1). A principal typed the word once with nine codes after it; the first was granted and the other eight were
+  passed over in silence, because only a code that directly followed the word was read. Each of the eight then cost
+  a turn of its own. The prompt hook now reads a list after the word on its line, separated by spaces, commas or
+  "and" (`approve <code> <code>`), and ends it at the first thing that is not a code and at the end of the line, so
+  pasted context that opens the next line with a code cannot join it. A pending code that is in the message and
+  was not approved is now named back, as a code that matched nothing already was. Each code still grants one exact
+  pending call, and the harness's transcript must show the principal typing it. `approve code <code>`, the form
+  every hook message is rewritten to, still approves nothing.
+- **What two reviews of that change found in the approval reader, fixed with it** (core). A negation before the
+  word ("don't approve ...") used to grant; it grants nothing now, across spaces, a line break or a removed block.
+  What a harness wraps into a prompt was taken out up to the first closing tag of its name, so a wrapper holding
+  its own closing tag (a quoted report, a comment) left the rest to be read; now everything from a name's first
+  opening tag to its last closing tag goes, and what stands where it was ends a list. Taking it out is one pass
+  over the tags: the old pattern took seconds on a prompt of 300,000 characters. In a transcript record of several
+  blocks, each block is read by itself and one marked as not the principal's is left out.
+
+## [5.5.0] - 2026-11-11
+
+- **Critical deadlines** (daily rituals 3.7.0, chief of staff 2.2.0, decision packet 2.3.0). A deadline whose miss
+  cannot be undone is tagged `**Critical:** <class>` the day it is first seen and handled apart from ordinary dated
+  work. `decay_sweep.py` reports critical items in their own view: leading from seven days out, due an alert three
+  days and one day out, on the day and after, never lapsed, and closed only when a closing mark carries an
+  `**Evidence:**` line. It lists untagged items that read like a critical class until someone classifies them, and
+  `--alert` posts one banner and spoken line with a count and no title. `ritual_state.py record` refuses while a
+  critical deadline is past due and open, and refuses a clean outcome over plans it could not read whole. The 16:55
+  nudge sounds the same alert on a day with no ritual. `build_packet.py` refuses a row tagged `critical`. The plan
+  opens with `## Critical deadlines: needs your attention`. On 2026-11-06 an enrollment window closed unanswered
+  after three weeks as one dated row among a hundred.
+- **Each workspace declares its plan folders, and `record` needs them.** `plans_dirs` and `artifacts_dirs` in the
+  ritual config (`<synthesis home>/rituals/config.json`; `"plans_dirs": []` for a workspace that keeps no dated
+  plans) are read by the sweep (`--workspace`), the record and the nudge. **A workspace that declares neither is
+  refused by `ritual_state.py record`**, because its critical deadlines cannot be checked: add the declaration when
+  you upgrade. An example ships as `skills/synthesis-daily-rituals/assets/ritual-config.example.json`.
+- **A meeting placed on today has an approval of its own** (core, message guard 2.6.0). With `same_day_meetings` in
+  the config, a calendar write that starts today and invites someone else, or moves an existing event to today,
+  waits for a code the principal types for that same-day meeting; the ordinary invitation approval and a send
+  window do not cover it. A meeting with an exempt attendee keeps the ordinary approval, a write with no attendees
+  is untouched, and without the key nothing changes. A move with notifications off still counts, except for an
+  event the chief of staff's holds ledger has as the agent's own hold in force today: the guard asks the ledger's
+  own reader, which every install now keeps in the runtime. Checked against four calendar connectors' real schemas.
+  On 2026-11-09 a follow-up had been staged into the first open slot of the same day, three days running.
+- **`slot_check.py`: the verdict that goes with every proposed meeting time** (chief of staff 2.2.0). Given a slot,
+  the calendar read that covers its day and the principal's preferences, it refuses today, protected hours, a slot
+  that breaks the day's last deep-work block and a day past its meeting load; sends back a slot that splits a free
+  block or duplicates an existing meeting with the same people; and reads a requester's deadline as their
+  preference unless their timing binds. It will not judge a day the calendar read does not cover.
+- **The pull-request gate** (core, guardrails 2.4.0, skills manager 3.4.0). With `pr_gated` in the config, a `git
+  push` from a checkout of a listed repository goes through only when it provably leaves the default branch alone.
+  A push that names that branch, reaches every branch at once, or cannot be read is refused with the route (branch,
+  pull request, checks, merge, install); the principal's code admits one exact push. The default branch is the one
+  the rule names (`"branch"`), else the one the checkout records for the remote; **a checkout that records none
+  holds every branch push** until the rule names it or `git remote set-head origin --auto` records it. A branch
+  switched earlier on the same line counts only for a push that runs only if the switch succeeded. `synthesis
+  doctor`'s `pr gate` check lists commits on the default branch since the gate began that came through no pull
+  request, so a push made where the guard cannot see shows at the next day-start. The skills manager's rules and
+  steps no longer say only "push every remote". One private skills repository had taken 61 direct pushes to `main`
+  in six weeks under a pull-request rule nothing held. Both guards went through five review rounds by a second
+  model; every finding has a test that failed first.
+- **Watermark advances from parallel workers no longer overwrite each other** (daily rituals 3.7.0).
+  `sync_watermark.py` rewrote its whole store from each writer's own reading, so two workers advancing different
+  surfaces at once lost each other's advances: 27 of 632 on 2026-11-11, each of which had printed `moved: true`.
+  Every write now reads, changes and writes the store under a lock.
+- **The knowledge base reaches more people, with IT managing who** (synthesis-kb-distribution 1.1.0). The connector
+  now lets in the members of Google groups an organization's IT manages (`KB_ALLOWED_GROUPS`), read from the Cloud
+  Identity Groups API as the service's own account with the read-only groups scope, beside or instead of the email
+  list; nested groups are followed, and a roster that cannot be read keeps its last good copy for at most three
+  intervals, after which nobody gets in through a group until a read succeeds. `fetch("SKILL.md")` returns the
+  plugin's guide and index so an agent can start from it; `search` leaves it out. New `scripts/publish_drive.py`
+  keeps a shared-drive folder's copy of the built plugin current for a Gemini notebook: changed files replaced in
+  place, new ones added, dropped ones moved to the trash, unchanged ones left alone, and the notebook sources to add
+  or remove named; in CI it signs in through workload identity federation, so no key is stored. The connector's
+  log-lines paragraph moved word for word from SKILL.md to `references/connector.md`, section 8.
+- **Docs: a hook approval does not survive upgrades in every harness.** The README, the runtime integration page
+  and three other places said it did, because the hook's path and text never change. Codex ties each approval to
+  a fingerprint of the installed plugin and asks again after every release, running no hook until the person
+  approves; Muse has kept its approval across releases so far; Claude Code asks for none.
+- **Three SKILL.md files reorganized, nothing trimmed.** Daily rituals' procedure, chief of staff's scheduling steps
+  and the decision packet's output paragraph moved word for word into `references/` to make room for the new
+  binding rules.
+
+## [5.4.0] - 2026-11-09
+
+- **New skill: synthesis-kb-distribution** (1.0.0). Distributes an OKF knowledge base from one published tree to the
+  people who need it. `scripts/build_plugin.py` builds the organization plugin Claude and ChatGPT sync from GitHub
+  (both marketplaces and manifests, one skill with an index, every reference stamped with its source path and commit),
+  with every organization value in a config file, an exclusion list and templates; it refuses missing front matter,
+  text addressed to an AI assistant, uncommitted source and symbolic links, and guards its output folder.
+  `scripts/publish_plugin.sh` pushes the build to the published repository over a pinned host key and exits cleanly
+  when nothing changed. `scripts/connector` is a read-only MCP connector for people the organization's Claude and
+  ChatGPT workspaces cannot reach, such as executives on personal accounts: `search` and `fetch` in the shapes ChatGPT
+  expects, Google sign-in through FastMCP's OAuth proxy with an email access list checked at sign-in, on every token and
+  on every tool call, refresh from the published repository over a read-only deploy key with the last good copy kept
+  on any failure, and `/health` naming the served commit. It runs on Google Cloud Run from a hashed lock;
+  `references/connector.md` covers every setting and the deployment.
+
+## [5.3.16] - 2026-11-06
+
+- **The model table names November's models** (model tiers 3.0.1). Every role list in `tiers.yaml` now names the
+  provider's current release, verified on 2026-11-06 against each provider's own documentation, with the page,
+  excerpt and identifiers recorded in `references/catalog-verification.yaml`. Anthropic routine and bulk move to
+  `claude-sonnet-5-5` and `claude-haiku-5-5`; OpenAI routine to `gpt-6.1-sol`, with `gpt-6.1-terra` as its
+  alternative; Google judgment to `gemini/gemini-4-argon`, since `gemini-3.1-pro-preview` is superseded. The Ollama
+  lists gain Qwen3.8, Muse Glimmer, Nemotron 3.5 Super, Mistral Medium 3.5, Gemma 4 12B and the Qwen3.8 Flash-Next
+  preview, and drop Qwen3.6. Tags Ollama publishes only as cloud models are left out, because they do not run
+  locally. Google's model documentation moved to `aistudio.google.com` (the old `ai.google.dev` page answers 301),
+  so the catalog test accepts that host for Google sources.
+
+## [5.3.15] - 2026-11-05
+
+- **Doctor sees what Codex sees: an approval tied to the plugin's files** (core). Codex 0.166 stores a fingerprint of
+  the installed plugin with each hook approval and runs no hook of a plugin whose files changed, and every release
+  changes them. On 2026-11-05 a real Codex turn ran none of synthesis's hooks, the guards included, while doctor,
+  comparing only the hook definitions, reported all four trusted. Doctor now computes the fingerprint the way Codex
+  does (it reproduced the value Codex stored for 5.3.14) and the baseline Codex pins for approvals made before it
+  stored one, and fails with "approved before the plugin last changed" until the person approves the hooks again in
+  Codex's `/hooks`. A plugin Codex cannot fingerprint fails the check too.
+- **A release names the approvals only you can give and does not wait on them** (skills manager 3.3.3). After
+  installing, `release.py` prints each failing hook approval (Codex's `/hooks`, Muse's `plugins approve`) as waiting
+  on your approval; any other doctor failure still leaves the release not complete. Onboarding's install notes say
+  Codex asks again after every update (onboarding 3.3.2).
+- **The tap rerun tests read GitHub's recorded answers** for the run whose macOS job got no runner and for the pull
+  request's checks, in place of shapes written by hand.
+
+## [5.3.14] - 2026-11-05
+
+- **A prompt after a pause says how old the conversation is** (core). An agent cannot perceive a pause, and after
+  Claude Code's idle compaction its summary reads as current: on 2026-11-05 a summary of a conversation whose last
+  turn ended at 11:52 was written at 12:46 and took effect at 14:14, and nothing said that what it called in flight
+  was 2 h 22 min old. The Stop hook now records when each turn ends, and a prompt that comes ten minutes or more later
+  carries one line: the time now, when the last turn ended and how long ago, and that what the conversation says is in
+  flight (background tasks, CI runs, deploys, replies awaited) is as of then. It works with or without compaction, in
+  Claude Code, Codex and Muse, with no setting to change, so idle compaction can stay on. The checkpoint skill's
+  ten-minute pause trigger now names the note (checkpoint 2.0.1).
+- **The compaction brief names background tasks and watchers** (onboarding 3.3.1), each with its id and what it waits
+  for, among the waits a summary keeps, so a session knows what to check after a pause. Setup refreshes the marked
+  block in each workspace's instructions.
+- **A release runs a tap job again when GitHub never gave it a runner** (skills manager 3.3.2). On 2026-11-05 GitHub's
+  macOS runners turned away a job on `main`, on a pull request and on the tap, whose failed check stopped that day's
+  release. `release.py` now reruns a tap check whose failed jobs were all cancelled before any step ran, up to three
+  times, and keeps waiting for the merge; a job that failed in its steps still stops the release.
+
+## [5.3.13] - 2026-11-05
+
+- **A release gets past GitHub's server errors on its own** (skills manager 3.3.1). The 5.3.12 release took three
+  runs by hand: GitHub answered HTTP 502 to the GitHub release, which it had created anyway, and then to the tap's
+  pull request, which it had not opened. `release.py` now runs a stage again after a GitHub server error (HTTP 5xx,
+  or an empty error body that `gh` reports as "unexpected end of JSON input"), up to three times, 20 and then 40
+  seconds apart; the CI read in preflight does the same. Each stage reads what is already published before it acts,
+  so the release is not created twice and the pull request is opened once. Any other error still stops the release.
+- **No release leaves its tap branch behind.** The tap now deletes each merged pull request's branch itself (its
+  `delete_branch_on_merge` setting, on since 2026-11-05). Once the merge is read back, `release.py` deletes the branch
+  it made if the tap has not; GitHub's "Reference does not exist" means it is already gone, and a branch it cannot
+  delete is reported and fails nothing.
+
+## [5.3.12] - 2026-11-03
+
+- **Homebrew installs the current release** (skills manager 3.3.0). The `synthesis` formula still pointed at 5.0.3
+  after eleven releases, so `brew install synthesisengineering/tap/synthesis` ran an onboarding without 5.3.3's
+  prerequisite checks and `--dry-run`. After the GitHub release, `release.py` now downloads the tag's archive with
+  `curl`, computes its sha256 as Homebrew will, and opens a pull request on the tap that sets the formula's `url` and
+  `sha256`, to merge itself when the tap's install tests pass. The pull request goes up before the harnesses install,
+  so its checks run meanwhile. The release is complete only once the formula on the tap's `main` serves the tag; a
+  rerun reuses an open pull request, and a fork's release leaves the formula alone.
+- **The thread checker files each thread under its own channel** (slack sync 4.0.3). On one day-end transcript it
+  listed a thread twice, once under a channel whose heading came 566 lines earlier, and listed the thread's five
+  replies as parents. A thread's heading that said it was "returned by a full thread read" had opened a section of
+  threads read, and a channel heading's scope never ended. Now a heading that carries a message's TS names that one
+  message; a heading's channel holds for the headings below it and ends at the next heading at its level; a reply's
+  link stands for its thread; and in a list of threads read each TS takes the channel id written nearest before it.
+  The old rule, the first id on the line, was wrong for 285 of 411 such readings, where the transcript itself showed
+  the right channel. A TS read with its own link keeps that link's channel, and message headers written
+  `(TS 1234567890.123456)`, without the colon, are listed too. Across 844 transcripts the list loses 409 replies that
+  had been listed as threads (each one's thread stays listed) and gains 140 threads it had missed.
+
+## [5.3.11] - 2026-11-02
+
+- **A self-test timed at background priority is reported, not judged.** 5.3.10 did not clear the Synthesis Console's
+  warning. The Console runs as a launchd Background job, which macOS throttles along with everything it starts, and
+  the doctor's self-test read 107 to 136 ms there against 37 to 45 ms at normal priority; `taskpolicy -b` reproduces
+  it (131 ms). At background priority the doctor still requires the hook to deny `rm -rf ~`, and reports the time as
+  information: the 50 ms budget is for a normal call.
+
+## [5.3.10] - 2026-11-02
+
+- **The hook self-test times the hook, not the Mac's load.** The doctor sends `rm -rf ~` to the stable hook three
+  times and warned when the median took over 50 ms. Run by the Synthesis Console beside its own repository scan and
+  records doctor, the median read 161 ms and 364 ms while the same test alone read 44 ms. It now takes the fastest of
+  the three runs, the hook's own cost, since other work on the Mac only adds time; a hook slower than the budget on
+  every run still warns.
+
+## [5.3.9] - 2026-11-02
+
+- **Each release gets a GitHub release** (skills manager 3.2.0). GitHub's release list is what a visitor reads as
+  the current version, and it still marked a 4.x release Latest, because v5 releases created none. After publishing
+  the tag, `release.py` now creates its GitHub release, titled "Synthesis X.Y.Z" with the version's CHANGELOG entry
+  as the notes, and reads `gh release list` back until that tag is the latest; a rerun skips a release that exists.
+- **A help page is not a deploy** (agent guardrails 2.3.2). The deploy guard held `gh release create --help` for an
+  approval code. `--help` now publishes nothing, as `--dry-run` already did; a short `-h` stays held, since some
+  deploy tools read it as another flag.
+- **Client detail in a lesson follows the principal's rule** (daily rituals 3.6.1). Day-end Step 5 said a lesson
+  from a workspace-private record goes to the personal lessons folder without client detail; whether client names
+  stay in a lesson is now the principal's own routing rule.
+
+## [5.3.8] - 2026-11-02
+
+- **Day-end finds lessons written outside the lessons folder** (daily rituals 3.6.0). A lesson belongs in the
+  knowledge repository's `lessons/`, one file each, where later sessions search. Sessions had also been writing them
+  into project records: a sweep on 2026-11-02 found 165 lesson sections and 71 **Lesson:** lines in one corpus's
+  project records with no link to a lessons file, and the principal asked for every lesson to be stored in the usual
+  place. `stray_lessons.py` lists each lesson heading or **Lesson:** line added to a project record since the last
+  day-end whose section links to no lessons folder, and day-end Step 5 moves each into `lessons/` and links the record
+  to it. A kept lesson candidate now always becomes a file in `lessons/`; a fact about one project goes to its
+  REFERENCE.md instead.
+- **A wait handed back to the principal is sent back** (anti-shortcuts 2.2.0). A merged release that waited only on
+  CI was parked behind the principal's next message, though the agent could watch CI itself. The catalog's new entry
+  and the Stop hook's built-in phrases catch "any message from you" and "ping me when", and Case 9 says what to do
+  instead: a watcher that waits, carries the work forward and stops at the first failure.
+- **The Gmail throttle pitfall gives its incident's recorded figures** (inbox cleanup 2.0.1). It said about 1,000
+  messages and a copy that ran just under three hours; the record says 731 messages, a first attempt stopped at 33
+  minutes and a second run of about 10 minutes, with the observed rate putting a fresh copy at about two hours. The
+  2–3 hour planning figure stands.
+
+## [5.3.7] - 2026-11-02
+
+- **A later mid-day run is swept** (daily rituals 3.5.1). The skill allows several mid-day syncs a day, but the decay
+  sweep read only `YYYY-MM-DD-(day-start|midday|day-end).md`, so a second mid-day record (`2026-10-30-midday-2.md`)
+  landed in `excluded` and its Decays lines were never swept (reported by another workspace's operations
+  seat, 2026-10-31). `midday-N` (N = 2 to 999) is now read in order after the first mid-day and before the day-end, and
+  the worker contract names the form.
+
+## [5.3.6] - 2026-10-30
+
+- **A publish is identified by what it publishes** (agent guardrails 2.3.1). The deploy guard took every build
+  deploy to be a deploy of the folder it ran in. On 2026-10-30 the Ownwords release and its npm publish, both run
+  from the synthesis-skills checkout, counted as two deploys of synthesis-skills: the second hit the 45-minute
+  rapid-redeploy brake, and both approvals bound synthesis-skills' HEAD. `gh release create -R owner/repo` is now a
+  deploy of that repository and `npm publish <path>` of that package; anything else is still the folder it runs in.
+- **The weekly review counts the Stop hook's send-backs** (daily rituals 3.5.0). `stop_reprompts.py` reads the
+  archive `synthesis sessions` keeps and reports the replies the Stop hook sent back in the last seven days, by check
+  (shortcut phrasing, unsourced quotes, file links) and harness, with any phrase or file named more than once, so a
+  check that fires week after week points at the habit behind it. October's first count: 88 send-backs in 11
+  sessions, 29 of them for "your call".
+- **A compaction brief in every synthesis workspace** (onboarding 3.3.0). When a session compacts, the summary should
+  keep what exists only in the conversation: the task in progress and its next step, what is waiting on someone,
+  decisions and corrections not yet written down, exact identifiers, and what was verified. Setup keeps a short
+  `## Compact Instructions` section saying so in each synthesis workspace's instructions, as one marked block from
+  `references/compact-instructions.md`. Claude Code follows it there, also through the `CLAUDE.md` import (tested with
+  a marker line in a real compaction's summary). Codex could take it only by replacing its whole compaction prompt
+  for every session, and Muse has no setting, so they keep relying on the files and the session-start hook. New and
+  organization workspaces get the block when setup writes their instructions; a file the person wrote gets it only
+  with their yes or `--compact-brief`; a block already there is refreshed on every run. Sessions outside synthesis
+  workspaces are unaffected.
+
+## [5.3.5] - 2026-10-30
+
+- **The commit check reads an image's text, not its pixels** (git hooks 3.2.0). Read byte for byte, an image's
+  compressed pixels matched short protected names at random: four README screenshots in one commit each needed an
+  approval code on 2026-10-30, and across the principal's repositories the same patterns matched 1,743 of 8,982
+  tracked images (51 of 80 HEIC photos). PNG, JPEG, GIF, WebP, HEIC and AVIF files are now read by their structure.
+  Everything but the pixel data (the coded pixels, their palettes and coding tables; in HEIC and AVIF, the coded
+  image items the item table places) is scanned as before, and compressed text (PNG's `zTXt`, `iTXt` and ICC
+  profiles) is inflated first, so its words are read for the first time. Of those 8,982 images, 10 still match, in
+  their EXIF, XMP or ICC metadata or in text after the image, and those lines go to the principal like any other.
+  An edited image is checked for the text its last commit did not carry. Credentials and private keys in an image's
+  text block in every repository. A file that doesn't parse exactly, and every other format, is still read byte for
+  byte.
+
+## [5.3.4] - 2026-10-30
+
+- **A deploy inside a script waits for approval** (agent guardrails 2.3.0). `bash scripts/publish-site.sh` published
+  a site with no approval on 2026-10-30, because the `wrangler` call inside the script never reached the guard. The
+  deploy guard now reads a shell script a command runs (`bash x.sh`, `./x.sh` with a shell `#!`), three scripts
+  deep, and holds the command when anything in it deploys. A `--dry-run` publishes nothing, so a build script that
+  checks its deploy that way is not held.
+- **Repositories where a merge publishes** (`deploy_remotes`). A push to, or `gh pr merge` on, a listed GitHub
+  repository is a deploy; the same day a merge on the Homebrew tap published a formula before its release archive
+  existed.
+- **The Claude desktop app's terminal tab is guarded like Bash.** Commands typed there (`mcp__terminal__run_in_terminal`)
+  passed every shell guard: deploys, protected deletes, force pushes and claims. They are now read like any shell
+  command, in the folder the tab starts in.
+
+## [5.3.3] - 2026-10-30
+
+- **The Claude desktop app counts as a harness.** On a Mac with only the desktop app, setup found no `claude` and
+  installed the plugin nowhere; the app keeps its own Claude Code, one folder per version, off PATH. Setup and doctor
+  now use the newest version there when no `claude` is installed elsewhere (`SYNTHESIS_CLAUDE_BIN` still overrides).
+- **A first install never looks hung.** `onboard.sh` says where it is getting the source before the quiet clone,
+  and setup names each harness before its plugin install, which fetches the plugin with nothing else printed for up
+  to a minute.
+- **Prerequisites are found and fixed first.** On a Mac without Apple's Command Line Tools, which provide `git` and
+  `python3`, `onboard.sh` opens Apple's installer, waits for it and carries on, as Homebrew's installer does; a
+  missing tool or a `python3` older than 3.9 is named before anything is fetched. With no Claude Code, Codex or Muse
+  on the Mac, setup stops before changing anything and says which app to install, where it used to install a
+  runtime nothing would use.
+
+## [5.3.2] - 2026-10-30
+
+- **What leaves the Mac is masked with exactly what the commit check refuses.** The first sync of history was refused
+  for two workspaces: the check also applies the principal's tier-0 list (a quoted `sk-ant-api` pattern, a short
+  Slack token shape), which the export's masking did not load. Masking now loads that list as the check loads it, and
+  masks a private key's header with its body as it appears in JSON text.
+- **A refused month never rides along.** A refused commit had left its files staged, and the next month's commit
+  swept them in. Each month now commits only its own files, a refused month is unstaged, and the report counts the
+  sessions in each commit from what git staged.
+
+## [5.3.1] - 2026-10-30
+
+- **A citation names the session it cites** (context lifecycle 2.2.1). A Claude Code sub-agent's id begins with its
+  parent's, so `synthesis sessions show d20ab7c4` matched 274 sessions and refused, and every citation of a session
+  that had started sub-agents was ambiguous. The exact id wins, then the one main session the prefix starts. A Claude
+  Code sub-agent's `meta.json` now names its `role` and `parent`, as Codex's child threads already did.
+- **Only the session-start hook names a session's project.** A test fixture's "Active project:" line, shown to a
+  session in a file-change notice, had added a project that session never worked on. The line now counts only in
+  Claude Code's hook attachments or a message that begins with the hook's first line.
+- **One writer at a time.** An export from one session and a rebuild ran into the archive at once on 2026-10-30;
+  two sessions resuming together could append the same records twice, and two handing off together would collide in
+  a sessions repo's index. Export and sync now share one lock. Exports now take a lock beside the archive
+  (so a rebuild's move never takes it along); `synthesis resume` does not wait for it and reads the archive as it
+  is, and `synthesis sessions export --rebuild` moves the archive aside inside the same lock.
+- **A sandboxed session sees the latest turns.** Codex's sandbox may write only the board, so `synthesis resume` there
+  could not export and showed the conversation only as far as another session had exported it. When the export
+  cannot run, resume now adds what each harness recorded since, read without writing anything.
+- **Eight shortcut phrases from four months of corrections** (anti-shortcuts 2.1.0). The principal's prompts since
+  May were read for the places he corrected an agent (3,712 prompts, 306 corrections) and the replies before them
+  for the phrase that announced the mistake. Case 8 records what they show; the catalog adds `say the word`,
+  `give the word`, `leave you the judgment calls`, `in the next session`, `not acted on`, `standing down`,
+  `follow-on work` and `smallest change`, each documented and tested.
+
+## [5.3.0] - 2026-10-30
+
+- **Each workspace's conversations leave the Mac with its records** (context lifecycle 2.2.0, project management
+  3.3.0, daily rituals 3.4.0, onboarding 3.2.1; the principal's rulings of 2026-10-30). Config `sessions_repos` maps a
+  workspace to the checkout of its own private sessions repo, and `synthesis sessions sync` copies each session's
+  conversation (prompts, agent briefs, replies, reasoning, compaction summaries, models) and tool calls there, one
+  commit per month touched, then pulls and pushes. Tool output, long text and images stay in the local archive; a
+  session outside every workspace never leaves the Mac. Files are rewritten whole from the archive, so the same
+  records always give the same bytes. `synthesis handoff` syncs and is NOT READY while a workspace's copy is behind;
+  day-end runs the same command; a refused commit stops that workspace and records nothing as synced. Another Mac
+  reads synced sessions with the same `list`, `recent`, `show` and `search`, and the doctor reports each repo:
+  cloned, synced within two days, warned at 3 GB. No hook writes or pushes transcripts (R8.3).
+- **Only the principal's words are prompts.** Codex's approval reviewer runs as its own thread and is handed the whole
+  conversation: on this Mac 1,963 such copies, 701 MB, had been filed as the principal's prompts, against 27 MB of
+  his own. A reviewer's verdicts are now kept and its copy counted; a prompt one agent writes to another (a Claude
+  Code sub-agent, a spawned Codex thread, another session's message) is a `brief`; heartbeats, scheduled-task
+  prompts, recommended plugins and UI actions are `system`. A sub-agent belongs to the workspace its parent started
+  in, Claude Code workflow journals are no longer read as transcripts, the sessions Codex moves to `archived_sessions` are
+  read too (139 had been missed), and `meta.json` keeps each session's `cwd`.
+  `synthesis sessions export --rebuild` moves the archive aside and exports everything again.
+- **Records cite the conversation.** A session-log entry cites the record behind a decision or quote as
+  `<harness> <session8> #<seq>`, and `synthesis sessions show <session> --seq <n>` opens it with three records either
+  side. `--json` prints one object per line for tools such as the Console. Deleting a workspace's data now includes its
+  sessions repo and archive folder, after a sweep for the person's own records.
+
+## [5.2.0] - 2026-10-30
+
+- **Every agent session is kept, in one form, for every harness** (context lifecycle 2.1.0, daily rituals 3.3.0,
+  onboarding 3.2.0). The principal asked for full copies of each conversation, with the models that answered, so work
+  can move between harnesses and be reviewed later. `synthesis sessions export` reads Claude Code's, Codex's and
+  Muse's native transcripts past what it already copied and writes `~/.synthesis/v5/sessions/<workspace>/`: the
+  prompts, replies, reasoning, tool calls and results, compactions and models, one JSON record per event; secrets
+  masked with the commit check's patterns; images, and long tool output or injected text, kept once by hash; copies a
+  harness keeps of the same content left out and counted. Measured on this Mac: 3.19 GB of transcripts from 14 days
+  became 347 MB of records, 447 MB of long text and 229 MB of images; a 146 MB Claude Code session exported in 2
+  seconds. `list`, `show`, `recent` and `search` read it back.
+- **Resume carries the conversation.** `synthesis resume <project>` exports the last two days and shows the project's
+  latest prompts and replies from any harness, so a session picking the work up elsewhere sees what was said, not
+  only the records. Nothing runs in a hook (R8.3): each harness already writes its transcript as it goes, so the copy
+  is made where it is read, and at day-end.
+- **Claude Code stops deleting transcripts after 30 days.** Its default `cleanupPeriodDays` had left this Mac 9 main
+  sessions from August and 11 from September, against 97 from October. Setup sets 3,650 days when the key is absent
+  (a value the person set stays), and the doctor fails while it is unset. Only the exporter writes the archive; the
+  guard refuses file tools and shell writes there, as for the board.
+
+## [5.1.19] - 2026-10-30
+
+- **Merging the board keeps every field either copy set.** When 5.1.18 moved the board on the release machine, the
+  release script had already claimed through the new code, writing a fresh record for its own session; the merge
+  kept that newer copy whole, so the session's project, folder and briefing were blanked (its claims survived).
+  Now the newer copy wins field by field but never with an empty value, and the start time is the earlier one.
+  Checked the rest of 5.1.18 end to end: in Codex's sandbox with the setup's profile, `synthesis claim` and
+  `release` succeed; under bare `:workspace` the same claim fails with "Operation not permitted", as before.
+
+## [5.1.18] - 2026-10-30
+
+- **Codex sessions can claim files and post on the board** (onboarding 3.1.0, project management 3.2.0, agent
+  conformance 2.0.1). Codex's sandbox writes only the workspace and the folders its config lists, and the board
+  lived in `~/.synthesis/v5/state/` beside approvals and send windows, so Codex sessions could do neither. The
+  principal chose to give the board its own folder, `~/.synthesis/v5/board/` (sessions, claims, messages and the
+  snapshot journal), and let the sandbox write only that. Codex 0.166 reads permission profiles, so setup grants
+  the board in `~/.codex/config.toml`, after a backup, through the default profile: the person's own gains one
+  `write` rule; a built-in or unset default becomes a `synthesis` profile that extends it with that rule (the older
+  `[sandbox_workspace_write] writable_roots` only while `sandbox_mode` is set, which is when Codex reads it). Checked
+  against Codex's own sandbox: the board writable, the state folder denied. The doctor fails a Codex config that
+  does not grant the board, and one that grants the state folder. The guard still refuses file tools and shell
+  writes into the board: only the `synthesis` CLI writes it, since a session file edited by hand can drop another
+  session's claims.
+- **The board moves by itself.** Every install, and the first hook that finds the board in the old place, merges it
+  into the new folder: free names move, a session in both places keeps both copies' claims, logs are appended, and
+  anything else is archived, never deleted. The older release's own session-start hook can switch to this one
+  without moving anything, which is why a hook checks too (seven lstat calls).
+- **A claim covers everything beneath what it names, unless that is an existing file.** A session reported twice
+  that its claim `meeting-preps/2026-11-02-*` covered none of the files inside the folders it matched: handoff left
+  two of them uncommitted and printed READY, and another session could have written them. Patterns, folders and
+  paths not made yet are now held with a trailing `/**`; `*` still matches within one segment.
+- **The runtime carries the release number again.** From 5.0.16 on, `synthesis/__init__.py` still said 5.0.15, so
+  running sessions were never told what a release changed, and a session start never moved the runtime forward
+  (both compare that number). It says 5.1.18, and the source lint now requires it to match the manifests. Running
+  sessions get one upgrade note listing what they missed.
+
+## [5.1.17] - 2026-10-27
+
+- **`synthesis index set` commits with a generic message.** Its one-field commit was titled with the project and
+  the field, which the principal's commit-message rule forbids in every repository; a session reported it and
+  had to commit by hand. The commit is now "Update docs", still holding only that one field's line, which the
+  test checks.
+- **A deploy-rules test no longer reads the clock twice.** Its fixture dated the live post a week back while
+  setting up the site, and the test recomputed that moment seconds later; on a slow runner the two fell in
+  different minutes, so CI failed this release's first run. Both now use one moment.
+
+## [5.1.16] - 2026-10-27
+
+- **A recurring-series change is previewed occurrence by occurrence, and every calendar write is read back**
+  (chief of staff 2.1.0, message guard 2.5.1, agent guardrails 2.2.1). An agent moved a biweekly series to a new
+  hour; the occurrence it had canceled that day was keyed to the old hour, so it came back, double-booked on an
+  accepted meeting, and only the principal noticed. Binding rule 10: preview today through the next three
+  occurrences, exceptions included, against accepted meetings; prefer this-and-following over moving the series;
+  read back every affected day. The send guard's approval text for a delete or a time or recurrence change asks
+  for that preview, and the turn-end check sends the reply back once when a calendar write this turn was not
+  followed by a calendar read.
+
+## [5.1.15] - 2026-10-27
+
+Three reports from other sessions, each with tests that fail on 5.1.14 (message guard 2.5.0):
+- **A send window holds its planned sends and closes after the last.** One stayed open for hours after its
+  planned sends, and later replies went out under it unreviewed. `synthesis sends open` now takes `--sends`
+  (1 to 50) beside `--hours`; the window shows how many are left, the last one closes it, and a window opened
+  without a count covers nothing. The guard refuses to ask the principal for a code to open a window the
+  command would refuse.
+- **An edit to a document others read waits for the code.** An agent added a line to an agenda seven colleagues
+  read with no code, though the principal had approved the line in chat. Edits to Google Docs, Sheets and
+  Slides, and to a Drive file's contents, are now sends (channel `docs`); a document's own line breaks are not
+  held to the paragraph rule, and creating a document is not an edit.
+- **A register rule can hold on some channels only.** A line saying the principal had not reviewed the details,
+  which fits scheduling, went out on three Jira answers. A `forbidden_phrases` rule may now name `channels`, for
+  connector and shell sends alike.
+
+## [5.1.14] - 2026-10-27
+
+- **A workspace worked occasionally owes no weekly review** (daily rituals 3.2.1). The ritual config can mark such a
+  workspace, an advisory seat for example, with `quiet_after_days`, and the principal had ruled on 2026-09-02 that a
+  daily streak means nothing there. No code read the setting: every session start counted the seat as owing a
+  weekly review, and on 2026-10-27 an action sheet asked the principal to run its rituals. Now such a workspace
+  never owes one; once it has gone that many days without a ritual record, the session line counts it as quiet too
+  long and `ritual_state.py query summary` shows `QUIET <days> days`. A value that is not a whole number of days
+  makes the ritual state unreadable, as any malformed config does. Declared mailboxes keep their own sweep cadence.
+- **A decision packet reads cleanly** (decision packet 2.2.0). The principal, on a calibration packet: formatting
+  codes showed literally, text ran on without line breaks, and its title said 19 items over 20. Now a `markdown`
+  asset renders bold, italic, code, block quotes and numbered lists; a row's context keeps its line breaks;
+  material read only in the packet carries no delivery block, and copy and download sit with the exact source.
+  A row marked `"blind": true` collects the principal's own judgment (scoring an answer to check a grader): it
+  carries no recommendation and needs no impact block, and a packet whose rows are all blind builds without
+  a padding row and shows no recommendation counts.
+- **A shell placeholder is not raw HTML.** A model's answer holding `<a key you know is in config/>` was
+  refused under `--strict-reader` as raw HTML in the reading path. Raw HTML now means a closing tag, a tag with
+  an attribute value, or a bare tag such as `<p>` or `<br/>`; words between angle brackets are prose.
+- **The private sheet host serves decision packets too** (action sheet 1.2.0). The principal chose that host
+  over claude.ai artifacts on 2026-10-20, because Codex and Muse have no artifact host, yet a packet went out
+  as an artifact on 2026-10-27. `publish_sheet.py` now rebuilds a filed packet with the packet engine, behind
+  the same sign-in checks, and the packet's filing guide says to publish there, not as an artifact.
+
+## [5.1.13] - 2026-10-27
+
+- **WhatsApp Channel posts and community rows no longer hold the window** (local messaging 1.5.1). Every post of a
+  followed Channel (session type 5, an `@newsletter` identifier) was a gap, `chat membership unknown`, so any day with
+  a post kept WhatsApp's watermark from moving without a by-hand review; community rows (type 4, a group identifier)
+  were gaps the same way. Channel posts are now skipped as `channel`, and a community is read as a group. Both types
+  were qualified against the store that reported it: types 0, 1, 4 and 5 held every message with a chat session for
+  90 days. Other session types stay gaps.
+- **Excluding a chat works whatever its membership.** Exclusion ran after attribution, so an excluded Channel still
+  held the window. A row that names exactly one chat is now skipped as `excluded-chat` before its membership is
+  checked.
+
+## [5.1.12] - 2026-10-26
+
+Three gaps other sessions reported, each with a test that fails on 5.1.11:
+- **The thread checker reads a DM-half transcript** (slack sync 4.0.2). It listed the 53 rows of a per-target
+  coverage table as thread parents and missed all five threads with replies, which sat as indented bullets under
+  "threads re-read". In a section of threads read it now lists every message, at any indent, linked or bare (in the
+  link's channel or the backticked id on the line), and a table row is never a parent. On twelve real transcripts
+  the channel halves list exactly what they did.
+- **A local message store's watermark stops where its reader stopped** (daily rituals 3.2.0). A close advanced a quit
+  WhatsApp's watermark to the window's end by hand, and a day of messages was read two days late.
+  `sync_watermark.py advance` now refuses `imessage`, `whatsapp` and the `messages` surface without `--coverage`
+  (the reader's output), caps the watermark at its `coverage.through`, and takes one store per call.
+- **A quit WhatsApp is stale at once** (local messaging 1.5.0). Quitting the app can write its store hours after its
+  newest message, which hid the stop from the 12-hour test. When WhatsApp is not running, its page is stale and
+  reaches only its newest message.
+
+## [5.1.11] - 2026-10-26
+
+- **Every RSVP waits for the code again** (message guard 2.4.1). On 2026-10-23 an accepted RSVP made through
+  `manage_event` with `action=rsvp` and notifications set to `none` went out without one: the exemption for calendar
+  writes that email no one (no attendees named, notifications off) matched it too, though 5.0.3 kept every RSVP
+  gated. The organizer sees the answer whatever the notifications, so an RSVP, by action or by a `response` field, is
+  never exempt.
+
+## [5.1.10] - 2026-10-22
+
+- **Never trim a skill to fit** (skills manager 3.1.0). The principal ruled that a SKILL.md over the 8,000-byte limit
+  is reorganized, never shortened: whole passages move word for word into `references/` with a one-line pointer, the
+  binding rules stay in SKILL.md, and the principal sees the move before it is committed. The rule is in
+  `docs/skill-format.md` (rule 3) and in the skills manager's binding rules, and the format test's size failure now
+  says to reorganize. It followed a skill trimmed to fit the limit, which dropped wording its author and its tests
+  relied on.
+
+## [5.1.9] - 2026-10-22
+
+- **Sends on messaging sites in the browser wait for the code** (message guard 2.4.0). Return in a Google Chat
+  compose box went out with no code: a browser page counted as no app, so only an action whose summary said it sent
+  was held. A page on Google Chat (and Gmail's `/chat`), Slack, WhatsApp Web, LinkedIn's messages, Teams, Discord,
+  Telegram Web, Messenger or X's messages now counts as that app (Return sends, shift with Return writes a line), and
+  Gmail and Outlook on the web count as email (cmd or ctrl with Return sends). Words typed there pass the register
+  scan. The page comes from the tab list Claude in Chrome prints after each call, or from a navigate step earlier in
+  the same batch; a page whose address the guard cannot read is judged as before.
+- **The sheet host's gate check names itself** (action sheet 1.1.1). On the first real upload, Cloudflare answered
+  403 to urllib's default user agent before Access saw the request, so `publish_sheet.py` refused a host that was
+  correctly behind the sign-in (safely: nothing was uploaded). The probe now sends its own user agent.
+- **The doctor checks every filed action sheet.** It found filed pages by name (`*packet*`, `*sheet*`), but sheets
+  are named from their titles ("your-actions-..."), so none had been checked. Pages carrying a generator's marker
+  are now checked too: on the principal's machine, 76 pages instead of 16, all intact.
+
+## [5.1.8] - 2026-10-22
+
+**The action sheet on the principal's phone through a private host, and never dependent on one** (action sheet
+1.1.0, agent guardrails 2.2.0).
+- **No hosting account needed.** The sheet stays one filed page that builds, files and records with no network
+  call; a new test runs all three with the network refused, an empty home folder and nothing on the path. In
+  Claude Code the private Artifact still puts it on a phone; elsewhere it opens on the computer it was filed on.
+- **An optional private host.** `publish_sheet.py` uploads a filed sheet to a Cloudflare Pages project behind
+  Cloudflare Access. It rebuilds the page from the filed spec, so a page edited by hand never uploads; it uploads
+  only while a request with no sign-in to the host and to a fresh subdomain is redirected to an Access sign-in;
+  and it checks the new deployment's own address the same way, exiting 3 with a loud message if that address is
+  open. It reads no credential: wrangler uses its own sign-in. Setup and the checks are in the skill's
+  `references/publishing.md`.
+- **`sheet_hosts` in the deploy guard.** An upload by the plugin's own publish script to a project the principal
+  lists there needs no approval code; a direct `wrangler pages deploy` to it, or the script's upload to an unlisted
+  project, still waits for one. A versioned interpreter such as `python3.12` now counts as its interpreter when the
+  guard reads a deploy.
+
+## [5.1.7] - 2026-10-22
+
+- **A signed note in an RSVP** (message guard 2.3.1). The signature-link check refused a persona's note in a
+  calendar RSVP comment for showing its domain as text, but an RSVP comment reaches the organizer as plain text,
+  where no named link can render; a declined invitation could carry its note only by a separate email.
+  `rsvp_comment` and `responseComment` are left out of that check in any tool; an event's description is not.
+- **The browser refusal reads right** (agent guardrails 2.1.1). After another session's selection it said that
+  session "selected a browser at 11:27 since then", even to a session that had never selected one. It now names
+  the session that made the latest selection, and when.
+
+## [5.1.6] - 2026-10-22
+
+Local messaging 1.4.0, from the principal's ruling on an operations session's request (a WhatsApp-only friend
+asked for a dinner photo, and no supported path could send it):
+- **Photos on iMessage and SMS.** `messages_send.py --photo PATH` sends one photo first and the text after it as
+  its caption (or the photo alone), to `--to` or `--members`, under the same single-use approval. The approval
+  names the photo by name, size and SHA-256, so another photo or an edited one needs its own. The packet carries
+  the path, never the bytes; the transport re-checks size and change time just before sending and stops with
+  `attachment changed` otherwise. A caption that fails after its photo is `uncertain`, never resent.
+- **WhatsApp, prefilled for the principal to send.** WhatsApp's Mac app has no scripting interface, and the
+  principal ruled that they press Send. `whatsapp_prefill.py` opens an existing one-to-one chat (found by number,
+  or by the linked id WhatsApp may keep instead) with the exact approved text, and with `--photo` shows the photo
+  in Finder to drag in. It never starts a chat, never reaches a group, reads chat sessions only, and stops at the
+  prefill: 5.1.5 holds a Send pressed by computer use.
+
+## [5.1.5] - 2026-10-22
+
+**Sends made by computer use or in a browser wait for the principal's code** (message guard 2.3.0, action sheet
+1.0.1). On 10-22 a photo with a caption went out on WhatsApp through `computer_batch`, a click on the app's Send
+button, and no code was asked for: the guard recognized sends by tool name, and computer use has none. A scan of 45
+days of transcripts found 11 more such sends through Claude in Chrome's `browser_batch` (LinkedIn messages, posts on
+X and LinkedIn, a support chat), none guarded.
+- **In a messaging app** (WhatsApp, Messages, Slack, Signal, Telegram, Teams, Discord, Zoom, Mail, Outlook, and any
+  bundle id in the new `messaging_apps` key), a click with no `action_summary`, Return or Enter in a chat app
+  unless held with its line-break key (shift; option in Messages), cmd or ctrl with Return or Mail's cmd+shift+d in
+  an email app, typed text holding a line break where Return sends, and a Send menu item wait for the code.
+  Reading, screenshots, scrolling, opening chats and attach menus do not. Words typed there pass the register scan
+  as they are typed; the signature-link rule does not apply to typed text, which cannot carry a link.
+- **In any app or browser page**, an action whose summary says it sends (sends, replies, posts, publishes, shares,
+  "clicks Send", "to send"...) waits too. On the 488 summaries in those 45 days, the rule held all 13 real sends and
+  nothing else.
+- **`computer_batch` and the teach tools name no app**, so they count as acting in every messaging app the session
+  named in `request_access` or `request_teach_access`, which the guard now records per session; a session whose
+  grants it never saw is treated as controlling all of them until it asks again.
+- The approval binds the exact call and any words it types; type the words and send in one call where you can. An
+  unreadable config, a malformed `messaging_apps` or an action that is not an object blocks the call.
+
+## [5.1.4] - 2026-10-22
+
+Five defects other sessions reported from 10-20 to 10-22:
+- **Browser profiles** (agent guardrails 2.1.0). One Chrome extension serves every session and acts in whichever
+  browser any session selected last; a session worked about 15 minutes in another workspace's profile, a public
+  post included. With `browser_routing` mapping each workspace to its browser, a session's Claude in Chrome calls
+  wait until it has selected that browser itself and its transcript shows the selection succeeded, and again after
+  any other session selects. Selecting another workspace's browser and `switch_browser` are refused; listing
+  browsers always passes. The workspace is the one the session started in. Nothing is checked until the key is set.
+- **Folder claims and handoff's receipt** (project management 3.1.1). An existing folder claimed without `/**`
+  covered the folder's path alone, none of its files, so `synthesis handoff` committed the rest, left nine staged
+  files behind and printed READY. Such a claim now covers everything under the folder, including claims stored
+  that way before, and READY reads every claimed file again, staged or not, rather than only those it committed.
+- **The Slack thread checker reads the listed layout** (Slack sync 4.0.1). Transcripts that list one bullet per
+  top-level message, with each thread as a channel heading carrying its parent's TS, printed "Parent threads found:
+  0" for every channel. Both layouts are read now, a permalink's own channel id wins, and a file with message
+  links but no parent it recognizes exits 2 as UNPARSED instead of printing an empty checklist.
+- **A watermark target is one id** (daily rituals 3.1.2). Six channel ids joined by spaces were stored as one
+  target with exit 0. `window`, `advance`, `defer` and `status` refuse whitespace or a comma in an id, before
+  anything is written.
+- **Docs image keys on the second host** (meeting transcripts 1.1.1, git hooks 3.1.1). Gemini notes also link
+  `docs.google.com/docs-images-rt/…?key=…`; redaction, the audit and the commit check knew only
+  `googleusercontent.com`, and 14 live keys were committed. All three cover both hosts, and `key=[REDACTED]` counts
+  as redacted.
+
+## [5.1.3] - 2026-10-20
+
+At the principal's request (relayed by his operations session): an SMS group with two friends for a trip, where an
+agent should post logistics and help watch for emergencies. Local messaging 1.3.0:
+- **Sends to an existing group or SMS chat.** `messages_send.py --members HANDLE,HANDLE` reaches the one existing
+  iMessage or SMS chat, group or one-to-one, whose members are exactly those handles. The approval binds every
+  member, the chat's service, the text and the chat, and its code request names them all; just before the single
+  send call the transport re-checks the account, its service and every member, so anyone added or removed since the
+  approval stops the send. Never a new chat, a move between iMessage and SMS, or RCS. `--to` is unchanged.
+- **Watched chats.** The reader's optional `watched_chats` keeps every message in a named chat as a note of class
+  `watched` (likely verification codes still skipped), where a group otherwise keeps only messages naming the
+  principal.
+- **Messages sends are their own send-window channel.** Both iMessage tools carry a `to` field, so they fell
+  through to the email channel, and an email send window would have covered them.
+
+## [5.1.2] - 2026-10-20
+
+- **Executive communication 2.1.0: writing upward.** A new binding rule and reference for writing to a reader
+  with more power than you: answer the question first, in the reader's terms and as a success; never imply
+  their premise was wrong; argue as a seller, with customer value, alternatives and upside; leave their
+  choices, their meeting and their reserved questions to them; brief your own manager first and address
+  every reader equally; check a product's real status before framing a milestone. With a pre-send check.
+- The budget test's wording now matches the ruling on ceilings: they rise only with an itemized reason.
+
+## [5.1.1] - 2026-10-20
+
+Defects other sessions reported on 10-19 and 10-20:
+- **Onboarding dry runs write nothing** (onboarding 3.0.2). `setup.py org ... --dry-run` passed the flag only to
+  the plugin step, so it cloned the organization's skills repository, reinstalled its skills and rewrote the
+  workspace's instruction files while reporting in the past tense. Every org and workspace step now reads into a
+  temporary folder and says what it would do, ending "Dry run: nothing was changed."; `onboard.sh --dry-run` runs
+  setup from a temporary clone; abbreviated options are refused, so `--dry` cannot slip past it.
+- **Instructions name only real commands.** The public section written into every organization workspace says
+  v5 has no update command and gives the rerun and health commands; enrollment notes any `synthesis` command an
+  organization's own text names that v5 lacks.
+- **A store that stopped syncing is stale, not complete** (local messaging 1.2.0). A WhatsApp store stopped on
+  10-17 and the next read called the window complete, so the watermark moved past messages that synced later. A
+  store with no write and no message past its threshold (12 hours for WhatsApp, 24 for iMessage, from 90 days of
+  the principal's stores) reports `coverage.stale`, stops `coverage.through` at its newest message and stays open;
+  the day-start moves the messages watermark only to `coverage.through` (daily rituals 3.1.1).
+- **Messages deleted on the Mac are attributed from Recently Deleted,** not guessed from a handle's one-to-one
+  chat, which in one store was the wrong chat. A row with exactly one Recently Deleted record takes that chat and
+  is skipped as deleted; any other row without one chat is a gap that says why.
+- **The packet's Markdown view keeps a wrapped list item whole** (decision packet 2.1.2): an indented second line
+  rendered as a new paragraph.
+
+## [5.1.0] - 2026-10-20
+
+**New skill: synthesis-action-sheet 1.0.0,** the decision packet's companion. After agents carry out the
+principal's rulings, one self-contained page holds what is left: done for you (folded), staged sends to approve,
+and the principal's own actions with the exact text, Copy, open-in-app links (WhatsApp prefilled; LinkedIn,
+Messages, mail and phone as each channel allows), marks, a note box and a paste-back summary. Each row can go to
+the principal or to an agent, which then may send exactly that text to that recipient once; money, security,
+credentials and identity rows never go to an agent. Approval codes never go on the page; a tap is confirmed from
+the source before anything is logged as done; the chat after a page is three lines. It shares the packet's page
+engine and filing.
+
+Also:
+- **Decision packet 2.1.1:** "Take all remaining" and "Clear" confirm on the page. Inside a claude.ai Artifact
+  the browser's confirm dialog always answers no, so both buttons did nothing there.
+- **Approval codes** are read only in the shape the guard issues (a digit, then five hex characters) and never
+  inside a block the harness wraps into a prompt. A background task's report reached the prompt hook as a prompt:
+  a code quoted there could have spent the pending request, and English after "approve" drew "Not granted" notes.
+- **Unread mailboxes between rituals** (daily rituals 3.1.0): every session start counts declared accounts whose
+  mail was last read past their sweep cadence, in any workspace (3 days for every-ritual, 8 for weekly), and
+  `ritual_state.py query summary` lists them. A workspace whose rituals stopped had left its account ten days
+  unread, visible only to its own ritual.
+- **`synthesis worktree retire`** accepts a squash merge the team has since edited: each file the branch changed
+  reached the default branch in the branch's exact version at some commit. It also treats pytest's cache as
+  disposable, as it does `__pycache__`.
+- **mac-sync 3.1.0:** per-workspace `repos.yaml` manifests and `machines.yaml` are the only repo inventory; the
+  central roster's retirement is documented, and a finished engagement's repositories stay listed as dormant.
+- **The doctor** checks filed action sheets for their generator's marker, as it checks packets.
+
+## [5.0.15] - 2026-10-20
+
+After a project session's script emptied the shared project index on 2026-10-20, losing another session's
+uncommitted edit in it (synthesis-project-management 3.1.0):
+- **Uncommitted work is journaled.** At every claim, release, session start and commit, synthesis snapshots the
+  checkout's uncommitted tracked changes with `git stash create`, which touches no file, index or stash list, and
+  keeps each snapshot for 14 days. `synthesis journal <path>` lists the snapshots holding a file; `--show` prints it.
+- **Release leaves nothing unowned.** `synthesis release` refuses while released paths hold uncommitted changes;
+  commit them, or `--hand-to` a session or project, which is told what it now holds.
+- **Claim names what is already there,** with the session that last claimed it, from a new claims log.
+- **Claims hold when a file is written,** not first at commit: the guard refuses a write into a path another live
+  session has claimed (file tools, redirects, copiers, `sed -i`, `apply_patch`).
+- **`synthesis index set <project> <field> <value>`** sets one field of one project atomically and commits only that
+  change, so other sessions' uncommitted edits in the index are kept and never committed under it.
+- **The context doctor** names who last claimed an uncommitted index and calls it a defect after a day.
+- **A project message with no live session on the project** is kept for its next session instead of refused.
+- **A signed iMessage can pass the guard** (message guard 2.2.1): iMessage cannot carry a named link, so its
+  signature may show the domain as text, as Chat's already could.
+
+## [5.0.14] - 2026-10-14
+
+Defects other sessions reported on 5.0.12, and two found while answering them (synthesis-message-guard 2.2.0):
+- **Every connector tool and file-edit tool reaches the guard.** The hook's matcher still listed send-shaped
+  tool names, so a tool the guard recognizes by what it does (creating a Jira issue, a Confluence page, a pull
+  request, a Notion or Docs comment) never reached it, and its sends were neither gated nor logged. The matcher
+  now sends every `mcp__*` tool and every file-edit tool; built-in reads still never start the hook. Codex and
+  Muse key their hook trust to the matcher, so each asks once to approve the hooks again.
+- **File-edit tools cannot write approvals or a send window.** Write, Edit, MultiEdit, NotebookEdit and
+  `apply_patch` (as a tool or a command) are refused inside the synthesis state, a harness's transcripts and the
+  approved commit lines.
+- **Global options no longer hide a post, and help is never one.** `bkt -c work pr edit ...` went through with no
+  code; `bkt pr edit --help` asked for one.
+- **A heredoc message is read without the code around it,** a substituted command whose output cannot be read is
+  refused, JSON is read as the strings it carries (an escaped emoji is the emoji), and a command that rewrites its
+  body file before posting it is refused, since the guard would read the old contents.
+- **A Python script is judged by what it writes, not what it quotes.** A stdin script writing project records was
+  refused because its text cited a transcript path; the guard now reads the code, and refuses only a write whose
+  target is a protected path (also through an assigned name). A path named elsewhere on the line still counts.
+
+## [5.0.13] - 2026-10-14
+
+- **The iMessage sender addresses Messages by bundle ID.** On this macOS the JXA name `Messages` resolves to
+  `com.apple.messages.AssistantExtension`, so `messages_route.js` and `messages_transport.js` failed with
+  "Application isn't running" (-600) while Messages was open, and every approved send was refused. Both now
+  use `Application("com.apple.MobileSMS")`; the test double requires that identifier.
+- **The route skips an account Messages cannot describe.** Three of six accounts on the same Mac answered
+  `serviceType` with "AppleEvent handler failed" (-10000), which stopped the route search before it reached the
+  iMessage account. Such an account is now skipped, never treated as a route.
+
+## [5.0.12] - 2026-10-13
+
+Four defects a project session reported on 5.0.11:
+- **The register scan reads the message, not the command line.** A scratch file's name tripped a branding
+  rule. A posting command's scan now covers its text words and every body it reads from a file, including
+  `$(cat file)`, which went unread before; options, URLs and file names are left out. A body named through a
+  variable is refused, since the guard cannot read it.
+- **A shell send's approval binds where the command runs.** It bound the directory the shell started in, so an
+  approved command that began with its own `cd` asked for a new code when run again from elsewhere. It now
+  binds the directory each posting command runs in, and the request names it.
+- **A typed code that matched nothing is named.** The prompt hook lists every code it could not grant (expired,
+  used or mistyped) instead of staying silent.
+- **A `>` inside a quoted string is not a write.** The state-folder check read redirects from the raw text, so
+  a read-only one-liner printing `'<pending>'` was refused; it now uses the parsed redirects (raw text only
+  when a line cannot be parsed). A command naming a pending code is still refused, and the refusal points to
+  `synthesis approvals`, which lists pending requests.
+
+## [5.0.11] - 2026-10-13
+
+- **A send window opens only with the principal's code, however the command is written.** An agent ran
+  `synthesis --session <id> sends open ...`; the guard matched `sends open` only right after `synthesis`, and
+  the command trusted the guard, so a window opened with no code (reported by a project session, closed within
+  a minute, no sends under it). Now `synthesis sends open` itself, run by an agent, opens only on a granted code
+  for exactly that window from the session's own transcript, and refuses otherwise; the guard reads the
+  command's options wherever they sit; `--help` and `-h` never need a code.
+
+## [5.0.10] - 2026-10-13
+
+- **Reading the send window or approvals from a script is allowed again.** 5.0.9 refused any script that
+  imported the window or approval code, which also refused a read-only check. The shell guard now refuses
+  only a script that opens a window, grants or spends an approval, or writes into synthesis state.
+
+## [5.0.9] - 2026-10-13
+
+Rajiv's rulings of 2026-10-13:
+- **Approval on every channel** (synthesis-message-guard 2.1.0). A call is a send by what it does: a connector
+  tool whose name delivers words (send, reply, comment, post, share; creating or editing an issue, page,
+  message or review), in Jira, Confluence, GitHub, Bitbucket, Docs comments, Notion, Box, chat and email alike,
+  and a shell command that posts (`gh` and `bkt` comments and PR writes, their `api` writes, `curl`, `wget` and
+  HTTPie writes to another host, `osascript` Messages or Mail). A body file a command sends is read and
+  scanned. PRs, issues and comments in the principal's `own_repos` are not sends.
+- **Send windows.** `synthesis sends open --hours N --channels ...` (at most 12 hours, optionally one project)
+  needs the principal's code when an agent runs it. Inside it, a send in a covered channel that carries one of
+  `send_window_signatures` goes without a per-message code, after the same register scan and format rules.
+  `synthesis sends close` ends it at once; every session sees an open window at each prompt; `synthesis sends
+  log` lists the day's sends for the daily plan's "On your behalf".
+- **Preferred names** (synthesis-agent-correspondence, message guard rule 10). Address people by the name they
+  go by; the guard refuses an official first name when the call carries that person's identifier from
+  `preferred_names`.
+- **A Docs image link's access key is a built-in credential** in the commit check (synthesis-git-hooks 3.1.0),
+  refused in every repository; the redacted form passes.
+
+## [5.0.8] - 2026-10-13
+
+- **Decision packets read comfortably** (synthesis-decision-packet 2.1.0, from Rajiv's review of a
+  three-decision packet on 2026-10-08 that carried the same eleven assets in every row). A text asset can
+  carry the version the principal already reviewed (`baseline`); the page shows the changed words first and
+  keeps the complete text one click away. Identical material is shown once and later rows point back to it.
+  An HTML message (`format: "html"`) is read as its words, with the exact markup under "Exact HTML as sent".
+  `reference` material is folded away, settled items go in a `handled` list apart from the decisions, and a
+  row's context comes before its material. New READER findings flag raw HTML in the reading path and a
+  reading path over 6,000 characters per decision. An omitted header part no longer leaves a blank line.
+  Binding rule 15 adds the Codex practice: ask in the final reply, never only in a question card.
+- **The meeting window never passes a meeting still under way** (synthesis-meeting-transcripts 1.1.0). The
+  suggested watermark is the earliest of the window's end, two hours before the run and just before each
+  unsaved doc was created, with an explicit offset and a stated reason. Each run names the patterns it
+  searched and lists notes docs none of them found. Docs image links carrying an access key are redacted when a
+  transcript is saved, and the transcript audit fails a file that still holds one.
+- **The message reader no longer stalls on three kinds of row** (synthesis-local-messaging 1.1.0). An outgoing
+  row with no chat link is placed in its recipient's one-to-one chat when there is exactly one. A link or
+  attachment row whose body the reader does not decode is recorded with a marker (`[link]`,
+  `[attachment: image/jpeg]`) instead of holding the cursor. Gaps that remain can be closed by a by-hand
+  review naming exactly those rows (`--review`), which the principal approves by typed code. Any caption
+  sent with a photo or link is not read.
+
+## [5.0.7] - 2026-10-13
+
+Fixes for defects other sessions reported on the board from 2026-10-07 to 10-13:
+- **The send guard reads a branding link as branding.** A rule requiring a domain beside a persona marker read
+  only the tag-stripped text of an HTML email, where the signature keeps the domain in its link, so the
+  canonical HTML signature could never pass and an email was held. Rules now read the rendered text followed
+  by its link targets; a phrase split by a link still blocks. The example config gains a
+  `persona-marker-without-branding` rule, tested both ways.
+- **Board messages are marked read only when shown.** The prompt hook marked every unread message read but
+  showed five, and cut long ones at 1,500 characters without saying so. It now marks only the five it shows,
+  says how much it cut, and `synthesis inbox --recent HOURS` shows every message from that window again,
+  read or not.
+- **Long-running sessions hear about upgrades.** A session recorded before versions were kept (before 5.0.3)
+  was never told what changed; if it started before the running release was installed, it now gets the
+  release's notes once.
+- **The shell guard tells a read from a write.** A read-only Python script was refused because it called
+  `json.dumps` or `str.replace`; the write check now looks for real writes (a file opened to write, mutating
+  file calls, `os`, `shutil`, `subprocess`, `sqlite3`, and their Node, Ruby and Perl equivalents).
+  Transcript and tool-result reads stay allowed.
+- **The doctor says "cannot tell" when it cannot tell.** A harness CLI that does not answer within 45 s
+  (raised from 20) is a warning naming the command, not a failed plugin check; Muse trust state that cannot be
+  read from a sandbox is a warning, not an unapproved hook.
+
+## [5.0.6] - 2026-10-07
+
+Three defects the operations sessions reported from their first rituals on v5:
+- **Meetings already saved are recognized.** `fetch-meeting.py --window` read a saved meeting's doc id
+  only from a `google-drive:` header or a document link, so archives that name it on a `> Source:` line
+  showed as unsaved and the meetings watermark was held back. It now reads that line too
+  (synthesis-meeting-transcripts 1.0.1).
+- **No pointer to a removed script.** `verify_transcripts.py` told readers to run `transcript_primary.py`,
+  which 1.0.0 removed in favor of the attribution reading rule; it now names that rule.
+- **The Chat preflight's JSON carries the census.** `gchat_preflight.py --json` printed only the targets;
+  it now carries the `census` and `enumeration` lines the ritual quotes, plus `bound` and `declared`. Table
+  mode is unchanged, and `--out` still writes only the declared set the gate reads.
+- The bytecode lint now covers every script in a skill, not only `scripts/` folders, and three scripts
+  outside them turn bytecode off before their first local import.
+
+## [5.0.5] - 2026-10-06
+
+- **The doctor leaves nothing running.** Codex's app-server runs `git ls-remote` for its marketplace when
+  it starts, and the doctor killed only the app-server, so git outlived it; the Console reported processes
+  left behind on about one run in four. Each harness CLI now runs in its own process group, and the doctor
+  kills the group when it is done.
+- **Skill scripts no longer write bytecode into an installed plugin.** 35 scripts import the plugin's own
+  modules; run from an installed plugin, that import wrote `__pycache__` into it, which Muse treats as a
+  changed bundle. Each now turns bytecode off before its first local import, and a source lint keeps it so.
+- `repo_sync_check.py` replaces its report whole, so the Console never reads half of one.
+- `autopilot_cli.py status --json` prints the runs as a JSON list.
+
+## [5.0.4] - 2026-10-06
+
+- **The runtime only moves forward on its own.** Each session start passes the plugin folder its harness
+  loaded, and the hook installed that runtime whenever it differed, so a session still on an older plugin
+  (one that started or compacted after an upgrade) switched every harness back to the older release. The
+  hook now installs only a newer release; setup, `release.py` and `synthesis install` still install what
+  they are given, which is how a deliberate rollback is done. A session whose runtime was rolled back is
+  told so in one line instead of an upgrade note.
+- One release-number parser serves the installer, the doctor and the upgrade note.
+
+## [5.0.3] - 2026-10-06
+
+- **Sessions learn of an upgrade.** A session that last saw an older release gets one note at its next
+  prompt or start: the release it moved to, the changelog sections in between, and the step to refresh
+  skill text it loaded earlier (re-read a changed skill, or run synthesis-checkpoint in
+  refresh-and-report mode). Hooks and guards already run the new release; a new session records the
+  release silently. Install copies the changelog into each release for the note to quote.
+- **Calendar writes that email no one** (no attendees named, notifications set to none) no longer wait
+  for approval; anything with attendees or notifications, and every RSVP, still does. Account routing
+  still applies to every calendar call.
+- **A repository naming itself** is not a disclosure: in a strict repository a protected name that is the
+  repository's own owner or name (for example a product's name in its own app repository) passes; every
+  other protected name still needs approval.
+- The plugin and core line ceilings rise by 41 for these three.
+
+## [5.0.2] - 2026-10-06
+
+- `synthesis doctor` accepts an `AGENTS.md` that links to `CLAUDE.md` as the same
+  instructions, as it already accepted the reverse. Repositories that keep their
+  instructions in `CLAUDE.md` with `AGENTS.md` as a link were reported as reading
+  different instructions when both harnesses read one file.
+- When the shell guard refuses a script fed on stdin because another part of the command
+  names a synthesis state or transcript path, the refusal now says to run the script on
+  its own. The rule itself is unchanged: a heredoc cannot be told apart from the rest of
+  the line, and a variable set elsewhere could carry the path into the script.
+- Setup replaces the 4.x `synthesis` command it finds at `~/.local/bin/synthesis` (a managed
+  file that drove the retired board), archiving it under `~/.synthesis/v5/archive/`, and links
+  the v5 command there. Before, a 4.x install kept the old command on PATH, so `synthesis
+  claim` and `synthesis who` reached the retired board.
+- The meeting-transcripts commitment scan reads Gemini's `### HH:MM:SS` block headings as
+  times. It treated them as section breaks, so every candidate from a Gemini transcript printed
+  `[no timestamp]`.
+- Setup refreshes organization skills that 4.x installed when nobody edited them since: their
+  files equal the source repository at the commit the 4.x copy recorded. Before, v5 kept every
+  such copy as "not written by setup", so upgraders kept old skills while setup said installed.
+- Sync watermarks: a deferral counts only when it was recorded in the current run, so one from
+  the day before no longer excuses unread targets; a deferred surface shows its targets deferred,
+  so the printout matches the exit code. The Google Chat preflight takes `--page-size` and calls
+  a page complete when it is shorter than the size requested.
+- Day-start's Google Chat step says the cross-space search never stands in for a read, and where
+  the sender's `users/<id>` comes from when a read returns names only.
+- Lint: unused imports and variables and placeholder-free f-strings removed across the plugin
+  and its tests.
+- `synthesis handoff` commits files under a claim with a wildcard in a name (`notes/2026-10-06-*`); git read
+  such a claim as a literal path, so handoff skipped it and printed READY over uncommitted records. It now
+  keeps exactly the files the board's own claim matcher accepts.
+- `synthesis release <dir>` releases a `<dir>/**` claim, reports how many claims it released, and exits 1
+  with "no claim matched" when none did; it printed "released" either way.
+- The day-end nudge's LaunchAgent template names the v5 launcher path; setup always wrote the
+  right path, but the shipped template still named the retired 4.x folder.
+
+## [5.0.1] - 2026-10-06
+
+- The `synthesis` command works through the `~/.local/bin/synthesis` link that setup
+  creates. It found its runtime from the folder it was called through, so the link
+  failed with "No module named synthesis", and inside a synthesis-skills checkout it ran
+  the checkout's code instead of the installed release. It now resolves its own path
+  and puts the runtime first on Python's path. The test calls it through a link from a
+  folder holding a decoy package; the old test ran from the repository root, where the
+  checkout hid the bug.
+- The commit check's refusal reads "an AWS access key" (it said "a AWS access key").
+
+## [5.0.0] - 2026-10-06
+
+A rebuild of the synthesis work system from its requirements. The skills keep every
+rule, lesson and edge case; the machinery that existed to manage itself is gone.
+About 189,000 lines of Python became about 25,000, and an ordinary shell call now
+costs about 30 ms of hook time instead of about 1.7 s.
+
+**One small core.** A `synthesis` command and four hooks, standard library only,
+running on Apple's Python 3.9:
+
+- Session start restates the local time, the active project's PRIME-DIRECTIVE and
+  current state, the session's own autopilot run and one ritual line, including
+  after compaction.
+- Message sends wait for the principal to type `approve <code>`; the approval binds
+  the whole call and is used once, and only when the harness's own transcript shows
+  the principal typing it. The shell guard refuses commands that carry a pending code,
+  run the hook by hand, or write into v5 state or a harness's transcripts. Calendar, mail and drive-share calls are checked
+  against the account the workspace uses, before any approval.
+- Deploys need approval of the exact command; future or changed publish dates are
+  refused, and a second deploy of the same site within 45 minutes needs its own
+  approval; recursive deletes of protected roots and force pushes to default
+  branches are refused.
+- The reply check sends a reply back once for deferring language, quotes with no
+  source in the session, and (when configured) file names that are not links.
+- A global commit check scans for credentials and unapproved disclosures, checks
+  other sessions' claims and chains to each repository's own hooks. A disclosure hit
+  blocks with a code; once the principal types approve and the code, that exact line
+  passes in that file of that repository from then on, recorded as a hash and a date,
+  and an edited line or a new place asks again. Agents never reword, split, encode or
+  build a flagged term at run time to get past a guard. Credentials are never
+  approvable; AWS's published example keys pass by exact value, and a bare private-key
+  header passes whatever marker the policy lists.
+- The board is one small file per session: claims with one spelling per path,
+  messages addressed to one session or a project, stale claims taken over only on
+  request and kept on record.
+- `synthesis resume`, `handoff`, `worktree`, `doctor`, `install` and `uninstall`
+  replace the old resolver, checkpoint receipts, retirement runtime, conformance
+  reports and bootstrap.
+
+**Every skill in the v5 format.** Binding rules first, then a contents list, then
+the procedure, with SKILL.md under 8,000 bytes so Codex reads all of it. Longer
+material moved verbatim into reference files that each fit one read. Every skill
+has a coverage map showing where each old section now lives; retired passages are
+kept verbatim in `preserved.md`. Each skill's version moved to its next major
+version.
+
+**Removed.** Per-edit attribution manifests, tool snapshots, Stop-time receipts,
+acquisition receipts, record transactions, leases, the multi-Mac fleet registry,
+team contracts, release acceptance machinery, the plugin cache guardian, the old
+autopilot engine, vendored PyYAML and every PyYAML import (one standard-library reader
+reads every YAML file, inbox rules and knowledge-base frontmatter included) and the
+package launcher. Their incidents and
+rules survive as tests and as prose in the skills.
+
+**Install.** Native plugins in Claude Code, Codex and Muse, with one stable hook
+path that survives plugin upgrades. `onboard.sh` sets up a new Mac through the
+onboarding skill's `setup.py`. Muse now lists four skills it was missing:
+agent-guardrails, local-messaging, meeting-prep and project-resume. The core (the
+`synthesis/` runtime, hooks, `install.sh` and `onboard.sh`) is Apache 2.0.
+
+## [4.154.12] - 2026-10-05
+
+- Read only the claim owner's row during worktree retirement, so claim cleanup no longer fails when a large coordination board's full status reply exceeds the retained runtime's output limit.
+- Let a retained retirement finish after its claim owner's seat is released or archived. That owner holds no live claims; an active owner still has to prove its native identity.
+- Add regression coverage for oversized boards, released and absent owners, and the exact row reply.
+
+## [4.154.11] - 2026-10-05
+
+- Recheck the selected project and its working-tree identities when the repository advances, allowing unrelated commits while refusing project replacement or newly appearing worktrees.
+- Reduce repeated dirty-file path parsing and directory opens within each scan, retaining fresh file reads, ancestor checks and existing resource limits.
+- Add regression coverage for selection races, directory replacement, path collisions and request-local scan reuse.
+
+## [4.154.10] - 2026-10-05
+
+- Add candidate admission to the existing publication command owner, binding test coverage metadata to the exact outgoing commit and selected release base.
+- Refuse missing or unmapped acceptance cases, hidden fixture changes, moving source references and changed push destinations before supported candidate publication.
+- Retain ordinary repository behavior and the existing site publication authority boundary.
+
+## [4.154.9] - 2026-10-04
+
+- Encode repeated attribution paths once while retaining every path, recorded hash, remote obligation and metadata field within existing byte and path limits.
+- Read the indexed representation through the shared checkpoint, publication, project recovery and session-context owners; retain raw receipt digests and exact ownership checks.
+
+## [4.154.8] - 2026-10-04
+
+- Reuse charged immutable journal member representations and compiled subtree plans while freshly reading and authenticating each dependency.
+- Reduce repeated canonical framing, member sorting and physical-handle churn within the existing shared memory, handle, work and cancellation limits.
+
+## [4.154.7] - 2026-10-04
+
+- Use the selected machine’s repository guard, checkpoint receipts and coordination board when resolving project migration previews.
+- Bind migration plans to those recovery roots and recheck their identity immediately before transaction and recovery operations. Include bounded resolver issue details when a preview is refused.
+## [4.154.6] - 2026-10-04
+
+- Group retained checkpoint paths with bounded repository discovery instead of repeated per-file Git probes and quadratic membership scans. Revalidate repository topology before publication and retirement.
+
+## [4.154.5] - 2026-10-04
+
+- Reduce journal decoding allocations with parse-local key-shape checks while retaining canonical syntax, duplicate-member rejection, finite work limits and independent mutable results.
+- Correct the explicit-group fixture inventory expectation to include its additional test while keeping selected-group execution unchanged.
+- Run wall-clock deadline controls exclusively in both source checks and acceptance, using one shared selector classification while ordinary checks remain parallel.
+
+- Select the journal codec before binding prepared-launch projection hashes, and verify historical transitions with faithfully encoded fixtures.
+- Recognize complete captured diffs of literal detection rules while rejecting key material, malformed captures, and unrelated credentials through the ordinary commit guard.
+
+## [4.154.4] - 2026-10-04
+
+- Keep hashless local handoff read-only after a seat is released while requiring exact native admission for attribution retirement.
+- Retain complete native event identities in bounded lossless blocks through explicit owner reconciliation, preserving original enrollment, resource consumption and unresolved history.
+- Validate compressed journal canonical syntax while parsing, avoiding a second serialization without changing canonical bytes or physical custody checks.
+- Retire exact own published attribution during automatic Stop, with native ownership checks, bounded whole-owner work and retained unresolved entries.
+- Preserve subsecond precision when validating newly acquired evidence and continue to reject future timestamps.
+- Reduce bounded journal verification cost by scanning canonical strings and brackets without repeated per-token regular-expression objects.
+- Reuse authenticated journal reads within an operation, with fresh ownership checks and bounded immutable decoding.
+- Store native usage and snapshot provenance in bounded lossless representations, preserving historical observations and durable digests.
+- Reduce repeated state copies while retaining aliases, cycles, insertion order and independent mutable results.
+- Bind retained project fixtures by their file, directory, link or special-file identity without following symlink targets; keep live structured-state validation strict.
+
+## [4.154.3] - 2026-10-03
+
+- Partition the complete onboarding source catalog into six bounded groups and keep ritual instructions within their document limit without dropping guidance.
+- Bind introduced runtime dependencies to their component-local released anchors and verify every installed dependency in the doctor.
+- Decode retained unlinked native outputs, partial environment patches and bounded large command metadata as inert observations with explicit generation reconciliation.
+- Ingest native-memory exports through bounded readers into their authenticated canonical knowledge destinations, retaining source identity and explicit clear-capability status.
+- Support shared meeting-prep contributions through scoped grants while keeping registry and memory destinations under their existing owners.
+- Include the complete registry and memory dependency closure in installed runtimes and independent installer checks.
+- Require exact native claims and retained transaction evidence for registry creation and edits, including ordinary field and entry changes.
+- Preserve foreign entries and modes across concurrent writes, staged checks and interrupted recovery.
+- Support explicit empty registries after final-entry removal and authenticated recreation while refusing ordinary project admission without an entry.
+
+## [4.154.2] - 2026-10-03
+
+- Require explicit workspace ownership for meeting profiles; migrate selected legacy files with hash-bound custody while preserving unresolved profiles.
+- Keep quoted and fenced marker examples inert while retaining real project obligations and their source coordinates.
+- Require actual lifecycle lock ownership during checkpoint and worktree retirement; retain finite deadlines for pinned reconciliation.
+- Select authenticated snapshot owners before decoding unrelated payloads, with explicit retained-record indexing and unchanged pruning safeguards.
+- Align onboarding engine versions with the skill contract and require the merge guard in runtime fixtures and hook-presence checks.
+
+- Apply the existing claim and content checks to automatic merge commits and verify the merge entry point during installation.
+- Retain a bounded selected-source traceback line for helper failures without exporting raw exception content; exercise native-script fixtures with their declared process allowance.
+
+- Decode observed retained native context, partial state updates and completed item formats through bounded readers, keeping historical text inert and missing metadata explicit.
+- Validate large retained history incrementally without increasing structural, memory or source-integrity limits; require explicit reconciliation when the decoder generation changes.
+
+## [4.154.1] - 2026-10-02
+
+- Admit complete diagnostic custody up to a finite 4,096-record ceiling and reject impossible plans before acceptance execution; retain independent byte, time, privacy and test-batching limits.
+- Resume explicit original-interval replay under the current authenticated seat while preserving historical enrollment, cancellation evidence and foreign-source refusals.
+- Request complete Bitbucket reviewer fields through bounded API pagination; missing fields or incomplete pages produce an unscanned result instead of an incorrect empty-reviewer classification.
+
+## [4.154.0] - 2026-10-02
+
+- Retain connector observations while refusing Slack attribution from ambiguous rendered messages and Drive inventory completion when the provider completeness flag is missing; declared structured readers remain available.
+- Advance only proven source intervals, retain incomplete targets, and write each daily archive once per acquisition.
+- Verify the actual Codex executable before offering a delivery lane and include its locator in installed runtime dependencies.
+- Model synthetic storage fixtures consistently on macOS and Linux while retaining temporary-directory, alias and work-placement protections.
+- Journal trusted checkpoint observations through the existing logical capacity while retaining smaller request and physical-file limits.
+
+## [4.153.4] - 2026-10-02
+
+- Checkpoint and finish autonomous runs with large project state using the project-state reader and its existing safety limits.
+
+## [4.153.3] - 2026-10-02
+
+- Inventory retained evidence without opening special files, with explicit bounded scan policies and fewer repeated scans.
+- Recover run ownership from authenticated native question answers and scoped deliveries while preserving action approvals and deadlines.
+- Accept incidental decision-note whitespace without changing decisions or substantive text.
+
+## [4.153.2] - 2026-10-02
+
+### Fixed
+
+- Recognize empty YAML mapping-value sequences in complete detection-rule
+  documents while retaining refusals for credentials, mixed material and
+  unsupported collection syntax.
+
+## [4.153.1] - 2026-10-02
+
+### Fixed
+
+- Reduce repeated manifest and directory work during project recovery while
+  rechecking filesystem identity before selecting or updating a checkout.
+- Preserve file kinds and retained hashes through partial publication so a
+  later edit cannot claim another session's changes or lose an own obligation.
+- Report continuity diagnostic timeouts as failed checks with an explicit
+  budget instead of an uncaught exception.
+- Decode bounded native subagent activity and environment observations without
+  treating them as execution, admission or completion authority.
+
+## [4.153.0] - 2026-09-30
+
+### Changed
+
+- Run the complete source catalog and acceptance batches with bounded parallelism.
+  Reuse authenticated exact-candidate hosted validation at publication; retain
+  fresh publication, installation and full installed-inventory checks.
+
+- Give autonomous work a finite acceptance endpoint and coherent delivery batches.
+  Reuse valid verification across review, preflight and checkpoints; continue
+  independent work during external waits and investigate missing CI progress.
+- Remove open-ended verification instructions and the assumption that unchanged
+  tests cannot cover a repair. Preserve required gates, failures, evidence,
+  authority and explicit incomplete outcomes.
+
+### Added
+
+- Keep failed material scans and fresh material drift fenced at recovery and
+  work admission. Report malformed retained JSON as incomplete coverage, and
+  retain open candidates when retirement evidence conflicts or changes.
+
+- Preserve declared material inputs, rationale, temporary conditions and
+  uncertainty through the existing context editor and record transaction.
+  Distinguish pending capture, unreachable associations and changed review
+  generations across ordinary checkpoint, doctor and optional recovery capsule
+  consumers. Keep semantic judgment, current authority and endpoint acceptance
+  separate from deterministic custody checks.
+
+### Fixed
+
+- Keep sandboxed browser socket paths within platform limits during nested
+  acceptance checks, with retained fixture custody. Bind the bytecode regression
+  positive control to the same isolated cache namespace as its fixture.
+- Decode bounded desktop attachment and metadata records without granting native
+  authority. Diagnose the bound Claude transcript through the supported doctor,
+  with explicit inspected ranges and unchanged historical coverage limits.
+- Yield complete native records when aggregate page events reach their bound;
+  preserve cursor, cancellation and single-record refusal semantics.
+- Carry complete acceptance receipts through lossless bounded transport to both
+  release and diagnostic consumers. Refuse malformed, oversized, corrupt or stale
+  frames while preserving failed outcomes and private evidence custody.
+
+- Make service-doctor fixtures explicit about their platform and local configuration.
+  Exercise Linux and macOS health paths and preserve failure and unknown classifications.
+  Exclude inherited shell startup files and functions from these synthetic consumers.
+
+## [4.152.0] - 2026-09-28
+
+### Added
+
+- Connect declared Google Docs and Slack read-only adapters to existing source,
+  save, verification and watermark owners. Selection binds account/workspace,
+  folder/conversation scope and finite paging; it never discovers credentials or
+  silently changes transport after a refusal.
+- Retain native tab identities, verbatim transcript/message bodies and exact
+  file receipts. Compact status leaves principal judgment explicit.
+
+### Fixed
+
+- Isolate rapid-redeploy fixtures from operator policy and Git configuration.
+  Verify successful consumption with explicit fixture policy and refusal when
+  that policy is missing or invalid; production enforcement stays fail-closed.
+- Bind nested release checks to their own complete selection and source root.
+  Isolate the registered inventory observer from deliberate fixture injections
+  while retaining failure on actual custody tampering. Refuse inherited outside
+  collection policy by binding owned configuration and in-root fixtures. Run ordinary hosted
+  checks before final transaction acceptance so failures remain diagnosable.
+- Retire registered nested worktrees through their verified native owner. Bind
+  Git markers and backlinks to bounded, no-follow observations, refusing
+  FIFO replacements and changed metadata before destructive operations.
+- Diagnose declared temporary storage and preserve retained work during
+  recovery. Guide long-lived worktrees and environments to durable paths;
+  keep exact claim identity and foreign ownership checks enforced.
+- Execute overlapping acceptance selectors once while retaining every
+  original case and expected result. Bind public diagnostic exports to
+  their directory ancestry and exact readiness bytes at completion.
+
+- Bind Stop-hook dependencies before activation and revalidate late imports and
+  retained execution descriptors before dispatch. Resolve desktop identity through
+  the shared authenticated reader.
+- Retain bounded failure details for setup, execution, teardown, collection and
+  subtests during interrupted release checks. Partition native lifecycle controls
+  without dropping tests or changing execution and acceptance time limits.
+- Reconcile original native intents and retained receipts after interrupted
+ownership, refusing changed plan, claim or execution evidence without replay.
+  Preserve responsive active cancellation and verified descendant cleanup.
+- Batch release acceptance within finite bounds, preserving the original test
+  inventory and all execution phases. Reject hidden collected cases, invalid
+  subtest evidence and altered release receipts at their real consumers.
+- Install the declared HTTP client dependency in the existing macOS and Linux
+  onboarding test lanes; retain their original failing evidence.
+- Observe supported native web page-open and find actions, including text-result
+  thumbnails, without treating page content as authority or task completion.
+  Unknown fields, foreign identities and malformed records still stop coverage.
+- Reject contradictory Slack page totals, order and cardinality before advancing
+  coverage. Replay owned archives by conversation and parent metadata, refusing
+  ambiguous legacy records instead of interpreting quoted prose as authority.
+- Require matching successful MCP initialization, supported protocol and declared
+  tools capability before dispatch. Authentication, HTTP and malformed-response
+  failures remain distinct from verified absence.
+- Verify acquisition entrypoint dependencies through the installed runtime owner;
+  run entry, repair, regression and service-doctor controls in every release lane.
+
+### Measured scope
+
+- With two synthetic documents and 1 KiB–1 MiB bodies, exact saved bytes were
+  verified while CLI status remained 1,256–1,262 bytes. A fixed Slack thread over
+  the same body range produced 1,167–1,173-byte status with full archive custody.
+- Watermark calculations matched explicit 1-, 8- and 365-day intervals; reports
+  grow with target count. Fixed-topology local Git reports remained 581 bytes.
+  A grounding ledger remained 514 bytes while its helper consumed the full body.
+  These are mechanical output measurements, not measured model-token savings,
+  a matched prior-procedure comparison, or native/provider acceptance.
+
+### Skill versions
+
+- Daily rituals 2.44.0; meeting transcripts 0.13.0; Slack sync 3.13.0;
+  onboarding 2.10.1; skills manager 2.8.11; autopilot 3.5.1.
+
+### Core execution and recovery
+
+Recover the original enrolled history through one finite operation and refresh
+normal appends before protected controller and CLI actions. Preserve decoder
+generations, semantic aliases, cancellation, consumed retry budgets and the
+original mutation owner's fresh checks. Authenticate successor batch lookup
+without treating unrelated missing caches as corruption or skipping bad evidence.
+
+Keep active work on durable paths and diagnose the real checkout, common Git
+storage and ordinary or split-index integrity. Reuse one native transcript
+identity reader across consumers and avoid source bytecode writes during
+retirement. Missing, corrupt and unsupported state stays explicit.
+
+Ritual history creation now serializes cooperating writers under the existing bounded deadline and retains file locking, durable readback and path protections. Failed release acceptance preserves every unmatched case diagnostic. Retained-process acceptance publishes complete fixture PID records atomically before observing them; deliberate writer preemption exercises every terminal path.
+
+
+Bind native callbacks to their actual producing connection, context and session.
+Retain complete bounded source histories and recover linked execution intervals
+without replaying effects or resetting prior accounting. Threaded process owners
+preserve cancellation and descendant cleanup.
+
+Add explicit team enrollment, contribution and review boundaries, source-bound
+conformance reports, declared machine maintenance and upgrade campaigns. Keep
+native memory inert at action boundaries and preserve evidence during project
+migration and retirement. Native capability and live-loading reports distinguish
+observed behavior from synthetic fixtures and unsupported provider surfaces.
+
+Display complete, revision-bound review material in decision packets with exact
+downloads and explicit clipboard outcomes. Keep unavailable assets from becoming
+recorded decisions. Preserve the authenticated seat's existing context role when
+it adds claims, while retaining explicit role replacement and foreign-owner checks.
+
+Add recoverable multi-file project transactions and explicit decision/obligation
+succession. Preserve original records, unanswered decisions and exact authority;
+concurrent sessions cannot silently replace one another's work.
+
+Make acquisition and ritual reports bind their actual source, cutoff and complete
+worker outcomes. Standardize guarded email construction and onboarding wiring.
+Harden raw-byte Git scanning, claim serialization, native process cleanup and
+runtime dependency verification without relaxing protective checks. Failed release
+checks retain their bounded diagnostic output instead of only a summary line.
+
+Verify explicit Muse plugin command support and complete, unambiguous installation
+inventory before staging. Unknown records and duplicate identities fail closed;
+current native lifecycle support remains a separate observation.
+
+Release validation now retains canonical private temporary files, test inventories
+and command receipts after success or failure, without relaxing production path
+protections or allowing pytest to remove a supplied existing directory.
+
+Required autopilot checks now cover the entire collected suite in bounded groups.
+Release checks reject changed source, inherited test selection and stale bytecode.
+
+Serialize snapshot publication and readers with bounded descriptor locks; preserve foreign staging files and enforce transient capacity. Require explicitly declared plan evidence at completion, enforce per-agent search ceilings in the shared ledger, and finish only the authenticated caller’s claims after verified worktree retirement.
+
+Store large run snapshots as bounded, authenticated content blocks so native
+history recovery can continue without rewriting prior events or replaying effects.
+Retain finite logical and physical storage limits, event-chain authentication,
+compare-and-swap ownership, interrupted-write recovery and durable directory
+barriers. Checkpoint and prepared-launch attribution verify the actual committed
+storage form, including historical inline events. Equal decoded values remain
+independent objects, and partial or corrupted evidence still refuses acceptance.
+
+## [4.149.8] - 2026-09-26
+
+Find the current desktop Codex CLI even when an older PATH launcher remains
+executable but no longer works. Local version probes close stdin, discard output
+and bound process cleanup. Explicit client selection remains authoritative.
+Conformance, dispatch and onboarding use the same discovery implementation;
+installed-release fixtures include its runtime dependency.
+
+## [4.149.7] - 2026-09-26
+
+Validate native search, sleep and date-change records as inert observations,
+with strict schemas and explicit decoder-generation reconciliation. Stream
+complete run-journal validation within a shared time budget, retaining per-event
+size and count limits, corrupt-chain refusal and explicit unresolved output.
+
+## [4.149.6] - 2026-09-26
+
+Read qualified large native compaction records with bounded structural memory,
+complete current-byte validation and explicit metadata limits. Retained context
+stays inert and does not replay actions, grant permissions or reset accounting.
+Accept omitted active-profile metadata while rejecting malformed settings and
+unpaired Unicode surrogate escapes. Original observation gaps remain recorded.
+Validate native MCP hints and retain bounded application metadata as inert
+content. Metadata cannot grant authority, override outcomes or change costs.
+
+## [4.149.5] - 2026-09-25
+
+Validate command frames through bounded streaming, including current-byte and
+whole-wire integrity checks. Recognize the evidenced context-only estimate
+shape without settling unknown costs or weakening measured-counter arithmetic.
+
+Batch immutable project-tree reads and run exact per-head history queries with
+two joined workers, preserving fresh physical scans, causal selection and the
+Console's existing read limits. Validate qualified native context/settings and
+file/MCP item records as inert digest observations. Reported settings do not
+grant authority, replay effects or settle usage; contradictory counters and
+records beyond the semantic envelope remain explicit gaps.
+
+## [4.149.4] - 2026-09-25
+
+Read native Codex compaction records as bounded, non-authoritative context observations. Preserve original usage accounting and reject unknown schemas. Correct streaming JSON key accounting to charge live container state while retaining duplicate-key and memory limits.
+
+Refresh documented provider model identifiers and role preferences with explicit
+source provenance, native API namespace mappings and offline rejection tests.
+Catalog recommendations preserve an explicitly selected model or reasoning
+effort. Account availability and local hardware suitability remain separate
+runtime checks; documentation verification does not establish endpoint access.
+
+## [4.149.3] - 2026-09-25
+
+Project resolution shares immutable Git metadata within one read while keeping
+physical worktree and dirty-file checks fresh. Ref, worktree and Git history
+interpretation changes invalidate selection. This reduces repeated work in
+operator views without extending timeouts or caching state across requests.
+
+Autopilot recognizes typed Codex inter-agent routing metadata as an observation.
+It cannot grant authority or prove delivery, wake, completion or worker cleanup;
+unknown shapes and contradictory identities remain explicit source gaps.
+
+## [4.149.2] - 2026-09-25
+
+Native identity and SessionStart now share canonical transcript validation
+across Claude, Codex and Muse. Supplied unsafe or ambiguous paths refuse;
+contradictory client hints cannot consume another client's inbox. Claude's
+pre-transcript receipt path remains available only while genuinely pending
+and revalidates before promotion to bound evidence.
+
+Autopilot recognizes observed Codex sub-agent activity and context compaction
+items without turning them into task completion, ownership, cleanup or cost
+settlement. Unsupported shapes still produce an explicit observation gap.
+Actual native recovery and supervision remain separate acceptance boundaries.
+
+Peer-send identity and audit failures now produce explicit denial. Active
+controller readback refreshes the existing PM mirror after its own lease CAS,
+then rechecks exact ownership. Read-only inspection and Stop keep their strict
+freshness and no-mutation boundaries.
+
+## [4.149.1] - 2026-09-25
+
+Execution recovery streams retained evidence into compact complete-inventory
+commitments. Large archives and projects with many files no longer require a
+whole-file allocation or a repeated flat path map in every receipt. File,
+directory and resource-boundary changes still refuse incomplete proof.
+
+Project management 2.18.7 and autopilot 3.4.1 share receipt schema 2, including
+the existing verified terminal-state successor rule. Older execution receipts
+require fresh owner capture; they are never silently converted. Full native
+recovery, provider execution and unattended survival remain separate evidence.
+
+## [4.149.0] - 2026-09-25
+
+Autopilot 3.4.0 connects domain judgments to current consumer results, preserves
+unknown adequacy and blocks task admission when decisive evidence is unresolved.
+Connected planning, writing, factual, grounding and review skills share these
+boundaries. A successful process does not by itself establish useful output.
+
+Native Codex, Claude and Muse observations retain their transport grammar,
+worker custody and exact current source ranges. Malformed nested payloads fail
+with typed refusals, and Muse endpoint reads share a bounded per-call cache.
+
+Resource accounting separates response counters, cumulative lower bounds,
+forecasts and unknown bills. Capture aliases cannot hide a producer's observed
+usage. Delegation reserves verification, integration and recovery capacity;
+adaptive policy preserves outcome and authority requirements. These guarantees
+do not assert measured comparative superiority or complete provider billing.
+
+### Recovery, additional clients and operator visibility
+
+Same-native restart recovery connects a released seat to its authenticated new
+seat without resetting the run, costs, deadlines or unfinished obligations.
+Codex and Claude recovery verify the actual direct-user record; unsupported
+text-custody contracts refuse explicitly. A restart acknowledgment preserves
+the original wait and grants no new action authority.
+
+Cold-process Stop discovery loads its canonical identity owner before checking
+applicability. Explicit client hints cannot substitute for native evidence.
+Claude desktop legacy indexing retains verified native aliases across release;
+erased pre-index bindings remain explicitly unqualified during recovery.
+
+Recovery capsules preserve unfinished obligations, instructions and exact input
+bindings. Owner-prepared one-use continuation checks current authority and
+journal state before the supported native transport acts. Bounded supervision
+state retains cancellation and uncertainty without inventing a new authority
+store. Service enrollment and each survival horizon require separate acceptance.
+
+Cursor, Copilot and OpenCode adapters preserve native call identity, child scope
+and generation boundaries. Qualification distinguishes discovery and observed
+source bytes from permission, continuation and outcome evidence. An unsupported
+or unqualified capability remains explicit.
+
+The read-only operator interface selects the project through its causal resolver,
+paginates retained runs, and shows measured task progress, child delivery and
+integration acceptance separately. Human questions remain available through a
+local durable view when the primary agent UI is unavailable.
+
+### Controller and project integration
+
+The eight-operation controller becomes the ordinary execution path.
+Requests bind identity, current ownership, exact input and journal revision.
+Native observations retain verifiable source ranges and cursor continuity.
+Current cancellation and unresolved instructions constrain task admission,
+Stop continuation and completion; explicit resume retains the earlier evidence.
+Historical negative coverage remains unknown outside the declared append-only
+producer boundary.
+
+Productive work can continue without the former fixed observation and grading
+ceilings. Repeated causal failures, unresolved effects, hard resources and
+current authority still bound execution. Stop reserves one correction and
+revalidates before emission. Adaptive profile checks require the selected
+domain outcomes, and terminal retry rechecks current acceptance while retaining
+the original terminal record.
+
+Project checkpoint integration separates a narrowly verified execution basis
+from the full terminal checkpoint. Native inbox processing retains decoded
+identity through the transaction and uses compare-and-swap for heartbeat updates.
+These source guarantees do not establish installed native scheduling, complete
+usage accounting, or comparative superiority.
+
+### Evaluation and shared decisions
+
+Comparative evaluations bind to qualified task configurations
+and current artifacts. Domain checks distinguish evidence of behavioral quality
+from artifact existence, and native review observations retain their current
+source and input bindings. Completion requires accepted outcomes at the declared
+consumer boundary; these checks do not establish comparative superiority.
+
+Planning, review and decision skills share explicit decision ownership. Choices
+already determined by delegated authority proceed; principal-only choices retain
+their actual approval boundary. Generated decision packets bind rulings to the
+reviewed specification and escape hostile HTML, comment and control identifiers.
+Full-page Chromium tests verify the rendered consumer and fail if the required
+browser is unavailable.
+
+The reviewed 4.146.0, 4.147.0 and 4.148.0 development candidates are consolidated
+into this release; they were not separately published.
+
+## [4.145.7] - 2026-09-25
+
+Native marketplace refresh can create or replace the current version before
+plugin installation. Each newly observed current generation is now verified
+against its pinned release and preserved outside the client cache before the
+next destructive native command. Earlier sealed generations remain retained;
+new unrelated roots, redirected ownership and damaged recovery still refuse.
+
+The complete cache-parent boundary now includes unrecognized names and
+materialized historical roots without Git metadata. Changed history refuses
+the next native command without overwriting it during recovery. Final repair
+retains changed materialized bytes in verified external bundles before restoring
+the historical release; ordinary runtime bytecode remains supported.
+
+Native command timeouts and transport errors remain failed installations while
+attempting the existing verified restoration of historical roots needed by
+active sessions. Recovery does not convert an unresolved command into success.
+
+## [4.145.6] - 2026-09-25
+
+Codex cache recovery begins its bounded settling observation after mandatory
+initial restoration. Complete byte and mode verification remains required;
+continuing mutation still exhausts the existing deadline.
+
+Before native refresh, retained Git checkouts are copied and verified outside
+the client-owned cache. A durable intent, exact inventory and verified seal
+preserve recovery through native cache replacement and process interruption.
+Missing or changed committed recovery refuses refresh. Unknown transition roots
+are retained for explicit recovery, and no native metadata is inserted into the
+public historical archive or automatically deleted.
+
+## [4.145.5] - 2026-09-25
+
+Codex cache recovery distinguishes the current client-owned checkout from
+historical recovery roots. Current content is verified against the published
+Git inventory without replacing legitimate client permission modes or metadata.
+Historical roots retain strict byte and mode verification. Validated Git-backed
+displacements are preserved with an explicit recovery disposition; untrusted
+repository metadata, redirected paths and changed source fail before mutation.
+Native Git identity reads use isolated metadata and local objects with remote
+protocols, lazy fetching and checkout execution settings disabled.
+
+## [4.145.4] - 2026-09-24
+
+Checkpoint refresh, project management and conformance now share a bounded,
+strict reader for operational state. Large valid inventories are accepted up to
+16 MiB; small metadata retains its existing limit. Unsafe file types, symlinks,
+concurrent changes, duplicate keys and non-finite values are rejected. The
+compiler refuses oversized output before changing either durable record.
+
+The gated publisher now reconciles an exact-release lifecycle transaction after
+verified native installation. Release and desired-state digests bind repair;
+full installed source inventories are checked before admission. Existing
+profiles, selected clients, organization commits, personal sources and historical
+generations remain intact. Disabled, modular or conflicting pinned selections
+are refused before mutation, and absent desired state is not invented. Doctor
+remains strict; successful installation does not fabricate native live loading.
+
+Muse bundle refresh now admits only owned version directories under its configured
+bundle root. It stages and verifies replacements before renaming, retains previous
+bytes for recovery, and refuses redirected paths or competing transitions.
+Interrupted copies and swaps preserve retained work. Existing pinned source
+directory names remain usable when their verified manifests advance versions.
+
+## [4.145.3] - 2026-09-24
+
+Project content hashing resolves the canonical project root once per pass and
+verifies it again after all reads. Every selected file is still resolved and
+hashed independently; containment, alias ordering and controlling-plan checks
+remain active. A root retarget during hashing is rejected. The shared change
+reduces repeated path work without relaxing checkpoint or Stop deadlines.
+Both hash passes enumerate each directory once, retain fresh file-type checks,
+and close directory iterators before descent. Unreadable directories and queued
+directories replaced by symlinks fail closed instead of yielding incomplete evidence.
+Successful coordination reads fetch the exact remote reference without a redundant
+preliminary query, then bind board content to its validated immutable object ID.
+Failed fetches cannot use retained local refs. Native transcript validation batches
+valid string spans within the existing buffer while retaining complete record
+inspection, identity-conflict checks and fixed memory/depth limits.
+
+## [4.145.2] - 2026-09-24
+
+Project checkpoints avoid repeated ancestor walks when naming files in large
+working-tree digests. Complete content coverage, ordering, independent reads,
+claim verification and native Stop deadlines remain unchanged. This reduces
+checkpoint work in the shared implementation used by supported clients.
+The interrupted-worker fixture synchronizes on observed partial output before
+expiring its test clock, removing process-startup timing from the assertion.
+
+## [4.145.1] - 2026-09-24
+
+Large session manifests can publish without exceeding operating-system argument
+limits. Shared checkpoint status uses one NUL-delimited snapshot with exact literal
+selection; exact-path commits and resets use NUL-delimited input while retaining one guarded commit.
+Unrelated staged files, unpublished source and failed-publication records remain
+protected. Autopilot 3.0.0 and the existing Stop-loop repair remain included.
+
+## [4.145.0] - 2026-09-24
+
+Autopilot 3.0.0 adds project-owned outcome contracts, immutable event journals,
+current artifact evidence, adaptive domain profiles and bounded task graphs.
+Shared resource reservations, child acceptance audits and explicit effect
+reconciliation retain unfinished work and unknown outcomes across interruptions.
+Calibrated native writing and research reviews preserve failed attempts and
+require verified artifact repair before renewed acceptance. Status, explanation,
+doctor and migration commands expose the same state used by completion checks.
+
+Capability observations distinguish portable skills, supported native Stop
+adapters, observed wakes and unproved survival guarantees. Claude Code, Codex
+and Muse use shared bounded Stop handling with their own native envelopes.
+Ownership and artifact evidence remain required for mutations. The controlled
+evaluation tooling retains failed attempts, unknown measurements, domain
+outcomes and reviewed improvement proposals without activating learned policy.
+Native workers declare immutable inputs and separate outputs, with observed
+client-specific operation boundaries. Continuation renewal retains the same
+worker and backstop, wake history and receipt expiry limits. Installed Git-hook
+bundles now include and verify the native Git identity dependency.
+Linux consumer sandboxes retain required loader paths and restrict writes to
+the declared scratch mount. Native transcript checks compare bounded actual
+bytes, and continuation checks reject incomplete cancellation evidence.
+Historical renewal checks retain cancellation evidence without imposing a
+lifetime call limit on an otherwise valid lease.
+Linux CI verifies actual sandbox startup before running consumers and admits
+only the reviewed distribution profile for a matching namespace setup denial.
+The loader consumes validated profile bytes through bounded anonymous input,
+retaining administrator disable signals and trusted local include paths.
+Expired launcher deadlines terminate before worker dispatch.
+
+## [4.144.1] - 2026-09-23
+
+Fix the public repository Stop hook and installed-artifact parser to use the
+verified public runtime rather than a private-only helper. Enabled guard doctors
+now verify their execution dependencies. Bound Stop failure feedback in the
+launcher, checkpoint, repository, and autopilot gates: retain unresolved evidence,
+allow one corrective continuation for an identifiable obligation, and terminate
+repeated or infrastructure failures without claiming success. Launcher input and
+execution share a deadline, and activation-lock contention fails visibly.
+Real packaged-entrypoint tests cover imports, dependency damage, native output,
+re-entry, timeout, and preserved healthy behavior. Tool-denial semantics remain
+separate from Stop lifecycle control.
+
+## [4.144.0] - 2026-09-23
+
+Autopilot skill 2.4.0 hardens the engagement gate five ways. `status --plan`
+reports engagement state read-only. Cron-class continuations record the
+on-disk job id and stay unverified until the first fire is observed
+(`cron-fired`); past a 60-minute grace, an unverified cron continuation
+blocks the Stop like none at all. Close refuses while the plan cites
+artifacts that exist only in scratch directories. And research fan-outs get
+mechanical budget protection: `SYNTHESIS_SEARCH_BUDGET_PER_AGENT` caps each
+agent's share (default 25) with `search_budget.py check --agents N` failing
+closed before dispatch when the cap is unset.
+
+## [4.143.0] - 2026-09-23
+
+Slack sync grows a per-machine multi-workspace registry
+(`slack_workspaces.py`): each workspace declares where its token
+lives — placeholder, env var, file, or client-managed MCP server —
+and `doctor` fails closed before any sync reads the `readable` set.
+Literal tokens are rejected in the registry; placeholders are a real
+status so the registry ships before the tokens exist. The visibility
+doctrine ships both postures: unified (default focus plus
+purpose-bound cross-workspace reads) and isolated (session workspace
+only, with machine-level enforcement). slack-sync skill 3.11.0.
+
+## [4.142.0] - 2026-09-23
+
+Worktree retirement now runs `git status --ignored --porcelain` and
+refuses while any non-clean line remains — modified, untracked, or
+ignored — naming every file in the refusal (intake 56, data-loss
+class). A worktree holding only ignored content previously read clean
+and took its ignored files with it on removal; the keep-curate text
+in the same report was one-off packet prose with no shipped string to
+fix. Intake 51 closed as resolved by 4.134.0 (verbatim duplicate of
+intake 31, verified against the shipped diff and a live row).
+
+## [4.141.0] - 2026-09-23
+
+Version drift observed while a live seat holds install-plane claims
+now reports PENDING with the holder named instead of FAIL (ITEM23):
+the mismatch belongs to an in-flight release, and the ritual reports
+it rather than refreshing clients under the live seat. The
+concurrent-seats ritual mode is documented beside observer mode with
+its six mechanical rules: claim file-by-file, fast-forward only
+unheld branches, report parity without repairing, skip shared-state
+maintenance while seats are live, fold rather than re-run peer
+artifacts, and release claims at end. Also makes the hook-gate
+inert test hermetic against the ambient catalog path, which 4.140.0
+CI exposed.
+
+## [4.140.0] - 2026-09-23
+
+`synthesis-autopilot` 2.3.0 teaches the multi-session coordination
+loop: poll the board at every checkpoint and own triage, claim before
+writing and narrow before peer landings, register a cross-harness
+handle, drain shared mutations first, and schedule a backstop cron on
+long runs (deleted at close). Also fixes the CI change-base race —
+when the release tag beats CI onto the remote the step now grades
+against the previous tag instead of diffing HEAD against itself — and
+makes R5 failures name their unmatched cases instead of printing `}`, and widens
+the onboarding copy watchdog's idle bound from 25 to 60 seconds after CI
+evidence showed a healthy copy still in preamble at 25.
+
+## [4.139.0] - 2026-09-23
+
+The thirteen promoted per-client hooks join the verified-execution
+contract: `synthesis exec-public` accepts every guardrails hook, so
+principal hook consumers run them from the verified active release.
+
+## [4.138.0] - 2026-09-23
+
+The `synthesis-agent-guardrails` skill gains the per-client hook
+suite (ruling PRO-3): thirteen detectors across Claude, Codex, and
+Muse covering filenames, shortcuts, provenance, briefs, temporal
+drift, sessions, and install edits. Every hook ships inert without
+principal configuration, answers a health check, and reads
+detection content from principal-supplied catalogs.
+
+## [4.137.0] - 2026-09-23
+
+The publication authority gate joins the verified-execution
+contract: `synthesis exec-public` accepts the publish guard, so
+hook consumers run it from the verified active release. Also fixes
+the sites fixture to persist its git identity, which CI (no global
+git config) exposed.
+
+## [4.136.0] - 2026-09-23
+
+The `synthesis-agent-guardrails` skill gains the publication authority
+gate (ruling PRO-4): a fail-closed pre-publish check over site pushes
+and deploys, with a fresh single-use approval ledger, timeline
+invariants (no future-dated pages, immutable published dates), and a
+rapid-redeploy brake. Per-site descriptors narrow the content scan and
+name the principal; the principal's identity lives only in the
+installing config. The guardrails suite now runs in the release gate
+and CI.
+
+## [4.135.0] - 2026-09-23
+
+Every install now re-syncs the commit gate from the live release
+pointer. The gate had run nine releases behind the claim writer
+while its doctor compared against the pinned install-time clone,
+so the skew was invisible; gate and writer now always agree, and a
+bad gate blocks the release loudly instead of commits silently.
+
+## [4.134.0] - 2026-09-22
+
+Overnight intake fixes from the fleet seats. Claim resolution no longer
+manufactures phantom project candidates from registry indexes (which
+blocked Stop for every lesson-filing session) and names its candidates
+when genuinely ambiguous. Worktree retirement releases the caller's
+cells under the removed tree in the same step, and an unverifiable
+scope now reports once against its owning row with the exact narrow
+command instead of once per peer pair. The rituals skill states its
+canonical script invocation.
+
+## [4.133.0] - 2026-09-22
+
+The account routing gate joins the verified-execution contract: `synthesis
+exec-public` accepts `synthesis-agent-guardrails/guards/account_routing_guard.py`,
+so hook consumers run the gate from the verified active release instead of an
+unverified checkout path. No behavior change to the gate itself.
+
+## [4.132.0] - 2026-09-22
+
+New public skill `synthesis-agent-guardrails` (ruling PRO-5): the
+cross-account artifact routing gate, promoted purge-reviewed with
+empty authority until configured, per-workspace account bindings, and
+committed absence tests proving the promoted tree carries no principal
+identity. Landing inspection accepts commit-hash push sources with an
+accurate refusal otherwise. CI grades acceptance against the previous
+release tag instead of the push base.
+
+## [4.131.0] - 2026-09-22
+
+Flush retirement is now per-path on blocked repositories (board report
+BUG-4, ruling Q3). One foreign path no longer pins a whole root's
+entries: clean pushed paths retire, own uncommitted work stays
+committable (with a subset-only commit retry after a claim refusal),
+foreign overwrites are skipped and reported, and provably landed bytes
+retire even while dirty. A hash-tolerant manifest reader accepts the
+forthcoming attribution hashes; hashless manifests behave as before.
+
+## [4.130.0] - 2026-09-22
+
+Fixed two coordination defects (board report BUG-1). Narrowing a claim
+bumped the board heartbeat without writing the seat file, diverging the
+two stores on every call; narrow and the release-request honor pass now
+write both with one clock read. The claim-identity snapshot observed
+`.git` directory mtimes, so routine `git status` / `git add` invalidated
+it; the stamp now tracks identity markers only, and the trip error names
+the moved claim with a re-run remedy.
+
+## [4.129.0] - 2026-09-21
+
+Fixed the coordination `narrow` sense inversion (board report): `--area`
+named areas to release but read as areas to keep, and one inverted call
+shed live claims while reporting success. `--release` /
+`--release-workspace` are now the primary spelling, `--keep` /
+`--keep-workspace` name what to retain and release the held complement,
+`--area` / `--workspace` remain as deprecated aliases that print the
+release sense aloud, and narrowing to zero areas or releasing every
+workspace warns loudly first. Mixing release and keep forms is refused.
+
+## [4.128.0] - 2026-09-21
+
+Promoted snapshot pruning and canonical-checkout landing from the
+private control plane. `prune_tool_snapshots.py` is an opt-in
+day-start ritual step (archives verified bytes before removing
+proved-ended orphans); `canonical_landing.py` fast-forwards the
+canonical checkout on one literal `git push REMOTE SOURCE:main`
+behind its explicit-push trigger only, with shell parsing from
+sibling `publication_command.py`. Same-skill loading; behavior
+suites travel with each module.
+
+## [4.127.0] - 2026-09-21
+
+Single-implementation seat/board machine-identity comparison.
+`peer_addressing.Seat.board_machine` (`machine_label or machine`)
+is the one operand every reader compares the board row against,
+replacing three hand-synchronized copies — the two private ones
+failed every Desktop Stop gate on 2026-09-21. The native-identity
+helpers the private control plane borrows are now supported
+public API (`row_for_event`, `observer_native_identity`); the
+underscore names remain as temporary aliases until the private
+side migrates, then go away.
+
+## [4.126.0] - 2026-09-21
+
+Repair the delivery/outcome receipt contract. Context-outcome
+records (INJECTED/REFUSED) used to replace the latest receipt
+pointers with an outcome-only record, so the hook-live verifier
+failed on latest/global selection while exact-session selection
+passed. Outcome records now carry the delivery fields forward from
+the session's delivery event, and filing an outcome without a prior
+delivery raises instead of replacing the delivery proof. Both
+immutable event records are preserved unchanged.
+
+## [4.125.0] - 2026-09-21
+
+Project-durable board mail. `coordination message --to <project>
+--durable` addresses the project rather than its current seat, so a
+handoff survives seat turnover, client switches, and machine changes;
+any later owner/contributor seat picks it up in its normal inbox read,
+and `--resolve` retires it through a resolved.json audit while the bus
+stays append-only. Archived addressees redirect to their live
+successor through the registry chain. Also in this release: the
+Session Start Protocol names the session after the project id where
+the client supports rename, and `synthesis update` reports
+personal-layers as its own skipped phase with a pointer to the owning
+installer's drift check.
+
+## [4.124.0] - 2026-09-21
+
+Name-addressed resume invocation. The R1 resume prompt is one
+sentence — "Use the skill synthesis-project-resume to resume the
+synthesis project with id … in the synthesis project management
+workspace …" — naming the skill and the workspace with no
+filesystem path, client name, or release version, so the pasted
+prompt is identical on every machine. Skill-less harnesses locate
+the skill file via a documented lookup order, and workspace names
+resolve to `ai-knowledge-{workspace}` checkouts deterministically.
+
+## [4.123.1] - 2026-09-21
+
+Patch: the installed-plane guardian check compares resolved interpreter
+paths instead of argv spellings, so a declaration naming `python3` for
+the recorded `python3.12` binary verifies instead of reporting
+defective. The refusal semantics are unchanged: a declaration pointing
+at a different interpreter, a missing `-B`, or a non-list shape still
+refuses.
+
+## [4.123.0] - 2026-09-21
+
+Idle-holder narrow, verified execution, announced refusals. An
+interactive session blocked on an idle holder's paths posts
+`request-narrow`; the holder's next prompt (and Stop hook) narrows
+clean areas off and replies `held` otherwise; an unanswered request
+older than 10 minutes with no holder harness activity escalates via
+`narrow --administrative --basis idle-holder`, recorded on the bus —
+with a per-turn inbox hook for Muse and a standing direction in the
+ecosystem DECISIONS.md. The launcher verifies the installed tree
+against the release descriptor before every execution (receipt mode
+for read-only probes; doctor plane; SessionStart digest line). The
+SessionStart briefing prints its REFUSED line instead of exiting
+silent, and files an outcome receipt either way. Claim globs survive
+the board parse exactly as written. Third-party reader promise stated
+in docs/spec/versioning.md. Project-management 2.18.0, onboarding
+2.8.0, conformance 1.12.0.
+
+## [4.122.0] - 2026-09-21
+
+Autopilot run profiles. The delegation contract as data: resolve the
+standing checklist at engagement from shipped default, user profile,
+project overlay, and spoken deltas; freeze it into the plan file; verify
+every item's disposition before close. Profiles narrow authority, never
+grant it — a stored deploy grant is ignored. Autopilot 2.2.0.
+
+## [4.121.0] - 2026-09-21
+
+Skill-output provenance. Generator-backed skills are now verified, not
+trusted: the decision-packet generator stamps every page with a provenance
+marker pinning its embedded spec, the rulings recorder refuses a paste
+whose packet has no filed spec, and a shared checker plus a context-doctor
+`skill-outputs` check fail any packet page that is not verifiable
+generator output. Ships on install, upgrade, and doctor on every machine.
+Decision-packet 1.5.0, conformance 1.11.0, lifecycle 1.20.0.
+
+## [4.120.0] - 2026-09-20
+
+Seat-schema containment. The desktop checkpoint binds a schema-2 seat by
+the machine label the board row shows instead of comparing the label to
+the fleet machine-id, which had refused every Claude desktop checkpoint
+since 4.117.0. Strict seat-directory reads (the SessionStart diagnostic,
+the coordination doctor) skip and name a stale or malformed seat file
+instead of failing closed with no output; the doctor lists the skipped
+files so day-start can remove them. Rajiv's 2026-09-20 ruling on dead
+seats: `park --basis pid-gone` now verifies death evidence on the row's
+own machine (a recorded process that is gone, or a pidless seat whose
+session log and heartbeat are both quiet past the fleet horizon) and
+records it; `succeed` takes parked rows and gains `--only <area>` to move
+one held resource into an owned row with a partial-succession notice
+addressed to the parked seat. Project-management 2.17.0.
+
+## [4.119.0] - 2026-09-20
+
+Fleet sync and checkpoint containment. New `synthesis sync` brings an
+enrolled Mac fully current in one step (update, repo reconciliation,
+heartbeat, doctor-gated repair). The desktop checkpoint match now
+disqualifies only the row with an unverifiable seat instead of failing
+every session.
+
+## [4.118.0] - 2026-09-20
+
+Rulings release. Meeting-prep 1.1.0 adopts register samples (R13),
+the reader-profile convention (R12), and the R9 disclosure default.
+The session archiver defaults to a year of retention. The preplan
+skill credits its proposer, Emil Peñalo.
+
+## [4.117.0] - 2026-09-20
+
+Seat-heartbeat stability. Claim, succeed, and heartbeat now take one
+clock read for the board row and the seat record, closing a
+second-boundary flake where the two could disagree. The fleet setup
+guide leads with the one-command onboard.
+
+## [4.116.0] - 2026-09-20
+
+Meeting-prep onboarding. `prep_init.py` scaffolds the principal file
+and reader-profile templates (non-interactive, refusing to
+overwrite), so a new user goes from install to first interview in
+one command.
+
+## [4.115.0] - 2026-09-20
+
+Dogfood corrections. The v2 resume state moves to its own
+`RESUME_STATE.json` — `CURRENT_STATE.json` stays the operational
+handoff shape owned by `project_state.py`, which migration never
+touches. Session detection (probe, migration skeleton, console
+recency) ignores the generated `sessions/INDEX.md`.
+
+## [4.114.0] - 2026-09-20
+
+Session archiver. `project_format.py archive` moves old session
+periods to `sessions/archive/` (v2 only, newest period always
+protected, index regenerated over live and archived alike), with
+check-mode by default and an explicit retention flag — no policy
+baked in.
+
+## [4.113.0] - 2026-09-20
+
+Versioned project formats. Projects are now v1 (unmarked) or v2
+(marker + machine-readable resume state + sessions index); the
+project-management skill is v2.16.0 with the format contract.
+`project_format.py` detects and pull-migrates v1 to v2 — strictly
+additive, idempotent, verified, never overwriting existing files —
+and the resume probe reports what it finds so resume upgrades stale
+projects before continuing.
+
+## [4.112.0] - 2026-09-20
+
+Resume anywhere. New open-source skill `synthesis-project-resume`
+v1.0.0: one console prompt restarts any project in any harness with
+full verified context — continuing, fresh, and wrong-project-paste
+sessions classified, live foreign claims respected, cross-machine
+changes surfaced, stale formats migrated. Companion: synthesis-console
+recently-active-first list with copy-paste resume prompts.
+
+## [4.111.0] - 2026-09-20
+
+One command onboards any Mac. The bare installer detects install and
+fleet state, recommends the best path, and interviews through a single
+menu (fresh install, upgrade, fleet join, workspaces, components,
+verify and repair). Enrollment resolves taken labels, offers relabels
+on rename, merges concurrent publishes, lands clones atomically, and
+fails closed with remedies. Onboarding engine 2.7.0. New open-source
+skill `synthesis-meeting-prep` v1.0.0: chief-of-staff meeting prep and
+debrief packs with a mechanical prep linter.
+
+## [4.110.0] - 2026-09-20
+
+Flag-free fleet enrollment. `synthesis fleet join` needs zero flags:
+it discovers the knowledge repo over GitHub sign-in or asks once,
+derives the role from shared state, narrates every repo as it lands,
+and publishes the enrollment back to the shared registry. Interrupts
+resume cleanly with per-step receipts. Onboarding engine 2.6.0.
+
+## [4.109.0] - 2026-09-19
+
+Multi-Mac fleet support. Machines enroll with minted identities and a
+registry; the v5 board tags claims by machine with cross-Mac mutual
+exclusion through the lease; sessions park instead of dying when a lid
+closes; sealed handoffs move work between Macs with a harness-neutral
+resume contract; workspace subscriptions enforce the per-Mac split;
+secrets materialize from 1Password with an age/SOPS seam; and a new
+machine joins through one idempotent bootstrap. Board mutations scope
+machine identity to the board under mutation, so enrolled Macs never
+stamp the wrong identity. Public setup, handoff, and operations guides
+ship with the release.
+
+## [4.108.0] - 2026-09-19
+
+Dead-seat claim succession, the shared calendar layer, and review-role
+protocol. A `succeed` verb transfers a dead seat's areas atomically
+while duplicate live owners still refuse; the board parser preserves
+path globs. The §3 shared time-block layer plus overlap service give
+every seat mechanical cross-workspace collision detection with no
+calendar writes. The review skill adopts the adjudicator role and the
+repairer-may-not-edit-reproducer rule.
+
+## [4.107.0] - 2026-09-19
+
+Explicit read-only diagnostics. A `--local` flag threads through all
+17 conformance CLI routes: read-only routes refuse loudly, observer
+routes skip fetch-backed legs with reasons, and scan deactivates
+instead of mutating. Coordination gains a passive lease cache so
+observers read the board without fetching, the catalog honors
+force_reload, and the orphan sweep cron runs fetch-free. Six new
+acceptance controls pin the read-only contract.
+
+## [4.106.0] - 2026-09-19
+
+Coordination defect follow-throughs. The commit gate re-syncs vendored
+hooks on every plugin update so claim-time and commit-time stop
+disagreeing; the doctor reports blocking versus advisory severity
+honestly with drift/installer parity coverage; unverifiable-scope
+errors name the dead path; and every ritual sweep reports
+BLIND/UNREACHABLE states with coverage denominators.
+
+## [4.105.0] - 2026-09-19
+
+Squash-merge landings work end to end. Worktree retirement accepts an
+identical tree as proof the content reached the remote — through the
+reconciler pin and native branch deletion — naming the proof loudly;
+the release gate resolves the acceptance change-base to the parent of
+a single-parent release commit while keeping the feature-branch
+merge-base path first.
+
+## [4.104.0] - 2026-09-18
+
+The release train now installs and verifies all three clients: the new
+Muse stage exports a versioned local bundle, syncs it into the recorded
+source, updates, and verifies reported version, on-disk manifests, and
+loaded bytes. Coordination claims merge by default with an explicit
+`narrow` verb and a loud `--replace` full reset; worktree retirement
+fast-forwards the main checkout to the verified base; the anti-shortcuts
+scanner flags cost-decided recommendations; the ritual email step sweeps
+a mailbox manifest with blind/unreachable states; and saved transcripts
+get a commitment-extraction scan.
+
+## [4.103.0] - 2026-09-18
+
+Coordination hardening from the September operations review. Heartbeat-quiet
+claims now downgrade to advisory automatically with a loud bus record instead
+of blocking live work; identical path-plus-branch pairs share one checkout
+with a banner when claimed areas are disjoint; board validation retries once
+before reporting snapshot failure; empty seats resolve to their matching
+board ref with a hint for identityless callers; and refusal diagnostics
+annotate both session ids as project-and-agent addresses.
+
+## [4.102.1] - 2026-09-18
+
+The Muse lifecycle hooks no longer write Python bytecode into the installed
+package. Muse verifies the cached bundle against its lock record, so the
+first hook fire's fresh `__pycache__` entries invalidated the install and
+blocked all capabilities. Both wrappers now export
+`PYTHONDONTWRITEBYTECODE=1`, pinned by the bundle coherence test.
+
+## [4.102.0] - 2026-09-17
+
+Muse joins as a third client. A native `.muse-plugin` bundle ships the skill
+catalog with SessionStart/Stop lifecycle hooks, `muse:` peer identity works
+across coordination and project state, and transcript binding resolves Muse's
+date-sharded session store. Muse live-load receipts validate; desired-state
+targeting for Muse remains a later milestone.
+
+CLI usage errors can no longer read as success. Every coordination subcommand
+failure now carries an unmistakable FAILED banner instead of echoing the
+caller's own arguments back at them.
+
+## [4.101.1] - 2026-09-17
+
+Full setup gives copied Git-hook runtime files the writable modes required by
+reconciliation, including when the released source is read-only. New policy
+files remain editable; existing policy content and permissions are preserved.
+Physical installer fixtures cover repeated setup and reject changed destination
+modes without weakening source or ownership checks.
+
+## [4.101.0] - 2026-09-16
+
+Install an individual skill with its executable dependencies, optionally stage an
+inert core, and explicitly activate or deactivate the full system. Selection and
+registration receipts preserve edited and independently owned user files. Doctor
+and repair report the desired, resolved, installed, provenance, live and outcome
+planes without treating dormant assets as active integrations.
+
+Thin Homebrew, npm and Bun packages acquire one verified release through the
+existing bootstrap. Package installation runs no setup scripts. Standalone tools
+can explicitly stage the same inert core; declining it performs no acquisition.
+Package-managed Python 3.12–3.14 runtimes retain interpreter and source integrity
+checks. Distribution metadata drives the shared downloads interface.
+
+## [4.100.3] - 2026-09-16
+
+Native plugin failures stop installation without reentering the bootstrap
+transaction. Explicit skill copies use the selected source and client directories,
+with checks for unsafe paths and overlapping source, target or backup roots.
+Released sessions with committed local source can finish after the Stop observer
+verifies their exact native identity, attribution and local receipt. Pending
+publication records remain intact; no checkpoint or publication authority is issued.
+
+## [4.100.2] - 2026-09-16
+
+The Codex cache guardian resolves hook targets from the `synthesis
+exec-public` command form as well as `${CLAUDE_PLUGIN_ROOT}` paths, so it can
+archive plugin roots from 4.100.0 on; at 4.100.1 the install stopped at the
+guardian with "archive hook definition has no plugin-root target" and the
+clients were left unconfirmed.
+
+## [4.100.1] - 2026-09-16
+
+SessionStart receipts written under `synthesis exec-public` name the plugin
+root the client loaded (the root both clients export to their hooks) and
+record the active release root separately as the execution root; hook-live
+verifies that the execution root carries the same plugin version. At 4.100.0
+the receipt named the release root as the plugin root and hook-live refused
+every fresh session.
+
+## [4.100.0] - 2026-09-16
+
+The Python-only sprint of ADR-001 lands. Coordination reads the board through
+one shared grammar and binds receipts through a documented canonical JSON
+contract; lease refresh follows a written fence (a cached mirror is never a
+write grant), the board archives released rows older than thirty days at
+day-start, and discovery reuses its snapshot within a transaction. Public hooks
+execute through the verified active release (`synthesis exec-public`) on the
+interpreter recorded at setup, so hook commands no longer depend on shell path
+order. The commit sidecar caches pattern validation by config digest, repository
+checks run in a bounded pool, and transcript and snapshot passes are shared.
+Changed hook manifests re-trust once in Codex; no Go code ships.
+
+## [4.99.0] - 2026-09-14
+
+Decision packets label every option by its consequence: each button carries
+the consequence of pressing it, and `--strict-reader` refuses bare
+acknowledgements and labels that share every content word. `--file-into`
+files the spec and the page in the owning project's `resources/artifacts/`,
+and `record_rulings.py` files the returned rulings beside them.
+`ritual_state.py query weekly-review` is scoped by `--workspace`, so one
+workspace's review no longer silences another's owed-weekly gate.
+`sync_watermark.py advance --through` accepts the epoch seconds `window` prints.
+
+## [4.98.0] - 2026-09-11
+
+Pending manifests classify entries beneath a removed, unrecorded worktree as
+stranded, name the missing worktree root and the accepted remedy, and keep
+evaluating the other repositories. An operator-asserted `--drop-stranded`
+retires such entries only after an append-only ledger record carries the
+assertion, and every flush retires each published repository's entries, so
+long-lived manifests no longer accrete. The global pre-commit chain fails
+closed for repositories that declare `.githooks/required` when the delegate is
+missing or not executable; the doctor's `delegate-required` control agrees.
+
+## [4.97.0] - 2026-09-10
+
+The pull-request queue scan dispatches by origin host: Bitbucket Cloud
+repositories are read through the synthesis-bitbucket helper, GitHub is
+unchanged, and other hosts stay named as unscanned. The peer-send gate judges
+the command the shell would run, so the same words in a quoted heredoc or quoted
+data are never a send. Cross-session merge requests name the target head they
+were tested against; worktree retirement names the accepted base form when it
+refuses one. The daily-rituals version record covers every labeled version.
+Tests lock optional-plan absence, shallow-clone applicability and hook-live selectors.
+
+## [4.96.6] - 2026-09-09
+
+Checkpoint commands and native discovery share an applicability rule. Registered
+ordinary projects that never adopted structured state report NOT_APPLICABLE,
+without creating state, issuing receipts or implying project health. Projects
+that adopted structured state retain their checkpoint obligations when that file
+is deleted, malformed or unsafe. Refresh inspection reports the same requirement.
+No project migration is performed by a checkpoint or refresh.
+
+## [4.96.5] - 2026-09-09
+
+Board admission and record-repair consumers share one metadata conflict policy.
+The same project record in linked worktrees conflicts through verified Git
+repository identity. Disjoint metadata files and ordinary source branches remain
+independent; logical conflicts never grant permission to write another checkout.
+Relative metadata claims require unambiguous workspace context, and unresolved metadata
+identity refuses admission. Named resources retain their separate namespace.
+
+Standalone Git hooks and onboarding updates include the shared helper. Onboarding
+updates from an older bundle verify its released companion files before introducing the
+new dependency; missing, modified or unrelated origins remain blocked.
+
+## [4.96.4] - 2026-09-09
+
+Refresh feedback follows explicit registry successor links to the current
+project recipient, including delivery across workspaces without an active seat.
+Missing, ambiguous and cyclic routes refuse delivery. The report retains its
+original source project, and routing grants no claim or execution authority.
+
+Freshness diagnostics compare recorded workdays with dated session evidence.
+Overnight, delayed and bulk commits no longer redefine session dates. Missing
+evidence stays visible, while conflicting records and new activity beyond a
+reviewed completion remain actionable.
+
+## [4.96.3] - 2026-09-09
+
+Deadline sweeps collect unresolved tags from all declared dated plans and
+archives, preserving older due items and reporting incomplete coverage.
+Explicit no-plan declarations prevent incidental links from selecting authority.
+Record editing supports exact physical-line deletion and rejects changes that
+split a Markdown table or leave its rows without headers.
+
+Checkpoint identity follows verified native evidence and the existing desktop
+seat mapping. Recovery of attributed work after checkout removal requires
+matching preservation proof and uses the retirement transaction's interruption
+checks. Missing evidence remains an explicit unresolved obligation.
+
+Shared coordination guidance keeps claims limited to current coherent work,
+requires expansion before additional writes, and calls for narrowing or release
+when phases complete. Coverage gaps in a deadline sweep prevent a clean sweep
+conclusion while other ritual steps can continue.
+
+## [4.96.2] - 2026-09-06
+
+Checkpoint Stop output now uses the documented control fields accepted by both
+clients. The diagnostic verdict travels inside systemMessage, preserving the
+distinction between an accepted checkpoint, a checkpoint that does not apply,
+and blocked work. Strict Codex JSON validation no longer rejects that output.
+
+## [4.96.1] - 2026-09-06
+
+Unclaimed sessions can finish inspection of a clean project without claiming
+write ownership or issuing a checkpoint receipt. Native identity, exact-session
+pending attribution and Git subtree checks keep unresolved work explicit.
+Claimed sessions still require their normal checkpoint evidence.
+
+Checkpoint failures now explain the unresolved requirement on stderr. A repeated
+Claude Stop failure terminates the continuation with a visible failure reason
+instead of spending additional model turns on an unresolvable checkpoint.
+
+## [4.96.0] - 2026-09-06
+
+Checkpoint refresh-and-report mode uses a deterministic local inspector and
+optional declarative upgrade campaign. It resolves the established project before
+inspecting its inputs, separates native and file evidence from agent reading,
+and reports through the existing coordination bus without modifying project work.
+Duplicate detection and revision allocation share the append transaction.
+
+Project-management, context-lifecycle and checkpoint instructions now agree on
+local recovery before prose and claim admission before record corrections.
+Coordination mirror refresh shares the mutation lock, preventing the reproduced
+same-machine stale-reader race. This does not establish multi-computer freshness
+or make aggregate conformance commands read-only.
+
+## [4.95.7] - 2026-09-06
+
+Ordinary updates reconcile selected or independently configured shared Git,
+message-guard, kernel-propagation and day-end runtime code against verified
+release payloads. Exact ownership or immutable historical provenance is required
+before replacement. Personal instructions, policies, selections, authentication
+and service configuration are not reinitialized. Refresh ownership does not
+grant uninstall ownership for independently installed components.
+
+Day-end installation includes its executable state helper. Upgrading an older
+installation may introduce that exact dependency only after both existing
+launcher anchors are proven released content. Local historical Git evidence is
+bound to the current source, ancestor tags and both plugin manifests; diagnostics
+do not fetch or check out historical code.
+
+Protective doctors execute the installed Git and message-guard boundaries with
+timeouts and explicit health results. Pending recovery, unknown modifications,
+symlink traversal, receipt races and source drift fail closed. Exact-file
+journals restore interrupted changes without overwriting independent edits.
+Receipt saves are bound to the generation originally loaded or verified written.
+
+Project state and both client context renderers share controlling-plan resolution:
+structured state wins, explicit references are validated, and parent plans stay
+inside the repository. Their hashes participate in checkpoint invalidation.
+Historical prose remains historical; ambiguous legacy references are refused.
+Context insert/replace checks use one input snapshot and reject line fusion,
+including adjacent replacements, while retaining LF and CRLF bytes.
+
+Project diagnostics distinguish prospective candidate notes from affirmative
+release evidence and prioritize the accepted baseline over a candidate phase.
+They retain stale-release detection without treating a version mention as proof
+of publication.
+
+## [4.95.6] - 2026-09-06
+
+Active and stopped project parity now render both client contexts in an explicit
+diagnostic mode. Unread inbox messages remain visible to both comparisons and
+available for normal lifecycle delivery. Probes do not write receipts, check
+release currency, fetch Git, fast-forward checkouts or refresh coordination
+leases; child bytecode and optional Git index writes are disabled.
+
+Strict diagnostic inbox reads validate the selected seat/project's inbox and
+reject malformed or unreadable board, seat and watermark evidence, including
+ambiguous own addresses. Unrelated historical blocks may be excluded only when
+their scope is clear and doing so cannot change a relevant native message or
+delivery key. The normal hook keeps its
+existing delivery policy and receipt-before-context ordering. Comparison covers
+the complete local context and is not evidence of a fresh remote lease or a real
+client startup. Other conformance checks retain their documented refresh work.
+
+## [4.95.5] - 2026-09-05
+
+**Long conversations retain verifiable startup evidence.** Onboarding 2.3.4
+uses the shared structured transcript validator instead of a 64 MiB file-size
+limit and a UUID substring check. The validator bounds memory for both long
+histories and large individual message records, while the transcript digest
+is streamed. Canonical client-root paths and release-content checks remain
+required; malformed, ambiguous or conflicting identity fails closed.
+
+Doctor and status report eligible receipt-validation failures instead of
+silently discarding them and requesting another restart. Diagnostics stay
+outside immutable events and hash-bound observations. Existing conversation
+history, personal installation choices and organization enrollment are not
+rewritten by this correction.
+
+## [4.95.4] - 2026-09-05
+
+**Reload guidance keeps existing conversations first.** Onboarding 2.3.3 uses
+one recovery contract across native installation, refresh, doctor and transaction
+output. Restart and reopen the existing conversation when supported, then verify
+genuine same-session startup evidence and loaded metadata. A new conversation
+is a fallback when recovery is unsupported or verification fails.
+
+Same-version installation no longer implies active-task acceptance. Doctor
+distinguishes client-session evidence from the invoking task, verified uninstall
+does not request a restart, and update hints use the stable public command.
+Repair, provenance and lifecycle verification remain fail-closed.
+
+## [4.95.3] - 2026-09-05
+
+**Updates respect repository ownership and one instruction format.** Onboarding
+2.3.2 records whether each knowledge checkout was created or adopted. Adopted
+checkouts stay user-managed across enrollment, update and repair. Created clones
+fast-forward only on their recorded origin, branch and upstream after protection,
+cleanliness and concurrent-change checks.
+
+Generated organization instructions now use canonical `AGENTS.md` content and a
+literal Claude import adapter with separate receipt hashes. Earlier duplicate
+outputs converge only after historical source verification. Concurrent target
+edits remain protected, failed activation restores only engine-owned writes,
+and later generations retain original adoption-archive references. Doctor checks
+ownership and output provenance without repairing them or reporting legacy
+representations as accepted.
+
+The release also includes the merged weekly-review PR queue source. Its bounded
+report distinguishes owned work from requested reviews and names unavailable
+repository coverage instead of treating unreadable queues as empty.
+
+## [4.95.2] - 2026-09-04
+
+**Historical recovery deduplicates payloads without retiring versions.** Skills
+manager 2.7.0 stores shared file contents once in a verified SQLite archive.
+Each version retains its paths, types, permissions and installation metadata.
+The unchanged 512 MiB hard limit covers the complete database, including indexes
+and page overhead. Admission refuses before native cache refresh if validation
+or the size check fails; no historical version is evicted.
+
+The standalone archive-aware guardian is installed and its supervisor verified
+before migration retires duplicate trees. Candidate commit, atomic promotion,
+move-before-delete retirement and resumed partial retirement are tested with
+real process interruptions. Blob and manifest hashes detect corruption beyond
+SQLite structure checks. Restored files are independent copies, never links to
+shared stored payloads. Historical integrity now checks executable permissions
+as well as source bytes, while the newest client-owned cache remains excluded.
+
+## [4.95.1] - 2026-09-04
+
+**Verified enrollment can reach SSH organization repositories.** The bootstrap
+keeps public acquisition HTTPS-only, then gives the verified CLI a separate
+HTTPS/SSH transport policy. File and external-helper transports remain blocked.
+Onboarding 2.3.1 tests the policy handoff and actual CLI/engine organization
+acquisition through SSH without local transport rewrites.
+
+Enrollment, engine locking, and rollback now resolve the same receipt directory
+for default, XDG, and explicit state roots. Real CLI tests cover all three
+layouts, and injected failures verify restoration of the actual engine receipt.
+
+## [4.95.0] - 2026-09-04
+
+**Additive organization enrollment preserves an existing personal installation.**
+`synthesis enroll --org-repo URL` (or a time-bounded invite) supports saved full
+and skills-only profiles, retaining personal configuration, clients, and release
+policy. The organization and optional tracked personal instruction overlay are
+saved for update, repair, and doctor. Conflicting policies, organization
+replacement, and workspace collisions fail before generation.
+
+Exact-target journals restore generated instructions, selected skill copies,
+ownership receipts, and invite state after an engine, doctor, or commit failure,
+including interrupted and cross-device recovery. Existing knowledge clones are
+adopted without pulls or configuration changes; required pre-commit protection
+must be present. Skills-only repair preserves independent personal receipt
+metadata. Doctor refuses unfinished enrollment. Per-copy journals persist ownership
+before later phases can fail, and repair restores the recorded organization
+revision without fetching or resetting personal configuration.
+
+Organization copy ownership now survives source removal and uninstall.
+Cross-source collisions and edited copies fail closed; unchanged legacy copies
+require byte verification against their recorded Git revision. Organization
+copies never trigger public-plugin fallback retirement in an unselected client.
+Organization copies are not mistaken for duplicate public-plugin skills.
+Top-level and nested organization skill layouts have one unambiguous inventory;
+existing shared copies are adopted only after source-commit byte verification.
+Onboarding 2.3.0 includes schema, CLI, engine, recovery, ownership, and
+producer/consumer regression coverage.
+
+Repo-guard 2.4.1 resolves deleted child directories inside a verified live
+repository without losing pending attribution. Missing worktrees, symlink
+ancestry, and unavailable worktree inventory still fail closed. Dedicated
+checkpoint CI covers the deleted-path and retirement fixtures.
+
+## [4.94.0] - 2026-09-04
+
+**A complete organization workspace can now include private personal context
+without leaking it into the shareable organization manifest or leaving it in
+an untracked root file.** `synthesis setup --personal-instruction-source PATH`
+adds one user-owned source after the public and organization layers, records its
+repository and relative path in local desired state, and replays it on update
+and repair. Every repository source must be regular, committed, clean, and
+Git-tracked; traversal, symbolic links, untracked bytes, and working-tree or
+index drift fail closed.
+
+Existing workspace-root instructions remain untouched unless the user selects
+`--adopt-workspace-instructions`. Explicit adoption archives and byte-verifies
+each existing file before activation, records prior digests, modes, paths, and
+time in the receipt, and restores both originals if activation fails after the
+first replacement. The materializer refreshes source provenance even when new
+source identities render identical bytes, and doctor now verifies the source
+commit/digest chain as well as both output digests. synthesis-onboarding 2.2.0
+ships the CLI, desired-state, engine, doctor, schema, documentation, and
+red-first contract coverage as one release.
+
+## [4.93.4] - 2026-09-04
+
+**Stopped-task conformance now verifies the project selected by causal
+recovery instead of requiring the caller's original worktree pathname.** A
+clean isolated checkout and a newer canonical checkout can carry the same
+project tree; recovery correctly chooses the causally newer repository state,
+but the prior parity assertion treated that path change as a missing payload.
+
+synthesis-agent-conformance 1.9.3 extracts the selected durable project from
+the shared adapter payload, requires the requested project identity, derives
+the controlling plan at the selected path, and keeps phase and status equality
+checks. The separate project-state recovery check continues to prove causal
+selection. A red-first two-worktree fixture and a real installed-shape probe
+cover the motivating topology.
+
+## [4.93.3] - 2026-09-03
+
+**Structured current state can no longer coexist with another current-looking
+prose record, and one session cannot accidentally mutate another session's
+claim.** The semantic doctor now rejects mutable `Current ...`, singular
+`Accepted baseline`, `Next checkpoint`, and `State as of:` surfaces outside a
+structured project's generated block, including reference shards and Setext or
+punctuated headings. Explicitly historical snapshots remain valid. Structured
+state replaces the older body
+marker convention, so the doctor records that check as an explicit skip rather
+than demanding a second current-state authority.
+
+synthesis-project-management 2.13.0 also binds every existing-row `claim`,
+`heartbeat`, and normal `release` mutation to the exact harness seat recorded
+at claim time. A selector parsed from a refused command is address data, not
+mutation authority. Unattributed legacy rows fail closed. Cross-session
+release is a distinct
+`--administrative --reason` operation whose target, caller, time, and reason
+are recorded on the board. synthesis-context-lifecycle 1.19.0 carries the
+matching semantic and doctor contract.
+
+## [4.93.2] - 2026-09-03
+
+**A pointer another session left behind can no longer silence a client's
+live receipt, and the inbox never reads it.** The global active-project
+pointer named a project in a worktree eleven commits behind `origin/main`.
+The SessionStart hook validated that pointer for every session on the
+machine, failed closed, and returned before recording its receipt, so no
+Claude session could produce a current transcript-bound receipt while the
+pointer stood; the inbox hook's fallback to the same pointer delivered that
+project's board message to a seatless session working elsewhere.
+
+synthesis-agent-conformance 1.9.2 records the live receipt before it builds
+context — the receipt is evidence that the client delivered the event, and
+nothing that happens afterwards may erase it — and treats a pointer it
+cannot validate as a notice: the session recovers exactly as if no pointer
+were set, the pointer's project is never injected, and failures unrelated
+to the pointer still fail closed. synthesis-project-management 2.12.1
+removes the inbox hook's pointer fallback: only a claimed seat receives
+messages. Tests pin all three behaviors.
+
+## [4.93.1] - 2026-09-03
+
+**Session start now catches a stale canonical project registry before
+named-project recovery reads it.** When no active pointer exists and a task
+starts at a workspace or knowledge-repository root, the lifecycle hook checks
+only the immediately discoverable Git-tracked project registries against their
+fetched upstreams. It emits a staleness warning when a checkout is provably
+behind and an `UNKNOWN` result when freshness cannot be compared. The causal
+resolver still owns project selection; timestamps do not choose a winner.
+
+## [4.93.0] - 2026-09-03
+
+**The installed system now tells the truth about itself and works from an
+installed release, not only from a source checkout.** An independent review
+of the shipped system as a stranger, an organization member, and a returning
+user found that organization instructions could not be materialized from an
+immutable generation, that a fresh Claude session never fed the live-loaded
+plane, that the only public outcome task could not pass on the scaffolded
+workspace, that doctor echoed transaction-time planes, and that the native
+plugin commands on the public surfaces installed from `main`.
+
+`synthesis-onboarding` 2.1.0 identifies the public instruction source by the
+digest-verified active release when the source root is not a Git checkout;
+refuses a schema-1 organization manifest with the offending fields and the
+migration section of the organization guide; promotes registry SessionStart
+receipts at status and doctor time once their transcripts bind; re-derives
+every truth plane from current evidence, re-hashing the active release root
+and reporting drifted, changed, or defective states; reads the release policy
+from committed desired state before any receipts file; prints plain status
+and doctor summaries with one next action; seeds a tracked knowledge-base
+declaration and source bundle in the scaffold and keeps every seeded file
+user-owned; reports the reason Git gave for a refused first commit; selects
+detected clients for `workspace ensure`; skips marketplace reconfiguration
+when the installed version and configured ref already match, so a
+zero-change update no longer forces a Codex cache refresh; treats policy
+transfers as control handoffs rather than aborted transactions; adds
+`uninstall --purge` with a retained-path report; validates the bootstrap
+command line before activation; and removes the dead schema-1 code.
+`synthesis-quick-answers` 1.3.1 states the bootstrap precondition. README and
+both public sites pin the native plugin commands to the stable ref.
+
+## [4.92.1] - 2026-09-03
+
+**One project's active pointer can no longer fail another project's aggregate
+conformance.** When the optional cache names a different project, the aggregate
+path now verifies stopped-project recovery and reports the foreign pointer as
+non-blocking diagnostic evidence. Explicit pointer validation remains strict,
+and malformed pointers still fail closed.
+
+## [4.92.0] - 2026-09-03
+
+**A named project now resolves from the newest provable coherent state instead
+of whichever checkout a task remembered.** The recovery engine inventories
+canonical and isolated worktrees, refs, attributed dirty files, lifecycle
+manifests and receipts, pointers, and active claims. Equality and ancestry can
+select a winner; divergence is `CONFLICT`, failed evidence is `UNKNOWN`, and a
+safe canonical fast-forward requires clean tracked/index state plus an
+untracked-collision proof.
+
+Mature projects can now make mutable operational state structured and compile
+the bounded human-readable block from it. The context doctor detects semantic
+release contradictions and exact one-day staleness. Stop binds a clean handoff
+receipt to the active session, project, claim, Git identity, durable hashes,
+and source heads, while interrupted work remains recoverable from automatic
+manifests. Autonomous engagement records are likewise session- and
+project-bound, so unrelated work can never become a global Stop blocker.
+
+## [4.91.4] - 2026-09-03
+
+**A synchronous update no longer mistakes ordinary background guardian work
+for an active release transition.** `cache_guardian.py --doctor` now waits up
+to 120 seconds for the shared transition lock, which covers a complete
+budgeted historical-root restore and serializes the onboarding
+completion check behind a guardian pass already in progress. The continuous
+watcher and explicit `--once` mode remain nonblocking, so background work never
+queues. Persistent publisher contention still fails closed with exit 75 after
+the bounded wait, and historical-root verification is unchanged.
+
+## [4.91.3] - 2026-09-03
+
+**The release snapshot and the durable guardian now apply one historical-root
+integrity policy.** The first 4.91.2 release run proved that the guardian could
+accept runtime bytecode while the publisher's pre-refresh snapshot verifier
+still rejected the same changing `.pyc`. The publisher now delegates every
+snapshot, archive, restore, and quiet-window comparison to the guardian's
+narrow policy, including CPython's numeric-suffixed atomic-write files. A
+running older task may continue executing its Python hook during an update.
+Differing roots are replaced as one directory rather than copied through
+untrusted entries, preventing nested links from redirecting repair writes;
+source and unsupported filesystem objects remain integrity failures.
+
+## [4.91.2] - 2026-09-03
+
+**An older running task can no longer invalidate its own preserved plugin
+root.** Python may create `__pycache__` beside a hook script when the task calls
+that hook from a historical version. The cache guardian now excludes only
+regular Python bytecode directly inside that generated directory from the
+archive comparison. Source changes, unknown files, bytecode outside the
+generated directory, symlinks, and special objects still fail closed. All
+shipped Python lifecycle hooks now run with `-B` to prevent new bytecode writes.
+
+## [4.91.1] - 2026-09-02
+
+**Existing plugin-only installations now enter the unified lifecycle without a
+second setup interview.** `synthesis update` and `synthesis repair` migrate an
+older receipt only when it proves that no workspace, organization, generated
+resource, adopted repository, or managed entry exists. The migration preserves
+the recorded stable, edge, or exact-pin policy, discovers selected clients from
+their live native-plugin inventories, and records the bounded legacy digest in
+the first authoritative transaction. Ambiguous, malformed, or richer legacy
+state remains fail-closed and requires an explicit `synthesis setup` choice.
+
+## [4.91.0] - 2026-09-02
+
+**The complete synthesis work system now has one public installer, one stable
+CLI, and one testable state contract.** The verified `onboard.sh` bootstrap
+resolves stable, edge, or an exact version pin once; binds the release to its
+tag, commit, Git tree, and canonical content digest; materializes an immutable
+generation; and activates the managed `synthesis` command without following a
+mutable checkout. `synthesis setup`, `update`, `repair`, `status`, `doctor`,
+`workspace ensure`, `outcome verify`, and `uninstall` all route through the same
+engine.
+
+The engine now separates desired state from machine observations and records
+every mutation under one lock with a monotonic pending, committed, or aborted
+transaction. Its doctor reports desired, resolved, installed,
+source-provenance, live-loaded, and outcome-verified state separately. Fresh
+SessionStart evidence from each selected client completes the live-loaded
+plane; trusted public task IDs can complete the outcome plane without storing
+an expected private answer. Uninstall records a disabled desired state instead
+of claiming the removed system is installed. A first generation records only a
+bounded digest and policy summary of the old receipt file as migration evidence.
+Setup commits the engine's validated effective client, workspace, and layer
+selection; repair consumes that desired state without advancing a floating
+organization policy, and legacy receipts retain only resource-ownership and
+conffile duties.
+
+Full setup creates one Git-tracked workspace instruction source and exposes it
+to both supported clients. User edits are preserved as drift, not overwritten.
+Optional organization enrollment accepts credential-free, time-bounded invites
+and declarative schema-2 manifests; it rejects local paths, path traversal,
+credential-bearing repository URLs, symlinks, wrong remotes, and
+repository-selected executables. Updates remain explicitly initiated, and an
+installed floating version ahead of stale channel evidence is never told to
+downgrade.
+
+A public release-capability document now owns the CLI, profile, layer, platform,
+truth-plane, and acceptance-task vocabulary used by tests and installation
+documentation. The skills-only path uses the same bootstrap, while native
+plugin commands remain a secondary alternative. `synthesis-quick-answers`
+1.3.0 uses `synthesis workspace ensure` and the tracked instruction source, and
+its catalog description is held below the client limit. `synthesis-onboarding`
+2.0.0 and `synthesis-skills-manager` 2.6.0 add the engine and gated public-CLI
+activation.
+
+## [4.90.3] - 2026-09-02
+
+**The shell-lane gate's boundary is stated where agents read it.** The
+codex lane was verified end to end against a live thread (registration,
+resolve, receipt, `codex queue` without the app-server daemon), and the
+verification showed the one place the gate cannot see: it reads the tool
+call's command text, so a `codex queue` run from inside a script file
+passes as an ordinary command — the boundary every shell-level guard
+shares. The protocol reference and the gate's docstring now say so and
+require the direct invocation; a test pins both statements.
+
+**A stale receipt no longer shadows a fresh one.** The same verification
+found a gate defect: a session that releases and claims again keeps its
+client handle under a new board identity, so two receipts can name one
+address, and the gate judged whichever sorted first — refusing a send the
+fresh receipt authorized. It now judges the newest receipt whose target
+row is still active. synthesis-project-management 2.11.2.
+
+## [4.90.2] - 2026-09-02
+
+**A Codex update no longer returns while the invoking task's historical hook
+root is still missing.** A native refresh returned successfully, and the task's
+immediately following Stop hook failed because its prior version root had not
+yet been restored. The durable guardian did recover the root, but a 77-version
+archive took 55 seconds and restored oldest first, making the immediately prior
+version last.
+
+synthesis-skills-manager 2.5.1 now restores historical roots newest first.
+synthesis-onboarding 1.4.2 invokes the installed guardian synchronously after a
+Codex refresh, then verifies that the exact version root and every plugin-root
+hook target used by the invoking task are present before reporting success. A
+configured guardian that is missing, unsafe, fails its doctor, or cannot restore
+that exact hook tree makes the ecosystem step non-green. Machines without the
+publisher-installed recovery archive retain the explicit close-other-tasks
+update contract; Claude's update path does not invoke the Codex guardian.
+
+## [4.90.1] - 2026-09-02
+
+**The delivered inbox starts at the seat's claim.** The first live run of
+4.90.0's inbox greeted a seat with every message ever addressed to its
+project as unread — thirty-two of them, all handled weeks earlier — and
+every fresh seat on a busy project would have seen the same. A message
+addressed to a project's sessions was for the sessions of its time: the
+inbox now delivers it only when it was posted at or after the seat's claim
+moment (the board row's `started`), while a message that names the session
+exactly is always delivered. The SessionStart board read still covers
+history. An unparseable claim moment disables the bound, never the
+delivery. synthesis-project-management 2.11.1.
+
+## [4.90.0] - 2026-09-02
+
+**Peer messages can no longer be addressed by a name, and every direct send
+must match a delivery receipt the resolver issued.** Seven recorded
+misdeliveries between 2026-08-19 and 2026-09-02 — one of them the day after
+the resolver shipped — share one shape: at the moment of sending, an agent
+picked a target by a harness display name (derived from the working
+directory, duplicated by construction) or a chat title, and the only gate in
+place checked that a target was registered, not that it was the one
+resolved. The harness `SendMessage` lane, which its own listing steers
+agents toward, was ungated by design.
+
+synthesis-project-management 2.11.0 closes the whole path:
+
+- **Seats.** `claim` writes a sidecar beside the board
+  (`seats/<session uuid>.json`) with the session's delivery handles —
+  harness session id, desktop session id, pid, machine — refreshed at
+  heartbeat and removed at release; the board row's client ref is unchanged
+  (`ccd:` on the desktop, new `cc:` for terminal sessions, `codex:` for
+  Codex). No schema change; an older engine simply offers the bus.
+- **Lanes.** `resolve` now prints the exact invocation per lane from live
+  truth: the bus, the ccd session id, the harness Unix socket (`uds:…`,
+  taken from the harness peer registry only while that process is alive on
+  this machine — the registry name is shown for display and is never the
+  address), and `codex queue --thread` for Codex threads.
+- **Receipts.** A resolve that returns exactly one target writes a delivery
+  receipt under `receipts/<sender key>/`, valid 20 minutes, naming that
+  target and its addresses. An ambiguous or empty resolve issues nothing.
+- **The gate.** `scripts/peer_send_gate.py --gate` is registered in the
+  plugin's own `hooks/hooks.json` (both clients load it) on `SendMessage`,
+  the desktop session-messaging tool, and the shell tools (for
+  `codex queue`). A direct send passes only when its address equals a live
+  receipt held by this sender, the target row is still active, the harness
+  registry still maps that socket to the receipt's session, the sender holds
+  an active seat, the message carries the sender's board id, and the same
+  text has not gone to a different session within 15 minutes (a broadcast).
+  In-process targets pass; a reply may copy the `from=` of a message this
+  session received; every decision is appended to `peer-sends.jsonl`;
+  anything unverifiable blocks with the remedy.
+- **A delivered bus.** `scripts/board_inbox.py --hook` runs on every
+  UserPromptSubmit and inside the SessionStart context in both clients,
+  injecting unread board messages addressed to this seat or its project
+  with a per-seat watermark. `coordination.py inbox` and `whoami` expose
+  the same view; the doctor counts seats and names orphans.
+- **Codex.** The SessionStart context states a Codex session's coordination
+  identity (its shell carries no thread id) so it exports
+  `SYNTHESIS_CLIENT_SESSION_REF` before claiming; `codex queue --thread`
+  is the direct lane to a Codex thread and is gated like the others.
+
+synthesis-agent-conformance 1.8.0 adds `hook-definition.public-peer-gate`
+and `hook-definition.public-inbox` to source conformance, so a plugin that
+stops routing peer sends through the gate or stops delivering the inbox
+fails CI. The git-hooks installed runtime and the onboarding probe carry the
+new `peer_addressing.py` module alongside the coordination engine; re-run
+the git-hooks installer after updating so the commit gate's engine copy
+matches the source (its doctor reports the drift until then).
+
+## [4.89.0] - 2026-09-02
+
+**Google Chat gets a declared target set, and a surface that carries
+targets can no longer be advanced wholesale.** The fifth sync defect from
+the field: a surface-level watermark on the Chat surface recorded coverage
+no per-space read backed, and a colleague's four DMs went unsurfaced through
+two syncs and a day-end. daily-rituals 2.34.0 ships
+`scripts/gchat_preflight.py`: the declared set is the config's explicit,
+labeled `targets` (the auditable core — the enumeration shows every DM as
+"Unnamed Space") plus the saved enumeration text, parsed line by line,
+filtered client-side by the config's `scope` because the wrapper ignores
+its own type filter, and marked BOUNDED when the header count exceeds the
+records or the 100-record page cap is hit, since no paging cursor is
+exposed; a bounded set is partial coverage that the report and the deferral
+name rather than a completeness claim. `sync_watermark.py advance` now
+refuses a surface-level write on a surface with per-target entries unless
+`--surface-level` asserts it. Thirteen preflight tests and two watermark
+tests pin the behavior; the missing cursor is recorded as an upstream
+wrapper defect.
+
+## [4.88.0] - 2026-09-02
+
+**Two old coordination-board asks closed.** (1) Daily parity now reads each
+client's installed manifest on disk beside the CLI report
+(`parity.<client>-on-disk`, agent-conformance 1.7.0). The ask from
+2026-08-17: parity had stayed green while the Codex tree the client loaded
+sat three releases behind, because the CLI reported the version it intended
+to serve — a self-report is a claim, not evidence. The tree for the reported
+version must exist and its own manifest must carry that version; tests pin
+a report with no tree and a tree whose manifest disagrees. (2) The message
+guard's built-in known-clean doctor control is now a canonical SIGNED agent
+message in Slack wire form, and the example config's `doctor_clean_controls`
+carries it (message-guard 1.6.0). The ask from 2026-08-03: a generic clean
+control passed while a retired-branding pattern compiled under IGNORECASE
+blocked every real signed send. Tests pin that the over-broad pattern now
+trips the control and the scoped fix passes it, and that every example
+clean control passes the example patterns. The doctor's leftover
+single-slot-ledger finding now names the file's `created_at`, channel, and
+recipient, so the seat whose helper script wrote it can recognise it
+(2026-09-02: one seat's stale scaffolding kept the machine-wide signal red).
+
+Also in this release: the guard's behavioral suite is hermetic. It had run
+against the machine's private config, so it passed on every developer
+machine and failed in CI, where no private config exists — main was red
+from 4.85.0 through 4.87.0 without anyone noticing locally. The harness
+falls back to `patterns.example.json` when no config exists and says so,
+and the pytest wrapper always runs it against the example config with an
+isolated home. Two tests pin both.
+
+## [4.87.0] - 2026-09-02
+
+**`synthesis-quick-answers` (v1.2.0) now bootstraps and wires itself into the standard workspace convention instead of assuming it or inventing a substitute.** First real colleague adoption surfaced two gaps in the same session: the skill's Setup section assumed a personal knowledge workspace already existed, which isn't true for someone who just installed the plugin — and the "automatic, no reminder needed" property the pattern promises was never actually encoded as a step, so it depended on whoever set it up remembering to wire it in by hand. Fixed by making Setup self-contained: step 1 now calls `synthesis-onboarding`'s `onboard.py init-workspace` to scaffold `~/workspaces/{workspace}/ai-knowledge-{workspace}/` when it's missing (new `depends_on: synthesis-onboarding`), and step 4 makes explicit what was previously left implicit — a single routing line in the workspace's own `AGENTS.md`/`CLAUDE.md` is the entire mechanism that makes every future session apply the skill without being told. A companion set up under the old Setup section still worked, it just required the setter-upper to already know this; now the skill says so.
+
+**`synthesis-onboarding`: the CLI installer speaks to whichever audience is actually reading it.** A colleague watched her own terminal scroll a full git diffstat — hundreds of `create mode` lines from a multi-week-old cache catching up — followed by a status line telling her to "verify its exact current-plugin SessionStart receipt plus loaded registry," phrasing written for an agent's internal verification protocol, not a person. Both were genuine audience mismatches, not just noise: `onboard.py`'s own plugin-update messages now read "restart Claude Code, then start a new chat there" instead of the receipt-verification sentence (the full protocol remains exactly as documented in this skill's own "Safe plugin upgrades" section, which is where an agent actually reads it — nothing was lost, only where a human sees it changed); the still-open half is a downstream organization's own `install.sh` wrapper, whose `git pull`/`clone` calls are the actual source of the diffstat wall and now need `-q` (org-owned, not this repo — fix tracked and shipped separately in that repo).
+
+**Dual-client presence: verified, not just read.** The same session asked whether `onboard.py` degrades gracefully when only one of Claude Code / Codex is installed, in both directions. Traced the full path — `phase_preflight` marks an absent client `SKIP` (not `ERROR`, doesn't affect exit code), `phase_ecosystem`'s per-client loop simply skips a `None` binary, and every phase after it (`org_skills`, `kbs`, `workspace`, `migrations`) never receives the clients dict at all — and it already handles both directions correctly. No behavior changed here; three new tests (`test_preflight_skips_absent_codex_...`, `test_preflight_skips_absent_claude_...`, `test_ecosystem_phase_only_touches_the_present_client`) close a real coverage gap so this stays true.
+
+## [4.86.0] - 2026-09-02
+
+**New skill: `synthesis-quick-answers` v1.1.0 — a low-cost, read-mostly lookup companion for ad hoc workspace questions.** Ships already at 1.1.0: the confidence-disclosure feature below landed before this first release. Stands up a separate, cheap-model-tier project per workspace whose only mandate is answering one-off questions (people, teams, project status, releases, decisions) so a focused project session doesn't absorb quick lookups into its context or spend premium-model budget answering them. Operating protocol: classify the question, query only the narrow source that answers it (never load a whole other project's context for one fact), verify anything volatile against `synthesis-grounding-discipline`'s cache-vs-truth rule before asserting it, and — the defining feature — carry a one-line grounding trailer on every answer naming its source and a Verified / Cached / Uncertain confidence tier, so speed never reads as certainty. Answers append to a self-building `FAQ.md` log; durable facts route onward through `synthesis-knowledge-capture` rather than accumulating as a second copy in the companion's own files. Deliberately not a "seat" in the operations sense — it owns no workflow, only a read path across everything else, and its write scope stays limited to its own project files. Depends on `synthesis-project-management`, `synthesis-context-lifecycle`, `synthesis-grounding-discipline`, `synthesis-concise-messaging`, `synthesis-model-tiers`.
+
+## [4.85.1] - 2026-09-02
+
+**The two new state stores are created private.** 4.85.0 replaced a 0600
+holds ledger with a log left at the umask default, and wrote grounding
+ledgers the same way — a store that widens permissions while fixing a
+concurrency bug trades one defect for a quieter one. Hold purposes name
+meetings, colleagues and clients; a grounding ledger carries the full
+outgoing text and every source behind it. Both are now 0600 inside a 0700
+directory, created that way rather than chmodded after the write, and the
+mode is reasserted on every append because the file outlives the umask that
+made it. Both doctors report a loose store, and the next write repairs it.
+
+## [4.85.0] - 2026-09-02
+
+**Two shared single-slot files are now append-only logs, because one slot
+with N writers loses data by shape and no lock fixes that.** The principal
+runs the same rituals from more than one workspace seat, and both of these
+were read-modify-written by every seat. message-guard kept one
+`ledger.json`: the second seat's write replaced the first's, and the first
+seat's send was then refused for a sha mismatch — reported as an edit made
+after grounding, which was false and pointed at the wrong repair. Ledgers
+now live at `ledger/<message-sha256>.json`; the sha was already bound to
+the exact outgoing text, so keying by it adds no concept and makes the
+collision impossible by construction. `--write-ledger` derives the path
+from the ledger's own sha and writes atomically, so an agent never types a
+path and cannot misfile one; the gate sweeps abandoned ledgers, and
+`--doctor` inspects the store.
+
+The chief-of-staff holds ledger was a shared JSON array, and its invariant
+made loss worse than cosmetic: the agent may release only a hold it can
+prove it placed, so a lost `place` record makes a real calendar event
+permanently unreleasable, while a lost `release` leaves a freed window
+looking defended. Under 12 concurrent seats it did not merely lose records
+— it ended unreadable, one seat reading while another had it truncated
+mid-write. `holds_state.py` replaces it with an append-only event log:
+`is-releasable <id>` answers the invariant mechanically instead of from an
+agent's recollection, and windows are ISO-8601 with an offset, so expiry
+is computed rather than interpreted — it was aspirational while windows
+were prose like "end of its own day". All 9 live holds migrated, 1:1, no
+purposes lost; the doctor immediately named two expired-but-open holds the
+prose ledger could not have computed.
+
+Both suites carry positive controls that reproduce the original defects, so
+a pass is evidence of a fix rather than of an easy test. Two test faults
+found on the way: the message-guard inter-session case still asserted a
+bare exemption after the peer-session lane took ownership of that tool, and
+it read the live coordination board, so unrelated work moved its result;
+and CI ran no chief-of-staff test at all while message-guard's storage went
+uncovered for the life of the file.
+
+## [4.84.0] - 2026-09-01
+
+**The stable plugin path has a daily heartbeat, and the docs say who pins
+it.** 4.82.0 created `~/.synthesis/plugins/synthesis-skills/current` and
+verified it at repoint time; a receipt at repoint time is not a heartbeat.
+`conformance.py parity` — already run at every day-start — now carries
+`parity.stable-path`: the pointer must exist, resolve to a root with a
+readable plugin manifest, and carry the version the Claude client reports
+installed; missing, dangling (a cache replaced under it), and behind (an
+install made without the gated release) all fail with the remedy. The
+skills-manager document states the two-caller rule: hooks and guards that
+must run without an install resolve from a source checkout, while
+everything an agent is instructed to run pins the stable path, because the
+installed pointer is the verified release and a source checkout may be
+mid-transaction. daily-rituals 2.33.0 says where every `<…-root>`
+placeholder resolves on a provisioned machine. Hermetic parity tests cover
+current, missing, dangling, and behind; a release test pins the rule to
+the document.
+
+## [4.83.0] - 2026-09-01
+
+**Grounding-ledger claims about what is unanswered or unsent must say when
+the source was read.** The guard's ledger mapped every factual claim to a
+source but not to a moment, so a claim that a question was "still
+unanswered" — resting on a read eight hours old while the answer had gone
+out that morning — passed as verified on 2026-09-01. A false receipt in the
+layer built to stop exactly that is worse than no receipt. message-guard
+1.5.0 adds a config-adopted currency lane: claims whose text matches
+`currency_claim_patterns` (unanswered, unsent, no reply, still open, has
+not responded) must carry `read_at`, and the send is blocked when it is
+missing or older than `currency_claim_max_age_minutes`; stable facts need
+none; the ledger template shows the field; the doctor reports the lane.
+Six tests pin refusal without `read_at`, refusal on a stale read, pass on
+a fresh one, pass for a stable fact, and the lane staying off until
+adopted.
+
+## [4.82.0] - 2026-09-01
+
+**A stable plugin path, and every coordination command says when it is
+running from an old engine.** Versioned cache paths go stale on the next
+release: a session that resolved `coordination.py` at lunch and kept the
+path for four hours crossed six releases and read the migrated board with a
+parser that could not know it, and the personal workspace's own day-start
+commands pinned a release twenty versions behind. Two fixes. The gated
+release now maintains `~/.synthesis/plugins/synthesis-skills/current`, a
+synthesis-owned symlink outside the client-owned caches, repointed
+atomically only after both clients verified the version and refused when
+the target is not a verified install root (`install.stable-path`);
+instruction files and scripts reference it instead of a version. And every
+`coordination.py` invocation from an engine older than the newest installed
+prints a one-line stderr notice naming the newer path, so staleness shows
+in output the agent is already reading — behavior otherwise unchanged.
+Tests pin the atomic repoint, the refusal of unverified or mismatched
+roots, the notice from an older cache, and its absence from the newest.
+
+## [4.81.0] - 2026-09-01
+
+**The Slack sync preflight is a script, and the watermark gate's declared
+set comes from it.** A sync config carries two valid-looking ids per DM
+entry — the user id and the conversation id — while channels and group DMs
+use the field that is wrong for DMs, so a uniform read hands user ids to a
+conversation-read call and reports quiet empties. On the day the coverage
+gate shipped, a careful reader with the config open, warned about the trap
+minutes earlier, still derived every DM target as a user id. Per-seat
+derivation is a correctness surface, not a convenience.
+`synthesis-slack-sync/scripts/preflight.py` (slack-sync 3.10.0) now owns
+it: it resolves the one read id per target, validates the id prefix per
+class (`C`/`G` for channels and group DMs, `D` for DMs; a `U`-prefixed id is
+never a target), prints the resolved-target table with a prefix census so a
+wrong derivation shows as a wrong shape, writes the declared set the
+daily-rituals gate takes with `--targets-from` (derived this run, never a
+stored copy — daily-rituals 2.32.0 says so at every gate), exits 1 when a
+declared target is unresolved so the report must name it, and exits 2 on
+an empty set or a malformed config. Fourteen tests, including the gate
+consuming the script's output; the Slack skill's tests join the shared CI
+group, the AGENTS.md verification list, and the release gate.
+
+## [4.80.0] - 2026-09-01
+
+**The daily-rituals and Slack-sync documents are back under the 500-line
+rule, and a test keeps them there.** `synthesis-daily-rituals/SKILL.md` had
+grown to 1,319 lines and `synthesis-slack-sync/SKILL.md` to 762 against the
+repository's below-500 rule, most of it release-by-release history stacked
+above the checklists, followed by plan formats, worked examples, and
+rationale. Both were restructured rather than trimmed: every operating rule
+and checklist step stays in the main document (454 and 357 lines), while the
+version history and the incidents behind each rule, the daily-plan format
+and cockpit vocabulary, the full draft-grounding protocol, and the
+transcript and permalink formats moved verbatim into `references/`
+(daily-rituals 2.31.0: `version-history.md`, `plan-format.md`,
+`draft-grounding.md`; slack-sync 3.9.0: `version-history.md`,
+`transcript-formats.md`). Where a block was condensed, the main document
+carries a rule digest; wrapped list items and paragraphs were re-flowed to
+the files' single-line style, which is markdown-neutral. A pinned test
+(`synthesis-daily-rituals/scripts/test_skill_documents.py`, in the CI group
+both skills share) fails when either document reaches 500 lines, when a
+load-bearing rule anchor leaves it, when a moved block is missing from its
+reference, or when a reference or template is not linked from the main
+document. Nothing in either protocol changed; every existing documented-rule
+contract test still passes against the main documents.
+
+## [4.79.0] - 2026-09-01
+
+**Sync watermarks now carry a time and a target, and a run proves its own
+coverage.** The v2.27.0 watermarks were day-granular, and a day cannot see
+the hours: on one day-start a Slack surface written at 09:15 counted as
+current for the rest of the day, the mid-day passes re-read only the targets
+the morning had skipped, and at 17:51 the agent reported a question still
+unanswered on the strength of the 09:15 read while the answer had gone out
+at 09:27. A first pass that morning had also hand-typed an `oldest` of 07:50
+*today* and reported five channels empty that were not.
+
+`sync_watermark.py` (synthesis-daily-rituals 2.30.0) now records ISO-8601
+moments — the last moment actually written, never the last attempted — and
+one watermark per declared read target within a surface; `begin` stamps a
+run and `status --since run` exits non-zero naming every declared surface
+or target this run did not re-read (with `--max-age` as the alternative
+bound, `--targets-from` for the declared target set, and per-target
+deferrals); `window` prints human-readable bounds beside the epoch `oldest`
+a read call takes, so a window parameter is computed and echoed rather than
+typed; a bare date means complete through the END of that day and is
+refused for today until the day is over. Schema-1 stores are read as what
+they meant and rewritten on the next write. synthesis-slack-sync 3.8.0
+takes every `oldest` from `window`, records every saved read with
+`advance --target`, re-reads every declared target every sync, and treats
+the user's own outbound as first-class sweep state: owed items it
+discharged are marked, and "unanswered" or "unsent" is never claimed on a
+read older than the current run. Thirty-seven tests pin the mechanism and
+the documented rules; contract and rationale live in the new
+`references/sync-watermarks.md`.
+
+## [4.78.0] - 2026-09-01
+
+**A coordination engine older than the board it reads now says so, and
+names the engine to run.** After the 4.75.0 schema migration, a session
+still on an older plugin cache read the shared board and reported the board
+itself as corrupt: its parser raised a bare column-count error, and the
+operator on that side spent the incident hunting a phantom second table.
+Version skew between a shared board and the engines reading it is permanent
+— a plugin release reaches sessions at different times — so the engine now
+refuses fail-closed with a diagnosis instead of a symptom: a board whose
+declared `Schema:` is newer than the engine, or a row wider than the
+engine's newest column set, raises a message naming the newest installed
+engine to invoke (resolved numerically from the plugin cache the script runs
+from, or the plugin refresh when none is newer), and `doctor` reports the
+same line. A stale engine still never rewrites a newer board.
+
+Also fixed: every rewrite of the Active sessions table grew the blank run
+between the heading and the table by one line — the section pattern
+swallowed the existing padding into the heading group and re-emitted it plus
+a newline — so a long-lived board carried over a thousand empty lines, which
+is what the "second table" reading was. Rewrites now emit a fixed-shape
+section (one blank line, table, one blank line) and are idempotent, so the
+next mutation on any board collapses the accumulated padding. Regression
+tests pin the refusal, the wider-row diagnosis, the remedy's newest-version
+resolution, the padding collapse, and the public documentation; the
+board-template reference now shows the v4 header.
+
+## [4.77.1] - 2026-09-01
+
+**Historical Codex roots now survive cache generations created after the
+publisher exits.** The earlier recovery boundary reconstructed and verified
+every historical root, then watched for a ten-second quiet window. A later
+client-owned reconciliation could still replace the entire live cache minutes
+after that receipt and strand running tasks whose hooks retained an older
+absolute path.
+
+The gated publisher now installs a standard-library cache guardian outside the
+client-owned tree and verifies its user-level supervisor before reporting a
+release complete. The guardian shares the release transition lock, validates
+the durable archive, protects every archived version except the newest
+client-owned version, and restores missing historical roots after any later
+cache replacement. It never deletes a cache path or overwrites differing
+existing content. macOS uses launchd; Linux uses a systemd user service.
+Hermetic coverage pins delayed parent replacement, current-version
+noninterference, unsafe archives, differing-content refusal, lock contention,
+and both supervisor definitions.
+
+## [4.77.0] - 2026-09-01
+
+**Releases now serialize mechanically: one train, one holder.** Five
+same-day overtakes between two parallel releasing agent sessions — each
+merge invalidating the other's open PR, once colliding on the version
+number itself — proved message-based sequencing fails when an autonomous
+session mid-transaction does not re-read the board. The release train is
+now a virtual coordination-board resource (`release-train:synthesis-skills`)
+claimed through the unmodified claim machinery, whose overlap refusal is
+the mutual exclusion and whose lease compare-and-swap serializes it across
+machines. `release.py` preflight enforces possession fail-closed in every
+publish-capable mode on any machine carrying a coordination board: unheld
+refuses with the claim command, peer-held refuses naming the holder, a
+missing local identity refuses, and a stale board mirror refuses. Machines
+without a board — outside contributors — pass with a notice, so the public
+repository stays usable without the coordination system. Hold the train
+from version authoring through the gated release; a dead holder is freed
+only by the user via the stale-claim review.
+
+## [4.76.5] - 2026-09-01
+
+**The documented check list and CI now move together or fail together.**
+On 2026-09-01 a locally-green branch failed CI because validate.yml had
+grown five steps beyond AGENTS.md's Verification list — test_release.py
+had never run locally. The fenced list is synced to the workflow's
+conformance job, and a parity test holds them equal from now on (modulo
+the CI-only dependency install and the env-bound acceptance step). The
+project-management test step widens from test_coordination.py to the whole
+scripts directory in CI, the release gate, and the docs, so the handoff
+and worktree-retirement suites finally run at both boundaries.
+
+## [4.76.4] - 2026-09-01
+
+**Recovery verification now distinguishes client-owned metadata from the
+plugin tree it protects.** Codex creates its own `.git` checkout and install
+record in the newly installed current-version root; Claude maintains liveness
+markers in retained roots. These paths are outside the immutable recovery-tree
+digest, while every source file, hook, skill, symlink, and unknown extra remains
+covered.
+
+The 4.76.3 publisher installed byte-current source in both clients but refused
+its final preservation receipt when the new Codex root contained that expected
+client metadata. A regression fixture now proves the three client-owned paths
+do not change the recovery digest and that an arbitrary extra still does. The
+publisher therefore keeps the strict unknown-content boundary without treating
+the client's own administrative files as source drift.
+
+## [4.76.3] - 2026-09-01
+
+**A Codex plugin refresh no longer strands tasks that started on an older
+cache root.** The gated publisher now constructs a complete recovery set from
+the real version roots retained by both supported clients. Immutable release
+tags supply authoritative tracked bytes. For versions that predate release
+tags, the publisher accepts a peer or prior archive root only after its plugin
+manifest, hook commands, hook targets, skill tree, and symlinks validate.
+
+The Codex transition is single-writer, repairs missing and partial roots, keeps
+only known client metadata, and rechecks the restored trees through a bounded
+post-command quiet window. The recovery archive has a 512 MiB hard limit and
+never silently deletes historical versions. Failures leave the transition copy
+in place and stop the release. Regression coverage includes delayed deletion,
+pre-tag recovery, partial roots, changed bytes, unsafe symlinks, concurrent
+writers, unknown extras, and archive-budget exhaustion.
+
+## [4.76.2] - 2026-09-01
+
+**The project-management skill document is back inside its own budget.**
+`synthesis-project-management/SKILL.md` had grown to 660 lines against the
+repository's below-500 rule. v2.9.0 restructures rather than trims: every
+operating rule stays in the main document (498 lines), while worked
+examples, full formats, and rationale moved to `references/` — a new
+`records-and-conventions.md` (built-in-memory rationale, naming rationale,
+full index example, lesson formats, attribution rules), a new
+`codex-dispatch.md` (the wrapper's production incident detail), and an
+extended `parallel-agent-protocol.md` (check-staged selector precedence,
+active-project pointer semantics, handoff-queue mechanics, worktree
+retirement internals). A pinned test now enforces the budget, keeps the
+load-bearing rules in the main document, verifies each moved block exists
+in its reference, and refuses orphaned references — so the next growth
+lands in `references/` instead of silently rebreaking the rule.
+
+## [4.76.1] - 2026-09-01
+
+**A truly empty home now reaches a committed personal workspace without a
+manual repair step.** The 4.76.0 live-stable acceptance run found that a new
+user with no configured Git author could receive every scaffold but stop at
+the first repository commit. Guided `init` now detects that condition before
+mutation and asks for the author name and email it needs. Reviewed
+non-interactive answers can provide the same values as `git_name` and
+`git_email`.
+
+The engine applies those values only to the new personal repository, retries
+the initial commit when repairing a half-finished 4.76.0 run, and leaves global
+Git configuration untouched. Acceptance tests prove both the pre-mutation
+validation boundary and a successful repository-local first commit.
+
+## [4.76.0] - 2026-09-01
+
+**`synthesis-onboarding` v1.4.0 makes the public bootstrap the door to the
+whole work system.** Its guided `init` flow now converges eleven declared
+layers instead of treating a plugin as the finished system: skills, session
+context, stable gates, agent kernel, runtime engines, coordination, doctors,
+personal policy, optional organization state, knowledge bases, and lifecycle.
+Every layer ends visibly `installed`, `declined`, or `missing`; selected gaps
+keep doctor non-green.
+
+The personal layer is authored through a generic interview and shipped
+templates for message guard, chief of staff, knowledge capture, and the public
+policy profile. A CI audit now rejects a documented fail-closed config without
+a scaffold and rejects any skill or installer missing from the static component
+catalog. Organization manifest documentation includes `default_branch`.
+
+The kernel generator creates one user-owned `AGENTS.source.md`, renders both
+client files under a 55,000-byte hard budget and 85-percent warning band, and
+installs a stable edit-propagation hook. Receipt hashes prevent overwriting a
+user-edited output; uninstall removes only its exact owned hook entries before
+their engines and preserves the canonical source. The same fresh-home tests run
+on macOS and Linux in CI, with WSL recognized as the supported Windows
+userland and native Windows refused before mutation.
+
+## [4.75.0] - 2026-09-01
+
+**Peer-session messages now resolve through the board instead of guesswork.**
+Messages between agent sessions too often reached the wrong chat session, or
+an unsure sender broadcast to several — three naming layers (board identities,
+client chat handles, harness display labels) covered one population with no
+join between them, and the 2026-08-19 "labels are not seat identity" lesson
+was doctrine without a mechanism.
+
+Coordination board schema v4 adds the join: a `client session ref` column
+carrying each session's client-native delivery handle (`ccd:local_<uuid>`,
+`codex:<uuid>`), registered automatically at claim time from the session's own
+environment (`CLAUDE_CODE_HOST_SESSION_ID`, or `SYNTHESIS_CLIENT_SESSION_REF`
+for any client). A new `coordination.py resolve --to <project|session|ref>`
+returns the exact deliverable target with its delivery lane, refusing
+ambiguity (exit 20) and absence (exit 21) instead of guessing or
+broadcasting; chat titles and display labels are deliberately not selectors.
+`message --to` now refuses addressees that match no session or registered
+project unless `--free-address` records the exception. A claim with no
+`--session` whose detected ref matches its own active row updates that row
+in place — one client seat, one row — and duplicate active refs refuse with
+the stale rows named.
+
+Migration is staged for shared boards: the engine reads schemas v1–v4 but
+writes each board's declared schema, so live sessions on older plugin
+versions keep working until an explicit `migrate` flips the board to v4.
+The doctor and `conformance coordination` accept a declared v3 board with a
+migrate note during the transition.
+
+synthesis-message-guard v1.4.0 adds the fail-closed backstop: adopting
+`peer_send_resolution` in patterns.json gates direct peer-session sends —
+the target session id must be an active client ref on the board, or the
+send blocks with resolve/board-bus guidance. The peer lane runs before the
+exempt list and replaces the correspondence ledger lane for those tools;
+unadopted instances keep the previous exempt posture, and the doctor reports
+which posture is live plus the required hook wiring.
+
+## [4.74.1] - 2026-09-01
+
+**The lifecycle now survives the release that advances it.** The first 4.74.0
+SessionStart exposed two defects that hermetic policy tests could not: the
+python.org macOS runtime had no configured OpenSSL CA path and therefore could
+not verify the stable manifest, while Codex's native plugin refresh deleted the
+old versioned cache before the running task's Stop hook had finished using it.
+
+Release discovery keeps urllib and verified TLS, but on a certificate-path
+failure it retries known operating-system CA bundles through
+`ssl.create_default_context(cafile=...)`; certificate-chain and hostname checks
+stay enabled. The release publisher snapshots every real Codex version root
+before refresh, restores any root the client removes, and verifies the complete
+tree digest before declaring installation successful. Symlink recovery artifacts
+are deliberately excluded. A failed snapshot blocks the client mutation; a
+failed restore leaves its recovery copy in place and fails the release loudly.
+
+## [4.74.0] - 2026-09-01
+
+**`synthesis-onboarding` v1.3.0 — plugin upgrades now have a lifecycle instead
+of a floating default.** Stable is the default release-gated channel, edge is
+an explicit opt-in to `main`, and organization manifests can set an exact
+`version_pin` backed by an immutable release tag. The engine configures both
+native marketplaces to the selected Git ref and records the effective policy
+in its receipt.
+
+SessionStart now compares the executing plugin-cache manifest with the selected
+release target and surfaces an update or policy-mismatch notice. The onboarding
+doctor performs the same comparison, distinguishes behind from ahead, and
+returns unverifiable rather than green when it cannot establish current release
+state. Release discovery uses a bounded cache; stale evidence stays labeled.
+
+The gated publisher now advances `main`, `stable`, and `vX.Y.Z` from the exact
+acceptance-bound commit in one atomic push per remote. The one-command bootstrap
+follows stable by default and maps the explicit edge channel to `main`.
+
+## [4.73.0] - 2026-08-31
+
+**`synthesis-context-lifecycle` doctor v1.8.1 — a cited directory of scripts is
+preserved work, not a missing target.** `artifact-cites-missing-script` required
+the citation to resolve to a regular file, so an artifact pointing at
+`resources/scripts/codex-hooks/` — a directory holding six scripts and a
+`hooks.json` — was reported as citing something that was never kept. Referencing
+a multi-file tool by its directory is the ordinary way to do it.
+
+The check's purpose is durability: an artifact must not cite an executable
+nobody preserved. A directory holding files satisfies that. An **empty** one
+still fails, because a folder is not a substitute for content — that is the same
+failure as a missing file, wearing a folder.
+
+Sixth defect of the same family found this week, and the same shape as the other
+five: a check that did not know a legitimate form of the thing it was judging.
+
+## [4.72.0] - 2026-08-31
+
+**`synthesis-daily-rituals` — the open-items horizon has to match what the item
+is.** The 14-day default is the horizon for work that is *owed*: blocked on a
+named person, with a consequence if it slips. A backlog of feature ideas and
+article ideas is a record of intent that nobody promised by a date, and holding
+it to the owed-work horizon reports intentions as overdue. Measured on a real
+corpus, **17 of 38** open-item findings were exactly that. The day-end ritual now
+says to stamp a backlog `review 180d`, and says the thing that is easy to miss:
+a recorded decision parked under an open-items heading needs moving, not a longer
+horizon, because the section heading is what the checker reads.
+
+No code change. This is the convention half of a fix whose mechanism — per-item
+horizons — has existed since the stamps did.
+
+## [4.71.0] - 2026-08-31
+
+**`synthesis-context-lifecycle` doctor v1.8.0 — five defects found by using
+4.70.0 on the day it shipped, one of them in the principle 4.70.0 was built
+on.** Reading the findings rather than counting them worked a third time.
+
+- **The disposition finding can be answered.** `terminal-project-active` was
+  self-sustaining: the commits that dispose of a project — the archive pass,
+  the trim to budget, the routing note — are themselves post-`completed_date`
+  commits, so resolving the finding re-created it and no amount of correct work
+  ever cleared it. Two live instances within an hour, one of them this release's
+  own archival of a project. New index field `post_close_reviewed_through: <sha>`
+  records that a human read the commits after the close and found maintenance.
+  - **Index-side, and that is correctness rather than preference.** The freshness
+    walk is `git log -- <project_path>`, so a marker written inside the project
+    would re-extend newest-commit by the act of writing it and re-trigger the
+    check it answers. `index.yaml` is outside that path.
+  - **A sha, not a date.** A date over-covers by up to a day; two disposition
+    commits thirteen minutes apart straddling a recorded review date would see
+    the second silently swallowed. And a sha that no longer resolves is a
+    defect (`post-close-review-unresolvable`) rather than silence — an
+    acknowledgment whose evidence has vanished must fail loudly.
+  - **It expires.** One new project commit and the question re-arms. An
+    acknowledgment that never decays is a mute button.
+- **The `item-currency` suppression gets the pairing it shipped without.** In
+  4.70.0, open-item checks correctly went quiet on dormant projects and nothing
+  asked the question that becomes applicable in their place — in the release
+  whose headline principle forbids exactly that, stated in the changelog, the
+  skill and the project record, enforced by none of them. New
+  `terminal-project-open-items` asks whether a project claiming to be finished
+  still lists obligations it owes. Only an explicit unchecked box counts:
+  narrative bullets are prose, and reading prose as owed work is the
+  miscalibration that cost 140 of 294 findings once already.
+- **Coverage is reported, so the next unpaired suppression is visible without
+  anyone noticing it.** A check that finds nothing and a check that examined
+  nothing are indistinguishable in a findings list, and so is a deliberate skip.
+  Every lifecycle-gated check now reports its denominator — `item-currency:
+  examined 41, skipped 31 (dormant)` — in `--json` and in the human report. This
+  is the only one of the five changes that prevents rather than patches: a
+  printed `skipped 141` invites the question that was never asked.
+- **The lifecycle rule reaches the checks 4.70.0 missed.** Archive-and-budget
+  advice is an instruction to somebody doing the work. Measured before the gate:
+  **11 of 11** `sessions-present` and **5 of 5** `reference-budget` findings were
+  raised against dormant projects — the v1 diagnosis exactly, one release later,
+  on the checks that release did not touch. `reference-present` joins them: asking
+  a finished project to restructure its stable facts is work on a record whose
+  work is over, and gating two of three siblings would have left the same
+  inconsistency this gate removes. `body-currency`'s absent-marker warning is
+  gated for the same reason a dormant project's items are: asserting a re-check
+  nobody performed is fiction.
+- **The status header is found when it is not first on its line.** The pattern
+  was anchored to line start, so a record reading `**Phase:** Review complete —
+  awaiting send. **Status:** Active` missed the Status entirely, fell through to
+  the Phase fallback, read "complete" out of the phase text and reported the
+  project as finished. That misread was *suppressing* real findings, not just
+  producing a false one: the project's currency and freshness checks were being
+  skipped as dormant. Fixing it removed one false defect and surfaced eight real
+  findings.
+
+Corpus effect: **80 warnings to 67**, 16 findings correctly suppressed and made
+visible as skip counts, 3 genuine findings surfaced that the parser bug had been
+hiding. 197 tests pass (+35).
+
+A note on one number, because it was wrong in the working record before it was
+right here: the unpaired suppression was first sized at "24 obligations across 6
+projects." That count included **paused** projects, where owing work is correct
+and expected. Scoped to projects actually claiming completion, it is **1 project,
+2 items** — created by this release's own archival work. The principle violation
+was real and the corpus impact is small, and both are worth stating.
+
+## [4.70.0] - 2026-08-31
+
+**`synthesis-context-lifecycle` doctor v1.7.0 — the health signal learns when a
+check does not apply, and the semantic tier learns to shard.** A 175-project
+corpus was carrying 193 warnings nobody had acted on. Reading them rather than
+counting them showed why: several checks were asking questions that only have
+meaning about work in progress, of projects that had shipped months earlier.
+98% of `freshness-unverifiable` and 90% of `record-unreadable` were raised
+against dormant projects. A guard that emits 193 unactionable findings is the
+fail-open state it exists to prevent.
+
+- **Lifecycle applicability.** Freshness, open-item currency, and the status
+  cross-check now apply to live projects only. The rule errs toward *live*: an
+  unset or unrecognised status counts as active, because records whose state
+  cannot be read are the ones most likely to be wrong.
+- **The paired inversion.** New `terminal-project-active` reports a project
+  declared completed that is still receiving session commits — a live record
+  error the doctor could not previously ask about. Suppressing an inapplicable
+  check is only safe when you add the check that becomes applicable in its
+  place.
+- **The inversion anchors on `completed_date`, not `last_session`.** Closing a
+  project is itself work — the archive pass, the trim to budget — and those
+  commits land after its final *working* session by design. Measured against
+  `last_session` they read as "still being worked," which is the opposite of
+  what they are: two of the check's first nine findings were a project whose
+  every commit fell on its own completion date. Against the date the project
+  says it finished, the question is the one worth asking — did work continue
+  after the close? — and the corpus answers it thirteen times, from two days
+  to 194. Falls back to `last_session` when `completed_date` is missing or
+  unreadable, because a record too incomplete to anchor on is the one most
+  likely to be wrong.
+- **`reference/` — sharding for the semantic tier.** `sessions/` solved
+  unbounded episodic growth years ago; `REFERENCE.md` had a soft cap and no
+  overflow. That is fine for a bounded arc and structurally broken for a
+  standing project, whose function is to accumulate operating knowledge without
+  a natural ceiling. Once `reference/` exists, `REFERENCE.md` becomes its index
+  (≤150 lines) and each topic gets the old ≤300. Every topic must be linked
+  from the index (`reference-index-orphan`), and a shard with no index is a
+  defect — sharding must not become a way to lose content.
+- **`bounded` stops being dead metadata.** It was declared in the status
+  vocabulary and read by nothing. A standing project over budget is now told to
+  shard rather than to narrow its scope, which was advice its owner could not
+  take. Defaults to `true` when unset: 172 of the 177 indexed corpus projects
+  never declare the field and are unaffected, so adoption costs no migration.
+
+- **The shard vocabulary is documented by name.** A report names the check
+  that fired, so a name the skill never mentions hands its reader a string
+  instead of a remedy. All six `reference-*` shard checks now appear in one
+  table with what fires them and at what severity, and a contract test holds
+  the skill to it.
+
+Corpus effect: 193 warnings to 93, with thirteen new genuine findings, and no
+weakening of any check that applies. 24 new tests (162 total in the skill).
+
+## [4.69.0] - 2026-08-30
+
+**`synthesis-message-guard` engine v1.3.0 — signature wire forms become
+mechanical.** One day after the per-platform signature doctrine shipped, a
+persona-signed email to executives went out `body_format: plain` — composed
+from a compaction summary instead of the loaded skill — so the signature
+rendered as a bare visible URL and dropped its method link. Correct,
+freshly-updated, ABSOLUTE doctrine naming the exact tool and parameter did
+not bind, because nothing read it and nothing checked the result.
+
+- New optional `signature_link_enforcement` config: when an outgoing
+  message carries a persona marker, the gate refuses (1) persona-signed
+  email without `body_format: "html"`, (2) markdown link notation in email
+  bodies, and (3) any configured persona domain appearing as visible text
+  rather than inside a link construct (href, Slack mrkdwn, or markdown
+  notation) — with a configured exempt list for genuinely link-incapable
+  channels, where the visible form is the legitimate form.
+- Unsigned traffic is never taxed: the checks trigger only on marker
+  presence. Absent config = checks off; adopt deliberately.
+- The self-attested branding boolean in grounding ledgers now has a
+  mechanical backstop: the gate verifies the link form itself instead of
+  trusting the typed field.
+
+## [4.68.0] - 2026-08-30
+
+**`synthesis-autopilot` v2.0.0 — unattended time is a scheduled property.**
+The motivating incident: an overnight delegation engaged the mode correctly,
+ran two phases, and then its turn ended — nothing runs between turns, so the
+session idled all night (a mid-night reboot passed unnoticed) and the phase
+that was the point never started. Every discipline held; the work still did
+not happen.
+
+- **Continuation contract:** an engagement whose horizon exceeds the current
+  turn must establish a VERIFIED continuation mechanism before its first turn
+  ends (background work that re-invokes the session, self-scheduled wakeups,
+  scheduler/cron re-entry, or a declared principal-side relaunch) — or say
+  plainly that it cannot run unattended. A survival table (turn end / session
+  death / reboot) matches mechanism to horizon; long horizons layer a
+  scheduler-class dead-man's switch under the inner loop.
+- **Mechanical stop-gate:** new `scripts/autopilot_gate.py` + a plugin Stop
+  hook refuse to let a session stop while a registered engagement is active,
+  unfinished, and has neither a recorded continuation nor an alerted blocker
+  nor an honest close. Abandoned engagements block later stops by design.
+- **Runaway and budget control:** plan files gain Continuation, Budget, and
+  Cycle-ledger sections; `autopilot_gate.py cycle` refuses to record a wake
+  that advanced nothing and names no external wait — a bare spin cannot be
+  logged. Stop conditions: goals met · blocker + alert · budget + alert.
+- **Capability probe before asserting absence:** a blocker claiming a
+  capability is missing must carry probe evidence — an agent that wrongly
+  believes it is blocked stops (a headless CLI was reported unreachable from
+  stale memory in the incident's aftermath while the same session had been
+  using it).
+- **Volatile-state rule:** scratchpad dies at reboots; derived state moves
+  into the project at EVERY phase boundary, not only at close.
+- **Adversary at scope time:** dispatching the counterpart during scope
+  definition (not only review) caught silently dropped artifacts in the real
+  case; now doctrine for discovery-shaped phases.
+
+## [4.67.0] - 2026-08-29
+
+- **`synthesis-agent-correspondence` v3.1.1 — the send path is part of the
+  channel.** A provider-composed send path can rewrite clean hrefs at
+  ingestion (observed live: Gmail's composer wrapping every link in an
+  expiring redirect), while a raw-MIME path stores the bytes you built.
+  Prefer the byte-faithful path and verify a path once by reading the
+  stored message back in raw form. Proven by raw-MIME comparison of two
+  drafts filed minutes apart through the two paths.
+
+## [4.66.0] - 2026-08-29
+
+- **`synthesis-agent-correspondence` v3.1.0 — signature links render natively
+  per channel.** The persona name in a signature is a named hyperlink on every
+  channel that can render one; the visible-URL form is a last-resort fallback,
+  never a choice. Email is the load-bearing case: markdown link syntax never
+  renders in mail clients, so email sends and drafts carry an HTML body with
+  real anchors, with the plain form as the multipart alternative. Motivated by
+  a live Gmail signature that displayed its URL wrapped in a provider redirect
+  because the body went out as plain text.
+
+## [4.65.0] - 2026-08-29
+
+Three fail-closed controls, each from a board-filed defect that had waited
+for an owner.
+
+- **`synthesis-skills-manager` release.py verifies installed CONTENT, not
+  only versions.** `verify.<client>.content` compares every source
+  `skills/` file byte-for-byte against the installed tree and refuses
+  success on drift — closing the 2026-08-24 false-green where an unbumped
+  version left one client loading stale files while both reported current.
+  Version parity is not content parity; now the release gate knows it.
+- **`synthesis-context-lifecycle` context_currency.py fails closed on a
+  zero scan.** Pointed at a directory holding no project records (the
+  documented misuse: a project's own subdirectory), it now exits 2 naming
+  what it expected instead of printing a green zero-finding result, and a
+  project directory carrying CONTEXT.md at its root is audited directly —
+  matching the sibling doctor's `--project` convention.
+- **`synthesis-message-guard` doctor gains two config controls.** A
+  pattern authored with surrogate-escape sequences (which can never match
+  real decoded text — the 2026-08-07 dead-emoji-pattern incident) now
+  fails the doctor, and `doctor_clean_controls` in patterns.json runs
+  canonical real messages through the live scanner so a pattern change
+  that starts blocking legitimate traffic fails loudly (the 2026-08-03
+  incident class).
+
+## [4.64.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.15.0 — captured directives cannot fall
+  through silently.** A principal directive was captured in an intake
+  artifact, endorsed in prose, and routed to no numbered work; nothing
+  warned for four days, exactly as the intake itself predicted ("not
+  evaluating is the only bad outcome, and it is the one that happens by
+  default"). The context doctor now warns (`intake-routing`) on any
+  intake-class artifact — filename carrying intake/brief/directive/catalogue
+  — that CONTEXT.md never references and that carries no terminal
+  `**Routed:**` / `**Declined:**` / `**Superseded:**` marker line. The check
+  is mechanical coverage per the extraction taxonomy: the script narrows,
+  and whether a recorded routing is honest stays the reader's judgment.
+  Five fixtures pin the failure shape, both coverage paths, the
+  outputs-are-not-asks boundary, and that a mid-sentence mention of the
+  marker is not a routing.
+
+## [4.63.0] - 2026-08-29
+
+The repair release for the external adversarial review of 4.55.0–4.57.0
+(R-02: a second vendor's model reviewing four releases it did not write,
+from detached historical worktrees and runtime probes — 14 findings, seven
+ship-blocking). Every valid runtime and doctrine finding is repaired here;
+the review's two historical manifest-closure findings stand as audit records
+of already-shipped transactions.
+
+### Fixed
+
+- **`synthesis-context-lifecycle` v1.14.0 — item currency no longer fails
+  open.** A suffix that looks like a stamp but is not one ("(as of
+  yesterday)") passed as stamped, and a date-shaped impossibility
+  ("2026-02-30") was silently skipped; both now surface as
+  `item-marker-malformed`. An explicit `review 0d` horizon is honored
+  instead of being silently replaced with the 14-day default. The review
+  ledger's expiry suppression is per lifecycle, not per item text: an item
+  expired, carried, and re-stamped records its later expiry as the new miss
+  it is, with the governing stamp on every new event.
+- **`synthesis-daily-rituals` v2.28.0 — the blocking gap gate cannot be
+  walked past.** `sync_watermark.py status` refuses an empty surface set:
+  the store only knows surfaces already written, so a store-only status
+  exits 0 straight past a declared surface that has never been swept. Both
+  ritual checklists now carry the exact status invocation with every
+  declared surface passed explicitly — the release prose said to run it and
+  no operational step did.
+- **`synthesis-slack-sync` v3.7.0 — the sweep consumes preflight instead of
+  contradicting it.** v3.6.0 banned config-derived ids while the numbered
+  steps still said "for each channel in the config." Step 0 now defines the
+  mandatory resolved-target preflight; Steps 1/3/3b iterate only its output;
+  an empty resolved set refuses the sweep; unresolved surfaces are reported
+  as unresolved. Stale frontmatter metadata caught up.
+- **`synthesis-meeting-transcripts` v0.9.0 — "declared means fetched" gets
+  an execution path.** Step 0 enumerates the declared window, fetches every
+  member, and accounts for every member with machine-readable unclosed
+  gaps; the single-meeting protocol serves explicit requests only. Stale
+  frontmatter metadata caught up.
+- **`synthesis-decision-packet` v1.3.0 — ids survive browser coercion.**
+  Row ids must be non-empty strings: JSON `1` and `"1"` become the same
+  localStorage key, so JSON-distinct ids could silently share saved state.
+  The schema comment claiming a recommendation "pre-selects" a button now
+  says marked-never-pre-selected, matching the shipped behavior, and the
+  control-marker fixture is mutation-hardened — it previously passed with
+  the marker implementation deleted.
+
+## [4.62.0] - 2026-08-29
+
+### Added
+
+- **The handoff queue reaches the public toolkit.** `synthesis-project-management`
+  v2.7.0 ships `scripts/handoff.py`, generalized from the working project
+  reference that removed a principal from twenty-plus prompt-courier
+  crossings in one engagement: a writer stores the counterpart's prompt as a
+  durable, sha256-pinned file under `resources/handoffs/`, the queue is
+  written atomically, and `read` refuses a payload whose bytes changed after
+  handoff. Reader identity is fail-closed — `--as` or
+  `SYNTHESIS_HANDOFF_SELF`, never a guess, because a guessed identity could
+  claim another agent's work. Nothing self-triggers: an agent acts on the
+  queue only when the principal's protocol says the other side is done.
+  Eleven tests, including the doctrine contracts.
+- **Autopilot calls the decision packet instead of describing one.**
+  `synthesis-autopilot` v1.4.0 wires `synthesis-decision-packet` in as the
+  batched-questions mechanism its protocol always required: simple user-only
+  batches stay chat prompts, complex batches are built with
+  `build_packet.py` — never reimplemented inline — and the packet's
+  integrity rules travel with it (recommendations marked, never
+  pre-selected; bulk recorded as bulk; one packet is one round-trip against
+  the plan's budget). Packet rows are rebuilt against any principal
+  corrections issued since drafting, so a correction-erased row cannot ride
+  through a rebuild. The handoff queue is named as the agent-to-agent
+  transport; queue and packet together are the two directions that remove
+  the principal as transport.
+
+### Changed
+
+- **Schema-2 acceptance manifests may name any consume-acceptance boundary.**
+  `synthesis-implementation-integrity`'s validator previously accepted
+  exactly one receipt consumer — the public release gate — which made an
+  honest transaction-bound gate impossible for any other repository; three
+  private releases shipped in one week on suite-green alone for lack of one.
+  The validator now enforces a format contract
+  (`*.consume-acceptance.vN`), and honesty stays enforced where it is
+  checkable: every consumer verifies at its own boundary that the receipt
+  names itself, exactly as the public release gate already does.
+
+## [4.61.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-decision-packet` v1.1.0 — the reader contract.** The origin
+  measurement gained a dark twin, measured on the same principal: a 15-row
+  packet written in project-internal language collected **0 of 15**
+  decisions — every mechanical property worked and none of it mattered,
+  because the rows named things only the authoring session knew. The
+  principal's verdict: "written in some alien or machine language."
+  Structure without comprehension collects nothing.
+
+  A packet is now doctrinally a stranger-read document, authored against
+  `synthesis-reader-briefing`'s four questions. The spec gains `audience`
+  (who reads this and what they already know), a packet-level `glossary`
+  (one-clause meanings, rendered as a collapsible band), and per-row
+  `impact` blocks stating the consequences of accepting and of declining
+  the recommendation — in the principal's terms, never internal treatment
+  vocabulary. The generator renders all three, warns on missing
+  audience/impact, and refuses outright under `--strict-reader`, which the
+  skill requires for any packet handed to a principal. Options are to be
+  labeled by consequence, and internal IDs may chip but never name a row.
+  Seven new regression tests; existing specs build unchanged.
+
+## [4.60.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-content-quality` v4.2.0 — restored philosophy layer and
+  corpus-level review.** The March 2026 runbook-to-skill conversion carried
+  the criteria forward and dropped the framing sections around them. They are
+  restored verbatim-faithful in `references/philosophy-and-application.md`:
+  the quality problem and the five characteristics of AI slop, the critical
+  understanding caveats, the dual-use (GAN-dynamic) improvement philosophy,
+  application guidance for detection-tool builders and for readers, the path
+  from "was this AI?" to "is this good?", and the before/after revision
+  example. The executable no-removals gate proves the restoration changed no
+  pre-existing rule line (fidelity to the pre-migration source is anchored by
+  the source snapshot preserved in the author's project records, outside this
+  repo); the four-axis inference boundary governs wherever the restored
+  framing touches authorship, restated inline where the restored tool-builder
+  checklist could otherwise be read as licensing origin scoring.
+
+  The same version adds **corpus-level review**: a defect class per-artifact
+  review cannot see by construction — repetition that only appears when a
+  body of work is read together (thirty staged articles shared constructions
+  every individual review passed). `scripts/corpus_repetition.py` takes a
+  corpus or a titles list and reports maximal cross-document word runs with
+  thresholds that survive ordinary English (function-word runs filtered,
+  high-document-frequency runs classified as boilerplate candidates, ignore
+  lists with containment semantics) plus batch title-shape measurements
+  (repeated two-word openings, watch-token concentration,
+  imperative/second-person share). Sixteen deterministic tests ship with the
+  tool — the original acceptance fixtures, including the
+  cure-worse-than-the-disease case where a replacement title set must be
+  measured on the same axes as the diagnosis, plus five adversarial
+  regressions from the pre-release review (frontmatter without a trailing
+  newline, a distinct document pair's run surviving a longer run elsewhere,
+  small-corpus boilerplate misclassification, mirrored-tree content
+  deduplication, and a `--strict` mode that refuses to exit clean while
+  boilerplate candidates await confirmation). The tool measures; the reviewer
+  adjudicates; nothing it reports establishes authorship.
+
+- **`synthesis-article-writing` v2.3.0 — Phase 4 publication-package
+  review.** A real 30-article batch passed full-body review 29/30 and then
+  failed a title-only skim (6 keep / 8 tune / 16 replace), with two
+  descriptions broadening their bodies' claims and 21 stale slugs from
+  superseded headlines. The new phase reviews the package, not the draft:
+  the title-only stranger test as an executable per-article obligation (six
+  recorded fields; a description cannot rescue a failed title row; batch
+  review requires the full N-row disposition table), the newcomer entry lens
+  (hype is the forbidden repair), the title/description/lede/body truth
+  contract extended to section headings, batch headline-monotony review with
+  a batch-shape budget and mandatory re-measurement of any replacement set,
+  the positive reader-value row, and the slug/metadata closure invariant for
+  unpublished articles (deterministic re-slug or a recorded exception —
+  "unchanged" is not an adjudication; a clean build proves consistency, not
+  correctness). Phase 3 gains lede protection from provenance scaffolding
+  (standfirst → note → body) and two-axis semantic sibling search (within
+  the article and across the batch). Seventeen worked acceptance fixtures,
+  including a recorded negative result, live in
+  `references/publication-review-fixtures.md`. A load-with contract states
+  when the framing plane (reader briefing, content framing, this skill)
+  must join the prose stack. Three pre-migration prohibition lines lost in
+  the conversion are restored under Ethical Storytelling.
+
+- **`synthesis-reader-briefing` v1.1.0 — series-dependency contract.** Five
+  short fields and exactly three output states: `standalone`, `standalone
+  after compact context`, or `true prerequisite` (which requires a link plus
+  a one-sentence reason). Dependency drives linking; blanket cross-reference
+  quotas produce formulaic over-context and are explicitly rejected.
+
+- **`synthesis-fact-checking` v2.1.0 — circular grounding.** A new terminal
+  class in the citation graph, DERIVATIVE-SELF: the claim's "supporting
+  source" is a document the author wrote from the same claim. Doctrine
+  repeating a claim is the claim republished; propagation cannot upgrade
+  source grade. (SKILL.md remains marginally over the 500-line guideline, a
+  pre-existing condition this release did not restructure.)
+
+### Changed
+
+- **`synthesis-content-framing` v1.1.0** — the blanket "at least one
+  cross-reference to another article in the series" gate is replaced by the
+  dependency-driven rule from the reader briefing's series-dependency
+  contract. This is the release's one non-additive change, made on the
+  recorded rejection of formulaic over-context in the same evidence intake
+  that motivated the batch gates.
+
+## [4.59.0] - 2026-08-29
+
+### Added
+
+- **Two hygiene surfaces for records that accumulate without an outflow.** Both
+  fix the same shape of defect at different layers: a signal the system already
+  records, that nothing ever promotes to a decision.
+
+  **`synthesis-daily-rituals` v2.27.0 — portfolio review.** A project index has
+  an intake and no outflow: projects enter and never leave. On the corpus that
+  motivated this, 37 of 63 projects claiming to be live had not moved in over 90
+  days, one of them for 619, and nothing surfaced it. The context doctor already
+  computed freshness but reported it among 200+ warnings, and a signal inside 200
+  warnings is not a signal. `scripts/portfolio_review.py` names at most three
+  stale-active projects per run and asks one question about each: close it, pause
+  it, or pick it up. It discovers indexes through `console.yaml`, exits 0 under
+  every degraded input so it can never break a ritual, and never decides.
+
+  **`synthesis-project-management` v2.6.0 — coordination-claim review.** A dead
+  session's `active` row is worse than a stale project: it does not merely
+  clutter, it denies work to every future claim that overlaps it. Three abandoned
+  rows blocked real work for up to ten days on the corpus that motivated this.
+  `coordination.py stale` reports quiet claims with physical evidence — a claimed
+  worktree that no longer exists is close to proof, while elapsed time alone is
+  not — and prints the exact release command **without ever running it**.
+  Releasing another session's claim stays the user's decision; an agent that
+  could clear one on a timer would turn the advisory lock into a suggestion.
+
+## [4.58.0] - 2026-08-29
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.13.0 — the status vocabulary is enforced,
+  not assumed.** An unvalidated vocabulary is not a vocabulary. Two failures on
+  a real 127-project corpus made the case. `complete` survived for months as a
+  typo of `completed`, and rather than reject it the doctor *absorbed* it,
+  hardcoding the typo into its terminal set. Worse, `superseded` was absent from
+  that set while also not being a completion word to the header parser, so a
+  superseded project parsed as making no completion claim at all: it sat
+  permanently as `record-unreadable` and never received its cross-tier check.
+  Five projects were silently exempt, two of them for months.
+
+  A status the doctor does not recognise silently disables every check keyed off
+  it, which is the most expensive kind of quiet failure a health check can have
+  — indistinguishable from passing.
+
+  This release declares the canonical set — `active`, `paused`, `completed`,
+  `archived` — where status answers exactly one question: does this project
+  claim attention. Everything orthogonal becomes a qualifier field (`bounded`,
+  `superseded_by`, `wake_when`, `blocked_by`, `completed_date`), so the
+  vocabulary should not have to grow as new distinctions appear. The new
+  `status-vocabulary` check reports an unknown status as a defect and a retired
+  one as a warning naming its replacement; retired values stay readable so an
+  unmigrated corpus is diagnosed rather than rejected. Run against a live corpus
+  the check immediately found two retired statuses in workspaces that had not
+  been migrated.
+
+## [4.57.0] - 2026-08-28
+
+### Added
+
+- **`synthesis-decision-packet` reaches both clients.** The skill collects N
+  parallel decisions into one self-contained HTML packet a principal can work
+  through in a single sitting, with `scripts/build_packet.py` refusing to emit a
+  broken packet (duplicate ids, a recommendation outside its own option set, a
+  packet with no recommendations). It was merged without a version bump,
+  changelog entry, or acceptance declaration, so it existed in source while
+  neither client could load it — built and merged is not shipped. This release
+  declares and ships it.
+
+### Fixed
+
+- **A test name that contradicted the behaviour it guarded.** The packet
+  deliberately pre-selects nothing: pressed state is computed from the saved
+  decision for a row and from nothing else, because a packet that opens fully
+  decided cannot distinguish "I agreed" from "I never looked" and would report
+  decisions nobody made. The fixture asserting the recommendation is *marked on
+  the control* was nonetheless named `..._is_a_preselected_button_...`. A name is
+  read far more often than a body, and this one invited a future reader to
+  "fix" the implementation toward the wrong behaviour — a near miss already
+  reported once. The fixture is renamed to what it asserts, and the no-default
+  property now has its own explicit guard.
+
+## [4.56.0] - 2026-08-27
+
+### Added
+
+- **Sync windows follow the last write, not the last run.** `synthesis-daily-rituals`
+  gains `scripts/sync_watermark.py`: each surface records the last date actually
+  WRITTEN, every sync computes its window from that watermark, and the watermark
+  advances only after a successful write. A window anchored on when the previous
+  run executed cannot see its own holes — skip a run and the gap is never
+  revisited, because the next window starts near today rather than at the last
+  day on disk. Surfaces are tracked independently, so one closing never vouches
+  for another.
+- **A recorded gap is now blocking.** `sync_watermark.py status` exits non-zero
+  while any surface has an unclosed gap, so a ritual step can fail on it. A gap
+  that genuinely cannot close is deferred with an explicit reason, and the
+  deferral lasts one working day — an indefinite silence is how a recorded gap
+  becomes furniture. This closes a loop that was previously open: the `gaps`
+  field was honest and completely inert, because writing a gap and closing one
+  are different acts and nothing forced the second.
+
+### Changed
+
+- **`synthesis-meeting-transcripts`: declared means fetched.** Agent judgment is
+  removed from deciding which declared transcripts are worth fetching. Relevance
+  is judged after fetching, when content is visible, never before from a title.
+  The workspace retired this same failure shape once already when activity-based
+  gating was removed from repository syncing.
+- **`synthesis-slack-sync`: read targets come from preflight.** Deriving ids from
+  config inside a sweep is banned. Where an entry carries two id-like fields, the
+  wrong one usually resolves — so the bug hides for months and then surfaces as a
+  phantom dead surface for exactly one person. Resolution belongs in one place
+  that fails closed, and readers take the resolved value from it.
+
+## [4.55.1] - 2026-08-27
+
+### Fixed
+
+- **Item currency no longer demands stamps from narrative prose.** The
+  open-section pattern matched "current", which reads as though it belongs but
+  makes "Current State" — the commonest section name in practice — an obligation
+  list. Those sections hold prose that section-level `*State as of:*` markers
+  already govern, so the match demanded a date from narrative and double-covered
+  body currency. Measured against a live corpus before adopting the convention,
+  that single word accounted for 140 of 294 flagged items across 18 projects.
+  Obligation sections (open, next, action, todo, blocked, waiting, pending, in
+  progress) are unchanged and now carry a fixture proving the narrowing did not
+  silently exempt them.
+
+## [4.55.0] - 2026-08-27
+
+### Added
+
+- **Open-item currency is checked at read time.** `synthesis-context-lifecycle`
+  gains item-level stamps: a live entry in an open-items section carries
+  `(as of YYYY-MM-DD, review Nd)`, and `context_doctor.py` reports it as
+  `item-currency` once it passes its horizon. Section markers already stopped a
+  fresh header sitting above stale prose; this stops the failure one level down,
+  where an entry keeps the present tense it was written in long after that
+  stopped being true. Rewriting open-items lists each run was considered and
+  rejected: it drops whatever today's evidence fails to surface, turning a
+  visible stale entry into an invisible missing one, and it only acts on the
+  days the ritual runs — which is not when records rot. An omitted horizon
+  defaults to 14 days, because silence must not read as "never stale". Findings
+  are warnings, not defects: a convention that turns a corpus red the day it
+  lands teaches people to route around guards.
+- **Per-workspace review ledger.** `review_ledger.py` keeps an append-only
+  record of open-item transitions — opened, closed, carried, and
+  expired-unactioned — so weekly, monthly, and quarterly reviews can answer what
+  slipped. A tiered record describes what is open now and loses the evidence
+  that anything was ever open the moment it closes. The ledger is per-workspace
+  by design rather than global: engagement workspaces are deletion units, and a
+  shared store would keep a counterparty's items alive in a file that outlives
+  the delete-my-data request they belonged to. Reporting federates across
+  workspaces at read time and copies nothing. Expiry is derived from the item
+  stamps rather than remembered, so the common case needs no discipline at the
+  moment discipline fails.
+
+### Changed
+
+- `synthesis-daily-rituals` Day-End Step 7 documents the stamp convention and
+  states that advancing a stamp without re-checking the item is a false receipt.
+
+## [4.54.0] - 2026-08-26
+
+### Added
+
+- **Executable working state has a durable project tier.**
+  `synthesis-context-lifecycle` v1.12.0 defines `resources/scripts/` for
+  portable computation and required inputs cited by durable records. The
+  context doctor warns when an artifact cites a missing, escaped, non-regular,
+  or symlink-traversing script target while explicitly leaving correctness to
+  acceptance evidence.
+- **Closed acceptance manifests are executable release evidence.**
+  `synthesis-implementation-integrity` v1.2.0 supplies a fail-closed manifest
+  validator and runner with declared membership, defect-pinned fixtures,
+  exact changed-surface closure against a boundary-supplied Git diff, expected
+  polarity, full terminal coverage, named enforcement boundaries, and explicit
+  unverified remainder. Receipts bind a one-use transaction, exact head/tree,
+  manifest digest, and changed-path digest while explicitly denying that the
+  runner itself issues authority. Doctrine now requires extraction from
+  authoritative sources and locates enforcement at the state-changing receipt
+  consumer.
+- **Disclosure categories preserve attention without weakening the gate.**
+  `synthesis-disclosure-policy` v1.1.0 defines one-time category approval with
+  frozen evidence predicates, narrow register and surface scope, positive or
+  neutral claims, Class-X exclusion, and fail-closed ambiguity.
+
+### Changed
+
+- **Checkpoint and autonomous closeout sweep executable scratch state.**
+  `synthesis-checkpoint` v1.6.0 and `synthesis-autopilot` v1.3.0 require cited
+  scripts and inputs to reach the durable tier before a checkpoint closes.
+- **The gated release and repository CI consume the R5 acceptance universe.**
+  `synthesis-skills-manager` v2.2.0 runs the lifecycle and integrity tests plus
+  the closed acceptance manifest before publication. The release boundary and
+  CI use the same receipt consumer: it derives the authoritative change base,
+  parses the fresh result, recomputes every Git and content binding, verifies
+  closed terminal coverage, carries the accepted state through the release,
+  expires it on any source change, and pushes the immutable accepted commit
+  rather than a mutable branch name. CI checks out the history required to
+  resolve the event-supplied base commit before deriving the change universe.
+
+### Fixed
+
+- **AGENT HEURISTIC — pointer-fallback tests remain hermetic in coordinated
+  shells.** The pointer-resolution fixture now removes the caller's real
+  coordination selector before exercising fallback identity, so the release
+  gate tests fixture state rather than the executor's ambient session.
+
+## [4.53.1] - 2026-08-26
+
+### Fixed
+
+- **Git-backed acceptance fixtures remain isolated from user-level Git hooks.**
+  Synthetic Git operations now disable inherited hooks, so an active global
+  coordination gate cannot block fixture setup before the behavior under test
+  runs.
+
+## [4.53.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-project-management` v2.5.0 — staged-path claim enforcement.**
+  `coordination.py check-staged` takes a lock/CAS-fenced snapshot of the
+  lease-backed board, resolves the committing session through an explicit
+  selector, environment, or owned active-project pointer, and requires an
+  exact registered worktree and branch.
+  Every staged path is compared with that session's source-area claims using a
+  rename-disabled index view, so a rename's source and destination both enter
+  the closed path universe. Missing board, lease, selector, session, worktree,
+  branch, or index evidence refuses. Workspace-conflict errors now name the
+  isolated-worktree, distinct-branch, and exact-claim remedy. Claim globs use
+  path-segment semantics: `*` cannot silently authorize a deeper directory,
+  while `**` remains the explicit recursive form. Claims and staged paths are
+  resolved to the same filesystem identity before matching, including macOS
+  path aliases.
+- **Recorded outside-claim overrides.** An exception can proceed only after
+  the reason, repository, branch, staged tree, and outside paths are appended
+  atomically to the board's existing Messages section and the unchanged index
+  is revalidated. No board schema changes were introduced.
+- **AGENT HEURISTIC — hash-bound receipt serialization.** Successful checks
+  expose a compact JSON receipt bound to the board content, canonical session
+  UUID, exact worktree and branch, staged tree, staged path list, enforcement
+  outcome, and outside-path list. Every result separates authority label from
+  enforcement outcome and names the state changes that invalidate the receipt
+  plus the semantic work it does not verify.
+
+### Changed
+
+- **`synthesis-git-hooks` v2.4.0 — config-gated claim checks at pre-commit.**
+  A configured `coordination_board` makes `check-staged` a fail-closed boundary
+  before content scanning and repository-local hooks. The installer and doctor
+  copy, monitor, and drift-check the project-management runtime and its
+  versioned session-word asset. The hook consumes the checker's JSON, requires
+  an authorizing outcome and the receipt's boundary fields, recomputes its
+  binding digest, and revalidates the board hash, worktree, branch, staged tree,
+  outside-path set, and rename-closed path universe before continuing. A
+  coordination refusal is reported as an authority refusal, distinct from a
+  broken content-policy engine. Without that setting, commits are not blocked by
+  coordination, and the hook reports the control's absence before running its
+  established credential and exposure checks.
+
+### Fixed
+
+- **Fresh git-hook installs now produce a parseable v2 policy.** The template
+  previously declared `config_version: 1` even though the engine refused
+  versions below 2, and represented empty groups with flow-style lists that
+  the strict parser also refuses. A clean installer could therefore copy its
+  own template and immediately fail its doctor. The generation-zero installer
+  fixture now executes that path end to end.
+- **Fresh git-hook installs retain their drift baseline.** The installer writes
+  the absolute source directory into the installed runtime. Both the installer
+  doctor and later direct doctor runs compare all installed engine files and
+  the coordination asset with that source. A present pointer that is malformed
+  or no longer resolves a complete source fails the doctor closed.
+- **Coordination authority cannot be resurrected by a stale refresh.** The
+  check's lease snapshot now passes through the existing compare-and-swap
+  mutation boundary. A concurrent release advances the lease, forces a retry,
+  and is read before any authority receipt can be issued.
+
+## [4.52.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-meeting-transcripts` v0.7.0 — executable transcript-primary
+  sourcing.** A new checker rejects a structured summary even when its heading
+  calls it a primary transcript, classifies source grade from complete raw
+  provider-message records that pair an identifier with bounded message
+  content, and requires a record-bound permalink or `message_ts` before issuing
+  an attribution receipt. Bare or conflicting identifiers cannot establish
+  source grade. The receipt binds the
+  artifact hash and exact location; a `thread_ts` is deliberately insufficient
+  for quote-level authority. A synthetic 128-line summary fixture preserves the
+  motivating defect's structure without private content, alongside a raw-message
+  positive control and a closed executable acceptance manifest.
+- **Version-stamped transcript controls.** Both the established completeness
+  verifier and the new source-grade checker report the skill's 0.7.0 version.
+  Their standalone acceptance suite executes this parity, so the existing
+  “must match” banner is no longer an unchecked claim.
+
+### Changed
+
+- **The gated release and repository CI run both transcript boundaries and the
+  release-wiring tests that require them.** The
+  existing completeness verifier and the new primary-source gate execute before
+  either client can receive a release. Every checker result distinguishes its
+  control class and names the unverified remainder.
+
+## [4.51.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-promotion-gate` v1.0.0 — rendered publication boundaries.**
+  The new gate extracts a declared publishable range, builds into an isolated
+  output root, derives every expected route from frontmatter, and inspects
+  DOM text, heading text, HTML comments, and raw page source under one
+  canonical marker policy. A versioned surface manifest must agree exactly
+  with configured renderer inspections; missing outputs and inputs consumed
+  by no renderer refuse the run. Symlinked config and rendered-output paths
+  are refused before their targets can be inspected. The output universe is
+  closed, policy examples execute against every projection, and the shipped
+  acceptance schema is consumed by the production loader. The engine does not
+  approximate HTML grammar: a strict command protocol consumes identity-bound
+  representations from the repository's destination parser or renderer. A
+  parse5-derived corpus executes the Round-15 inline, entity, comment,
+  attribute, code, hidden-container, and malformed-input matrix.
+- **Executable authority topology.** `check` emits a non-authoritative
+  acceptance receipt. `enforce` captures each inspected output exactly once,
+  passes a separate content snapshot to the supplied promotion command, and
+  revalidates config, policy, inputs, sidecars, and snapshot hashes at that
+  boundary. It issues an enforced-gate receipt only after that command
+  succeeds. Engine-owned limits remain present in every receipt and cannot be
+  erased by repository configuration.
+
+### Changed
+
+- **The gated release and repository CI run the promotion acceptance suite.**
+  A release cannot install a promotion-gate change on either client unless
+  its fail-closed behavioral cases pass.
+- **AGENT HEURISTIC — `synthesis-skill-router` v1.4.0** routes publication
+  boundary, publishable-range, and promotion-receipt work to the new
+  prompt-hidden specialist.
+
+## [4.50.0] - 2026-08-26
+
+### Added
+
+- **`synthesis-adversarial-review` v1.0.0 — bounded, outcome-focused review.**
+  The new protocol gives differently shaped agents a closed artifact universe,
+  rotating attack planes, explicit concessions, per-artifact dispositions,
+  production-topology handoffs, sufficiency rulings, and a bounded
+  post-publication acceptance phase. Review ends at the principal's outcome;
+  reviewer satisfaction and unbounded control growth are not completion
+  criteria.
+- **A fail-closed finding ledger.** `finding_ledger.py` records separate
+  authority labels, enforcement outcomes, and `ship-blocking` versus
+  `ship-improving` classifications. Compare-before-write transitions,
+  evidence-bearing principal-courier counts, strict schema validation, and
+  atomic read-back verification turn review state into an executable contract.
+
+### Changed
+
+- **`synthesis-autopilot` v1.2.0** directly orchestrates adversarial
+  counterparts where the runtime permits it, budgets and counts any genuine
+  principal courier crossings, writes proportionality before round one, and
+  binds completion to the principal's outcome. Control verification stops
+  after one generation unless a requested artifact or enforcing boundary is
+  still defective.
+- **AGENT HEURISTIC — `synthesis-skill-router` v1.3.0** makes the prompt-hidden
+  adversarial-review specialist reachable from outcome-shaped requests.
+
+### Fixed
+
+- **`synthesis-inbox-cleanup` v1.6.2 — portable atomic runtime-pointer swaps.**
+  The 4.49.0 repair used BSD-only `mv -h`; GNU `mv` rejected the option and
+  left the Linux validation workflow red. The installer now uses Python's
+  atomic `os.replace` on both macOS and Linux. Its repoint fixture models the
+  GNU refusal on every host, and the skill metadata now matches the release
+  line that 4.49.0 intended to advance.
+
+## [4.49.0] - 2026-08-24
+
+### Fixed
+
+- **`synthesis-inbox-cleanup` v1.6.1 — the engine runtime never updated.**
+  `install.sh` repointed `engine/current` with `mv -f`, but that path is a
+  symlink to a directory: `mv` followed it and deposited the staged pointer
+  *inside* the old release instead of replacing the link. Every install step
+  reported success while the runtime stayed pinned to whatever release it
+  already had, and the mismatch only surfaced at the final verification, after
+  the work appeared done. Found in production when a sweep needed
+  `resolve_scope.py` (the v1.5.0 workspace-scoping guard) and the installed
+  engine predated it, with a stray `.current.<pid>.tmp` sitting in the old
+  release directory as the tell. Fixed with `mv -fh`, which refuses to follow a
+  symlinked directory. The runtime-installer test suite gained a regression case
+  that installs twice with differing digests and asserts the pointer actually
+  moves, no staged pointer leaks into the old release, and `engine/current`
+  serves the new code — it fails without the fix.
+
+## [4.48.0] - 2026-08-24
+
+### Added
+
+- **`synthesis-model-tiers` v2.1.0 — role selection by diagnostic difficulty.**
+  The skill mapped roles to model ids but never said how to pick a role, and
+  the common misroute is sending a *small-sounding* task to a cheap tier.
+  Size is not the variable; whether the CAUSE is known is. A settled
+  specification is execution and belongs in `routine`/`bulk`; a symptom
+  report ("X isn't working", "the file won't open") is a differential over a
+  chain of candidate causes and belongs in `judgment` even when the subject
+  is one file — cost scales with the search, not the fix.
+
+  Three properties now force `judgment`, any one sufficient: the cause is
+  unknown, the blast radius includes a deliverable or durable record, or the
+  work will not be independently reviewed before it lands. Two consequences
+  are stated because they are what make this a cost rather than a
+  preference: where a mistake must be caught and undone by a more expensive
+  process the cheap attempt is debt with interest, and a plausible-sounding
+  wrong explanation transfers the whole verification burden back to the
+  human, inverting the reason for delegating.
+
+  New resolution rule 6: an agent that finds itself under-tiered must say so
+  *before* acting rather than proceed and report a confident result — the
+  failure it is least able to detect in itself afterward.
+
+## [4.47.0] - 2026-08-24
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.11.0 — body currency.** Third occurrence
+  of the stale-record defect, and the diagnosis finally names the design
+  flaw: the prior fixes addressed *header* currency, while the defect moved
+  to the *body* — `Current State` and `What's Next` kept routing agents to
+  superseded work under a fully current header, which is a stronger false
+  receipt than an obviously stale file. Worse, the edit helper had
+  mechanized the easy half of the record update and printed unqualified
+  success for it, manufacturing a completion signal for partial work.
+
+  Operational sections now end with an as-of marker —
+  `*State as of: 2026-08-24 (round 14)*` — which converts prose currency
+  into the per-field, first-ordinal comparison the header already gets:
+
+  - the context doctor (v1.5.0) fails a section whose marker lags the
+    session log (`body-currency` defect) and warns when an ordinal-paced
+    record carries no markers at all — unverifiable is reported as
+    unverifiable, never as clean;
+  - `context_edit.py` refuses a header advance that leaves a marker behind
+    (`--allow-stale-body` records an explicit override) — the control that
+    would have interrupted all three real occurrences, which each advanced
+    the header and stopped;
+  - advancing a marker while its section's prose is byte-identical requires
+    `--state-reviewed`, recording the assertion that the section was re-read
+    and still holds, so the marker cannot be bumped as mechanically as the
+    header was;
+  - every gated edit's success line now names the body state, because a
+    completion signal must say what it did not verify.
+
+  Regression fixtures derive from all three real occurrences, including the
+  third encoded verbatim from the live record in both its literal markerless
+  form (must surface as unverifiable) and its marked form (must be a
+  staleness defect while every header check passes).
+## [4.46.0] - 2026-08-23
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.10.0 — durable header-currency checking.**
+  The prior currency control missed the defect it was built for, twice, and
+  this release replaces it with checked semantics rather than another patch.
+  New `scripts/context_currency.py` judges each `CONTEXT.md` header field
+  separately against the session log: a field's identity is its FIRST ordinal
+  per family (round/wave/phase/step/part), the log's current value is the max
+  across newest-date entries' identities, and fields are never unioned — the
+  failure in the shipped check was exactly that a fresh `Phase` masked a stale
+  `Last session` under a shared `max()`. Families never compare across each
+  other, and coverage limits (unparseable headers, missing logs) are reported
+  as what the check cannot see, never as staleness.
+- **The context doctor now fails on stale headers.** `context_doctor` v1.4.0
+  runs the currency check as a required `header-currency` defect, so semantic
+  staleness surfaces where every session already looks instead of in an
+  opt-in script. "Records agree with git" means committed; this check is what
+  makes it also mean current.
+- **`context_edit.py` refuses to create the defect at write time.** An edit
+  that leaves `Phase` ahead of `Last session` in the same ordinal family is
+  refused with the fields named; `--allow-header-lag` records an explicit
+  override. `Last session` may lead `Phase` (the normal two-call transition,
+  noted in output), unrelated edits on a pre-existing incoherent header warn
+  rather than block, and the read-time doctor catches whatever is left
+  lagging.
+- **Every regression fixture derives from a real defect.** The four live
+  instances — the round-10/11 union-masking miss, the round-2/3 same-day
+  miss, and the two cross-day stale records — are encoded verbatim in
+  `test_context_currency.py`, applying the artifact-derived-evidence rule to
+  this tooling itself.
+## [4.45.0] - 2026-08-23
+
+### Added
+
+- **`synthesis-context-lifecycle` v1.9.0 — fail-closed durable-context edits.**
+  New `scripts/context_edit.py` replaces hand-rolled `str.replace()` when a
+  script edits `CONTEXT.md`, `REFERENCE.md`, or a session log. A bare replace
+  asserts nothing: when an anchor no longer matches — because another agent
+  legitimately rewrote that region between sessions — the edit silently becomes
+  a no-op while the surrounding "updated" message stays false. The result gets
+  committed, and record-versus-git checks still pass, because the file *is*
+  committed; it is simply not current. This is an unverified success claim
+  about the agent's own action, a class nothing else in the system checks,
+  because a claim about one's own completed action has no natural contradictor.
+
+  The helper refuses, without writing, when the anchor is absent, matches a
+  different number of times than declared, would leave the file
+  byte-identical, would exceed a stated line budget, or targets a symlink. It
+  writes atomically and then re-reads the file to confirm the change reached
+  disk. No flag makes a missing anchor succeed; `--dry-run` still refuses a bad
+  one. `replace_once` and `set_field` are importable for use from Python.
+
+  `SKILL.md` gains a mandatory section for scripted edits, with the two rules a
+  tool cannot enforce alone: re-read a record before editing it when another
+  agent may have touched it, and never report success you did not verify.
+
+## [4.44.0] - 2026-08-23
+
+### Added
+
+- `synthesis-local-model-runtime` **v1.1.0** adds a capability-graded runtime
+  matrix. Ollama remains the default managed environment; LM Studio is an
+  optional managed adapter for catalog planning, exact noninteractive Hugging
+  Face downloads, JSON inventory, and runtime-metadata verification. llama.cpp
+  and MLX-LM are reported as direct execution and serving runtimes without
+  unsupported lifecycle claims.
+- Catalog schema 2 carries separate LM Studio repository, quantization,
+  publisher, and unambiguous inventory-match evidence for eight Qwen, GLM,
+  Kimi, and DeepSeek artifacts. Schema 1 remains readable as Ollama-only input.
+- A dry-run-first `update` command refreshes explicit installed Ollama models
+  or an explicit `--all` set. It records before-and-after digest and size,
+  distinguishes changed artifacts from already-current no-ops, writes optional
+  receipts, and refreshes matching per-machine inventory records only after
+  verified success. LM Studio updates remain blocked because its CLI does not
+  expose a stable model-content identity contract.
+
+### Changed
+
+- Runtime profiling now reports the detected capability map for Ollama,
+  LM Studio, llama.cpp, and MLX-LM. Pipx-installed MLX-LM versions are read from
+  their own interpreter environment when the entry point lacks `--version`.
+
+## [4.43.6] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.5** now treats effective Ollama
+  KV-cache configuration as a model-fit constraint. Kimi Linear artifacts
+  declare their `f16` requirement; an incompatible Homebrew service blocks the
+  plan instead of failing only at generation time.
+- A dry-run-first `configure-ollama` command validates the standard current-user
+  Homebrew LaunchAgent, backs it up, applies one allowlisted KV-cache setting,
+  reloads it, proves loopback health, and rolls back on failure. Ollama HTTP
+  error bodies are retained with a fixed size bound for actionable diagnostics.
+- Benchmark receipts now distinguish a complete final response from a bounded
+  performance sample. A length stop or raw `<think>` markup in a
+  reasoning-disabled run is preserved but cannot pass the final-response gate.
+
+## [4.43.5] - 2026-08-23
+
+### Fixed
+
+- `synthesis-text-provenance` **v1.0.1** now rejects an empty or
+  whitespace-only final response instead of sealing a zero-byte output as a
+  successful generation. Its OpenAI-compatible runner also accepts an explicit
+  `--reasoning-effort` control and records that request parameter, allowing
+  Ollama thinking models to reserve the bounded output budget for final text.
+
+## [4.43.4] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.4** now disables reasoning traces by
+  default in bounded benchmarks and records the setting in each receipt. This
+  keeps the token budget focused on the requested final response for
+  thinking-capable models; `--think` remains an explicit opt-in.
+
+## [4.43.3] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.3** now merges verified selections
+  across separate installation commands. Installing several explicitly named
+  artifacts one at a time no longer leaves only the last artifact resolvable;
+  an explicit inventory refresh still replaces the selection set with the
+  current policy plan.
+
+## [4.43.2] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.2** reports cached recovery as a
+  zero-network operation with explicit worst-case runtime materialization.
+  Ollama can normalize a verified GGUF into a new runtime layer and retain the
+  original registry cache, so recovery plans no longer imply that hard-linked
+  staging prevents all model-sized disk growth.
+
+## [4.43.1] - 2026-08-23
+
+### Fixed
+
+- `synthesis-local-model-runtime` **v1.0.1** can recover from a failed Hugging
+  Face Ollama registry transaction after the large GGUF layers are already
+  cached. Catalog-pinned layer digests, media types, and exact sizes gate a
+  supported local multi-GGUF import; every layer is re-hashed, hard links avoid
+  a separate staging copy, temporary import links are removed, and the
+  runtime-resolved model identity is verified before inventory is updated.
+
+## [4.43.0] - 2026-08-23
+
+### Added
+
+- `synthesis-local-model-runtime` **v1.0.0**: a privacy-safe hardware profiler,
+  dated multi-tier model catalog, policy-driven fit planner, dry-run-first
+  Ollama installer, atomic per-machine inventory, exact model resolver, runtime
+  verification, and bounded benchmark receipts. The profiler uses an allowlist
+  and never records serials, hardware UUIDs, hostnames, or account data; the
+  storage guard rejects iCloud, workspace, repository, and declared protected
+  roots. The initial catalog covers practical Qwen, GLM, Kimi, and DeepSeek
+  artifacts from 16 to 128 GiB machines while keeping upstream ownership,
+  quantization publishers, base lineage, and resolved local digests separate.
+
+### Changed
+
+- `synthesis-repo-guard` **v2.3.0** adds `--flush-session <session-id>` for a
+  fail-closed, exact-session remote handoff. It applies the existing source and
+  context readiness gates to one manifest without reading, publishing, or
+  deleting unrelated sessions, removing the global all-or-nothing coupling
+  while preserving the existing batch command.
+
+## [4.42.0] - 2026-08-23
+
+### Added
+
+- `synthesis-text-provenance` **v1.0.0**: a provider-neutral provenance
+  workflow for hosted and local/open-weight text generation. It records a
+  canonical self-hashed schema-2 manifest, hash-bound native runtime receipts,
+  path-free direct-parent lineage, one-shot OpenAI-compatible generation, and
+  non-mutating Unicode and normalization audits. The skill refuses watermark
+  defeat, detector-guided rewriting, disguised authorship, and unsupported
+  watermark-free claims.
+- Nine additive content-quality criteria for source-detail and causal-mechanism
+  loss, disproportionate structure, current deliverable padding, tool and
+  reference residue, intent-only stopping, voice normalization, private
+  working-language leakage, and non-material work chronology. Current-model
+  overlays are dated, task- and surface-bounded, unmeasured for prevalence, and
+  never establish authorship.
+- A semantic no-removals gate that freezes every pre-release writing-rule line
+  in order. The only replacements permitted are exact SHA-256-bound factual
+  corrections in a separately reviewed allowlist; additions remain allowed.
+
+### Changed
+
+- `synthesis-content-quality` **v4.1.0** separates editorial quality,
+  model-shaped style observations, technical provenance, and authorship. It
+  preserves the complete historical catalog while correcting unsupported
+  false-positive rates, probability semantics, provider certainty, and the
+  stale universal text-watermark statement.
+- `synthesis-writing-pitfalls` **v1.1.0** adds unnecessary editorial
+  intervention; `synthesis-writing-craft` **v1.1.0** adds source-mechanism,
+  voice, proportional-structure, and edit-materiality principles.
+- `synthesis-clean-text` **v2.0.0** keeps the no-hidden-marker production policy
+  and adds an enforceability boundary: characters and declared lineage are
+  inspectable, while an undisclosed statistical mark cannot be verified or
+  removed by ordinary prose revision.
+- `synthesis-skill-router` **v1.2.0** routes integrity, lineage, generation
+  receipt, and provenance requests to `synthesis-text-provenance` without
+  implying authorship or watermark absence.
+
+## [4.41.0] - 2026-08-20
+
+### Added
+
+- `synthesis-anti-shortcuts`: **The Capability-Limit Probe** (methodology
+  procedure 7; the maintenance loop moves to 8). Distinguishes a *guardrail* -
+  a withheld permission, a safety gate, an action reserved for a human, which
+  must never be routed around - from a *capability gap* - an unconfigured app,
+  an ungranted scope, a transport that does not expose the feature, which is a
+  problem to solve. Treating the second like the first wears the costume of
+  discipline while delivering less than the task required, and agents holding
+  strong, correct rules about not bypassing governance gates are the most
+  prone to it. On a capability gap: name the exact mechanism that failed,
+  enumerate alternative paths, separate what the agent can do from what only
+  the user can do, and report options with a recommendation rather than the
+  limitation alone.
+- `synthesis-anti-shortcuts/references/costume-vocabulary.md`: category 8
+  `capability_surrender`, covering "not something I'll work around", "blocked
+  at the X level" / "hit a limitation", "not possible right now" / "there's no
+  way to", and premature "you'll have to do this manually" - the last exempt
+  when the action is genuinely reserved to the user.
+
+## [4.40.0] - 2026-08-20
+
+### Added
+
+- `synthesis-project-management` v2.4.0: the **project-name contradiction
+  guard** in Project Discovery. When a request names a project that
+  contradicts the session's own evidence — the conversation's established
+  project, the chat or session name, the active-project pointer, the task's
+  working directory — the agent surfaces the contradiction and asks a
+  one-line clarifying question instead of silently resolving to the name.
+  Names are one signal, not an override: humans navigate many
+  similarly-named projects, and sibling projects in one program share
+  vocabulary. Silent resolution stays correct only when name and session
+  evidence agree, or the session carries no project evidence at all. Origin:
+  a misnamed sibling project sent an entire working session's output to the
+  wrong project's records while the intended project's ask went unfulfilled.
+  Companion Common Mistakes row added.
+
+### Changed
+
+- `synthesis-agent-conformance` v1.6.1: the SessionStart stopped-task
+  recovery guidance carries the same exception — automatic resolution of a
+  user-named project now explicitly excludes the case where the name
+  contradicts the session's established context, closing the gap where the
+  emitted guidance instructed the exact behavior the discovery protocol now
+  forbids.
+
+## [4.39.0] - 2026-08-20
+
+### Changed
+
+- **`synthesis-agent-correspondence` v3.0.0 — the voice axis: archetype binds the
+  narrator.** Bot-archetype personas now speak in their own voice — the persona
+  says "I" about itself and names the principal in the third person — while
+  assistant-archetype personas speak as the principal. The model follows the
+  executive-staff convention the skill was always grounded in: a chief of staff
+  is authorized to speak *as* the principal; an executive assistant speaks in
+  their own voice *for* the principal's office. Grammar becomes the disclosure
+  that survives forwarding and quoting; routine errors read as the assistant's
+  rather than putting false words in the principal's mouth, which is what lets
+  standing direction safely carry more; and the principal's first person stays
+  meaningful because it appears only on words the principal owns. Sincerity
+  classes (appreciation, kudos, condolences, relationship-touching messages)
+  route to principal-voice lanes even when low-stakes. Bot-lane signature
+  examples rewritten in the persona's voice — one narrator per message. Includes
+  a v2→v3 migration section covering signature rewrites, sincerity re-routing,
+  and retargeting fail-closed register guards that banned third-person agent
+  phrasing wholesale. The analogy honors the professions it borrows from: these
+  personas are leverage for human chiefs of staff and EAs, and working support
+  for principals who have neither — the agent extends the office, never
+  competes with it.
+
+## [4.38.0] - 2026-08-19
+
+### Added
+
+- **`synthesis-daily-rituals` v2.26.0 — lead-time meeting preps.** Same-day prep
+  packs are right for routine meetings and structurally wrong for high-stakes
+  ones: prep written minutes before a strategy-bearing 1:1 summarizes what the
+  agent has been processing lately, not what the counterpart cares about.
+  Workspaces declare `.agents/meeting-preps.yaml` (title/attendee matchers,
+  `business_days_ahead`, and the durable `sources` the prep must be built from);
+  generation rides the Calendar Guardian's tomorrow-review in every mode
+  including Quick Close, Day-Start verifies and regenerates, the owed-weekly
+  scan flags the coming week, and **a rescheduled flagged meeting triggers an
+  immediate refresh at detection time** — reschedules being exactly when prep is
+  most likely stale and most likely skipped. Packs state their own basis so a
+  researched pack is distinguishable from a summary of recent activity.
+
+## [4.37.0] - 2026-08-19
+
+### Added
+
+- **`synthesis-grounding-discipline` v1.1.0 — entry 12, "Archived history is not
+  current state."** Imported material — a channel backfilled to its first message,
+  an exported mailbox, a migrated tracker — arrives with every item in the same
+  present-tense voice and none of it is evidence about today. The rule: reconcile
+  against the newest material already held before reporting anything from an import
+  as currently open; if the newest thing you can find is inside the import, you have
+  only observed that the import ends. Scope findings to where you looked, title the
+  output by what it establishes (where conversations *stopped*, not what is
+  unresolved), stamp every archive with its span and capture date, and raise the bar
+  for personnel and commercial matters, where calling a settled thing unresolved asks
+  someone to re-litigate finished work.
+
+  The catalog intro now also states that **entry numbers are load-bearing** — other
+  documents cite these rules by number, so new entries are appended rather than
+  inserted. Renumbering silently repoints existing citations to different real rules,
+  which is worse than a broken link because it still resolves.
+
+- **`synthesis-slack-sync` v3.5.0 — backfills and archive imports.** A backfill is a
+  different operation from a windowed sync and fails differently. Retrieval rules
+  (page to the true beginning and report the earliest date as proof; expand every
+  thread, since replies never appear in channel history; name a partial capture by
+  its date range rather than "full history") plus the analysis rule that matters
+  more: nothing from a backfill may be reported as currently open without
+  reconciliation. Candidate items route through `synthesis-catchup-ledger`'s triage
+  rather than being reported raw.
+
+## [4.36.0] - 2026-08-19
+
+### Changed
+
+- **`synthesis-daily-rituals` v2.25.0 — per-workspace sessions become the
+  default worker mode, and the principal is named as the dispatcher.** The
+  desk/worker split and the artifact contract are unchanged; what changes is
+  which mode is assumed. A worker now defaults to an attended session rooted in
+  its own workspace, run on that workspace's own schedule, with desk-dispatched
+  subagents demoted to an opt-in for closing everything from one place. Two
+  rules are stated explicitly: no session can start work in another, so the desk
+  reports which workspaces are owed and the human opens the one that owes; and
+  the desk never nudges, triggers, blocks on, or waits for a worker — it folds
+  what exists and reports the rest as not covered. Recorded origin: dispatch-by-
+  session-messaging went 0 for 2 (a session stale by two hours, then none
+  reachable) while the file-based artifact path delivered both times, because
+  session messaging requires the target to already be open and attended.
+  Independent close times per workspace are now documented as normal operation,
+  which the timestamped artifact schema already supported.
+
+## [4.35.0] - 2026-08-18
+
+### Added
+
+- **`synthesis-inbox-cleanup` v1.6.0 — impersonation scanning** — a read-only
+  adversarial pass (`scripts/scan_impersonation.py`) for a gap that was
+  structural, not incidental: every disposition class sorts mail by
+  desirability, so hostile mail had no cell in the taxonomy and a tidy sweep
+  walked past it. Flags display-name brand impersonation where the sending
+  domain does not belong to the claimed brand — the pattern behind live
+  campaigns that send through authenticated bulk-mail carriers and put the
+  spoofed brand only in the display name, defeating "the domain checks out"
+  as a safety verdict. Reports only; removal stays human-reviewed. Also adds
+  the standing rule that a human sender is not the same as your mail, for
+  catch-all domains where real people's misdirected threads accumulate.
+
+## [4.34.0] - 2026-08-18
+
+### Fixed
+
+- **`synthesis-skill-router` v1.1.0 — routes grounding requests correctly.**
+  The router had no entry for `synthesis-grounding-discipline`, so requests to
+  verify evidence, check provenance, or establish an absence resolved to
+  `synthesis-anti-shortcuts` — the wrong skill by the new skill's own framing.
+  The two are now distinguished explicitly on both bullets: anti-shortcuts is
+  the effort-side discipline, grounding-discipline the truth-side one.
+
+- **`README.md` — catalog and release notes reconciled.** The skill catalog
+  listed 43 rows against 57 skill directories; all 14 missing skills are added
+  and the table now matches the tree exactly in both directions. Release notes
+  for 4.31.0 through 4.33.0 were never added despite the repo's own
+  contribution rules requiring it; they are in. A headline about SessionStart
+  evidence had been orphaned from its 4.27.0 paragraph by later prepends and is
+  reattached.
+
+### Changed
+
+- **`synthesis-autopilot` v1.1.0** — `synthesis-grounding-discipline` added to
+  `depends_on` and the composed-skills table. An autonomous run states facts
+  without a human checking each one, which is exactly where evidence discipline
+  earns its place.
+
+- **`synthesis-anti-shortcuts` v1.1.1** — names grounding-discipline as its
+  truth-side companion, making a link that was one-directional reciprocal.
+
+## [4.33.0] - 2026-08-18
+
+### Changed
+
+- **`synthesis-daily-rituals` v2.24.2 — plan shells keep the consumer's
+  section vocabulary** — storage separation governs where plan content lives,
+  not what its sections are called. Renderers classify plan sections by heading
+  vocabulary, so a shell written with invented headings still renders, as
+  undifferentiated prose, while every typed region the reader actually works
+  from comes up empty — the plan looks blank precisely when it is full. Shells
+  now reuse the established headings for any region they populate and confine
+  novelty to the coverage block and pointer lines, with producer and consumer
+  required to change together.
+
+## [4.32.0] - 2026-08-18
+
+### Added
+
+- **NEW skill: `synthesis-grounding-discipline` v1.0.0** — evidence and
+  provenance discipline for AI-agent output; the truth-side companion to
+  synthesis-anti-shortcuts' effort-side discipline. An eleven-rule catalog in
+  four groups (record only what a source surfaced; caches are not truth;
+  proving absence; grounding writes and deletions): anti-confabulation, quote
+  provenance, cache-vs-truth with a verifying-command-class table,
+  runtime-vs-IaC as distinct truths, evidence-in-hand before theorizing,
+  conventions-are-corpus-claims, negative-findings-need-a-positive-control,
+  truncated-output-is-a-pointer, zero-results-are-never-absence,
+  search-first/verify-paths, and file-and-process safety (including
+  cleanup-sentinel and recursive-delete-target invariants). Each entry carries
+  an anonymized production incident vignette and a compliance procedure; a
+  closing self-check compresses the catalog.
+
+- **`synthesis-agent-conformance` v1.6.0 — instruction-kernel pattern
+  reference** (`references/instruction-kernel-pattern.md`): keeping an
+  always-loaded instruction file small and enforceable — the three-part thin
+  kernel (identity + invariants, routing table, enforcement declarations), the
+  four enforcement classes, the not-weakening proof obligation, the fail-closed
+  budget gate with warn band, and homes-first/kernel-last migration mechanics.
+
+### Changed
+
+- **`synthesis-anti-shortcuts` v1.1.0** — sub-agent dispatch hygiene gains the
+  brief-size cap: at most five deliverables per dispatch, with the
+  late-failure shape oversized briefs produce; split substantial phases at
+  dispatch time. Added to both SKILL.md §4 and
+  `references/sub-agent-hygiene.md`.
+
+- **`synthesis-context-lifecycle` v1.8.0** — new "Repo Families and Deletion
+  Units" section: the permanent knowledge root vs per-engagement private repos
+  as deletion units, the write-time routing test, the asymmetric misplacement
+  failures, the generic ALWAYS-PRESERVE class, count-never-itemize
+  inventories, and instance specifics declared in private configuration.
+
+- **`synthesis-slack-sync` v3.4.0** — the transcripts-first rule gains the
+  question-shape trigger (verification questions are lookups wearing a
+  different hat) and the zero-result absence protocol (bounded direct reads
+  with stated bounds; re-run modifier-bearing queries without the modifier
+  before trusting a null), cross-linked to synthesis-grounding-discipline.
+
+## [4.31.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-skills-manager` v2.1.0 — gated cross-client release script**
+  (`scripts/release.py`) — sequences a release behind one fail-closed command:
+  preflight (both manifests agree, newest CHANGELOG entry matches, tree clean,
+  repo root is a checkout and not an installed cache) → the required checks →
+  publish to every configured push remote → install into both clients with each
+  client's own commands → verify. Codex's marketplace snapshot is upgraded
+  before installing from it, because installing without that step ships the
+  previous release while appearing to succeed.
+
+  Each client is verified **twice**: what its CLI reports, and the plugin
+  manifest at the path the CLI says it loads. A client can report the intended
+  version while the tree it loads is stale, so a report-only check passes green
+  through exactly the drift the script exists to catch; `test_release.py` pins
+  that case as a required failure. `--install-only` recovers drift or provisions
+  a new machine; `--dry-run` prints the plan without mutating anything.
+
+## [4.30.1] - 2026-08-17
+
+### Changed
+
+- **`synthesis-daily-rituals` v2.24.1** — plan-separation contract clarifies that a
+  workspace's plan fragment belongs in the individual's private repository when a
+  workspace carries both a shared and a private one, and that consumers merging
+  fragments for display must not cache merged output person-side and must render
+  unresolved pointers as explicit markers rather than omitting them.
+
+## [4.30.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-daily-rituals` v2.24.0 — plan storage separation** — the daily
+  plan stops copying workspace content into the person-side repository. Each
+  workspace's worker artifact doubles as its plan fragment (already stored in
+  the workspace-private repository); the person-side plan becomes a shell:
+  coverage line, the principal's own timeline, minimal cross-workspace conflict
+  references, the permanent personal section, and pointer lines to fragments.
+  Consumers merge fragments into the converged view at display time, so
+  presentation stays singular while storage separates. Motivation: erasing an
+  organization's data by deleting its workspace folders — a hard requirement in
+  regulated environments and clean hygiene everywhere. The contract's new "Plan
+  storage separation" section states the erasure boundary honestly (content
+  never persists outside workspace folders; names as references do) and adds a
+  strict-shell mode for regimes that treat event titles as erasable data.
+  Historical mixed plan files are left to a deliberate migration.
+
+## [4.29.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-daily-rituals` v2.23.0 — distributed ritual execution (desk and
+  workers)** — the ritual can fan its per-workspace sync labor out while the
+  output stays singular. A private workers registry declares which workspace
+  seats run workers and where each writes; every worker ends by writing a
+  structured summary artifact (schema, path convention, coverage and gaps
+  fields, fixed body sections) defined in the new
+  `references/ritual-worker-contract.md`. The desk — the ritual-home seat —
+  folds the newest artifact per workspace instead of loading workspace detail
+  inline, owns cross-workspace conflict reconciliation, and opens every brief
+  with a mandatory coverage line. Workers never message the desk
+  (worker→file, desk→file): a missing artifact is the legible "not covered"
+  signal. Absent registry = classic single-session ritual, unchanged. The
+  contract is client-neutral by construction — any agent client or a human can
+  produce a conforming artifact or act as the desk.
+
+## [4.28.1] - 2026-08-17
+
+### Fixed
+
+- **Aggregate local continuity without an active pointer** — the complete
+  conformance command now honors the stopped-task contract when the optional
+  active-project cache is absent. The explicit `pointer` command remains
+  strict, and an existing malformed pointer still fails in every scope.
+
+## [4.28.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-project-management` v2.3.0 — durable UUIDv7 session identity** —
+  coordination schema v3 stores a full UUIDv7 plus compact Crockford Base32
+  and speakable word-number aliases that encode the same 60 random bits.
+  Claims remain resource paths attached to a session. The lease-backed
+  allocator checks collisions inside the compare-and-swap transaction; every
+  command and active-project consumer accepts the UUID, compact, speakable, or
+  migrated legacy selector.
+- **Atomic v1/v2 board migration** — `coordination.py migrate` assigns all
+  historical rows their canonical and human-facing identities while retaining
+  letters under an explicit `legacy id` column and preserving messages. The
+  versioned offline vocabulary vendors the MIT-licensed BIP-39 English list
+  with a pinned digest and exact round-trip tests.
+
+### Changed
+
+- **`synthesis-checkpoint` v1.5.0 — receipt-based restart recovery** — a stale
+  startup registry now asks for a genuine client process restart first. The
+  same root conversation continues only when a new transcript-bound
+  SessionStart event proves the current plugin version/root and loaded skill
+  metadata; a new conversation/task is required only when rehydration is
+  unsupported or that verification fails.
+- **`synthesis-onboarding` v1.2.0 — correct post-update guidance** — installer
+  output and documentation distinguish installed cache replacement from the
+  subsequent lifecycle reload and state the same restart-first verification
+  ladder for Claude Code and Codex.
+- **`synthesis-agent-conformance` v1.5.0 — coordination schema v3** — source,
+  SessionStart, pointer activation, and semantic doctor paths resolve every
+  identity representation to the canonical UUID; newly activated pointers no
+  longer persist a compact, speakable, or legacy selector.
+
+## [4.27.0] - 2026-08-17
+
+### Added
+
+- **`synthesis-agent-conformance` v1.4.0 — retained SessionStart evidence** —
+  every genuine Claude Code or Codex SessionStart now creates a preserved
+  per-session event before monotonic latest pointers advance. `hook-live`
+  keeps its unqualified current-health semantics and adds exact Claude and
+  Codex session selectors for release and handoff reverification. A later
+  unrelated start can therefore surface current drift without making an
+  earlier accepted session unreachable. Event identity, transcript binding,
+  plugin version/root, UUID shape, atomicity, and fail-closed registry parsing
+  remain part of the live-evidence gate.
+
+### Changed
+
+- **`synthesis-checkpoint` v1.4.0 — explicit evidence scopes** — checkpoint
+  recovery reports current global hook health separately from any exact
+  accepted-session evidence named by the durable project record. Neither scope
+  may stand in for the other. A ten-minute inter-turn pause is the default
+  automatic freshness boundary when timestamps are available, and installed
+  plugin changes still require a genuinely fresh client task before live
+  acceptance.
+
+## [4.26.0] - 2026-08-17
+
+### Changed
+
+- **`synthesis-agent-conformance` v1.3.0 — pointer activation accepts the
+  attributed stopped-task record** — the active-project pointer and local
+  continuity now share one record contract. `activate` and pointer validation
+  accept uncommitted project edits exactly when session-attributed pending
+  manifests record every dirty path (the `LOCAL_READY` /
+  `LOCAL_RECOVERABLE` states), and keep failing closed on any unattributed
+  path or unreadable manifest. Previously activation rejected the same
+  attributed dirty record that local continuity accepted, so a live owner
+  mid-switch could not hold a pointer without an off-contract commit. The
+  attribution primitives (`porcelain_paths`, `project_pending_manifests`,
+  `unattributed_dirty_issues`) now live in `active_project.py` and the
+  continuity checks import them, so the two contracts cannot drift apart; a
+  regression test asserts their agreement on the same fixtures. Workspace
+  claims on the coordination board may carry the conventional trailing
+  parenthetical annotation — `repo @ branch (new branch)` — without breaking
+  exact worktree/branch matching.
+
+## [4.25.3] - 2026-08-15
+
+### Fixed
+
+- **`synthesis-agent-conformance` v1.2.2 — Claude Code live SessionStart
+  evidence** — preserve the client-delivered
+  receipt when Claude names its client-owned transcript before creating or
+  populating the JSONL file. The receipt records whether the binding existed
+  at hook time; conformance still fails closed until that exact transcript
+  binds the same session UUID. Canonical root-transcript shape validation
+  rejects subagent descendants, symlinks, and existing contradictory UUIDs.
+  Static script output without a real matching client transcript remains
+  insufficient.
+
+## [4.25.2] - 2026-08-14
+
+### Fixed
+
+- **Transactional worktree-retirement continuity** — manifest writers, Stop
+  receipts, remote flushes, and retirement now share one lifecycle lock. The
+  helper pins a freshly fetched remote-tracking commit, stages a known-capable
+  reconciler outside the target, and fsyncs a resumable intent before removal.
+  Interrupted completion selects and verifies that exact content-addressed
+  reconciler even after an upgrade. Optional remote branch deletion is bound
+  to the recorded remote and head with Git's compare-and-delete lease.
+  Completion is idempotent; unexplained missing or unpublished paths continue
+  to block Stop.
+
+## [4.25.1] - 2026-08-14
+
+### Fixed
+
+- **Remote-readiness integrity** — continuity conformance compares complete
+  branch heads with the fetched upstream, so an unpublished commit outside the
+  project subdirectory cannot produce a false `REMOTE_READY` result.
+- **Local evidence semantics** — a stopped task with attributed edits requires
+  its current content receipt; a clean no-edit task does not create empty
+  evidence. Documentation and conformance now state the same contract.
+- **Readiness naming** — local-ready, local-recoverable, and remote-ready are
+  consistently described as three states.
+
+## [4.25.0] - 2026-08-14
+
+### Added
+
+- **Three-state project continuity** — local-ready and local-recoverable evidence
+  support same-machine Claude Code and Codex switching without per-turn Git or
+  network activity; remote-ready provides the explicit cross-machine gate.
+- **Continuity conformance** — local and remote readiness checks verify edit
+  attribution, Stop receipts, repository state, and upstream equality.
+
+### Changed
+
+- **Project lifecycle** — SessionStart resolves named projects from the tracked
+  registry when no leased pointer exists; Stop records local content receipts;
+  explicit remote handoff and day-end publish the attributed batch.
+- **Context doctor** — local mode keeps structural defects fail-closed while
+  reporting recoverable Git state as warnings; remote mode remains strict.
+
+### Fixed
+
+- **Interrupted-task recovery** — a PostToolUse manifest remains sufficient
+  evidence to reconstruct unfinished work when a task never reaches Stop.
+
+## [4.24.2] - 2026-08-14
+
+### Fixed
+
+- **Installed-to-source conformance** — forbidden-pattern scans exclude the
+  conformance checker's own definitions by source-relative identity, so an
+  installed checker auditing a canonical checkout produces the same source
+  result as the source checkout itself.
+
+## [4.24.1] - 2026-08-14
+
+### Fixed
+
+- **Installed catalog parity** — source-checkout Python and pytest caches no
+  longer create false drift against clean plugin packages; substantive skill
+  content remains digest-bound.
+- **Codex plugin skill discovery** — authoritative `skills/list` namespaced
+  names are matched to their canonical public skill names, so a healthy
+  enabled plugin no longer reports every public skill as missing.
+
+## [4.24.0] - 2026-08-14
+
+### Added
+
+- **New `synthesis-skill-router`** — keeps specialist workflows explicitly
+  invocable in Codex while routing natural-language requests to their exact
+  skill bodies. Claude Code retains its complete native trigger catalog.
+- **`synthesis-agent-conformance`** — five evidence planes and dedicated
+  checks for hook definitions, human trust, genuine SessionStart receipts,
+  the resolved Codex catalog budget, instruction reserve, leased
+  active-project pointers, authenticated capability evidence, and supported
+  product surfaces. Read-only Codex app-server adapters ask `hooks/list` and
+  `skills/list` for runtime truth.
+- **Capability evidence ledger** — sanitized, timestamped PASS, FAIL, UNKNOWN,
+  and UNSUPPORTED outcomes for Claude Code, Codex desktop, and Codex CLI.
+- **Client-specific live receipts** — public plugin SessionStart evidence is
+  recorded separately for Claude Code and Codex, so one client's successful
+  start cannot be mistaken for the other's.
+- **Public integration and contributor system** — rationale, five-plane
+  runtime contract, governance, issue templates, pull-request evidence gates,
+  runtime stewardship, and contribution lanes for skills, adapters,
+  accessibility, documentation, and compatibility fixtures.
+
+### Changed
+
+- **Skill discovery** — OpenAI-specific metadata now divides the public
+  catalog into an implicit core and explicit specialists. The supported
+  272,000-token Codex configuration projects to 3,405 of its 5,440-token
+  catalog budget while all skills remain enabled.
+- **`synthesis-onboarding`** — `update` explicitly refreshes installed native
+  plugins, verifies the exact version when run from source, and states the
+  new-session/new-task boundary. Ordinary install and doctor runs leave live
+  versioned caches untouched. Claude Code, Codex desktop, and Codex CLI are
+  first-class; Codex IDE is reported as unsupported instead of inheriting a
+  false plugin-parity claim.
+- **`synthesis-project-management`** — active-project pointers carry their
+  coordination owner, lease, worktree, branch, plan, and source commit;
+  releasing the owner recoverably archives the pointer.
+- **`synthesis-checkpoint`** — compares the task's SessionStart plugin receipt
+  with source and installed truth before claiming that a registry is current.
+
+### Fixed
+
+- **`synthesis-meeting-transcripts`** — workspace-MCP doctor distinguishes
+  service absence from restricted observability, parses curl exit and HTTP
+  status independently, and rejects the former double-`000` false success.
+- **Active project injection** — SessionStart now refuses missing plans or
+  worktrees, released or expired owners, non-owner context roles, wrong
+  worktree claims, symlinked or out-of-tree paths, stale branch or commit
+  identity, and checkouts behind local `origin/main`. Activation and release
+  share one cross-process pointer lock so release cannot archive a successor's
+  newly activated pointer.
+- **Concurrent evidence writes** — capability ledgers, conformance reports,
+  and client SessionStart receipts use unique atomic replacements; the
+  read-modify-write capability ledger also holds a cross-process lock.
+- **App-server response handling** — malformed `hooks/list` and `skills/list`
+  payloads become explicit unknown evidence instead of unclassified errors;
+  malformed nested hook rows cannot collapse into an empty PASS.
+- **Live SessionStart provenance** — public receipts require a UUID session,
+  a client-owned transcript that declares that same session, and the exact
+  enabled immutable plugin root; private control-plane receipts require the
+  same transcript binding, and missing source-version truth fails the live
+  plane closed.
+- **Installed catalog parity** — exact-version Claude and Codex caches must
+  match the source skills tree by content digest, including scripts and
+  OpenAI policy metadata; matching names or file counts cannot mask drift.
+- **Installed evidence resolution** — conformance honors `CODEX_HOME` and
+  `CLAUDE_CONFIG_DIR`, parses valid TOML integer forms without changing the
+  Apple Python 3.9 floor, fails closed on invalid instruction configuration,
+  and binds catalog and live-receipt checks to the marketplace reported by
+  the enabled plugin inventory rather than an arbitrary same-version cache.
+- **Portable handoff state** — active-project validation rejects dirty project
+  records and commits not reachable from a fetched remote ref, so another
+  client or machine can recover the recorded state.
+- **Coordination pointer archives** — arbitrary session identifiers are encoded
+  into filesystem-safe basenames and cannot create nested archive paths.
+- **Skill dependency contracts** — source conformance rejects missing or cyclic
+  dependencies; the daily-ritual and Slack-sync graph is now acyclic.
+
+## [4.23.0] - 2026-08-13
+
+### Added
+
+- **`synthesis-agent-conformance`** — new `source.changelog-version-parity`
+  check: both plugin manifests must match the CHANGELOG's top release heading,
+  failing closed when the heading or a manifest is missing. A release is
+  manifests + CHANGELOG moving together; this miss shipped twice (the 4.18.0
+  repair commit, and again caught in review on the 4.22.0 release) while every
+  other check stayed green. Suggested by Emil Peñaló in synthesis-preplan's
+  review thread (PR #5).
+
+## [4.22.0] - 2026-08-13
+
+### Changed
+
+- **`synthesis-pr-review`** — the "Where This Fits" lifecycle table gains the
+  `synthesis-preplan` row, so the engineering arc reads end to end: preplan →
+  code-planning → implementation-integrity → code-audit → preflight →
+  pr-review.
+
+### Added
+
+- **New skill `synthesis-preplan` (v1.0.0)** — architecture-decision pre-planning for tickets or issues with real design choices. Runs a structured Q&A loop that locks the load-bearing architectural decisions (branch base, scope boundary, dependency graph, execution lane, and the open questions a competent engineer could resolve more than one way) before any commit plan is drafted, writes a reviewable locked-decisions file, then hands off to the planning step with a previewed prompt. Declares `depends_on: ["synthesis-code-audit"]` — the review dimensions the decision rubric leans on live there. Bundles three files it carries itself: `references/commit-by-commit.md` (the multi-commit execution discipline: Step 0, the per-commit brief/fast-check/audit/amend/full-gate cycle, and a nine-item close-out list that opens with five review gates), `references/single-commit.md` (the companion lane for work that is one reviewable commit and decides nothing), and `assets/handoff-template.md` (the agent-neutral prompt scaffold the skill fills before handing off). Fully project- and agent-agnostic: git is the only assumed baseline, while trackers, build tools, planners, and agent harnesses are all illustrative examples.
+
+  Notable pieces of the methodology, each earned from a real run rather than
+  theorized:
+
+  - **Three decision-quality checks in the Q&A rubric.** Nothing downstream
+    catches a wrong decision: an audit verifies an implementation *against*
+    locked decisions, which makes a locked row the one thing it will never
+    re-open. So the rubric tests each decision against what the downstream
+    tickets consume, names what each mechanism makes unobservable (any
+    guarantee or floor pins a variable, and whatever measured that variable now
+    measures the guarantee), and asks whether the outcome a mechanism prevents
+    is a defect or the model working correctly. A mechanism invented inside a
+    lean becomes its own numbered decision rather than riding on another
+    decision's authority without its scrutiny.
+  - **Verification split into fast checks and a single full gate.** The
+    whole-tree suite runs once per commit, after the audit's findings are
+    amended in, because a pre-audit run tests code the amend replaces.
+  - **Step 0** — write the full todo list, then create the branch, before any
+    file is touched. Neither becomes visibly missing until commit time.
+  - **Two gates no per-commit pause can see:** a plan-conformance review (which
+    also asks whether the plan's own remaining gates are still executable), and
+    a branch-wide reconciliation that re-derives shared append-only numbers
+    against the merge target rather than the branch base.
+  - **Gates reference their subject instead of restating its content,** and any
+    gate that can resolve negative carries a pre-written negative branch.
+  - **Execution-lane routing.** Stated explicitly with its reason, backed by
+    five checkable disqualifiers, because judgment calls under time pressure
+    default to "small".
+
+### Rationale
+
+The hard part of planning is deciding what to build, not breaking the build into commits. Once the architectural decisions are locked, the commit-by-commit plan is mechanical. `synthesis-preplan` makes the decision-locking explicit and reviewable so the planner inherits a clear input instead of designing inside its own output. It pairs with `synthesis-code-planning` (which evaluates code-level approaches) and `synthesis-preflight` (the pre-merge gate) to cover the pre-implementation arc.
+
+## [4.21.0] - 2026-08-12
+
+### Added
+
+- `synthesis-inbox-cleanup` v1.5.0: **workspace scoping — cleanup reach follows
+  the seat that invokes it.** New `scopes.yaml` contract plus
+  `scripts/resolve_scope.py`: a personal operations seat's ritual sweeps every
+  account; a client-workspace seat's ritual sweeps only that workspace's
+  accounts, so a client engagement's session never reads personal mail and the
+  boundary is mechanical rather than remembered. The caller states its
+  workspace explicitly — no environment sniffing. Guard-contract exit codes,
+  and an **unknown workspace is unverifiable (exit 2), never an empty list**:
+  a typo'd workspace must not resolve to zero accounts and read as a clean
+  sweep. Seven subprocess tests pin the contract.
+- `synthesis-daily-rituals` v2.21.0: Day-Start **Step 3d — Inbox Hygiene**.
+  When `scopes.yaml` exists, the morning ritual resolves this seat's scope and
+  runs the inbox-cleanup sweep dry-run-first over exactly the resolved
+  accounts, reporting per account against the scope. Inbox cleanup becomes a
+  standing chief-of-staff duty of the ritual rather than a separate session.
+
+## [4.20.0] - 2026-08-12
+
+### Added
+
+- `synthesis-chief-of-staff` v1.1.0: **the calendar guardian** — doctrine for
+  holding a perimeter around the principal's calendar rather than merely
+  reading it. Three horizons, each with its own question (next working day:
+  *can tomorrow be lived as booked?*; week ahead: *what should move while
+  there is still time?*; month ahead: *what needs a lead-time clock started
+  now?*); a six-point per-entry review (real, answered, prepared, outcome,
+  shape, physically possible) plus a whole-day overcommitment check that must
+  produce **named candidates to move with drafted reschedule notes** — a
+  warning without candidates delegates the thinking back to the principal;
+  and the **same-day shield**: id-tracked, auto-expiring hold events over open
+  windows, releasable only from the agent's own holds ledger, converting
+  same-day ambush into triage (VIP tiers pass per config). New
+  `calendar_guardian` config keys documented in the skill.
+- `synthesis-daily-rituals` v2.20.0: the guardian's cadence. Day-End **Step
+  4a** reviews the next working day (plus the weekend on the last working day
+  of the week) and places tomorrow's holds — in every mode including Quick
+  Close, because it generates the drafts the send-or-release pass handles.
+  Day-Start Step 6 re-verifies the morning against overnight arrivals and
+  refreshes the shield. The owed-weekly review gains the week-ahead and
+  month-ahead horizons; the month pass starts absence-coordination
+  notification clocks (`notify_on_commit`) while notifying is still early,
+  cheap, and conflict-preventing. Unconfigured thresholds report as
+  "unconfigured" rather than being guessed.
+
+## [4.19.0] - 2026-08-12
+
+### Added
+
+- **New skill: `synthesis-absence-coordination` v1.0.0** — coordinate an absence
+  end to end the way a good chief of staff would. An absence is treated as a
+  **handoff with a scheduled reversal**, not an announcement: every work-facing
+  notice must answer *who decides in my place, what waits, and how to reach me*,
+  or the skill refuses to send it.
+
+  What distinguishes it from ordinary out-of-office tooling:
+
+  - **The ordering fix.** Principals hear it first, from the person — in one
+    email with their assistants cc'd, so the assistants get identical lead time
+    with no sequencing risk. Group channels are hard-gated behind that message:
+    a manager must never learn of a report's absence from a team channel.
+  - **Two triggers, not one.** `lead_time_days` schedules the full
+    announcement; `notify_on_commit` fires a small cohort (calendar-protecting
+    assistants, family) the moment a plan is real — which is what actually
+    prevents conflicts, because it lands before conflicting things get booked.
+  - **A `personal_continuity` tier** — the tier most absence systems lack:
+    trainers, therapists, tutors, caregivers, whose standing commitments travel
+    disrupts. Its content is unlike any other tier's: time zone (not city),
+    lodging, and agent-researched local facilities, attributed and dated.
+  - **A quiet type.** `visibility: minimal` holds the calendar and notifies the
+    smallest set while suppressing broadcasts — because a system that can only
+    broadcast is abandoned exactly when discretion matters most.
+  - **Mechanical disclosure.** Content policies (`dates_only`,
+    `dates_city_coverage_reach`, …) are set per tier in config, so what each
+    audience learns is enforced rather than re-decided under time pressure.
+  - **Config validation with the guard contract.** `validate_config.py` exits
+    0/1/2 (valid / defects / unverifiable) and catches the traps that fail
+    silently in production: an unverified travel-service sender (forwards are
+    discarded with no bounce), distribution-alias recipients (unauditable,
+    die in provider migrations), agent-sendable principal tiers, ungated group
+    posts. 14 subprocess-level tests pin the CLI contract.
+  - **Return handling.** Departure is half the workflow: auto-responder set
+    *and* cleared, declined recurrences restored, and the re-entry sweep hands
+    off to `synthesis-catchup-ledger`.
+
+  Ships with a fully commented `example-config.yaml` (placeholder names only),
+  a schema reference, per-tier message templates, and a fifteen-minute
+  quickstart whose rollout doctrine is: pilot on the tiers that forgive
+  mistakes (trainer, family) before pointing anything at your workplace.
+
+## [4.18.0] - 2026-08-12
+
+### Added
+
+- `synthesis-meeting-transcripts` v0.6.0: **the optional workspace-mcp auto-start
+  service gets a heartbeat.** New `optional-workspace-mcp/doctor.sh`. The bundle
+  shipped an installer for a supervised background service and no way to ask
+  whether that service was still alive — the one fail-open control in a stack
+  whose other guards all ship a health check.
+
+  `install-autostart.sh` records an **absolute** path to `start.sh` into the
+  launchd/systemd unit at install time. Move the checkout, rename a parent
+  directory, or restructure the repo, and the unit still points at the old path.
+  launchd exits `78` (`EX_CONFIG`), `KeepAlive` retries every 30 seconds
+  indefinitely, and the log fills with thousands of identical failures. Nothing
+  surfaces. The only symptom is that the MCP tools are quietly absent — and
+  because "my tools are missing" reads as a client problem, the investigation
+  starts in the wrong place. Restarting the client cannot help; the client never
+  owned the process. Observed 2026-08-12 against a checkout that had gained a
+  `skills/` directory level, after an unknown period of silent failure.
+
+  `doctor.sh` verifies the unit exists; that its recorded start-script path still
+  exists and is executable; that the supervisor has it loaded, and with what exit
+  status (`78` gets a targeted hint); that the client secret is present; that the
+  port is listening; and that the endpoint answers. It also flags the case where
+  the unit runs a *different* checkout than the one being edited. Exit codes
+  follow the guard contract — `0` healthy, `1` defects, `2` a check could not run
+  — because a check that cannot run must never look like a check that passed.
+  `--quiet` gives an exit code and one summary line for hooks and rituals.
+
+  The remedy is always to re-run `install-autostart.sh`, never to hand-edit the
+  unit: the installer derives the path from its own location and is correct by
+  construction. The defect was never in the generator — only in the absence of
+  anything that noticed the generated artifact had gone stale.
+
+## [4.17.1] - 2026-08-11
+
+### Fixed
+
+- `synthesis-meeting-transcripts` v0.5.3: **a clean transcript audit no longer
+  looks like a broken one.** `verify_transcripts.py --only-incomplete` filtered
+  the results list *before* computing the summary counters, so every counter
+  described the filtered listing instead of the audited corpus. A clean corpus
+  printed `Total: 0 files — 0 incomplete, 0 skipped, 0 no-source-transcript` —
+  a clean bill of health rendered byte-identical to "the path was wrong / no
+  `.md` files found." Observed 2026-08-11 against a 282-file corpus that was
+  actually 0-incomplete, 2 skipped, 19 no-source-transcript; only reading the
+  source told the two apart. `--json` carried the same defect through
+  `total_files`. This is the flag `synthesis-daily-rituals` uses, so the
+  success path was the one that read as a failure — the way a fail-closed
+  control gets routed around, and the mirror image of the v0.5.1
+  false-positive fix. Counters and the file total now always describe the
+  corpus; the filter narrows only the listed rows, and the summary discloses
+  that with `(listing filtered to incomplete only)`. An empty listing prints
+  `(none — no audited file matches the active listing filter)` rather than a
+  bare table. `--json` keeps `total_files` as the corpus count and adds
+  `listed_count` plus `only_incomplete` for the listing. Exit codes unchanged.
+
+### Added
+
+- `test_verify_transcripts.py` gains 14 end-to-end reporting checks that invoke
+  the CLI against a synthetic clean corpus (complete + skipped +
+  no-source-transcript, zero incomplete) and fail if the summary ever reports
+  `Total: 0 files` again, plus the inverse case proving filtering still filters
+  and a real incomplete file still exits 1. CI and `AGENTS.md` now run this test
+  file, which no check previously invoked.
+
+## [4.17.0] - 2026-08-09
+
+### Changed
+
+- `synthesis-daily-rituals` v2.19.0: **every sync covers every configured
+  surface.** A sync request (Day-Start Step 3, the Mid-Day Sync Protocol, or
+  Day-End Step 1) now covers the workspace's full declared surface set — Slack,
+  Google Chat, **email** (inbound AND the user's own sent mail), **meeting
+  transcripts** (any meeting ended in the window), and **document comments** —
+  not the chat surfaces alone. The surface set is a declared list, exactly like
+  the repo list in the source-code sync: the agent does not re-apply its own
+  judgment about which surfaces feel active, and a sync that runs fewer
+  surfaces than the declared set must name the omission explicitly in its
+  report. Origin incident (2026-08-09): a mid-day sync ran Slack and Chat only
+  and reported all-quiet while the day's most consequential correspondence — a
+  CEO-facing email delivering two Google Docs — had happened entirely on the
+  unswept surfaces. Day-Start Step 3b retitled "Channel Sync (Slack + Google
+  Chat + email + documents)" with two new checklist items; Day-End Step 1 gains
+  the matching final-capture item; the Mid-Day Sync Protocol now enumerates all
+  five surfaces and the name-any-gap rule.
+
+## [4.16.0] - 2026-08-07
+
+### Changed
+
+- `synthesis-agent-correspondence` v2.0.0 (BREAKING restructure, one day after
+  v1.0.0, from first real-world adoption): the recipient-facing model is now
+  **three lanes on a single axis — how much of the principal is in the
+  words** — replacing v1's review-tiers-as-primary framing. The lanes:
+  principal-direct (their words, their hands — no disclosure), the assistant
+  lane (their words, the agent's hands — a single authorship signature), and
+  the bot lane (their direction, the agent's words — a handled-for-me
+  signature). Review depth (`exact_text`, `per_message_directive`,
+  `standing_direction`, `autonomous_initiative`) is demoted to internal
+  governance — approval workflow, content limits, logging — and explicitly
+  removed from recipient-facing disclosure, because recipients care whose
+  words they are reading, not which approval path ran. The `archetype` field
+  becomes **binding** rather than tonal: an `assistant` persona carries
+  assistant-lane semantics and exactly one signature (exact-text ownership
+  required, always); a `bot` persona carries bot-lane semantics and may vary
+  its signature by review depth. Motivating discovery: under v1's
+  personas-x-tiers matrix, the assistant-persona "unreviewed" cell produced
+  self-contradictory signature wording on every attempt — "these are my
+  words" cannot honestly combine with "I never saw these words." The v2
+  model deletes the impossible cell instead of rewording it, and adds the
+  two-direction doubt rule (approval doubt routes toward more review;
+  authorship doubt routes toward the weaker claim — when in doubt, claim
+  less). Adds the recipient-learnable legend (no marker = all the principal;
+  assistant marker = the principal's words; bot marker = the principal's
+  direction), a lane-aware guard-pattern note for brand-integrity
+  enforcement, and a v1→v2 migration section. The persona-registry example
+  bumps to `registry_version: 2` with archetype-binding comments.
+
+## [4.15.0] - 2026-08-06
+
+### Added
+
+- `synthesis-agent-correspondence` v1.0.0 (NEW skill, Communication family):
+  how AI agents compose and send correspondence on a human principal's
+  behalf, generalized from a mature private communications skill into a
+  config-driven public skill (the same public-methodology / private-config
+  split as `synthesis-bitbucket` + org-specific companions, or
+  `synthesis-model-tiers` + org-specific tier mappings). Covers the core
+  disclosure principle (strength scales with how much the principal
+  reviewed the exact text before it went out, not with abstract
+  categories, following the long-standing ghostwriting/executive-assistant
+  pattern); three universal review tiers (`reviewed`,
+  `standing_direction`, `unreviewed_substantive`) with hard content limits
+  and an always-route-up-never-down ambiguity rule; the default
+  human-sends-it-themselves lane, which carries no disclosure question on
+  any channel; a persona-registry YAML schema (`id`, `display_name`,
+  `archetype`, `emoji`, `url`, `scope`) so a user can brand and route
+  between multiple agent identities; the `bot` vs. `assistant` archetype
+  distinction that sets whether a persona's signature centers the tool or
+  the human as actor; empirically-verified channel disclosure facts
+  (Slack's connector force-stamps a visible send tag; most other channels
+  don't); a routing heuristic from content type to lane; and the three
+  compose/send gates (reply-history, compose-time voice/anti-slop,
+  pre-send relevance/grounding) that protect the work underneath the
+  disclosure, pointing to `synthesis-message-guard` as their mechanical
+  enforcement layer rather than duplicating it.
+
+## [4.14.2] - 2026-08-06
+
+### Fixed
+
+- `synthesis-meeting-transcripts` v0.5.2: `verify_transcripts.py` undercounted
+  speaker-attribution lines that carry an inferred-speaker parenthetical
+  annotation before the colon (e.g. `**[10:10] Name (Plaud Speaker 4,
+  mapped):**`) — the v0.5.1 regex required the colon immediately after the
+  name, so every annotated line silently failed to count. Confirmed against a
+  production corpus: dozens of undercounted lines across several files, each
+  still passing only because it had enough unannotated lines to clear the
+  threshold anyway. The fix accepts the annotation only on the timestamp-led
+  branch, so it cannot start matching generic markdown field headers that
+  share the same "Word (parenthetical):" shape. Also added a `SCRIPT_VERSION`
+  banner to every run's output (plus a `--version` flag): the script
+  previously had no way to reveal which version produced a result, which is
+  exactly what let a stale, orphaned plugin-cache copy go unnoticed and
+  produce a batch of false-positive INCOMPLETE flags against an already-fixed
+  corpus. `test_verify_transcripts.py` gained matching regression coverage
+  plus negative controls for the header false-positive risk.
+
+## [4.14.1] - 2026-08-04
+
+### Fixed
+
+- `synthesis-meeting-transcripts` v0.5.1: `verify_transcripts.py` flagged
+  genuine Plaud transcripts as INCOMPLETE. v0.5.0 added Plaud's
+  timestamp-before-name format but matched only the unspaced range
+  `[00:00-00:08]`; Plaud emits `**[00:00 - 00:08] Name:**` with spaces. Two
+  live transcripts carrying 98 and 163 timestamps of real diarized dialogue
+  were reported incomplete. Whitespace around the separator is now optional
+  and en/em dashes are accepted. A false positive on a fail-closed gate is
+  as damaging as a false negative — it teaches bypass. New
+  `test_verify_transcripts.py` pins every real-world line shape plus
+  negative controls proving a summary still cannot pass.
+
+## [4.14.0] - 2026-08-04
+
+### Added
+
+- `synthesis-executive-communication` v1.0.0 (NEW skill, Communication
+  family): translating technical work into communications non-technical
+  executives can absorb — for CTOs, CPOs, and product/engineering leaders
+  writing to CEOs, division presidents, CFOs, and business peers. The
+  every-noun persona test, the six-category kill-list (unexplained
+  codenames, workflow/tooling vocabulary, insider praise, defect counts,
+  engineering-culture credentials, mechanism-where-consequence-belongs),
+  a translation-pattern table, upward-report structure (done-first by
+  reader importance, numbers strip, a closed-loop section for the reader's own asks, honest flags,
+  forwardability test), and an in-persona adversarial review protocol.
+  Distilled from real executive report-revision cycles in which
+  engineering-literate review passes structurally missed register
+  failures only the intended non-technical reader could reveal.
+
+## [4.13.3] - 2026-08-03
+
+### Fixed
+
+- `synthesis-onboarding` v1.0.1: on a fresh machine with a client present
+  but the plugin CLI unavailable, the file-copy fallback was skipped —
+  `install.sh status` exits 0 when the target skill directories do not
+  exist yet, and the engine's probe read that as "already current." The
+  probe now also requires copies to actually be present. Found by the
+  post-merge QA run of a live org quickstart; regression test added.
+
+## [4.13.2] - 2026-08-03
+
+### Fixed
+
+- Context doctor v1.2.2: the status header's LEADING CLAUSE decides
+  completion. Headers like "Active — Phase 4 is COMPLETE" or "active,
+  essentially complete" were read as completed because completion vocabulary
+  anywhere in the value outranked the author's leading verdict — four of the
+  eight status disagreements in the corpus census were this false positive.
+  With corpus-derived regression tests.
+
+## [4.13.1] - 2026-08-03
+
+### Fixed
+
+- `synthesis-context-lifecycle` doctor v1.2.1: explicit `--source` runs no
+  longer write the corpus report cache — only full config-discovered runs
+  do. The first thing to overwrite the real cache with partial state was the
+  doctor's own test suite, caught minutes after 4.13.0 deployed by the new
+  SessionStart surfacing reading "1 project" as the corpus. Fixture runs are
+  now also isolated via SYNTHESIS_HOME, with regressions for both.
+
+## [4.13.0] - 2026-08-03
+
+### Added
+
+- `synthesis-agent-conformance`: new `parity` mode — fast, filesystem-only
+  dual-client drift detection. Verifies the two source manifests agree, both
+  clients carry the plugin, both carry the SAME newest version, and that
+  version matches source main. The missing daily layer of the dual-runtime
+  guarantee; its first live run caught a real release that had reached
+  neither client. Fails closed when pointed at a plugin cache instead of the
+  source checkout.
+- `synthesis-context-lifecycle` v1.5.0 (doctor v1.2.0): every full-corpus
+  doctor run writes `$SYNTHESIS_HOME/context-doctor/last-report.json`, so
+  session-start hooks and consoles can surface corpus health without paying
+  for a fresh audit. Single-project runs never touch the cache. Enforcement
+  posture documented: fail-closed for the session's own worked projects at
+  day-end, report-only for the corpus.
+- `synthesis-daily-rituals` v2.18.0: the parity check joins Day-Start
+  Step 1; Day-End Step 7 gains the fail-closed active-project context gate.
+
+## [4.12.0] - 2026-08-03
+
+### Changed
+
+- `synthesis-daily-rituals` v2.17.0: Google Chat joins the channel syncs as a
+  first-class source beside Slack — in Day-Start Step 3b (retitled "Channel
+  Sync (Slack + Google Chat)"), the Mid-Day Sync Protocol, and Day-End
+  Step 1. Workspaces opt in by declaring `.agents/gchat-sync.yaml` (sibling
+  to `slack-sync.yaml`); without the config the step skips silently. The
+  sub-step encodes four disciplines from the first production rollout:
+  enumerate spaces fresh each run (per-meeting spaces churn daily), window
+  reads by `createTime` and treat a full page as truncated, preserve the raw
+  `users/<id>` on every line beside any resolved name (stable
+  workspace-universal keys make later authoritative correction mechanical),
+  and apply Slack-DM-grade confidentiality to Chat transcripts.
+
+## [4.11.0] - 2026-08-03
+
+### Added
+
+- New skill `synthesis-onboarding` v1.0.0: one-command onboarding for the
+  whole ecosystem. A stdlib-only convergence engine (`onboard.py`) installs
+  the synthesis-skills plugin into Claude Code and/or Codex (native plugin
+  CLI first, file-copy fallback), scaffolds `ai-knowledge-<workspace>`
+  repositories (`init-workspace`), and layers organization knowledge bases
+  and shared skills from a declarative `.agents/onboarding.yaml` manifest —
+  organizations ship configuration, never installer code. Idempotent
+  re-runs with receipts and conffile semantics (user-edited files are never
+  overwritten), adopt-in-place of existing clones, superseded-remote
+  migration, skill rename/removal tombstones (archive-first), a `doctor`
+  with the guard exit contract, plain-language guidance for non-engineers,
+  and a closing welcome that says what to try asking. Manifest schema and
+  the org wrapper-script template: `references/org-manifest.md`.
+- Root `onboard.sh`: curl-able bootstrap (POSIX sh + git only) that clones
+  or refreshes this repository and hands off to the engine. Stale caches
+  fail loudly instead of installing silently outdated content.
+
+## [4.10.0] - 2026-08-03
+
+### Changed
+
+- `synthesis-git-hooks` v2.3.0: the doctor's drift check no longer assumes
+  a personal checkout path for the skill source — a hardcoded default that
+  degraded the check on every other machine and violated this repository's
+  own no-personal-paths rule. Resolution now mirrors the conformance
+  suite's client-binary pattern: `$SYNTHESIS_GIT_HOOKS_SOURCE` when set
+  (authoritative; an empty value skips the check deliberately, and an
+  invalid value is reported as a doctor problem instead of silently
+  comparing against nothing), else the running script's own directory when
+  it is not itself an installed engine copy (repo checkouts, worktrees,
+  client plugin caches), else the documented locations the ecosystem's own
+  installers create. A source directory must carry all three engine files
+  to qualify, so a partial copy can no longer report "no drift" for the
+  files it lacks, and the doctor names the resolved source in its output.
+
+### Added
+
+- `synthesis-agent-conformance`: a `source.no-personal-workspace-paths`
+  scan enforcing the no-personal-paths repository rule mechanically —
+  workspace path segments in this public repository must be placeholders
+  or documented generic sample names, never a real username, and
+  home-anchored personal checkout paths are rejected wherever they appear.
+
+## [4.9.0] - 2026-07-31
+
+### Added
+
+- `synthesis-context-lifecycle` v1.4.1: a context-integrity doctor
+  (`context_doctor.py`) for the durable project layer — the one protective
+  layer in the stack that had no health check. Audits every project in every
+  configured source for tier completeness, budgets, cross-tier status
+  agreement, freshness against real git history, and durability (tracked,
+  committed, pushed), with the guard exit contract (0 healthy / 1 defects /
+  2 cannot establish ground truth) and no silent skips: anything unverifiable
+  is reported. Hardened against 30 adversarially-confirmed findings before
+  merge, including a fail-open push-state collapse that let never-pushed
+  context report healthy.
+- `synthesis-daily-rituals` v2.16.0: the context doctor joins Day-Start
+  Step 1 beside the git-hooks and message-guard doctors.
+
+## [4.8.1] - 2026-07-30
+
+### Fixed
+
+- `synthesis-git-hooks` v2.2.1: the doctor and hook runs no longer print
+  Python `FutureWarning` noise while validating POSIX bracket expressions
+  (`[[:alnum:]]`) that are valid ERE for grep. A protective tool that emits
+  benign warnings teaches its user to ignore its output.
+
+## [4.8.0] - 2026-07-30
+
+### Added
+
+- `synthesis-disclosure-policy`: two-category disclosure governance for
+  people who publish under their own name while handling sensitive
+  client work. Published-precedent facts (deliberately public biography, recorded
+  in an evidence-cited ledger) are restatable; unapproved disclosures —
+  anything learned from private context, negative statements, operational
+  detail, identifying descriptions, aggregation — stay closed. Ships the
+  ledger schema, five decision tests, surface-class model, and an adoption
+  quickstart with a ledger template.
+- `synthesis-git-hooks` v2.2.0: publication-surface classification.
+  `strict_repo_patterns` pins public OSS repos strict regardless of
+  remotes; `public_surface_patterns` classifies author-published site
+  repos as `public-surface` — full Tier 1 enforcement (previously these
+  either skipped Tier 1 entirely under personal remotes or blocked the
+  author's own published biography under strict), minus only the exact
+  name patterns the `disclosure_ledger` records as published precedent.
+  Evidence-free ledger entries, missing ledgers, and unparsable ledgers
+  fail closed; the doctor validates ledger allowances against the policy
+  and flags stale ones; commit-message scanning now also covers
+  public-surface repos.
+
+## [4.7.0] - 2026-07-30
+
+### Added
+
+- Record-freshness verification: `conformance.py` activation and handoff, and
+  the shared SessionStart context, now compare the local project record with
+  its last-fetched upstream and flag how many upstream commits touching the
+  project subtree are missing locally. A stale checkout can no longer report
+  phase, status, and plan with silent confidence; activation refuses to write
+  a pointer from a stale record.
+- Payload-parity handoff check: `handoff` runs the shared SessionStart script
+  in both client envelope formats against the live pointer and verifies the
+  enveloped context is identical, without needing either client binary.
+- Lease self-declaration (`synthesis-project-management` v1.8.0): a
+  lease-managed board carries a `Lease: <remote>` header line that travels
+  with the board content. A lease-aware helper on a machine whose
+  `lease.json` has not arrived (or was lost) refuses to mutate instead of
+  writing a local-only change that the next lease refetch would drop. The
+  `lease-disable` command retires a lease sanctionedly — publishing the
+  undeclared board through the compare-and-swap path and moving the local
+  config to a timestamped `.disabled-` file — with `--local-only` reserved
+  for unreachable-remote recovery; the doctor flags declared-but-unconfigured
+  boards.
+- `retire_worktree.py`: fail-closed retirement of merged feature worktrees.
+  Takes the repository explicitly (never inferred from the working
+  directory), refuses main worktrees, dirty trees, detached heads, branch
+  mismatches, and a working directory inside the target; verifies branch
+  ancestry against the freshly fetched remote base before removing anything;
+  deletes local branches with safe delete only and remote branches only on
+  request.
+
+## [4.6.0] - 2026-07-30
+
+### Added
+
+- Client-binary resolution for verification tooling
+  (`synthesis-agent-conformance/scripts/client_binaries.py` and matching
+  installer shell helpers): explicit `SYNTHESIS_CLAUDE_BIN` /
+  `SYNTHESIS_CODEX_BIN` overrides (a set-but-empty override means absent),
+  then `PATH`, then documented stable install locations, so conformance,
+  doctors, and plugin detection give the same answer from either client's
+  shell, cron, or CI.
+- An opt-in git-backed coordination lease (`lease.json` beside the board):
+  every board mutation publishes through an atomic git ref compare-and-swap
+  on a shared remote, with bounded retry on concurrent advance, fail-closed
+  behavior on unreachable remotes, mirror refresh in `status`, and sync
+  verification in `doctor`. Enables safe same-resource coordination across
+  machines; `synthesis-project-management` v1.7.0.
+
+### Fixed
+
+- `conformance.py runtime` no longer crashes with an unhandled traceback when
+  a client CLI is missing; every runtime check reports a structured failure
+  and the remaining check groups still run.
+- Coordination claim overlap detection now normalizes `~`, absolute, and
+  repository-relative claim spellings onto path segments, so two spellings of
+  one real path conflict instead of passing silently; ambiguous alignments
+  are treated as conflicts.
+- Plugin inventory checks validate JSON shape and count only enabled
+  installations for both clients.
+- The `day-end` launcher resolves its agent CLI through the same override /
+  PATH / known-locations order, honors `DAY_END_AGENT_CMD` as a documented
+  executable path, and no longer silently degrades "auto" to whichever client
+  happens to be on the terminal's PATH.
+
+## [4.5.0] - 2026-07-30
+
+### Added
+
+- A content-addressed inbox-cleanup engine runtime under
+  `~/.synthesis/inbox-cleanup/engine/`, with an atomic `current` link shared by
+  Claude Code, Codex, and direct Agent Skills clients.
+- Installer regression coverage that proves the source tree and working
+  directory survive installation, repeated installs are idempotent, and
+  drifted immutable releases fail closed.
+
+### Changed
+
+- `synthesis-inbox-cleanup` v1.4.0 no longer requires operational scripts to
+  resolve a client-owned, version-numbered plugin cache.
+- The installer recognizes both regular Git checkouts and linked worktrees,
+  and provenance replaces the obsolete hardcoded fallback list during
+  source-free uninstall.
+
+## [4.4.4] - 2026-07-30
+
+### Fixed
+
+- Completed projects now emit no pending actions during activation or
+  SessionStart instead of relabeling completed checklist items as next work.
+
+## [4.4.3] - 2026-07-30
+
+### Added
+
+- Tracked, agent-neutral repository instructions for contributors working in
+  Codex, Claude Code, or another `AGENTS.md`-aware client.
+- A one-line Claude Code import adapter that keeps both clients on the same
+  repository rules.
+
+### Changed
+
+- CI now rejects missing or divergent repository instruction adapters.
+
+## [4.4.2] - 2026-07-30
+
+### Fixed
+
+- Installer status now resolves its authoritative skill tree from the current
+  source checkout or native plugin before consulting the legacy cache.
+- Claude Code and Codex plugin checks require the plugin to be enabled and
+  report each client's state explicitly.
+- A stale or unavailable cache now fails with a clear diagnosis instead of
+  emitting filesystem errors followed by a false pass.
+
+## [4.4.1] - 2026-07-30
+
+### Fixed
+
+- Active-project activation now records the pending items from a project's
+  `What's Next` checklist instead of copying the first five lines regardless
+  of completion state.
+- SessionStart context and active-project activation share one checklist
+  parser, including multiline items.
+
+## [4.4.0] - 2026-07-30
+
+### Added
+
+- Cross-agent coordination schema v2, with machine/project identity,
+  checkpoint heartbeats, isolated worktree/branch registration, and explicit
+  project-context roles.
+- Same-project parallelism through one canonical context owner plus
+  non-overlapping contributor sessions and session-specific reconciliation
+  artifacts.
+- Fail-closed checks for overlapping claims, shared worktrees or branches, two
+  context owners, and contributor claims on canonical project context.
+- Migration, heartbeat, strict status, JSON status, and doctor commands for the
+  coordination helper.
+
+### Changed
+
+- `synthesis-project-management` v1.6.0 distinguishes different-project
+  parallelism, same-project contribution, git-state isolation, and the
+  cross-machine locking boundary.
+- SessionStart context and conformance accept and validate the v2 active-session
+  table.
+
+## [4.3.0] - 2026-07-29
+
+### Added
+
+- Codex `agents/openai.yaml` interfaces for every public synthesis skill, with
+  source conformance that requires the interface, invocation token, and a
+  correctly sized short description.
+- An agent-neutral day-end installer that atomically places the launcher and
+  nudge under `~/.synthesis/day-end/`, refuses symlinked runtime roots, and
+  supports persisted `auto`, `codex`, or `claude` selection.
+- Dual-client message-guard diagnosis: every installed Claude Code and Codex
+  hook configuration must independently gate the complete correspondence tool
+  family.
+- Regression coverage for day-end source survival, Codex-first auto selection,
+  symlink refusal, both client hook shapes, and client-bound runtime paths.
+- Commit-hook calibration for exact canonical-file copies: unchanged committed
+  content is not reclassified as newly introduced, while a paired control proves
+  genuinely new sensitive lines still block.
+
+### Changed
+
+- `synthesis-daily-rituals` v2.16.0 uses the stable synthesis runtime for its
+  background automation instead of a client-owned skill cache.
+- `synthesis-slack-sync` v3.3.1 resolves its checker from the active skill root.
+- `synthesis-inbox-cleanup` v1.3.2 and `synthesis-git-hooks` v2.1.2 make native
+  Codex and Claude Code plugins their primary setup path.
+- `synthesis-message-guard` v1.1.0 treats an unwired installed client as an
+  unhealthy protection layer.
+
+## [4.2.0] - 2026-07-29
+
+### Added
+
+- `synthesis-kb-edit` v1.0.0: a plain-language, config-driven knowledge-base
+  editing and shipping workflow backed by `.agents/knowledge-base.yaml`.
+- A deterministic knowledge-base contract validator and path classifier.
+- `synthesis-okf` v1.1.0 metadata-consistency checks for configured
+  frontmatter, date-field aliases, inline duplicates and conflicts, taxonomy
+  values, title/H1 agreement, filenames, and topic routing.
+- Codex UI metadata for the knowledge-base skill family, with conformance
+  checks that keep invocation prompts aligned with skill names.
+- Coordination message writes now accept annotated Protocol headings and
+  return a clean failure instead of a traceback when the board schema is
+  invalid.
+
+### Changed
+
+- `synthesis-knowledge-capture` v1.1.0 now composes the configured OKF
+  validation and knowledge-base shipping layers instead of discovering
+  tool-owned repository skill copies.
+
+## [4.1.0] - 2026-07-29
+
+### Added
+
+- Cross-agent session coordination for independent Claude Code, Codex, and
+  other root sessions: a stable active-session table, source-area advisory
+  claims, asynchronous messages, explicit release, OS-locked atomic updates,
+  verified backups, overlap detection, and tests.
+- SessionStart and checkpoint coordination reads, plus a conformance command
+  that validates the shared board schema.
+
+### Changed
+
+- `synthesis-project-management` v1.5.0 makes claim-before-write part of the
+  session protocol.
+- `synthesis-checkpoint` v1.1.0 treats concurrent-session state as another
+  source of drift.
+- `synthesis-autopilot` records, refreshes, and releases coordination claims.
+
+## [4.0.0] - 2026-07-29
+
+### Added
+
+- Dual-runtime plugin manifests and marketplaces for ChatGPT/Codex and Claude
+  Code.
+- `synthesis-agent-conformance`, with source/runtime/instruction/handoff checks,
+  active-project activation, and lifecycle context recovery.
+- A shared lifecycle hook that restores verified project state at client
+  startup, resume, and Codex post-compaction session restart.
+
+### Changed
+
+- Moved the canonical public skills under `skills/`, giving the repository one
+  plugin-native source tree.
+- Updated project-management, context-lifecycle, checkpoint, skills-manager,
+  repo-guard, daily-ritual, git-hook, inbox, transcript, and Mac-sync guidance
+  for agent-neutral instructions and native client adapters.
+- Removed `~/.codex/skills` as a source-managed deployment target. Codex uses
+  the public plugin plus private `~/.agents/skills`; product-owned system skills
+  remain client-managed.
+- Replaced whole-file Codex config synchronization with an owned-key overlay
+  and runtime conformance check.
+
+## [3.19.0] - 2026-07-21
+
+### Changed
+
+- **`install.sh` drift handling: whole-directory detection, pre-overwrite backups, named warnings.** Three changes to how the bootstrap installer treats an installed skill copy that differs from source. (1) Drift detection now checksums the entire skill directory (excluding installer-written `.source.json` and Finder `.DS_Store`) instead of `SKILL.md` alone — a modified script, reference file, or data table (e.g. `tiers.yaml`) now registers as drift instead of being silently replaced. (2) Every drifted copy is saved to `${XDG_CACHE_HOME:-~/.cache}/synthesis-skills-backups/<UTC-run-stamp>/<target>/<skill>/` before the overwrite, including same-name directories that carry no install provenance; backups sit beside the cache directory rather than inside it, so recloning or uninstalling never deletes them, and the newest 10 runs are retained. (3) The end-of-run warning now lists each drifted skill by name, distinguishes unique skills from per-location copies, points at the backup directory, and no longer asserts "local modifications" — a checksum mismatch can equally be an installed copy that is merely older than freshly pulled source, and the installer cannot tell the difference. Motivating incident (2026-07-21): an update run piped through `tail` preserved only the count line — "3 skill(s) had local modifications" — while the per-skill DRIFT lines above it were cut off, and with no backups there was no way to reconstruct which copies had been replaced or what they contained. Investigation showed the count itself was misleading: one skill, one commit behind source, counted once per install location. The summary block now carries the names, so even a truncated tail answers the question, and the backups make it recoverable either way. `synthesis-skills-manager` bumped to v1.1.1 — its bootstrap-installer paragraph now describes the whole-directory drift coverage and backup behavior.
+
+## [3.18.0] - 2026-07-21
+
+### Added
+
+- **`synthesis-project-management` bumped to v1.3.0 — project naming convention.** New "Project Naming" section keys the naming rule to whether a project has a defined end state. Bounded projects (ones that will someday reach `completed`) get verb-first outcome names — `migrate-blog-to-astro`, `release-kb-company-wide` — so the finish line lives in the name, "is this done?" answers itself, and zombie `active` entries become visible on sight. Ongoing projects (operations seats, product stewardships) keep noun names, because there is no finish line to state; time-boxed instances of a standing role (`platform-2026-q3`) already carry their end in the date suffix, and wrapping them in a generic verb (`do-platform-2026-q3-work`) adds ceremony, not information. Generic verbs (`do-`, `work-on-`, `handle-`, `manage-`, `run-`, `support-`) are banned outright, which makes the rule double as a classification diagnostic: if no specific verb fits, the project probably isn't bounded — model it as `ongoing` or split it until concrete outcomes emerge. Existing projects keep their names; the convention applies going forward, and a mixed index is expected since `status` remains the machine-readable lifecycle field. The index.yaml example now shows all three shapes (bounded active, ongoing stewardship, completed).
+
+### Rationale
+
+Observed failure mode in long-running indexes: bounded projects named as nouns (`vendor-contract`, `bedrock-failover`) rot as `active` for months because nothing in the name says what done means — the reader can't tell a stalled arc from a standing stewardship without opening the project. Naming the outcome at creation forces scope definition exactly once, at the cheapest moment, and the generic-verb ban keeps the convention from decaying into `do-X-work` wrappers that carry no information.
+
+## [3.17.0] - 2026-07-18
+
+### Added
+
+- **`synthesis-implementation-integrity` bumped to v1.1.0 — skip-vs-pass aggregation trap in the Test Honesty pass.** New Step 6 names a specific reading error: "X passed, Y skipped, 0 failed" gets read as "tests pass," but it's a different claim — the tests that ran didn't fail, and some didn't run at all. A skip is an absence of information, not evidence. The new step asks whether the skipped set could plausibly contain the one test that validates the exact property a decision depends on, and treats a confident "no" as the bar for proceeding — not the aggregate count. The condensed Quick Integrity Check gets the same one-clause reminder. Field case included, genericized: a suite reporting "911 passed, 29 skipped, 0 failed" looked green; the skips were exactly the tests gated behind a live database connection, including the one that validated a workspace-isolation security control — which turned out to be a silent no-op once that test finally ran.
+
+### Rationale
+
+The existing Test Honesty pass already caught mock gaps and misleading test names, but had no check for the specific shape of this failure: a suite-level summary that aggregates skips and passes into one green verdict. That gap is most dangerous exactly where the stakes are highest — security, data-integrity, and irreversibility claims — because a skip there is silent, and "0 failed" is what a reader's eye catches on the way past it.
+
+## [3.16.0] - 2026-07-18
+
+### Added
+
+- **`synthesis-project-management` bumped to v1.2.0 — parallel sub-agent dispatch hygiene and paused-project scope re-verification.** New "Parallel Sub-Agent Dispatch" section names two risks specific to concurrent writers in the same project: git-index collisions (a bare `git commit` after `git add <your files>` commits everything currently staged, not just what you added — `git add` extends the index, it does not replace it — so `git status --short` / `git diff --cached --name-only` needs to run as a mechanical prefix to every commit, not a judgment call reserved for commits that "feel risky") and tracking-doc aggregation (a sub-agent that correctly leaves its siblings' in-flight work alone also means no single agent sees the combined result — the orchestrator, not any one sub-agent, reads every report as a set and reconciles the shared CONTEXT.md/index.yaml). Separately, Project Discovery gains a scope re-verification step: a paused project's stated "N items remaining" is a claim made at write time, not a live query, and goes stale the moment anything else touches the same corpus — even a workstream with no awareness the paused project exists. Re-derive the count from live disk/repo state immediately before batch-dispatching work against it. This is distinct from context-lifecycle's Session Start Protocol, which checks a file's own freshness against git log, not whether the file's scope claim still matches live reality.
+
+### Rationale
+
+Both additions come from real multi-agent orchestration incidents, not speculation: a git-index collision that swept a background agent's in-progress deletions into an unrelated commit, and a paused project whose recorded "remaining work" count was stale in both directions (some of it already done elsewhere, some of it newly created and uncounted) by the time it was resumed. Fan-out to concurrent sub-agents against one project, and pausing/resuming projects over weeks-to-months gaps, are now routine enough in practice that the skill should name the failure modes explicitly rather than leave them to be rediscovered.
+
+## [3.15.0] - 2026-07-17
+
+### Added
+
+- **New skill: `synthesis-okf` v1.0.0 — validate, convert, and author content for Google's Open Knowledge Format.** OKF v0.1 (announced 2026-06-12 by Google Cloud's Sam McVeety and Amir Hormati) formalizes the markdown-plus-YAML-frontmatter "LLM wiki" pattern this skill family already assumes — the spec's own §10 names it as a target use case. Google's reference repo ships an enrichment agent and an HTML visualizer, but no conformance validator or converter; this skill fills that gap with `okf_validate.py` (checks the spec's three hard conformance rules — parseable frontmatter, non-empty `type`, correct reserved-filename structure — plus soft-guidance warnings and link-checking) and `okf_convert.py` (idempotent frontmatter backfill: never overwrites existing metadata, derives `title`/`timestamp` from H1/git history, renames in-bundle `README.md` to the reserved `index.md` and regenerates it in spec style, walking every ancestor directory to the bundle root so purely-organizational subdirectories don't get skipped). Proven across multiple real conversions from a public 26-doc reference repo up through a 72-doc personal knowledge base and several others of varying size, with the lessons from each folded into the skill's own reference material.
+
+### Rationale
+
+A specification only helps if adopting it is cheap. Google's OKF repo defines the format precisely but doesn't ship the tooling to check or achieve conformance — exactly the gap synthesis skills exist to fill for the broader agent-skills ecosystem. Packaging the validator and converter as a portable skill (rather than leaving them as one-off project scripts) means any Claude Code, Codex, Cursor, or other Agent-Skills-compatible session can adopt OKF for its own knowledge base without re-deriving the tooling.
+
+## [3.14.0] - 2026-07-14
+
+### Changed
+
+- **`synthesis-model-tiers` v2.0.0 — BREAKING: role labels renamed `frontier/efficient/light` → `judgment/routine/bulk`.** The old top label collided with live vendor vocabulary within a day of shipping: the industry uses "frontier" for a vendor's entire current generation (OpenAI applies it to all three GPT-5.6 models, including the cost-optimized one), the opposite of our top-rung meaning — and a tier vocabulary whose primary readers are LLM agents must be corpus-collision resistant, because agents resolve collided words the vendor's way. The new labels promote the roles' own definitions into the label position: they name the WORK (judgment calls where being wrong is expensive; routine rule-following execution; high-volume bulk), which no vendor's marketing will ever collide with. New `references/naming-rationale.md` records the selection criteria, the cross-industry analogies (fuel grades, airline cabins, shipping classes — durable grade vocabularies name the buyer's decision, not the product), the full rejected-candidates table (critical, premium/standard/economy, performance/balanced/efficiency, heavy, lite, base, deep, and others — each with its specific collision or inversion), and the borrowing rule: use an industry word only where you mean exactly what the industry means (`flagship` stays; `frontier` goes). tiers.yaml bumps to `version: 2`; consumers (Ragbot v3.6.0 `tier:` values, global agent instructions, agent memory) rename in the same coordinated pass.
+
+## [3.13.0] - 2026-07-14
+
+### Changed
+
+- **`synthesis-model-tiers` v1.1.0 — one tier vocabulary across policy and product catalogs, plus local-model coverage.** Product catalogs (reference implementation: Ragbot's `engines.yaml` as of v3.6.0) now carry the same `frontier` / `efficient` / `light` labels in a per-model `tier:` field, replacing the older `small` / `medium` / `large` capability classes — one vocabulary for one concept, everywhere it appears. `tiers.yaml` gains an `ollama` provider block (hardware-gated: role lists carry only laptop-fit local models; bigger MoEs remain catalog-only), and the resolution rules document the catalog ⊇ role-lists containment. Consistency between the two files is now ENFORCED, not observed: Ragbot's `tests/test_engines_yaml.py` validates every catalog tier against the vocabulary and cross-checks the installed `tiers.yaml` (models named in role lists must exist in the catalog under the same tier), skipping cleanly on machines without the skill.
+
+### Rationale
+
+The initial release framed role labels and catalog capability classes as intentionally separate vocabularies. In practice they are the same three-rung concept wearing two sets of words, and the correspondence between the files was maintained only by editing them in the same sitting. Renaming the catalog field and adding the cross-check turns silent drift into a loud test failure.
+
+## [3.12.0] - 2026-07-14
+
+### Added
+
+- **New skill: `synthesis-model-tiers` v1.0.0 — cross-provider model-tier convention.** Three role labels — **frontier** (judgment, novel patterns, skill authorship), **efficient** (routine rule-following execution), **light** (high-volume bulk) — resolved to current model identifiers per provider in a single canonical `tiers.yaml`. Skills, project docs, and agent memory reference the labels and never hardcode model names; when a vendor ships a new generation, one file changes. Per role and provider the mapping is an ORDERED PREFERENCE LIST (first = preferred, rest = supported fallbacks), which lets a four-rung vendor ladder express itself inside three roles (e.g., a newest-flagship-first frontier list with the prior flagship as the cost-conscious fallback) and absorbs future rung-merges without schema change. Ships with an update protocol (verify ids against official provider docs, never training data; per-provider verification dates; literal `unknown` over guesses; models only move forward) and consumer guidance for skills, memory, and products. Deliberately NOT a capability catalog — context windows/pricing/thinking metadata stay in each product's own config.
+
+### Rationale
+
+Model names were creeping into skills, memory files, and standing instructions across multiple agentic tools, each copy going stale on its own schedule. One role-to-id table — the same canonical-YAML-plus-readable-mirror pattern already used for the workspace repo manifests — makes tier language portable across Claude Code, Codex, and future runtimes, and makes vendor refreshes a one-file change.
+
+## [3.11.2] - 2026-07-09
+
+### Fixed
+
+- **`synthesis-meeting-transcripts` bumped to v0.4.1** — `optional-workspace-mcp/start.sh`'s already-running check no longer trusts `kill -0` alone: after a reboot the OS can recycle the recorded PID for an unrelated process, making the stale PID file look live, so the script no-ops with exit 0 and a `KeepAlive={SuccessfulExit=false}` supervisor never restarts the server. The check now also verifies the PID's command line matches workspace-mcp and clears the stale PID file otherwise. Field case: the server was down for ~24 hours while launchd reported a healthy last-exit-0, because the pidfile pointed at a recycled macOS system-service PID.
+
+## [3.11.1] - 2026-07-09
+
+### Changed
+
+- **`synthesis-catchup-ledger` bumped to v0.2.1** — Step 3 (judgment pass) gains the owning-CONTEXT rule: before classifying a cross-project item, read the owning project's CONTEXT.md; index descriptions, roll-up summaries, and third-project mentions are secondary caches that lose to the owner's working memory. Extracted from a field case where a stale index description said "pending" while the owning CONTEXT recorded the approval.
+
+## [3.11.0] - 2026-07-08
+
+### Added
+
+- **`synthesis-daily-rituals` bumped to v2.14.0 — Day-End Closure: two-speed day-end, owed-weekly review, decay tags, day-end state.** The day-end gains a first-class **Quick Close** mode (~10 minutes, exactly three human moments: a send-or-release pass over decay-tagged drafts, keep/drop curation of the day's lesson candidates, and a closure read-back), with the session asking the one-letter mode question every time. The Weekly Loose-Ends Review decouples from Friday evening: it becomes owed-weekly, running at the first ritual on/after Friday — day-start included, any mode — tracked via a new `~/.synthesis/day-end/state.json` producer (consumers: the synthesis-console day-end chip, a state-aware evening nudge, the day-start brief line). New plan-generation conventions: time-sensitive drafts carry a `**Decays:** YYYY-MM-DD (reason)` line from creation, and Day-End Step 4 becomes an explicit send-or-release pass over the tagged set; every new commitment line gets a do-by, a Decays tag, or an explicit park; daily plans gain a `## 🌱 Lesson candidates` H2 any session can append to during the day so the day-end curates warm insights instead of recalling them. New `scripts/`: a `day-end` LAUNCHER (opens an agentic session with the ritual invocation as the first prompt — the ritual itself always runs inside the agent session) and a notification-only LaunchAgent nudge (weekdays 16:55, suppressed once today's day-end ran, generic fixed banner text). The autonomous-alerts section is aligned with the alert-confidentiality model: spoken alerts and banners carry zero identifying content and honor the `~/.synthesis/quiet-audio` mute flag.
+
+### Rationale
+
+Field evidence from a four-week catch-up reconciliation: batch send-passes succeeded on every day a ritual ran, every communication decay clustered on the zero-ritual days, and the Friday-only weekly review was silently disabled for three consecutive weeks because it lived inside the ritual being skipped. The redesign makes the default evening close small enough to never skip, decouples the weekly safety net from the most-skipped ritual, moves lesson capture to the moment of insight, and makes skipping visible. The launcher-not-runner distinction is explicit — rituals are Agent Skills that run inside agentic coding sessions; the shipped script only removes cold-start friction — and the only scheduled artifact is a notification, never a mutation.
+
+## [3.10.0] - 2026-07-08
+
+### Added
+
+- **New skill: `synthesis-autopilot` v1.0.0 — autonomous-execution mode for explicitly delegated work.** A thin composition layer, not a new methodology: one explicit delegation phrase ("take care of this for me," "autopilot this," "handle this end to end," "run with it — minimal check-ins") engages a mode that sequences the existing stack — synthesis-thinking-framework for open decisions, synthesis-project-management + synthesis-context-lifecycle + synthesis-checkpoint for compaction-proof state, synthesis-anti-shortcuts for solution quality and sub-agent hygiene, synthesis-implementation-integrity before any completion claim. Protocol unique to the mode: strict trigger discipline (explicit whole-task delegation only; ambiguity resolves to NOT engaging; never ask "should I use autopilot?"); a one-line activation acknowledgment (mode + plan-file path); a self-carrying plan file whose standing-instructions section restores the mode itself after compaction; a three-class decision protocol (constraint-determined → execute; open-and-important → thinking framework; user-only → batch at checkpoints while parallelizable work continues — never block the run on one question); an explicit standing-gates clause (delegation of a task is not delegation of reserved authority — deploy permissions, send-as-user prohibitions, confirmation-first rules, commit hygiene, and verification hooks all survive autonomy); sub-agent fan-out hygiene (≤5 deliverables per dispatch, no minimizing vocabulary in briefs, mandatory acceptance audit on non-clean returns); and confidentiality-safe completion/blocked alerts honoring the environment's mute convention. Domain-neutral: engineering, research, writing, analysis, and operations runs differ only in their verification analog.
+
+### Rationale
+
+Users who repeatedly delegate whole tasks retype the same standing-instruction paragraph per task, and the retyped block fails three ways: clauses drop between retellings (verification and the decision protocol go first), long runs outlive their own instructions when context compacts, and a paraphrase of a discipline is weaker than the skill that defines it. Encoding the delegation contract once — as a mode that composes the six skills already governing decisions, state, quality, and verification — removes the retyping and makes the contract itself compaction-proof via the plan file. Trigger discipline is the load-bearing design constraint: the same user closely supervises some work by choice, so the mode fires only on explicit delegation phrasing, and the asymmetry is stated in the skill (under-firing costs a few extra check-ins; over-firing removes supervision the user chose to keep).
+
+## [3.9.0] - 2026-07-08
+
+### Added
+
+- **`synthesis-mac-sync` bumped to v1.6.0 — per-workspace repo manifests (decentralized inventory).** The repo inventory moves from the central iCloud `git-repos.yaml` to one `repos.yaml` per workspace, living in the workspace's private context repo at `.agents/repos.yaml` and symlinked to `<workspace>/.agents/` by the existing v1.4.0 symlink layer — so cross-machine propagation is git (history, diffs, conflict detection), not iCloud. Schema separates scan-refreshed **fact** fields (path, remotes, default branches) from declared **policy** fields (workspace `status: active|dormant`, per-repo `ritual_sync`, `push_policy`, category, notes) that scans never touch. Two standing rules encoded: **retention** (departure or shutdown retires a workspace to `dormant` — retained on disk, sync paused, nothing ever auto-deleted; dead remotes report once and the clone is kept) and **selective cloning** (the manifest records chosen clones; never enumerate a remote org; listed-but-missing repos are surfaced as decisions unless a machine subscription opts into `auto_clone`). A thin router (`machines.yaml`) keeps the only centralized state: machine inventory, per-machine workspace subscriptions (supports restricted machines such as client-issued hardware), and the workspace → context-repo bootstrap map. The legacy `repositories:` section is transitional with a mandatory drift check until archived.
+- **`synthesis-daily-rituals` bumped to v2.13.0** — Day-Start 3a and Day-End 2 enumerate from `<workspace>/.agents/repos.yaml` (`ritual_sync: yes`) when present, honoring `status: dormant`; the workspace CLAUDE.md table remains the human-readable view and the fallback. The v2.12.1 no-activity-judgment rule applies to both sources.
+
+### Rationale
+
+Two independent repo lists (the central mac-sync manifest and the per-workspace CLAUDE.md tables) drifted in the same week — the central one was missing four repos and carried a three-week-stale remote layout. Decentralizing puts the list next to the workspace it describes (where agents already work daily), replaces the fragile additive-merge-over-iCloud discipline with git semantics, and compartmentalizes client inventories so a future restricted machine never holds other clients' names. The facts-vs-policy split is the drift fix: facts regenerate from disk safely; policy survives regeneration.
+
+## [3.8.1] - 2026-07-08
+
+### Changed
+
+- **`synthesis-daily-rituals` bumped to v2.12.1** — source-code sync scope hardening. Day-Start Step 3a and Day-End Step 2 drop the v2.7.0 "associated with active work" qualifier: the workspace `CLAUDE.md` "Workspace Repos" table is the complete decision about what to sync — every repo marked Yes syncs on every ritual run, and the agent must not re-apply its own judgment about which repos seem "active". A workspace excludes a repo by marking it No in the table, with the reason.
+
+### Rationale
+
+The "active work" qualifier delegated a scoping decision to per-run agent judgment, which reliably under-syncs: a collaborator repo judged inactive drifted for ~6 weeks, its default branch still tracking a legacy remote after a Git-host migration and silently accumulating "unpushed" commits that the repo guard flagged repeatedly. Declared configuration beats inferred activity — the table is cheap to edit, visible in diffs, and consistent across runs.
+
+## [3.8.0] - 2026-07-05
+
+### Added
+
+- **Agent Attribution convention** across the project-management skill family. `synthesis-context-lifecycle` bumped to v1.3.0 with the canonical "Agent Attribution" section: when multiple agents (Claude Code, Codex, Cursor, subagents, or different model/effort settings) contribute materially to a project, the session log records one compact attribution line per contributing agent — `agent / model / effort / scope / verified / ref` — at the end of the session entry. Field rules: `model`/`effort` recorded only when the current session or user explicitly provides them, otherwise the literal `unknown` (never inferred — git authorship and `Co-Authored-By` trailers are authored claims, not harness-verified facts); `verified` names only checks that actually ran; no secrets, OAuth/callback URLs, or private config values in any field. Placement follows the tier lifecycle: attribution lines live in `sessions/YYYY-MM.md`; CONTEXT.md gets at most a short `(via <agent>)` tag when identity changes interpretation; REFERENCE.md carries only stable agent facts; substantial artifacts may open with a short Provenance block. Session template updated with the optional line; CONTEXT.md "does not contain" list now excludes per-session provenance explicitly. Three worked examples: routine single-agent, cross-agent handoff with a capability-gap scope note, and multi-model/subagent orchestration.
+- **`synthesis-project-management` bumped to v1.1.0** — new "Agent Attribution" component (standalone summary of the same convention, pointing to synthesis-context-lifecycle for full field definitions); Session End protocol gains an "Attribute if warranted" step; Cross-Agent Handoff protocol gains an attribution step so the receiving agent knows who did what, with what verification.
+
+### Rationale
+
+Different agent tools commonly commit under the same human author identity, so git history alone cannot answer "which agent did this, at what capability, verified how." The convention makes provenance durable exactly where it helps future work — the episodic session log — without turning working memory into a telemetry stream. Attribution is opt-in by usefulness (cross-agent handoffs, capability-gap scoping, multi-model work, verification trust), never a per-edit log.
+
+## [3.7.1] - 2026-06-17
+
+### Fixed
+
+- **`synthesis-inbox-cleanup` bumped to v1.3.1** — the v1.3.0 explicit-TLS hardening (`ssl.create_default_context()`) broke IMAP connectivity on the python.org macOS Python, which ships without a usable system CA store: every iCloud/IMAP run failed with `CERTIFICATE_VERIFY_FAILED`. `_lib.py` now prefers certifi's CA bundle (`ssl.create_default_context(cafile=certifi.where())`) when certifi is installed, falls back to the system default otherwise, and surfaces a clear "install certifi" message if verification still fails. Certificate verification is preserved — this fixes the regression without reverting to an unverified connection. `install.sh` now checks for certifi alongside PyYAML.
+
+### Rationale
+
+The hardening was correct in intent (the pre-v1.3.0 `IMAP4_SSL(host)` default did not verify certificates) but was shipped without testing against a live IMAP connection. certifi is the standard remedy for python.org Python's missing CA store; preferring its bundle restores connectivity while keeping certificate-chain + hostname verification.
+
+## [3.7.0] - 2026-06-16
+
+### Changed
+
+- **`synthesis-inbox-cleanup` bumped to v1.3.0** — hardened the prompt-injection sanitizer (`scripts/sanitize.py`) against delimiter-breakout and several adjacent attack classes. The `<UNTRUSTED_EMAIL>` demarcation is now **nonce-bearing**: each message is fenced with a fresh CSPRNG token (`<UNTRUSTED_EMAIL nonce="...">`), and the wrapper token is **scrubbed out of the content entirely**, so an attacker who reads the open-source delimiter still cannot forge a closing tag to break out of the fence. Also added: repeated HTML-entity decoding (defeats entity- and full-width-encoded markers); stripping of bidi isolates (U+2066–2069) and the Unicode Tags block (U+E0000–E007F, "ASCII smuggling"); From-header split into address vs. attacker-controlled display name; URL defang; a `mixed_script_address()` homoglyph advisory flag (IDNA-aware) for the human-review gate; and a shipped output-side gate (`parse_and_validate` / `validate_disposition`) so callers stop hand-rolling the constrained-action-space check. Five new adversarial fixtures (delimiter breakout, encoded delimiter, tag smuggling, envelope spoof, homoglyph sender) and two standalone checks (output validator, mixed-script flag) added to `tests/run_poisoned.py`.
+- **Additional hardening from a full security audit** (same v1.3.0 release): a `RAW_INPUT_CAP` (256 KB) applied before the sanitizer's regex/NFKC/entity pipeline (resource-exhaustion DoS guard); scrubbing of the sanitizer's own structural labels (`[envelope …]`, `From-address:`, `(attacker-controlled)`) from content so a body cannot forge a fake verified envelope; a fail-closed credential-at-rest permission check on the `imap.secret` fallback (refused if group/other-readable) plus a `0700` private dir; explicit `ssl.create_default_context()` for the IMAP connection (cert-chain + hostname verification); and YAML `safe_load` inside a context manager. The deterministic engine audited clean — `SEARCH ALL` + filter-in-Python (no IMAP injection), hardcoded move targets, dry-run default, recoverable Trash.
+
+### Rationale
+
+The skill is open source, so the wrapper delimiter is public knowledge. A fixed `<UNTRUSTED_EMAIL>` tag is therefore forgeable: an attacker pastes a closing tag into an email body, then their own instructions, then a re-opening tag, and a naive wrapper lets the injected text escape the "treat as data" fence. The per-message nonce makes the closing delimiter unpredictable, and scrubbing the token from content removes the marker entirely — two independent locks, both of which must fail for a breakout. The same review surfaced adjacent gaps (encoded/invisible markers, body-forged envelopes, homoglyph senders, unvalidated model output) that the release closes together. The architectural layers (deterministic engine writes, LLM only proposes, human-gated `--apply`) already contained the blast radius; this hardens the demarcation layer so it is no longer the trivially-bypassable link.
+
+## [3.6.3] - 2026-06-15
+
+### Changed
+
+- **`synthesis-inbox-cleanup` bumped to v1.2.4** — scoped the v1.2.3 `google_subject_trash` lifecycle-trash to Google's personal-account system only, via a new `catchall.google_lifecycle_senders` (default `accounts.google.com`). Workspace/billing senders (`workspace-noreply@google.com`, `payments-noreply@google.com`) are never matched, so admin/billing/renewal notices for a domain the user administers are never trashed — even with a "subscription is being deleted / account inactive" subject. The decision moved into a unit-testable `should_lifecycle_trash()`, and notices naming a protected domain (`spare_subject_keywords`) stay spared as a second layer.
+
+### Rationale
+
+v1.2.3 matched any Google sender by subject. A domain administrator receives genuine lifecycle/billing notices for managed domains from Workspace and Payments senders, addressed to their catch-all — so a future suspension/deletion notice could have been trashed. Real mail confirmed these arrive from `workspace-noreply@google.com` / `payments-noreply@google.com`, distinct from the `accounts.google.com` personal-account system that sends the stranger-recovery notices; scoping by sender removes the risk without weakening the stranger-recovery cleanup.
+
+## [3.6.2] - 2026-06-15
+
+### Added
+
+- **`synthesis-inbox-cleanup` bumped to v1.2.3** — `icloud_catchall_google_purge.py` gains a `catchall.google_subject_trash` config list. Google account-lifecycle notices (inactivity / "being deleted" / "sign in to keep it") are now trashed by subject even when addressed to a real/spare recipient on the catch-all, not only to stranger aliases.
+
+### Rationale
+
+A catch-all domain owner's real address can be set by a stranger as the recovery address on the stranger's own Google account; Google then mails account-lifecycle notices to the owner's inbox. The manifest keeps them unconditionally because the Google sender lives in `never_touch` (to protect the owner's genuine security mail), and `never_touch` outranks `subject_rules` — so only a separate purge can remove them. The owner's own accounts are active and never receive lifecycle notices, so the subject is a safe deterministic signal; the account being warned about is named only in the body, which no rule reads. Security-alert and sign-in subjects do not match the list and stay in the inbox.
+
+## [3.6.1] - 2026-06-12
+
+### Changed
+
+- **`synthesis-daily-rituals` bumped to v2.10.1** — grounding-protocol hardening for the higher-volume agent-assisted-send era. The "No stale information" verification item now requires checking beyond the target thread: a topic may be resolved in any other channel, DM, or email, and a message rendered obsolete anywhere is obsolete everywhere. Temporal Integrity gains check #5 (cross-channel / cross-medium obsolescence sweep; full-thread re-pull before any email reply; full fact re-verification for drafts older than 24 hours) and points agent send-paths at enforcing this as a mandatory send-time gate.
+
+### Rationale
+
+When an agent sends a small percentage of a user's messages, a stale send is an occasional embarrassment; when it sends a large percentage, staleness checking must be structural. Same-day proof case: a plan asserted a "4 PM meeting today" that a newly-synced channel showed had already happened the prior afternoon — caught by exactly this class of cross-surface sweep before any message referenced it.
+
+## [3.6.0] - 2026-06-12
+
+### Changed
+
+- **`synthesis-daily-rituals` bumped to v2.10.0 — Cockpit Mode.** Adds an alternative canonical day-plan mode for users whose discretionary time is scarce and preemption-prone: (1) budget-bound plans that read the calendar first and commit ≤70% of discretionary windows (preemption buffer explicit in the header); (2) stakes-routed outbound communications via a three-tier authority matrix (Tier A agent-sends with bot labeling + an "On your behalf" digest log; Tier B one-tap APPROVE/EDIT/SKIP batches of ≤5; Tier C user-original work capped at 3 items per plan, each bound to a named calendar window); (3) preemption-is-normal semantics — same-day meetings drop the lowest Tier-C item to the queue automatically, with the synthesis-catchup-ledger ratchet as the safety net. Day-start Steps 1-5 unchanged; only Step 6 (Day Plan) and Step 7 (Morning Messages) behave differently in this mode. Classic mode remains valid.
+
+### Rationale
+
+Six weeks of operating data from a heavy-meeting-load user showed a single structural fault: intake (syncs, transcripts, plans, drafts) runs at machine speed while every outbound action routes through one synchronous human review step regardless of stakes — so time-boxed communications expire in queue while operational work survives. Plans sized to the backlog rather than the calendar shattered on routine same-day meetings, compounding into guilt rather than throughput. Cockpit Mode re-routes the work instead of optimizing the documents: low-stakes operational sends move to the labeled agent tier, voice-and-judgment items become one-tap batches, and the human's plan shrinks to what their actual calendar can absorb. The companion consumer changes (one-tap surfaces, budget bar, Tier-A ticker) are specified in the synthesis-console cockpit design.
+
+## [3.5.0] - 2026-06-10
+
+### Added
+
+- **`synthesis-catchup-ledger` v0.1.0** — NEW skill. Reconciles pending, missed, and incomplete commitments after any gap in the daily-ritual cadence (travel, family visits, illness, crunch weeks). Sweeps daily plans + transcripts + project context over an arbitrary window; classifies every surfaced item into a six-state taxonomy (DONE-LATE / OPEN-ACTIONABLE / OPEN-DECAYING / DELEGATED-UNVERIFIED / OBSOLETE / EXPIRED→LESSON); produces a dated catch-up ledger at `catchup-ledgers/YYYY-MM-DD.md` (sibling to `daily-plans/`); routes survivors into daily plans in small slices (3-7 items) instead of flooding; carries a ratchet marker so successive sweeps compose incrementally. Ships with `catchup_scan.py`, a deterministic candidate generator that scans dated daily plans for unchecked task items, unsent draft blocks, undecided decision headings, and carryover/backlog sections — the same script-plus-judgment architecture as `thread_checker.py` and `verify_transcripts.py`.
+
+### Rationale
+
+The Weekly Loose-Ends Review (synthesis-daily-rituals v2.8.0) assumes Fridays happen; daily plans assume days happen. When the cadence breaks — a normal part of life, not a failure — commitments decay invisibly and the backlog survives as anxiety instead of as records. The ledger is the accounting close for a period of interrupted attention. The EXPIRED→LESSON category is deliberately first-class: items whose window closed are data about detection latency, recorded for learning and then explicitly released, never carried as guilt.
+
+## [3.4.1] - 2026-06-03
+
+### Changed
+
+- **`synthesis-meeting-transcripts`** bumped to **v0.3.1** — verifier-script ergonomics: (a) silently skips files matching `SKIP_PREFIXES = ('_', 'gdoc-', 'email-')` so meta/TODO files, Google Doc imports, and synced email threads don't trip false positives; (b) accepts files containing the literal marker `<!-- VERIFIER: no-source-transcript -->` as `OK (no-source-transcript)` for the legitimate case where Google Meet was recorded but transcription was never enabled at the source. The skill prose documents both mechanisms at Step 4.5. New `--no-skip` flag for debug audits. The 5 → 10 speaker-line threshold from v0.3.0 stays.
+
+### Rationale
+
+The v0.3.0 verifier was strict and produced two classes of false positives in production use: (a) audit noise from non-meeting files in the meetings directory (the TODO doc, gdoc imports), and (b) a real-but-not-fixable category — meetings whose source Doc never had a transcript section because transcription was off at meet-time. Without the no-source marker, the only way to satisfy the verifier was to fabricate a transcript, which the prior rules explicitly forbid. The marker closes that loophole the right way: explicit + grep-able + human-visible. Skip-prefixes are a separate concern (filing hygiene) but ride the same patch.
+
+## [3.4.0] - 2026-06-03
+
+### Changed
+
+- **`synthesis-meeting-transcripts`** bumped to **v0.3.0** — adds a mandatory post-save verification step (new Step 4.5) and an explicit "DO NOT extract content from the Gemini email summary" warning at Step 3. Both changes target the failure mode where an agent reads the Gemini-notes email body (which is a summary of the summary) and writes that to the local file without ever fetching the underlying Drive doc that contains the verbatim word-for-word transcript. The new Step 4.5 invokes a bundled `verify_transcripts.py` script that counts timestamp markers + speaker-attribution lines in each saved file and flags any file with fewer than (default) 5 timestamps + 10 speaker lines as INCOMPLETE. Wire-in points: the skill's protocol Step 4.5, optional integration into `synthesis-daily-rituals` Day-Start Step 2b, and an optional pre-commit hook on the workspace-private repo. The script's exit code is 0 (all OK) or 1 (incomplete files listed) for clean automation.
+
+### Rationale
+
+Skills with multi-component output mandates (notes + transcript, channels + DMs + group DMs, all 10 audit dimensions, etc.) silently fail when an agent stops at the first component because no mechanical check confirms the rest landed. This release embeds the check in the protocol the agent reads and provides the deterministic script the check calls — so future sessions can't substitute partial output for the protocol's full output without the verifier flagging it. Surfaced 2026-06-03 from a real session where multiple weeks of transcripts were saved as summary-only because the skill's mandate was not mechanically verified. Generalized as a lesson in the principal's knowledge base (2026-06-03). The same architecture (skill mandate + deterministic verifier) is the recommended pattern for other multi-component skills in this suite.
+
+## [3.3.2] - 2026-06-05
+
+### Changed
+
+- **`synthesis-inbox-cleanup`** bumped to **v1.2.2** — adds two `references/pitfalls.md` entries from a Gmail-to-Gmail mailbox migration session: (a) `imapsync` flag names must be verified against `--help` before destructive runs — `--delete1` / `--delete2` / `--maxerror` / `--expunge1` / `--expunge2` are the actual names, and a typo silently fails with exit 64 instead of doing what you asked; (b) Gmail IMAP throttle makes the `imapsync` ETA throttle-bound, not bandwidth-bound — observed rates of ~0.10 msgs/sec for a fresh account-pair migration, two orders of magnitude below the "1.5 MiB/sec" documented IMAP ceiling. Documentation-only refresh; no engine code change.
+
+### Rationale
+
+Both pitfalls came out of a single migration session where: (1) two flag typos (`--delete` and `--maxerrors`) silently exited the script and the failure went undetected for hours, and (2) the initial 15–30 minute ETA was off by a factor of 6× because Gmail throttled aggressively. Codifying both so future migrations check flag spelling before launch and budget realistic wall-clock from observed throughput rather than byte-count math.
+
+## [3.3.1] - 2026-06-01
+
+### Changed
+
+- **`synthesis-inbox-cleanup`** bumped to **v1.2.1** — adds a pitfall entry to `references/pitfalls.md`: "DKIM / SPF / DMARC pass confirms identity, not intent — do not use authentication as evidence of legitimacy." Operational lesson captured from a real session where the agent over-weighted technical authentication signals against the user's stated context ("I didn't order this"). The fix is a framing rule for LLM-agent inspection paths: present authentication results as evidence of domain ownership only, never as evidence of benign intent. When user-stated context contradicts technical signals, default to user context — they know what they bought, who they met, where they were; the agent only sees headers. No engine code change; documentation-only refresh.
+
+### Rationale
+
+Spoofed-brand domains routinely pass full authentication because they are real domains controlled by the impersonator, just registered on cheaper TLDs (`.support`, `.info`, `.org` siblings of a `.ai` brand). The DKIM / SPF / DMARC stack confirms "this domain authenticated as itself" — never "this sender is benign." Codifying the two-axis verdict (authenticated-by-claimed-domain AND wanted-by-recipient) so future sessions don't repeat the same misweighting.
+
+## [3.3.0] - 2026-06-01
+
+### Changed
+
+- **`synthesis-inbox-cleanup`** bumped to **v1.2.0** — extends the manifest engine's `subject_rules` to support (a) domain-less rules (omit the `domain` clause to match any sender) and (b) a new `subject_starts_with` operator for prefix-anchored matching alongside the existing `subject_contains` substring operator. Both extensions are backward-compatible with v1.1.0 rules.yaml entries — every existing financial subject_rule (Chase / JPM / Bilt / etc. with `subject_contains` + `domain`) continues to behave identically. Use case that drove the extension: calendar protocol responses (`Accepted:`, `Declined:`, `Tentative:`, `Canceled event:`) come from any colleague's domain, and the natural rule is "any sender, subject starts with one of these → archive." Pre-v1.2.0, that rule shape wasn't expressible. The `references/pitfalls.md` entry on this gap is updated with the second occurrence and the fix.
+
+### Rationale
+
+The second instance of the engine being unable to express a natural rule shape (the first was the Zoom no-negation case in v1.0.0). Two specific gaps showed up together: required `domain` clause and `subject_contains`-only matching. The two extensions are tightly scoped and don't touch the disposition vocabulary or precedence order; rule evaluation remains: `never_touch` > `subject_rules` > `senders` > `class_defaults` > `unmatched`. The `subject_not_contains` negation operator was deliberately NOT added in the same pass — that gap remains real (Zoom case) but its shape is sender-anchored not subject-anchored, so the API design is different. Document each occurrence; abstract per case.
+
+## [3.2.0] - 2026-05-31
+
+### Changed
+
+- **`synthesis-inbox-cleanup`** bumped to **v1.1.0** — adds two scripts that emerged from the first production triage session. (a) `scripts/icloud_inspect_senders.py` — per-sender deep inspection (read-only): aggregates all matching INBOX messages, lists distinct From variants + counts + date range + every unique subject most-frequent first, and prints one sanitized body sample from the most recent matching message via `sanitize.py`. This closes a discipline gap: the existing `icloud_tail.py` shows ONE example subject per unmatched sender, which is exactly the circumstantial signal the circumstantial-inference pitfall warns against. The inspector provides the primary evidence a categorization decision should be grounded in. (b) `scripts/icloud_archive_senders.py` — one-time imperative archive of INBOX messages from specific senders (dry-run default, `--apply` gate). This is the escape hatch for the past-archive-but-future-keep pattern: when a personal contact's existing backlog should leave the inbox but their future mail should stay visible, the manifest engine can't express that because it routes by sender pattern, not by date or thread state. Two-step solution documented in SKILL.md: add a `people_known` rule, then run the archiver. Also: `references/pitfalls.md` gains a "Subject rules support only positive `subject_contains`, not negation" entry documenting the engine gap that drove a Zoom-specific one-off during the same session. Adversarial test fixtures unchanged; all 4 still pass.
+
+### Rationale
+
+After the first real triage session using the v1.0.0 skill (28 senders examined with content, 287 messages relocated, ~20 new manifest rules), two helper scripts emerged from /tmp/ that filled clear engine gaps. The inspector enforces the rg@-lesson discipline (examine before classifying) and ensures `sanitize.py` is always in the loop when an LLM agent sees email content — without canonical tooling, sub-agents in future sessions would re-roll inspection logic without the defense layer. The archiver makes the recurring "past archive, future keep" pattern expressible without abusing the manifest engine.
+
+## [3.1.0] - 2026-05-31
+
+### Added
+
+- **`synthesis-inbox-cleanup`** (v1.0.0) — new skill packaging a manifest-driven email cleanup engine across three macOS tool stacks. iCloud and generic IMAP via Python + `imaplib` + YAML rules manifest (planner / executor / census / tail / catch-all Google purge). Microsoft 365 and outlook.com via Mail.app AppleScript template with idempotent whole-set `whose` clauses. Gmail via the workspace-mcp Gmail API for backlog cleanup plus native server-side filters for going-forward routing. Public engine; per-user rules live privately at `~/.synthesis/inbox-cleanup/`. Ships with a dedicated prompt-injection defense layer: a `sanitize.py` module (HTML stripping, NFKC normalization, invisible/bidi-control Unicode stripping, byte-budget truncation, `<UNTRUSTED_EMAIL>` demarcation) and four adversarial test fixtures (subject injection, body injection, HTML-hidden injection, Unicode trickery) with a runner that gates regressions in CI. Documentation includes a full threat model with ten-layer defense architecture, manifest schema, three-tool-stack decision tree, Gmail filter patterns, and a pitfalls catalog covering IMAP substring matching, threads-vs-messages, MOVE capability fallback, circumstantial-inference traps, and the homoglyph cross-script limitation.
+
+### Rationale
+
+Email cleanup at scale needs deterministic rules — LLMs in the decision path on every message are slow, expensive, and a prompt-injection target. The skill encodes the methodology that cleaned ~11,000 messages across 8 accounts and 3 tool stacks in production use, and surfaces the security architecture for any LLM-augmented path explicitly. The public-engine + private-rules separation lets the methodology be shared without exposing per-user data; the adversarial fixtures make the defense layer testable rather than implicit.
+
+## [3.0.0] - 2026-05-21
+
+Quality skills upgrade: the largest revision of the content-quality and fact-checking skills since the suite's creation. Anchors the open-source slop-detection system at [tools.synthesiswriting.org/slopcheck/](https://tools.synthesiswriting.org/slopcheck/).
+
+### Changed
+
+- **`synthesis-content-quality`** bumped from v3.1.0 to **v4.0** — the most comprehensive open-source slop-detection methodology in the suite. New `references/` subfolder structure (7 supporting files) holding the full pattern catalog separately from the SKILL.md prose. New top-level sections: A1 model-family fingerprinting (per-family pattern catalog across Anthropic Claude, OpenAI GPT, Google Gemini, Meta Llama, xAI Grok, DeepSeek, Mistral, Qwen), A2 substance and depth detection (the "beautiful word salad" axis, promoted from a single criterion in v3.1.0 to a full top-level section with 14 co-equal sub-criteria). Cross-cutting layer added: B1 causal-layer attribution (each pattern annotated with likely origin — RLHF reward shaping, training-data skew, alignment tuning, refusal-avoidance, helpfulness optimization, system-prompt artifacts, tokenizer/architecture, product-wrapper effects), B2 combined-signal fingerprints (22 high-fidelity co-occurrence patterns replacing v3.1.0's count-based heuristic), B3 calibration data (signal strength times base rate per family, year-stratified for historical patterns). Era metadata applied to every pattern (active/declining/historical/deprecated) so the catalog works on the entire LLM era as a **compounding archive** — newsrooms doing forensic review of 2023 articles get the same depth of analysis as editors checking today's drafts. ESL safe-harbor calibration codified.
+- **`synthesis-fact-checking`** bumped from v1.1.0 to **v2.0** — new `references/` subfolder (5 supporting files). Nine new protocol sections (C1.1 through C1.9): nested attribution and second-party quote handling, paraphrase boundary drift, composite quote detection, position-shifting checks, source-translation drift, URL rot vs hallucination, AI-generated synthetic sources, citation laundering chains, tool-specific hallucination signature checks per LLM family. Refresh of the existing 4a-4g common-error patterns.
+- Related skills cross-referenced and lightly updated: `synthesis-writing-pitfalls`, `synthesis-writing-craft`, `synthesis-clean-text`.
+
+### Added
+
+- **`tools/slop-detection/manifest.md`** — stable URL listing every skill file the slop-detection methodology needs. Used by the hosted web app, the Slopcheck GPT, the Slopcheck Claude Project, and the prompt-mode chatbot path so all of them load the same canonical methodology.
+- **`tools/slop-detection/prompt-template.md`** — user-facing template for invoking the methodology in any chatbot with web-fetch.
+
+### Rationale
+
+The v3.1.0 catalog was strong on general AI patterns but had four gaps: (1) no family-specific fingerprinting (a "% AI-generated" score is less useful to an editor than "this looks like Claude / GPT / Gemini output"); (2) substance-and-depth was buried in one criterion when it deserved a full axis (slop is the deeper enemy than AI provenance; the tool catches both axes and reports them separately); (3) no causal-layer attribution (editors want to know *why* a pattern exists, not just spot it); (4) no era metadata (the catalog became stale as patterns got trained out of newer model versions).
+
+v4.0 addresses all four gaps. The compounding-archive principle (patterns never deleted, only retired with era tags) is what makes the catalog uniquely valuable: it works on the entire LLM era, not just the current crop. The two-axis discipline (AI-provenance signals plus slop-independence) reframes the problem from yes/no provenance judgments (increasingly unhelpful as AI assistance becomes normal) to substance-and-depth quality (what editors and readers actually care about).
+
+## [2.5.0] - 2026-04-21
+
+### Added
+- **`synthesis-meeting-transcripts`** (v0.1.0) — new skill for fetching AI-generated meeting transcripts (Gemini notes + full word-for-word dialogue) from Gmail/Drive into local markdown archives. Tool-agnostic core — works with Anthropic's hosted Gmail/Drive connectors (single account) or self-hosted multi-account MCPs. Per-project config via `.claude/meeting-transcripts.yaml` with named meeting patterns plus a generic fallback. Includes an `optional-workspace-mcp/` bundle with cross-platform auto-start (macOS launchd + Linux systemd user units), start/stop helpers, and a deterministic Python fetcher for shell/cron use. Replaces the manual Gmail → Google Doc → export-markdown → Downloads workflow.
+
+### Changed
+- **`synthesis-daily-rituals`** bumped to v2.2.0 — Step 2b "Meeting Transcripts" now documents an automated path via `synthesis-meeting-transcripts` as the preferred option, with the manual Downloads-folder path retained as a fallback for users without Gmail/Drive tooling.
+
+### Rationale
+Google Meet + Gemini produces excellent meeting notes + full transcripts, but accessing them requires a tedious manual flow: open Gmail, find the notes email, open the linked Doc, export as markdown with both tabs checked, move the file out of Downloads, archive the email. This new skill collapses that into a single invocation and integrates with the daily ritual so transcripts land in the project archive automatically. The tool-agnostic design keeps the common single-account path simple while making multi-account setups feasible for users with work spanning several Google Workspaces.
+
+## [2.4.1] - 2026-04-20
+
+### Changed
+- **`synthesis-code-integration`** bumped to v1.3.1 — the new "Branch Hygiene" section is now branch-name-agnostic. Previous wording hardcoded `main`/`develop`, which tied the rule to Gitflow-style teams and excluded GitHub Flow, trunk-based, environment-branch, and other workflows. The rule is now framed around generic terms ("PR target branch" and "staging branch"), with a Gitflow example kept as one concrete illustration rather than the default.
+
+## [2.4.0] - 2026-04-20
+
+### Changed
+- **`synthesis-code-integration`** bumped to v1.3.0 — added mandatory "Branch Hygiene: PR Branches Stay Clean of Staging Content" section with the anti-pattern explanation, the correct per-operation sequence for getting a commit on both PR branch and staging, rationale for why a polluted PR diff is harmful (reviewer time, scope concerns, squash-merge risk), and the incident that motivated the rule.
+
+### Rationale
+A one-commit chore PR was opened against `main`. To fast-forward a push to `develop` for staging, the agent merged `develop` into the PR branch. The PR diff ballooned to 6,900 changes from unreleased staging work. The team opened "request changes" on scope grounds. The correct pattern — push to develop as a separate operation, keep PR branch clean — is now codified in the skill.
+
+## [2.3.0] - 2026-04-16
+
+### Changed
+- **`synthesis-context-lifecycle`** bumped to v1.1.0 — replaced "Session-End Commit Requirement" with a "Commit Protocol" section that is not deferred to day-end. Added explicit scope rule: only commit repos touched in the current invocation, never workspace-wide. Added reasoning for why point-of-modification commits beat session-end commits (session never ends cleanly, modified rituals skip day-end, compounding uncommitted work).
+- **`synthesis-daily-rituals`** bumped to v2.1.0 — added full **Vacation / Observer Mode Ritual** section codifying the sync+context+commit pattern for users who are not actively working. Added top-level **Commit Protocol** section with the same scope rule. Added explicit commit-after-sync requirement to Mid-Day Sync Protocol. Documents what observer mode skips deliberately (messages, comms, amplification) vs. what it must keep (sync, transcripts, commits).
+- **`synthesis-repo-guard`** bumped to v1.1.0 — clarified that the skill is a detector, not a committer. Added "Detection vs. Commit" distinction explaining why detection is workspace-wide but commits must be per-invocation-scoped. Updated Claude Code hook recommendation: removed `--quiet` default (silent hooks teach nothing), added `--dirty-only` for scannable output. Added "Defense in Depth" section recommending both `Stop` and `SessionEnd` hooks for long-running conversation scenarios.
+
+### Rationale
+Context changes were going uncommitted during long-running and resumed sessions because the commit step was buried in day-end checklists that partial/modified rituals skipped. This release makes commit-and-push part of the same action as context modification, scoped to the current invocation's actual changes.
+
+## [2.2.0] - 2026-04-09
+
+### Added
+- **`synthesis-code-audit`** v1.0.0 — 10-dimension diff-based quality framework with PASS/WARNING/FAIL scoring, PR review mode cross-referencing, and context isolation principle
+- **`synthesis-preflight`** v1.0.0 — pre-merge quality gate framework with 6 orthogonal dimensions, temporary considerations pattern for tracking workarounds, and mechanical go/no-go verdict
+- **`synthesis-review-triage`** v1.0.0 — PR prioritization methodology with weighted scoring (review gap, CI, age, size, labels), author-response detection, queue classification, and prior-review gate
+
+### Changed
+- **`synthesis-pr-review`** — expanded "Where This Fits" table from 4 to 8 engineering skills covering the full development lifecycle; added code-audit cross-reference section
+- **`synthesis-implementation-integrity`** — expanded "Where This Fits" table to include code-audit and preflight in the verification chain
+- **`synthesis-codebase-review`** — expanded "Relationship to Other Verification Skills" to include code-audit and preflight
+- **README** — added 3 new skills to Engineering table, updated skill count to 29
+
+### Fixed
+- **install.sh** — added 7 missing skills to uninstall fallback list (4 pre-existing: implementation-integrity, skills-manager, slack-sync, voice-profiler + 3 new: code-audit, preflight, review-triage)
+
+## [2.1.0] - 2026-03-19
+
+### Added
+- **`synthesis-thinking-framework`** — new skill: four-mode thinking methodology (first principles → systems → complexity → design) with pre-response protocol
+- **`synthesis-mac-sync`** — new skill: multi-Mac configuration sync via iCloud with git repo sync, machine inventory, and one-time action system
+
+### Changed
+- **`synthesis-pr-review`** bumped to v1.1.0 — 6 improvements from a review sprint:
+  - Project-specific extension points (convention debt patterns, CLAUDE.md hooks)
+  - Scope governance check (PR title vs. actual file scope)
+  - Bundled test file detection
+  - Structured review comment format with severity labels ([M1], [S1], [C1], [N1])
+  - AI-assisted review verification step
+  - Post-merge verification reference (generic extension point)
+- **README** — added "Learn More" link to launch blog post, updated skill count to 22
+
+## [2.0.0] - 2026-03-18
+
+### Changed (BREAKING)
+- **All skills renamed with `synthesis-` prefix** for namespace protection
+- **3 content skills merged into 1:** `blog-promotion` + `social-media-post` + `content-promotion` → `synthesis-content-distribution`
+- **Skills renamed for clarity** (not just prefixed):
+  - `multi-contributor-synthesis-coding` → `synthesis-code-integration`
+  - `code-generation` → `synthesis-code-planning`
+  - `thought-leadership-writing` → `synthesis-article-writing`
+  - `hyperlink-research` → `synthesis-link-research`
+  - `ai-content-quality` → `synthesis-content-quality`
+  - `blog-revitalization` → `synthesis-blog-refresh`
+  - `message-condensation` → `synthesis-concise-messaging`
+  - `llm-project-setup` → `synthesis-llm-setup`
+  - `creative-writer-setup` → `synthesis-creative-writer`
+  - `technical-advisor-setup` → `synthesis-technical-advisor`
+  - `anti-watermarking` → `synthesis-clean-text`
+  - `response-synthesis` → `synthesis-response-merger`
+
+### Migration from v1.x
+```bash
+./install.sh uninstall && ./install.sh install
+```
+
+### Why breaking
+Generic skill names (`pr-review`, `fact-checking`) collide with other skill repos. The `synthesis-` prefix makes every skill globally unique and immediately identifiable as part of this collection.
+
+## [1.0.0] - 2026-03-18
+
+Initial release: 22 public Agent Skills. Superseded by v2.0.0 on the same day.
+
+### Installation
+
+```bash
+npx skills add synthesisengineering/synthesis-skills --global --all --copy
+```

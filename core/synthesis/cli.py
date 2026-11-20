@@ -1,0 +1,710 @@
+"""The `synthesis` command: board, projects, approvals and health in one small CLI."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+from synthesis import __version__, board, paths, project
+
+
+def _session(args) -> str:
+    given, own = getattr(args, "session", ""), paths.session_id()
+    if given and own and given != own:  # a shell acts only as the session it belongs to
+        sys.exit(f"refused: this shell belongs to session {own}; it cannot act as {given}")
+    session_id = given or own
+    if not session_id:
+        sys.exit("no session id: pass --session or run inside a harness session")
+    return session_id
+
+
+def cmd_claim(args) -> int:
+    from synthesis import checkout
+    sid = _session(args)
+    try:
+        session = board.claim(sid, args.paths, take_stale=args.take,
+                              project=args.project, goal=args.goal, harness=paths.harness())
+    except board.ClaimConflict as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    print("claimed:\n  " + "\n  ".join(session.claims))
+    claimed = [board.as_claim(p) for p in args.paths]
+    try:
+        found = checkout.dirty_under(claimed)  # someone's uncommitted work already here (2026-10-20)
+    except checkout.Unreadable as exc:
+        found = []
+        print(f"note: {exc}, so whether anyone's uncommitted work is already here cannot be said", file=sys.stderr)
+    checkout.snapshot_paths(claimed, "claim", sid)
+    for f in found[:10]:
+        last = checkout.last_claimant(f, exclude=sid)
+        print(f"note: {f} already has uncommitted changes" + (f", last claimed by {last['session']} (project "
+              f"{last.get('project') or '-'})" if last else ", under no recorded claim")
+              + "; keep them: edit around them, commit them with yours, or ask their owner on the board")
+    return 0
+
+
+def cmd_release(args) -> int:
+    """Releasing leaves no uncommitted work behind unowned (IR-07; 2026-10-20): commit it first, or hand it to
+    a named session or project, which is told what it now holds."""
+    from synthesis import checkout
+    sid = _session(args)
+    me = board.load(sid)
+    held = getattr(me, "claims", [])
+    wanted = {board.normalize(p) for p in args.paths}
+    going = [c for c in held if not args.paths or c in wanted or c.removesuffix("/**") in wanted]
+    try:
+        left_dirty = checkout.dirty_under(going)
+    except checkout.Unreadable as exc:  # what nobody could read is never released as clean
+        print(f"refused: {exc}, so the uncommitted work under these claims cannot be told; nothing was released",
+              file=sys.stderr)
+        return 1
+    shots = checkout.snapshot_paths(going, "release", sid)
+    if left_dirty and not args.hand_to:
+        print("refused: these files under the claims you are releasing have uncommitted changes:\n  "
+              + "\n  ".join(left_dirty[:10]) + "\nCommit them first, or hand them on with "
+              "`synthesis release --hand-to <session|project:id> ...`; nothing was released.", file=sys.stderr)
+        return 1
+    if left_dirty:
+        board.message(args.hand_to, sid, "Handing you uncommitted changes I leave in: " + ", ".join(left_dirty[:10])
+                      + (f" (snapshot {shots[0][:10]}; `synthesis journal <path>` says whether each was kept, and "
+                         "`--show` gives back what was)" if shots else "")
+                      + ". They are yours to commit or carry on.")
+    before = len(held)
+    left = len(getattr(board.release(sid, args.paths or None), "claims", []))
+    print(f"released {before - left} claim(s)" if before > left or not args.paths else "no claim matched: nothing released")
+    return 0 if before > left or not args.paths else 1
+
+
+def cmd_journal(args) -> int:
+    from synthesis import checkout
+    if args.show:
+        sys.stdout.flush()
+        sys.stdout.buffer.write(checkout.show(args.show, args.path))  # byte for byte: a binary file, CRLF line ends
+        sys.stdout.buffer.flush()
+        return 0
+    for row in checkout.journal(args.path)[:args.limit]:
+        left = row.get("left", [])
+        print(f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(row['at']))}  {row['sha'][:10] or 'none kept':<10}  "
+              f"{row['reason']:<14} {row.get('session', '')[:8]:<8}  {row['repo']}: {', '.join(row['files'][:4])}"
+              + (f" and {len(row['files']) - 4} more" if len(row["files"]) > 4 else "")
+              + (f"; {row.get('left_count', len(left))} not kept (past a limit, unreadable, or holding a credential): "
+                 f"{', '.join(left[:4])}" if left else "")
+              + ("; untracked files not looked at" if row.get("tracked_only") else ""))
+    return 0
+
+
+def cmd_index(args) -> int:
+    from synthesis import checkout
+    try:
+        print(checkout.index_set(args.project, args.field, args.value, paths.session_id()))
+    except ValueError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_who(args) -> int:
+    """The seats that can be reached, with their claims; --all adds the stale ones. A seat that holds a live wait is
+    reachable for the wait's whole bound (2026-11-12: nine hours into a wait this list left it out), and its row says
+    until when it waits; STALE stays what it was, a seat quiet past the threshold, whose claims no longer block."""
+    from synthesis import wait
+    now = time.time()
+    found = board.sessions()
+    for name in board.NEWER:
+        print(f"note: session file {name} was written by a newer synthesis (schema above {board.SCHEMA}); "
+              "update this plugin to read it fully, and never edit the file by hand")
+    for s in sorted(found, key=lambda s: -s.seen):
+        until = max((w["until"] for w in wait.live(s.session)), default=0)
+        if s.stale and not until and not args.all:
+            continue
+        age = int((now - s.seen) / 60)
+        print(f"{s.short or '-':<7} {s.session}  {s.harness:<11} {s.project or '-':<34} {age:>4} min ago{'  STALE' if s.stale else ''}"
+              + (f"  waiting until {time.strftime('%H:%M', time.localtime(until))}" if until else ""))
+        for c in s.claims:
+            print(f"    {c}")
+    return 0
+
+
+def cmd_msg(args) -> int:
+    """Send, and say what will deliver it (2026-11-11: mail to a project no session was bound to sat unseen)."""
+    from synthesis import wait
+    me = _session(args)
+    before = wait.live()  # who watches, read before sending: a watcher may take the message and go before we ask
+    try:
+        sent = board.message(args.to, me, args.text, durable=args.durable)
+    except board.AddressError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 1
+    reached, name = str(paths.read_json(sent).get("session") or ""), args.to.strip()[len("project:"):]
+    target = board.load(reached) if reached else None
+    how = (wait.watching(reached, me, before) or "it reads it at its next prompt" + (f"; {wait.wake(target)}" if args.wake else "") if target
+           else f"it is kept for every session that works on {name}" if args.durable
+           else f"no session is bound to {name} now: it is kept for the next one that runs `synthesis resume {name}`")
+    if args.wake and not reached:  # a kept message names no one session: each live session on the project is nudged, once
+        how += "".join(f"; {s.short}: {wait.watching(s.session, me, before) or wait.wake(s)}" for s in board.sessions()
+                       if s.project == name and s.reachable and s.session != me)
+    print(f"sent to {args.to}: {how}")
+    return 0
+
+
+def cmd_worktree(args) -> int:
+    from synthesis import worktree
+    return worktree.main((["--session", args.session] if args.session else []) + args.rest)
+
+
+def cmd_inbox(args) -> int:
+    session_id = _session(args)
+    me = board.load(session_id)
+    for m in board.inbox(session_id, me.project if me else "", mark_read=not args.peek, recent_hours=args.recent):
+        print(f"--- {time.strftime('%Y-%m-%d %H:%M', time.localtime(m['at']))} from {m['from']} to {m['to']}\n{m['text']}")
+    folder = project.find(me.project) if me and me.project else None
+    messages, unreadable = board.carried(me.project, folder) if folder else ([], [])
+    for m in messages[:20]:  # another Mac's handoff carried these in the project's records: the file's own words, quoted,
+        when = time.strftime("%Y-%m-%d %H:%M", time.localtime(m["at"])) if m["at"] else "at a time it does not give"
+        print(f"--- carried in {me.project}'s records ({m['file']}), from {m['from']} by its own header, {when}")
+        print("\n".join(f"    > {line}" for line in (m["text"].splitlines() or [""])))  # so no line of them passes for a frame
+    if len(messages) > 20:
+        print(f"{len(messages) - 20} more carried message(s): run `synthesis inbox` again")
+    for line in unreadable:
+        print(f"not read as a message: {line}", file=sys.stderr)
+    if messages and not args.peek:
+        board.mark_carried(me.project, [m["id"] for m in messages[:20]])
+    return 0
+
+
+def cmd_sends(args) -> int:
+    """The send window, batches and the day's send ledger. A window or a batch opens only on the principal's code for
+    exactly it: this command files the request, which grants nothing, and the hook opens it once the session's own
+    record shows him typing the code (the guard's sandbox: a shell writes nothing sealed). `close` ends both early."""
+    from synthesis import sends
+    if args.file and args.action != "batch":  # the review of 5.23.0: `sends open -- -h` took -h as a file and opened
+        print("a file goes only with `synthesis sends batch`", file=sys.stderr)
+        return 2
+    if args.action == "batch":
+        return _batch(args)
+    if args.action == "composer-check":  # what a Messenger entry's send reads of the page, read only
+        print(sends.COMPOSER_CHECK)
+        return 0
+    if args.action == "script":  # the page script that sends one Messenger entry, last in its send step
+        prefix, _, number = args.entry.partition(":")
+        found = [d for d in sends.batches() if prefix and d["digest"].startswith(prefix.lower())] if number.isdigit() else []
+        entries = found[0]["entries"] if len(found) == 1 else []
+        entry = entries[int(number) - 1] if 0 < (int(number) if number.isdigit() else 0) <= len(entries) else {}
+        if entry.get("channel") != "messenger":
+            print("name a Messenger entry of one open batch: --entry <digest prefix>:<its number in the listing>", file=sys.stderr)
+            return 2
+        print(sends.send_script(entry))
+        return 0
+    if args.action == "open":
+        window = sends.asked(args.hours, args.channels, args.project, args.sends)
+        try:
+            sends.check_window(window["hours"], window["channels"], window["sends"])
+        except ValueError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        print(sends.window_request(window))  # a window is the principal's setting: only his code, read by the hook, opens it
+    elif args.action == "close":  # the principal's stop: the window and every open batch, by a mark beside the state
+        was, ended = sends.window(), len(sends.batches())
+        sends.close_mark()
+        print("send window closed" if was else "no send window was open")
+        print(f"{ended} batch{'es' if ended != 1 else ''} ended" if ended else "no batch was open")
+    elif args.action == "status":
+        print(sends.describe(sends.window()) if sends.window() else "no send window is open")
+        print("\n".join(sends.describe_batch(b) for b in sends.batches()) or "no batch is open")
+    else:
+        for e in sends.ledger(args.date or time.strftime("%Y-%m-%d")):  # a Messenger send step by what its script did
+            said = {False: "not sent (its send script declined): ", None: "unconfirmed (no report from its send script yet): "}.get(
+                e.get("sent"), "") if "sent" in e else ""
+            print(f"{time.strftime('%H:%M', time.localtime(e['at']))}  {e['channel']:<10} {e['how']:<8} {said}{e['summary']}")
+    return 0
+
+
+def _batch(args) -> int:
+    """`synthesis sends batch <file>` prints what the principal approves (with --show every text too, asking nothing)
+    and files the request for exactly the digest of the file as it reads it, carrying the batch: the hook opens it on his
+    code, typed in the session's own record, so the file no longer matters once it is read (the guard's sandbox)."""
+    from synthesis import sends
+    try:
+        batch = sends.read_batch(args.file)
+    except (OSError, ValueError) as exc:
+        print(f"This batch can't open: {exc}", file=sys.stderr)
+        return 2
+    print(sends.batch_listing(batch, show=True) if args.show else sends.batch_request(batch, args.file))
+    return 0
+
+
+def cmd_use(args) -> int:
+    if project.find(args.project) is None:
+        print(f"no single project named {args.project} under {[str(r) for r in project.roots()]}", file=sys.stderr)
+        return 1
+    board.touch(_session(args), project=args.project, harness=paths.harness())
+    print("\n".join([f"active project: {args.project}"] + project.carried_note(args.project, project.find(args.project))))
+    return 0
+
+
+def cmd_brief(args) -> int:
+    session = board.load(_session(args)) if not args.project else None
+    name = args.project or (session.project if session else "")
+    project_dir = project.find(name) if name else None
+    if project_dir is None:
+        print("no active project; run `synthesis use <project>`", file=sys.stderr)
+        return 1
+    print(project.brief(project_dir))
+    problems = project.check(project_dir)
+    if problems:
+        print("\nRecord problems:\n- " + "\n- ".join(problems))
+    return 0
+
+
+def cmd_resume(args) -> int:
+    print(project.resume(args.project, getattr(args, "session", "") or paths.session_id(), switch=args.switch))
+    return 0
+
+
+def cmd_handoff(args) -> int:
+    lines = project.handoff(_session(args), args.message)
+    print("\n".join(lines))
+    return 0 if lines and lines[-1].startswith("READY") else 1
+
+
+def cmd_sessions(args) -> int:
+    """Export and read the agent session transcripts kept under the synthesis home (sessions.py)."""
+    from synthesis import sessions
+    kinds = tuple(k for k in (args.kinds or "").split(",") if k)
+
+    def out(rec: dict, line: str) -> None:
+        print(json.dumps(rec, ensure_ascii=False, default=str) if args.json else line)
+
+    if args.action == "export" and args.lost:
+        try:
+            print(sessions.lost(args.lost))
+        except (ValueError, PermissionError) as exc:  # not one the stamp names, or still there; or the principal's code is needed, or is not theirs
+            print(exc, file=sys.stderr)
+            return 1 if isinstance(exc, ValueError) else 2
+    elif args.action == "export":
+        report = sessions.export(0 if args.all else args.days, args.session or "", rebuild=args.rebuild, scheduled=args.scheduled)
+        print("\n".join(report[:1] + report[1:][-50:] + [f"{len(report)} line(s)"]) if report else "nothing new to export")
+        if args.scheduled:  # the hourly job also fetches; a fetch that fails is the doctor's to say, not the copy's
+            print("\n".join(sessions.fetch()))
+        if any("not exported" in line or "not copied" in line for line in report):  # 2026-11-12: every copy was refused, and it exited 0
+            stamp = sessions.root() / ".state" / "export.json"  # left before this is said, unless the archive itself could not be written
+            print(next((line for line in report if line.startswith("not exported")), f"{paths.read_json(stamp).get('failed')} transcript(s) "
+                  f"could not be copied: `synthesis doctor` says how each is cleared, and {stamp} names each with why"), file=sys.stderr)
+            return 1
+    elif args.action == "sync":
+        report = sessions.sync(args.workspace, push=not args.no_push)
+        print("\n".join(report) or "no sessions repo configured (config sessions_repos)")
+        return 1 if any(line.startswith("FAILED") for line in report) else 0
+    elif args.action == "list":
+        for m in sessions.catalog(args.workspace, args.project)[:args.limit]:
+            out(m, f"{m.get('last', '')[:16]}  {m.get('harness', '?'):11s} {m.get('session', '?')}  {m.get('records', 0)} records  "
+                   f"{','.join(m.get('projects', [])) or '-'}  {m.get('folder')}")
+    elif args.action == "show":
+        found = sessions.find(args.target)
+        if len(found) != 1:
+            print(f"{len(found)} sessions match {args.target!r}; give more of the id", file=sys.stderr)
+            return 1
+        rows = (sessions.around(found[0]["folder"], args.seq) if args.seq is not None else
+                sessions.in_time(sessions.records(found[0]["folder"], kinds, whole=args.whole)))
+        if args.seq is not None and not rows:  # said, never shown as a record with no words
+            print(sessions.no_record(found[0], args.seq), file=sys.stderr)
+            return 1
+        who = f"[{found[0].get('harness')} {sessions.short(str(found[0].get('session')))}] "  # no line begins with a bare `#<seq>`
+        for rec in rows:
+            out(rec, who + sessions.render(rec, 0 if args.whole or rec.get("seq") == args.seq else args.width))
+        if args.seq is not None and sessions.given_here(found[0], args.seq):  # a number this Mac gave, said as that
+            print(sessions.given_here(found[0], args.seq), file=sys.stderr)
+    elif args.action == "prompts":
+        if not args.workspace:
+            print("name the workspace whose prompts to list: --workspace <name>", file=sys.stderr)
+            return 2
+        day = (args.date or time.strftime("%Y-%m-%d"))[:10]
+        try:  # a day is written one way on every Python (3.11 and later also read 20261030 and 2026-W44-5 as dates); a time may follow it
+            sound = datetime.strptime(day, "%Y-%m-%d").date().isoformat() == day and bool(datetime.fromisoformat(args.date or day))
+        except ValueError:
+            sound = False
+        if not sound:
+            print(f"--date {args.date!r} is not a day: write it YYYY-MM-DD", file=sys.stderr)
+            return 2
+        reach = max(2.0, (time.time() - datetime.fromisoformat(day).timestamp()) / 86400 + 1)  # whatever was written since that day began
+        busy = [line for line in sessions.export(reach) if line.startswith("not exported")]
+        late = busy or sessions.behind(args.workspace, day)  # the archive holds what was typed that day, or nothing is said
+        if late:
+            print(f"the archive is not current, so what was typed on {day} cannot all be listed: {late[0]}"
+                  + (f" (and {len(late) - 1} more)" if len(late) > 1 else "")
+                  + ("" if busy else ". `synthesis doctor` says how each is cleared"), file=sys.stderr)
+            return 2
+        roots = [r and os.path.realpath(os.path.expanduser(r)) for r in args.records]  # each as the walk reads it; an empty name is no folder
+        found = sessions.prompts(args.workspace, day)
+        try:
+            left = sessions.uncited(found, roots) if roots else found
+        except (OSError, RecursionError) as error:  # read as an empty folder, it left every prompt open and no word of why
+            where, why = getattr(error, "filename", None) or ", ".join(roots) or chr(34) * 2, getattr(error, "strerror", None) or error
+            print(f"{where} cannot be read as records ({why}), so no record was checked and nothing is "
+                  "said of what is open: give --records folders that are there, with records that can be read", file=sys.stderr)
+            return 2
+        known = sessions.catalog() if left else []
+        names = {session: sessions.short(session, known) for session in {str(p["session"]) for p in left}}
+        named = [f"{p['harness']} {names[str(p['session'])]} --seq {p['seq']}" for p in left]  # what `show` takes, and no citation
+        where = f" under {', '.join(roots)}"
+        if args.json:
+            print(json.dumps({"workspace": args.workspace, "date": day, "prompts": len(found), "records": roots,
+                              "open" if roots else "listed": named}))  # with no records, nothing was held against any: it lists
+        else:
+            for name, p in zip(named, left):
+                print(f"{name}  {p['at'][11:16]}  {sessions.worded(p['text'], args.width)}")
+            print(f"{len(found)} prompts on {day} in {args.workspace}" + (f", so nothing to cite{where}" if roots else "") if not (roots and found) else
+                  f"all {len(found)} prompts on {day} in {args.workspace} are cited by a record{where}" if not left else
+                  f"{len(left)} of {len(found)} prompts on {day} in {args.workspace} {'is' if len(left) == 1 else 'are'} cited by no record{where}")
+        return 1 if roots and left else 0
+    else:  # recent, search: each record under as much of its session's id as names it and opens it
+        rows = (sessions.recent(args.project, args.workspace, args.limit) if args.action == "recent" else
+                sessions.search(args.target, args.workspace, args.project, kinds)[:args.limit])
+        known = sessions.catalog() if rows else []
+        names = {session: sessions.short(session, known) for session in {str(r.get("session")) for r in rows}}
+        for rec in rows:
+            out(rec, f"[{rec.get('harness')} {names[str(rec.get('session'))]}] {sessions.render(rec, args.width)}")
+    return 0
+
+
+def config_change(file: str) -> dict:
+    """What applying a settings file changes in the guard's own settings: {"subject": what the principal's code binds
+    (the file, every byte it holds and the settings it replaces), "data": its settings, "said": each key that changes,
+    old and new}. ValueError for a file that holds no JSON object. The guard asks it of the same line (the sandbox)."""
+    import hashlib
+    from synthesis import install
+    real = os.path.realpath(os.path.expanduser(file))
+    try:
+        if os.stat(real).st_size > 1 << 20:
+            raise ValueError("it is larger than a megabyte")
+        raw = install._read(Path(real))  # a regular file, opened without waiting: the guard asks this of an agent's path
+        data = json.loads(raw)
+    except (OSError, ValueError) as exc:
+        data, why = None, f" ({exc})"
+    else:
+        why = ""
+    if not isinstance(data, dict):
+        raise ValueError(f"{file} holds no JSON object of settings{why}")
+    try:
+        now = paths.config_file().read_bytes()
+    except FileNotFoundError:
+        now = b""
+    try:
+        old = paths.config()
+    except paths.Unreadable:  # a file of settings is how an unreadable one is mended
+        old = {}
+    said = [f"  {key}: {json.dumps(old[key])[:200] if key in old else '(not set)'} -> "
+            f"{json.dumps(data[key])[:200] if key in data else '(removed)'}" for key in sorted(set(old) | set(data)) if old.get(key, KeyError) != data.get(key, KeyError)]
+    return {"subject": {"file": real, "to": hashlib.sha256(raw).hexdigest(), "from": hashlib.sha256(now).hexdigest()},
+            "data": data, "said": "\n".join(said)}
+
+
+def cmd_config(args) -> int:
+    """`synthesis config apply <file>`: the guard's own settings change only on the principal's code for exactly that
+    file's content, and only outside the sandbox, since config.json is sealed (the guard's sandbox, design 2.3). The
+    change is shown key by key; a file changed after his code is another change."""
+    from synthesis import approvals
+    try:
+        change = config_change(args.file)
+    except ValueError as exc:
+        print(f"This settings file can't be applied: {exc}", file=sys.stderr)
+        return 2
+    if not change["said"]:
+        print(f"{paths.config_file()} already holds these settings")
+        return 0
+    session = _shell(args)
+    try:
+        if approvals.consume("config", change["subject"], session) or approvals.answered("config", change["subject"], session):
+            paths.write_json(paths.config_file(), change["data"])
+            print(f"{paths.config_file()} changed:\n{change['said']}")
+            return 0
+    except (approvals.Unverified, approvals.Sealed) as exc:
+        print(exc)
+        return 2
+    code = approvals.request("config", change["subject"], f"change the guard's settings from {change['subject']['file']}"[:160])
+    print(f"This changes {paths.config_file()}, the guard's own settings, which changes what every approval means:\n"
+          f"{change['said']}\nShow the principal this change and ask them to type {approvals.how(code)}; then run the identical "
+          "command again outside the sandbox (config.json is sealed), with the file as it is now.")
+    return 2
+
+
+def cmd_searches(args) -> int:
+    """The web searches a session has made, its sub-agents' included, against the principal's budget a session (config
+    `search_budget`), with each of --agents N research agents' share of what is left, rounded down: run before a fan-out,
+    the share goes in each brief (BACKLOG B5; 2026-09-23: six research agents each took the session's budget for its
+    own). Exit 1 refuses the fan-out: a share under one search, or a budget against a count the records cannot tell."""
+    from synthesis import sessions
+    session, budget, config = args.session or paths.session_id(), paths.config().get("search_budget"), paths.config_file()
+    if not session or args.agents < 1 or not (budget is None or type(budget) is int and budget >= 0):
+        print("no session id: pass --session or run inside a harness session" if not session else
+              "--agents is how many research agents would be dispatched: 1 or more" if args.agents < 1 else
+              f"search_budget in {config} is {json.dumps(budget)}, not a whole number of web searches: the principal sets it",
+              file=sys.stderr)
+        return 2
+    found, n = sessions.searches(session), args.agents
+    used, named = found["count"], f"session {session}" + (f" ({found['harness']})" if found["harness"] else "")
+    print(f"{named}: cannot tell how many web searches it made: {found['why']}" if used is None else
+          f"{named}: {used} web search{'' if used == 1 else 'es'} made, read from its record and {found['agents']} of its sub-agents'")
+    if budget is None:
+        print(f"no search budget is set: the principal sets search_budget, the web searches a session may make, in {config}")
+        return 0
+    if used is None:
+        print(f"budget: {budget} web searches a session; how many are used cannot be told")
+        print(f"refused: the searches made cannot be told, so no share of the {budget} can be given: dispatch research agents "
+              "that make no web search, or ask the principal", file=sys.stderr)
+        return 1
+    left = max(0, budget - used)
+    print(f"budget: {budget} web searches a session; {used} used, {left} left")
+    print(f"share: {left // n} web search{'' if left // n == 1 else 'es'} for each of {n} agent{'' if n == 1 else 's'}")
+    if left // n:
+        return 0
+    print(f"refused: none of the session's {budget} web searches is left: ask the principal to raise search_budget before "
+          "dispatching research agents" if not left else f"refused: {left} web search{'' if left == 1 else 'es'} left, under one "
+          f"for each of {n} agents: dispatch at most {left} research agents, or ask the principal to raise search_budget", file=sys.stderr)
+    return 1
+
+
+def cmd_approvals(args) -> int:
+    """The requests waiting for the principal's code: the hook's, then those a shell filed, named as a shell's."""
+    from synthesis import approvals
+    for code in sorted(approvals.pending(), key=lambda c: (approvals._request_file(c).parent == paths.requests(), c)):
+        file = approvals._request_file(code)  # a file under another's code is none
+        data, shell = paths.read_json(file), approvals.SHELL if file.parent == paths.requests() else ""
+        print(f"{code}  {time.strftime('%H:%M', time.localtime(float(data.get('at') or 0)))}  {data.get('summary', '')}{shell}")
+    return 0
+
+
+def _shell(args) -> dict:
+    """The session this shell belongs to, which only it may act as; empty where it names none."""
+    given, own = getattr(args, "session", ""), paths.session_id()
+    if given and own and given != own:
+        sys.exit(f"refused: this shell belongs to session {own}; it cannot act as {given}")
+    return {"session_id": given or own}
+
+
+def cmd_install(args) -> int:
+    """Replacing an installed runtime spends the principal's code for exactly what is installed, however this command was
+    started (review round 1 of 22.18): a script, another program or a job reaches this check as the hook's never does."""
+    from synthesis import install
+    plugin = Path(args.plugin) if args.plugin else Path(__file__).resolve().parents[1]
+    try:
+        print(install.install(plugin, first_only=args.first, git_hooks=args.git_hooks, session=_shell(args)))
+        if args.git_hooks:
+            print(install.register_git_hooks())
+    except install.Unapproved as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        print(f"install failed: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_uninstall(args) -> int:
+    from synthesis import install
+    try:
+        print("\n".join(install.uninstall(dry_run=args.dry_run, session=_shell(args))))
+    except install.InUse as exc:  # Codex's own hooks still run it (review round 2 of 5.21.0)
+        print(f"stopped: {exc}")
+        return 1
+    except install.Unapproved as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_doctor(args) -> int:
+    from synthesis import doctor
+    return doctor.main(args.rest)
+
+
+def cmd_review(args) -> int:
+    from synthesis import review
+    return review.main(["--json"] * args.json + ["--fetch"] * args.fetch)
+
+
+def cmd_version(args) -> int:
+    print(__version__)
+    return 0
+
+
+def parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="synthesis", description=__doc__)
+    p.add_argument("--session", default="", help="session id (default: the harness's own)")
+    sub = p.add_subparsers(dest="command", required=True)
+    s = sub.add_parser("claim", help="claim paths for this session")
+    s.add_argument("paths", nargs="+")
+    s.add_argument("--project", default=None)
+    s.add_argument("--goal", default=None)
+    s.add_argument("--take", action="store_true", help="take over overlapping stale claims")
+    s.set_defaults(fn=cmd_claim)
+    s = sub.add_parser("release", help="release some or all claims")
+    s.add_argument("paths", nargs="*")
+    s.add_argument("--hand-to", default="", help="session or project:<id> that takes over uncommitted changes left")
+    s.set_defaults(fn=cmd_release)
+    s = sub.add_parser("journal", help="snapshots of uncommitted changes; --show SHA PATH prints a file from one")
+    s.add_argument("path", nargs="?", default="")
+    s.set_defaults(late="path")
+    s.add_argument("--show", default="", metavar="SHA")
+    s.add_argument("--limit", type=int, default=20)
+    s.set_defaults(fn=cmd_journal)
+    s = sub.add_parser("index", help="set one field of one project in the shared project index, committed alone")
+    s.add_argument("action", choices=["set"])
+    s.add_argument("project")
+    s.add_argument("field")
+    s.add_argument("value")
+    s.set_defaults(fn=cmd_index)
+    s = sub.add_parser("who", help="list live sessions and claims")
+    s.add_argument("--all", action="store_true")
+    s.set_defaults(fn=cmd_who)
+    s = sub.add_parser("msg", help="message a session id, short name or project:<id>")
+    s.add_argument("to")
+    s.add_argument("text")
+    s.add_argument("--durable", action="store_true", help="reach every session that works on the project")
+    s.add_argument("--wake", action="store_true", help="also nudge an idle recipient through its own harness, where a command can")
+    s.set_defaults(fn=cmd_msg)
+    s = sub.add_parser("worktree", help="create, retire or land a worktree", add_help=False)
+    s.add_argument("rest", nargs=argparse.REMAINDER)
+    s.set_defaults(fn=cmd_worktree)
+    s = sub.add_parser("inbox", help="show and mark unread messages")
+    s.add_argument("--recent", type=float, default=0, metavar="HOURS", help="every message from the last HOURS, read or not")
+    s.add_argument("--peek", action="store_true", help="show unread messages and mark none")
+    sub.add_parser("wait", help="wait for a message, a file or a command, holding a record on the board", add_help=False)
+    s.set_defaults(fn=cmd_inbox)
+    s = sub.add_parser("sends", help="open, close or show the send window and batches; list the day's sends")
+    s.add_argument("action", choices=["open", "batch", "close", "status", "log", "composer-check", "script"])
+    s.add_argument("file", nargs="?", default="", help="batch: the batch file to show (--show) or open")
+    s.set_defaults(late="file")
+    s.add_argument("--show", action="store_true", help="batch: also print every text in full, and open nothing")
+    s.add_argument("--entry", default="", help="script: <digest prefix>:<entry number>, a Messenger entry of an open batch")
+    s.add_argument("--hours", type=float, default=0, help="how long the window stays open, at most 12")
+    s.add_argument("--channels", default="", help="comma-separated: slack,email,chat,calendar,jira,confluence,"
+                   "bitbucket,github,docs,notion,web, or all")
+    s.add_argument("--project", default="", help="cover only sends from sessions on this project")
+    s.add_argument("--sends", type=int, default=0, help="the planned sends, at most 50: the last one closes the window")
+    s.add_argument("--date", default="", help="the ledger's day, YYYY-MM-DD (default today)")
+    s.set_defaults(fn=cmd_sends)
+    s = sub.add_parser("use", help="set this session's active project")
+    s.add_argument("project")
+    s.set_defaults(fn=cmd_use)
+    s = sub.add_parser("brief", help="print a project's directive and current state")
+    s.add_argument("project", nargs="?", default="")
+    s.set_defaults(late="project")
+    s.set_defaults(fn=cmd_brief)
+    s = sub.add_parser("resume", help="pick up a project: directive, state, next actions and warnings, or the question to ask first")
+    s.add_argument("project", help="project id, or the project folder's absolute path")
+    s.add_argument("--switch", action="store_true", help="switch this session to the project after the principal agreed")
+    s.set_defaults(fn=cmd_resume)
+    s = sub.add_parser("handoff", help="commit and push changes inside this session's claims")
+    s.add_argument("-m", "--message", default="Update project records")
+    s.set_defaults(fn=cmd_handoff)
+    s = sub.add_parser("sessions", help="export, sync, list, show, search agent session transcripts from every harness")
+    s.add_argument("action", choices=("export", "sync", "list", "show", "recent", "search", "prompts"))
+    s.add_argument("target", nargs="?", default="", help="show: a session id or its start; search: a pattern")
+    s.set_defaults(late="target")
+    s.add_argument("--all", action="store_true", help="export: every transcript, not only those changed in --days")
+    s.add_argument("--scheduled", action="store_true", help=argparse.SUPPRESS)  # the schedule's own run, marked for the doctor
+    s.add_argument("--days", type=float, default=2, help="export: transcripts changed in the last N days (default 2)")
+    s.add_argument("--session", default="", help="export: only this session")
+    s.add_argument("--rebuild", action="store_true", help="export: read every transcript again from its start and keep what the "
+                   "archive does not hold, after the numbers it has given; no record it holds is changed")
+    s.add_argument("--lost", default="", metavar="SESSION", help="export: accept as lost a transcript that was never copied "
+                   "and is gone, as the doctor names it; an agent needs the principal's code")
+    s.add_argument("--no-push", action="store_true", help="sync: commit in each sessions repo but do not push")
+    s.add_argument("--seq", type=int, help="show: the cited record, whole, and three either side")
+    s.add_argument("--date", default="", help="prompts: the day, YYYY-MM-DD (default today)")
+    s.add_argument("--records", action="append", default=[], metavar="FOLDER",
+                   help="prompts: list only those no text file under this folder cites; repeat for more; exit 1 while any is left")
+    s.add_argument("--json", action="store_true", help="list, show, recent, search: one JSON object per line")
+    s.add_argument("--project", default="")
+    s.add_argument("--workspace", default="")
+    s.add_argument("--kinds", default="", help="user,brief,assistant,reasoning,tool_call,tool_result,system,compaction,meta")
+    s.add_argument("--whole", action="store_true", help="show: full tool outputs and injected text from the blobs")
+    s.add_argument("--width", type=int, default=600, help="characters shown per record (0: all)")
+    s.add_argument("--limit", type=int, default=20)
+    s.set_defaults(fn=cmd_sessions)
+    s = sub.add_parser("searches", help="count a session's web searches against search_budget, and each agent's share of the rest")
+    s.add_argument("--agents", type=int, default=1, help="how many research agents a fan-out would dispatch (default 1)")
+    s.add_argument("--session", default=argparse.SUPPRESS, help="the session to count (default: this one)")  # after the command too
+    s.set_defaults(fn=cmd_searches)
+    sub.add_parser("approvals", help="list sends and deploys waiting for the principal's approval").set_defaults(fn=cmd_approvals)
+    s = sub.add_parser("config", help="apply a settings file to the guard's own settings, on the principal's code")
+    s.add_argument("action", choices=["apply"])
+    s.add_argument("file", help="a JSON file holding the whole of the new settings")
+    s.set_defaults(fn=cmd_config)
+    s = sub.add_parser("install", help="install the runtime from a plugin folder (default: this one)")
+    s.add_argument("plugin", nargs="?", default="")
+    s.set_defaults(late="plugin")
+    s.add_argument("--git-hooks", action="store_true", help="also run the commit check for every repository")
+    s.add_argument("--first", action="store_true", help="only into a home no runtime has been in, as the first-install bootstrap does")
+    s.set_defaults(fn=cmd_install)
+    s = sub.add_parser("uninstall", help="remove what install wrote; keep config and the board")
+    s.add_argument("--dry-run", action="store_true")
+    s.set_defaults(fn=cmd_uninstall)
+    s = sub.add_parser("doctor", help="check the runtime, hooks and each harness's install", add_help=False)
+    s.add_argument("rest", nargs=argparse.REMAINDER)
+    s.set_defaults(fn=cmd_doctor)
+    s = sub.add_parser("review", help="what is wrong on this Mac, in every workspace's repositories, records, claims, schedules and "
+                       "install, with a repair plan; it changes nothing and no step runs")
+    s.add_argument("--json", action="store_true", help="print the review as one JSON object")
+    s.add_argument("--fetch", action="store_true", help="first fetch every repository and read the stable release's version; network")
+    s.set_defaults(fn=cmd_review)
+    sub.add_parser("version").set_defaults(fn=cmd_version)
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except paths.Unreadable as exc:  # a command whose reader of the config handles nothing itself: one line, no traceback
+        print(f"synthesis: the config cannot be read ({exc}); fix {paths.config_file()}", file=sys.stderr)
+        return 2
+
+
+def command_at(argv: list[str]) -> int:
+    """Where the command stands in the CLI's words: the first word that is no option of the CLI's own (`--session` takes
+    the next), so a word of a message is never taken for it. The guard finds it the same way."""
+    return next((i for i, w in enumerate(argv) if not w.startswith("-") and argv[i - 1:i] != ["--session"]), len(argv))
+
+
+def parsed(argv: list[str]) -> argparse.Namespace | None:
+    """The words as the CLI reads them, argparse's own exit on an error or for help included; None for `wait`, `worktree`
+    and `doctor`, whose words their own parsers read. The guard reads `install` and `uninstall` with it, so what waits
+    for the principal is what would run, and `synthesis sends ...`, so the two never read one command two ways (the
+    review of 5.23.0)."""
+    split = command_at(argv)
+    if "".join(argv[split:split + 1]) in ("wait", "worktree", "doctor"):
+        return None
+    made = parser()
+    args, rest = made.parse_known_args(argv)
+    late = getattr(args, "late", "")  # the one name a command may leave out: after an option, argparse has already taken it as left out
+    if len(rest) == 1 and late and getattr(args, late) == "" and not rest[0].startswith("-"):
+        setattr(args, late, rest.pop())
+    if rest:
+        made.error("unrecognized arguments: " + " ".join(rest))
+    return args
+
+
+def _main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    split = command_at(argv)
+    name = "".join(argv[split:split + 1])
+    if name == "wait":  # its own options, and a command after `--`
+        from synthesis import wait
+        return wait.main(argv[split + 1:], _session(parser().parse_args(argv[:split] + ["wait"])))
+    if name in ("worktree", "doctor"):  # hand everything after it to that command's own parser untouched
+        args = parser().parse_args(argv[:split] + [name])
+        args.rest = argv[split + 1:]
+        return {"worktree": cmd_worktree, "doctor": cmd_doctor}[name](args)
+    args = parsed(argv)
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

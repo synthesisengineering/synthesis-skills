@@ -1,0 +1,465 @@
+"""Coordination board: who is working where, and messages between sessions (R2).
+
+Each session is one small JSON file, so no hook ever re-reads a large shared
+file. A claim is an absolute path or pattern covering everything beneath what it
+names (held with a trailing "/**"), except a claim on an existing file; `*` inside
+a segment matches within that segment only (it never crosses "/").
+A message goes to exactly one live session, named by its id, its short name or
+`project:<id>`; an address that names none or several is refused, never guessed.
+"""
+
+from __future__ import annotations
+
+import base64
+import fnmatch
+import hashlib
+import json
+from contextlib import contextmanager
+import os
+import time
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+from synthesis import paths
+
+STALE_SECONDS = 8 * 3600
+SCHEMA = 1  # a session file from a newer synthesis says so; a reader never rewrites it
+NEWER: list[str] = []  # session files this reader met in a newer schema, for `synthesis who`
+GLOB = set("*?[")
+BROADCAST_SECONDS = 3600
+
+
+def short_name(session_id: str) -> str:
+    """Six letters and digits from a hash of the id: harness ids that share a
+    prefix (UUIDv7 ids start with their creation time) still get distinct names."""
+    return base64.b32encode(hashlib.sha256(session_id.encode("utf-8")).digest()).decode()[:6].lower()
+
+
+@dataclass
+class Session:
+    session: str
+    short: str = ""
+    harness: str = ""
+    project: str = ""
+    goal: str = ""
+    cwd: str = ""
+    claims: list[str] = field(default_factory=list)
+    ceded: list[str] = field(default_factory=list)  # claims another session took over while this one was stale
+    briefed: str = ""  # the project whose brief this session was last given
+    version: str = ""  # the runtime release this session last saw; a newer one earns a note once
+    ended: float = 0.0  # when its last turn ended, for the next prompt's time-away note
+    started: float = 0.0
+    seen: float = 0.0
+    schema: int = SCHEMA
+
+    def __post_init__(self):
+        self.short = self.short or short_name(self.session)
+
+    @property
+    def stale(self) -> bool:
+        """Quiet past the threshold. A session with no recorded time keeps blocking."""
+        return bool(self.seen) and time.time() - self.seen > STALE_SECONDS
+
+    @property
+    def reachable(self) -> bool:
+        """Not stale, or holding a live wait: mail reaches a waiting seat for its whole bound (2026-11-12: refused at nine hours)."""
+        from synthesis import wait  # imported here: wait imports this module
+        return not self.stale or bool(wait.live(self.session))
+
+
+class ClaimConflict(Exception):
+    pass
+
+
+class AddressError(ValueError):
+    pass
+
+
+def _session_file(session_id: str) -> Path:
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in session_id)
+    if not safe:
+        raise ValueError("session id is empty")
+    return paths.board() / "sessions" / f"{safe}.json"
+
+
+def _session(data: dict) -> Session:
+    session = Session(**{k: v for k, v in data.items() if k in Session.__dataclass_fields__})
+    session.claims = [as_claim(c) for c in session.claims]  # a claim stored as a bare folder covers its files
+    return session
+
+
+def load(session_id: str) -> Session | None:
+    data = paths.read_json(_session_file(session_id))
+    return _session(data) if data else None
+
+
+def save(session: Session) -> None:
+    paths.write_json(_session_file(session.session), asdict(session))
+
+
+def sessions() -> list[Session]:
+    directory = paths.board() / "sessions"
+    found = []
+    for file in sorted(directory.glob("*.json")) if directory.is_dir() else []:
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+            if int(data.get("schema", 1)) > SCHEMA and file.name not in NEWER:
+                NEWER.append(file.name)
+            found.append(_session(data))
+        except (json.JSONDecodeError, TypeError, ValueError):
+            continue
+    return found
+
+
+def touch(session_id: str, **updates) -> Session:
+    """Register or refresh a session; updates only the given fields, and never forgets a known harness."""
+    now = time.time()
+    session = load(session_id) or Session(session=session_id, started=now)
+    for key, value in updates.items():
+        if value is not None and not (key == "harness" and value == "unknown" and session.harness):
+            setattr(session, key, value)
+    session.seen = now
+    save(session)
+    return session
+
+
+def normalize(claim: str) -> str:
+    """One spelling per path: `~` expanded and the literal prefix resolved through symlinks.
+    The part from the first glob segment on is kept as written (a pattern cannot be resolved)."""
+    subtree = claim.endswith("/**")
+    parts = Path(os.path.expanduser(claim[:-3] if subtree else claim)).parts
+    i = next((k for k, part in enumerate(parts) if GLOB & set(part)), len(parts))
+    prefix = os.path.realpath(os.path.join(*parts[:i]) if i else ".")
+    return os.path.join(prefix, *parts[i:]) + ("/**" if subtree else "")
+
+
+def as_claim(claim: str) -> str:
+    """A claim as held: normalized, and covering everything beneath what it names unless that is an existing
+    file. 2026-10-22: two folders claimed by name covered none of their files; 2026-10-29: the pattern
+    `meeting-preps/2026-11-02-*` covered none of the files inside the folders it matched. Each time handoff
+    left claimed files uncommitted and printed READY. Paths being checked keep `normalize`: writing into a
+    folder is not writing every file in it."""
+    norm = normalize(claim)
+    return norm if norm.endswith("/**") or os.path.isfile(norm) else norm + "/**"
+
+
+def _parts(claim: str) -> tuple[tuple[str, ...], bool]:
+    norm = normalize(claim)
+    subtree = norm.endswith("/**")
+    return Path(norm[:-3] if subtree else norm).parts, subtree
+
+
+def _segment(x: str, y: str) -> bool:
+    gx, gy = GLOB & set(x), GLOB & set(y)
+    if gx and gy:
+        return True  # two patterns may meet; refusing is the safe answer
+    if gx or gy:
+        return fnmatch.fnmatchcase(y, x) if gx else fnmatch.fnmatchcase(x, y)
+    return x == y
+
+
+def overlaps(a: str, b: str) -> bool:
+    """Whether some path falls under both claims."""
+    return split_overlap(_parts(a), _parts(b))
+
+
+def split_overlap(a: tuple, b: tuple) -> bool:
+    """`overlaps` for two claims split as `_parts` splits them: a caller comparing many splits each once."""
+    (pa, sa), (pb, sb) = a, b
+    if not all(_segment(x, y) for x, y in zip(pa, pb)):
+        return False
+    if len(pa) == len(pb):
+        return True
+    return (sa and len(pa) < len(pb)) or (sb and len(pb) < len(pa))
+
+
+def holders(path: str, *, exclude: str = "") -> list[Session]:
+    """Live sessions other than `exclude` whose claims cover or overlap `path`."""
+    return [s for s in sessions()
+            if s.session != exclude and not s.stale and any(overlaps(c, path) for c in s.claims)]
+
+
+@contextmanager
+def _claim_lock():
+    """One claim decision at a time, so two sessions can't both win the same path."""
+    import fcntl
+
+    path = paths.board() / "claims.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def claim(session_id: str, claims: list[str], *, take_stale: bool = False, **updates) -> Session:
+    with _claim_lock():
+        return _claim(session_id, claims, take_stale=take_stale, **updates)
+
+
+def _claim(session_id: str, claims: list[str], *, take_stale: bool = False, **updates) -> Session:
+    normalized = [as_claim(c) for c in claims]
+    ceding = []
+    for other in sessions():  # decide everything before changing anything
+        if other.session == session_id:
+            continue
+        hit = [o for o in other.claims if any(overlaps(c, o) for c in normalized)]
+        if not hit:
+            continue
+        wanted = next(c for c in normalized if any(overlaps(c, o) for o in hit))
+        if not other.stale or not take_stale:
+            raise ClaimConflict(
+                f"{wanted} overlaps a claim held by {other.session} ({other.harness}, project "
+                f"{other.project or '-'}: {other.goal or 'no goal'})"
+                + ("; it is stale, retry with --take" if other.stale else ""))
+        ceding.append((other, hit))
+    for other, hit in ceding:  # stale claims move to `ceded`, kept on record, never silently dropped
+        other.claims = [o for o in other.claims if o not in hit]
+        other.ceded = sorted(set(other.ceded) | set(hit))
+        save(other)
+        notify(other.session, session_id, "Took over your stale claim(s): " + ", ".join(hit)
+               + f". They are listed under `ceded` in your session file; ask {session_id} before working there again.")
+    session = touch(session_id, **updates)
+    session.claims = sorted(set(session.claims) | set(normalized))
+    save(session)
+    from synthesis import checkout  # the claims log names the last claimant of a path later (2026-10-20)
+    checkout.log_claims(session_id, session.project, "claim", normalized)
+    return session
+
+
+def release(session_id: str, claims: list[str] | None = None) -> Session | None:
+    session = load(session_id)
+    if session is None:
+        return None
+    gone = None if claims is None else {normalize(c) for c in claims}
+    kept = [] if gone is None else [c for c in session.claims if c not in gone and c.removesuffix("/**") not in gone]
+    from synthesis import checkout
+    checkout.log_claims(session_id, session.project, "release", [c for c in session.claims if c not in kept])
+    session.claims = kept
+    save(session)
+    return session
+
+
+def _describe(found: list[Session]) -> str:
+    from synthesis import wait  # imported here: wait imports this module
+    now = time.time()
+
+    def mark(s: Session) -> str:  # as `who` marks a seat: until when it waits, or that nothing reaches it
+        until = max((w["until"] for w in wait.live(s.session)), default=0)
+        return time.strftime(", waiting until %H:%M", time.localtime(until)) if until else "" if s.reachable else ", stale"
+    return "".join(f"\n  {s.session} (short {s.short}, project {s.project or '-'}, {s.harness or 'harness ?'}, "
+                   f"last seen {int((now - s.seen) / 60)} min ago{mark(s)})"
+                   for s in found[:20]) + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else "")
+
+
+def resolve(address: str, *, exclude: str = "") -> Session:
+    """The one live session an address names: its session id, its short name, or
+    `project:<id>`. Zero or several matches raise AddressError listing the candidates."""
+    address = address.strip()
+    pool = [s for s in sessions() if s.session != exclude]
+    if address.startswith("project:"):
+        matches = [s for s in pool if s.project and s.project == address[len("project:"):]]
+    else:
+        matches = [s for s in pool if address and address in (s.session, s.short)]
+    alive = [s for s in matches if s.reachable]
+    if len(alive) == 1:
+        return alive[0]
+    if alive:
+        raise AddressError(f"{address!r} names {len(alive)} live sessions; nothing was sent. "
+                           f"Address one of them by session id:{_describe(alive)}")
+    if matches:
+        raise AddressError(f"{address!r} names only stale sessions; nothing was sent:{_describe(matches)}")
+    others = [s for s in pool if s.reachable]
+    raise AddressError(f"{address!r} names no live session; nothing was sent. Addresses are a session id, "
+                       "its short name or project:<id> (display names and titles are not addresses). "
+                       + (f"Live sessions:{_describe(others)}" if others else "No other session is live."))
+
+
+def _box(address: str) -> Path:
+    safe = "".join(c if c.isalnum() or c in "-_.:" else "_" for c in address).replace(":", "__")
+    return paths.board() / "messages" / safe
+
+
+def _post(box: str, data: dict) -> Path:
+    path = _box(box) / f"{time.time_ns()}-{os.getpid()}.json"
+    paths.write_json(path, {**data, "at": time.time()})
+    return path
+
+
+def notify(session_id: str, sender: str, text: str) -> Path:
+    """A notice to one exact session id, live or stale: used when taking over or releasing its claims."""
+    return _post(session_id, {"to": session_id, "from": sender, "text": text})
+
+
+def message(to: str, sender: str, text: str, *, durable: bool = False) -> Path:
+    """Deliver to the one live session `to` names; it sees the message at its next prompt.
+
+    A durable message to `project:<id>` instead reaches every session that works on
+    the project, now or later, once each. A project-addressed message that is not
+    durable is never replayed to a session that joins the project afterwards.
+    """
+    if not sender:
+        raise AddressError("a message must carry the sender's session id")
+    if not text.strip():
+        raise AddressError("the message is empty")
+    if durable:
+        from synthesis import project  # imported here: project imports this module
+
+        name = to[len("project:"):] if to.startswith("project:") else ""
+        if not name:
+            raise AddressError("a durable message goes to project:<id>")
+        if project.find(name) is None and not any(s.project == name for s in sessions()):
+            raise AddressError(f"no project named {name!r} is on the board or in the knowledge roots; nothing was sent")
+        return _post(to, {"to": to, "from": sender, "text": text, "durable": True})
+    name = to.strip()[len("project:"):] if to.strip().startswith("project:") else ""
+    if name and not any(s.project == name and s.reachable for s in sessions() if s.session != sender):
+        return message(to.strip(), sender, text, durable=True)  # nobody is on it now: its next session reads it (2026-10-20)
+    target = resolve(to, exclude=sender)
+    digest = hashlib.sha256(text.strip().encode("utf-8")).hexdigest()[:24]
+    mark = paths.board() / "sent" / _session_file(sender).stem / digest
+    earlier = paths.read_json(mark)
+    if earlier.get("to", target.session) != target.session and time.time() - earlier.get("at", 0) < BROADCAST_SECONDS:
+        raise AddressError(f"the same text already went to {earlier['to']}; sending it to {target.session} "
+                           "too is a broadcast. Address the project with a durable message instead.")
+    paths.write_json(mark, {"to": target.session, "at": time.time()})
+    return _post(target.session, {"to": to, "session": target.session, "from": sender, "text": text})
+
+
+def _held(session_id: str, box: str, read_too: bool = False):
+    """The messages a box holds for a session: those it has not been shown, or with read_too every one. The inbox and
+    the hint for a session bound to no project both read this, so they cannot disagree about what is delivered."""
+    return (f for f in sorted(_box(box).glob("*.json")) if read_too or not _read_marker(session_id, f.name).exists())
+
+
+def inbox(session_id: str, project: str = "", *, mark_read: bool = False, recent_hours: float = 0) -> list[dict]:
+    """The session's unread messages, oldest first; with recent_hours, every message from that many hours
+    back, read or not, so one that was cut or missed can be read again. Each carries its file name as `id`.
+    mark_read marks exactly the messages returned."""
+    boxes = [session_id] + ([f"project:{project}"] if project else [])
+    since = time.time() - recent_hours * 3600 if recent_hours else None
+    found = []
+    for box in boxes:
+        for file in _held(session_id, box, since is not None):
+            message = {**json.loads(file.read_text(encoding="utf-8")), "id": file.name}
+            if since is None or message.get("at", 0) >= since:
+                found.append(message)
+    found.sort(key=lambda m: m.get("at", 0))
+    if mark_read:
+        mark_read_messages(session_id, found)
+    return found
+
+
+def waiting(session_id: str) -> list[str]:
+    """Projects whose mail this session's inbox would hold if it bound to one now, the newest mail first (2026-11-11:
+    a session bound to no project polled for half an hour beside mail addressed to its project)."""
+    names = sorted(box.name[len("project__"):] for box in (paths.board() / "messages").glob("project__*"))
+    newest = {name: max((f.stat().st_mtime for f in _held(session_id, f"project:{name}")), default=None) for name in names}
+    return sorted((name for name in names if newest[name] is not None), key=lambda name: -newest[name])
+
+
+MESSAGE_ID = "[0-9]{1,20}-[0-9]{1,10}"  # a message's file name before .json: its time in nanoseconds and its writer's process
+CARRIED_MAX = 64 * 1024  # a carried message larger than this is named, never read
+
+
+def undelivered(project: str) -> list[dict]:
+    """The durable messages to project:<project> that no session on this Mac other than its sender has been shown, and
+    that this Mac has not carried before, each with its `id` (plan item 13.5, part 4: a handoff carries these). A
+    sender shown its own message has delivered it to no one (5.20.0's first review, F3)."""
+    import re
+    readers: dict = {}
+    for marker in (paths.board() / "read").glob("*/*"):
+        readers.setdefault(marker.name, set()).add(marker.parent.name)
+    found = []
+    for file in sorted(_box(f"project:{project}").glob("*.json")):
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (paths.board() / "carried-out" / file.stem).exists():
+            continue
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        sender = _session_file(str(data.get("from", ""))).stem if isinstance(data, dict) and data.get("from") else ""
+        if isinstance(data, dict) and data.get("durable") and not readers.get(file.name, set()) - {sender}:
+            found.append({**data, "id": file.stem})
+    return found
+
+
+def carried_text(message: dict) -> str:
+    """A message as a project's records carry it: `inbox/<id>.md`, a header and the words."""
+    from datetime import datetime
+    try:
+        at = datetime.fromtimestamp(float(message.get("at", 0))).astimezone().isoformat(timespec="seconds")
+    except (TypeError, ValueError, OverflowError, OSError):
+        at = ""  # a board file's time out of range: the carried file gives none
+    head = {"id": message["id"], "from": message.get("from", ""), "to": message.get("to", ""), "at": at}
+    return ("---\n" + "".join(f"{k}: {' '.join(str(v).split())[:200]}\n" for k, v in head.items()) + "---\n\n"
+            + str(message.get("text", "")).rstrip("\n") + "\n")
+
+
+def carried(project: str, folder) -> tuple[list[dict], list[str]]:
+    """The messages a project's records carry (`<folder>/inbox/<id>.md`, a handoff on another Mac wrote them) that this
+    Mac has not shown and does not hold itself, oldest first, and the names of files named as messages that could not
+    be read as one, each with a fixed reason. What such a file says is the file's own word: it is shown only on request,
+    marked as carried, and never delivered as a session's message (5.20.0's first review, F1). Only a regular file,
+    never a link, of at most CARRIED_MAX bytes is read."""
+    import re
+    import stat
+    from datetime import datetime
+    found, unreadable, shown = [], [], paths.board() / "carried-shown" / _session_file(project).stem
+    if folder and os.path.islink(Path(folder, "inbox")):
+        return [], ["inbox/ is a link, so nothing is read through it"]
+    for file in sorted(Path(folder, "inbox").glob("*.md")) if folder else []:
+        if not re.fullmatch(MESSAGE_ID, file.stem) or (shown / file.stem).exists() or (
+                _box(f"project:{project}") / f"{file.stem}.json").exists():
+            continue
+        try:
+            info = os.lstat(file)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > CARRIED_MAX:
+                raise ValueError("not a regular file of at most 64 KB")
+            head, _, body = file.read_bytes().decode("utf-8").partition("\n---\n")
+            fields = dict(line.split(": ", 1) for line in head.splitlines()[1:] if ": " in line) if head.startswith("---\n") else {}
+            if fields.get("id") != file.stem or fields.get("to") != f"project:{project}" or not fields.get("from"):
+                raise ValueError("its header does not give its own id, a sender and this project")
+        except (OSError, ValueError) as exc:  # a file's words are never quoted here, only the reason
+            unreadable.append(f"inbox/{file.name} ({exc if isinstance(exc, ValueError) and not isinstance(exc, UnicodeDecodeError) else 'unreadable'})")
+            continue
+        try:
+            at = datetime.fromisoformat(fields.get("at", "")).timestamp()
+            at = at if 1577836800 <= at <= time.time() + 86400 else None  # from 2020 to tomorrow, or no time
+        except (ValueError, OverflowError):
+            at = None
+        found.append({"id": file.stem, "file": f"inbox/{file.name}", "from": " ".join(fields["from"].split())[:120],
+                      "at": at, "text": body[1:].rstrip("\n") if body.startswith("\n") else body.rstrip("\n")})
+    return sorted(found, key=lambda m: (m["at"] is None, m["at"] or 0)), unreadable
+
+
+def carried_ids(project: str, folder) -> list:
+    """The ids of files in the project's inbox named as messages that this Mac has not shown and does not hold, by
+    their names alone (nothing is read): cheap enough for every prompt."""
+    import re
+    inbox, shown = Path(folder, "inbox"), paths.board() / "carried-shown" / _session_file(project).stem
+    if os.path.islink(inbox) or not inbox.is_dir():
+        return []
+    return sorted(f.stem for f in inbox.glob("*.md") if re.fullmatch(MESSAGE_ID, f.stem) and not (shown / f.stem).exists()
+                  and not (_box(f"project:{project}") / f"{f.stem}.json").exists())
+
+
+def mark_carried(project: str, ids) -> None:
+    """These carried messages have been shown on this Mac: none is shown again here."""
+    shown = paths.board() / "carried-shown" / _session_file(project).stem
+    shown.mkdir(parents=True, exist_ok=True)
+    for message_id in ids:
+        (shown / message_id).touch()
+
+
+def _read_marker(session_id: str, name: str) -> Path:
+    return paths.board() / "read" / _session_file(session_id).stem / name
+
+
+def mark_read_messages(session_id: str, messages: list) -> None:
+    """Mark only these messages read: a message is read once it has been shown, never before."""
+    for m in messages:
+        marker = _read_marker(session_id, m["id"])
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.touch()

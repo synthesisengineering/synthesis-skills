@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "name": "synthesis-skills-core",
   "displayName": "Synthesis: core",
-  "version": "5.30.0",
-  "description": "The ground every synthesis collection stands on: thinking and grounding discipline, verification before done, project records that survive compaction and restarts, decision packets and action sheets, the skill router, the skills that install synthesis and keep skill copies true to their source, and editing a knowledge base in the Open Knowledge Format, which each new workspace starts with. It has no hooks and runs no synthesis runtime, so no guards, no board and none of the rituals' state: nothing in it checks a send, a deploy or a commit, or coordinates sessions, and a script that needs the runtime says so in one line. Where one of its skills describes those, it describes the whole set. The whole set, synthesis-skills, has all of them and every skill: https://github.com/synthesisengineering/synthesis-skills",
+  "version": "5.31.0",
+  "description": "The ground every synthesis collection stands on: thinking and grounding discipline, verification before done, project records that survive compaction and restarts, decision packets and action sheets, the skill router, the skills that install synthesis and keep skill copies true to their source, and editing a knowledge base in the Open Knowledge Format, which each new workspace starts with. The core carries synthesis's guard, so every collection comes with it: the four hooks that hold sends, drafts and deploys for your approval and refuse destructive commands, and the runtime they run, with its board, approval codes and the rituals' records. Claude Code runs the hooks once installed; Codex and Muse once you approve them. The whole set, synthesis-skills, holds every skill in one plugin: https://github.com/synthesisengineering/synthesis-skills",
   "compat": {
     "source": "native",
     "manifestDir": ".muse-plugin"
@@ -80,7 +80,45 @@
       }
     ],
     "commands": [],
-    "hooks": [],
+    "hooks": [
+      {
+        "id": "synthesis-session-start",
+        "event": "SessionStart",
+        "command": [
+          "/bin/sh",
+          ".muse-plugin/hooks/session-start.sh"
+        ],
+        "timeoutMs": 10000,
+        "statusMessage": "Loading the active synthesis project"
+      },
+      {
+        "id": "synthesis-user-prompt-submit",
+        "event": "UserPromptSubmit",
+        "command": [
+          "/bin/sh",
+          ".muse-plugin/hooks/user-prompt-submit.sh"
+        ],
+        "timeoutMs": 5000
+      },
+      {
+        "id": "synthesis-pre-tool-use",
+        "event": "PreToolUse",
+        "command": [
+          "/bin/sh",
+          ".muse-plugin/hooks/pre-tool-use.sh"
+        ],
+        "timeoutMs": 5000
+      },
+      {
+        "id": "synthesis-stop",
+        "event": "Stop",
+        "command": [
+          "/bin/sh",
+          ".muse-plugin/hooks/stop.sh"
+        ],
+        "timeoutMs": 10000
+      }
+    ],
     "mcpServers": [],
     "reminders": []
   }

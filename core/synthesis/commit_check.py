@@ -1,0 +1,1025 @@
+"""Git commit check (R2.1, R3.3): secrets, unapproved disclosures, other sessions' claims.
+
+Runs as the global pre-commit, pre-merge-commit and commit-msg hook (core.hooksPath; the
+installed wrapper passes the hook's name in SYNTHESIS_GIT_HOOK). Credentials, private keys
+(a key header followed by key body lines) and credential file names block in every
+repository. The principal's commit policy, the YAML file named by `commit_policy` in
+config.json, adds exposure patterns by repository class, read from the push remotes: strict
+(a strict remote, no remote, or nothing matched), public-surface (every remote a published
+surface: names in the disclosure ledger pass) or personal (every remote personal: credentials
+only). Commit messages get the strict set in strict and public-surface repositories. A
+disclosure line that already exists verbatim in HEAD is moved or copied text, not a new
+disclosure; a credential blocks wherever it moves. Any other disclosure hit passes only once
+the principal approves that exact line (ruling of 2026-10-06): no word list can tell a leak
+from a legitimate mention, and rewording text to get past the check weakens both. An image is
+checked through the text it carries, never its pixels (2026-10-30).
+Anything it can't read or decide blocks the commit (R3.5); a machine with no board advises.
+After its own checks it runs the repository's own hooks (E37): the `.githooks/<hook>`
+delegate, then `.git/hooks/<hook>`, each once and never itself; a repository that declares
+`.githooks/required` (on disk, or still in the index, E38) needs an executable delegate.
+"""
+
+from __future__ import annotations
+
+import codecs
+import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import zlib
+from datetime import datetime, timedelta, timezone
+
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from synthesis import approvals, paths, yamlish  # noqa: E402
+from synthesis.credentials import (CREDENTIALS, EXAMPLE_KEYS, KEY_BODY, KEY_HEADER, KEY_INLINE,  # noqa: E402,F401
+                                   SECRET_FILE)
+
+# Files whose purpose is the pattern catalog itself; exposure patterns skip them, credentials never do.
+CATALOG_PATHS = [r"(^|/)\.githooks/pre-commit$", r"(^|/)\.githooks/extra-patterns\.ya?ml$", r"^\.synthesis/git-hook-config\.ya?ml$",
+                 r"(^|/)git-hook-config\.example\.ya?ml$", r"(^|/)anti-shortcut-catalog\.ya?ml$",
+                 r"^skills/synthesis-disclosure-policy/", r"^skills/synthesis-git-hooks/"]
+# The policy and ledger files config.json names are catalogs too, wherever the principal keeps them.
+POSIX = {"alnum": "0-9A-Za-z", "alpha": "A-Za-z", "digit": "0-9", "space": r"\s", "blank": r" \t", "upper": "A-Z",
+         "lower": "a-z", "xdigit": "0-9A-Fa-f", "punct": r"!-/:-@\[-`{-~"}
+PATTERN_KEYS = ("tier_0_always", "tier_1_strict_only", "personal_remote_patterns", "strict_repo_patterns",
+                "public_surface_patterns", "allowlist_lines", "diff_exclude_paths")
+HUNK = re.compile(rb"@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+SECONDS, MAX_DIFF, MAX_MESSAGE, MAX_CONTEXT = 60, 256 << 20, 1 << 20, 32 << 20
+HOOK = os.environ.get("SYNTHESIS_GIT_HOOK", "pre-commit")  # pre-merge-commit and commit-msg set this
+# Holds the git directory whose commit was already checked, so a repository hook that calls the
+# synthesis check again returns at once, while a commit in another repository is still checked.
+CHAINED = "SYNTHESIS_COMMIT_CHECKED"
+NEVER_REWORD = ("Remove a line that leaks. For a legitimate line, show the principal the line, get their approval and commit "
+                "again; never reword, split, encode or build the text at run time to get past this check.")
+
+
+class Refused(ValueError):
+    """The check can't establish a clean commit: the reason blocks it."""
+
+
+# --- the policy file and the ledger: the shared YAML reader in its strict subset -------------
+# Comments, nested mappings by indentation, lists of scalars, `key: []` and one-line scalars, with
+# double-quoted text kept literal (decoding escapes would turn a regex \b into a backspace).
+# Anything else (tabs, flow collections, anchors, block scalars) is an error that blocks the
+# commit, never a guess: one interpreter lacking PyYAML once let commits pass unscanned (2026-07-28).
+
+
+def parse_yaml(text: str) -> dict:
+    try:
+        return yamlish.load_mapping(text, strict=True)
+    except ValueError as exc:
+        raise Refused(str(exc)) from None
+
+
+def leaves(node) -> list:
+    """Every string in a policy node, in order."""
+    if isinstance(node, str):
+        return [node]
+    values = node.values() if isinstance(node, dict) else node if isinstance(node, list) else []
+    return [s for v in values for s in leaves(v)]
+
+
+def regex(pattern: str, flags: int = re.IGNORECASE):
+    """The policy's grep -E pattern as a Python regex (POSIX classes such as [:space:] translated)."""
+    return re.compile(re.sub(r"\[:(\w+):\]", lambda m: POSIX.get(m.group(1), m.group(0)), pattern), flags)
+
+
+def _read_yaml(path: str, what: str) -> dict:
+    try:
+        with open(os.path.expanduser(path), encoding="utf-8") as handle:
+            return parse_yaml(handle.read())
+    except (OSError, UnicodeDecodeError) as exc:
+        raise Refused(f"cannot read the {what} {path} ({exc})")
+    except Refused as exc:
+        raise Refused(f"cannot parse the {what} {path}: {exc}")
+
+
+def load_policy(config: dict) -> dict | None:
+    """The commit policy config.json names, validated; None when it names none."""
+    path = config.get("commit_policy")
+    if not path:
+        return None
+    policy = _read_yaml(str(path), "commit policy")
+    if not isinstance(policy.get("config_version"), int) or policy["config_version"] < 2:
+        raise Refused(f"the commit policy {path} must declare config_version 2 or later")
+    if not leaves(policy.get("tier_0_always")):
+        raise Refused(f"the commit policy {path} defines no tier_0_always credential patterns")
+    for key in PATTERN_KEYS:
+        for pattern in leaves(policy.get(key)):
+            try:
+                if not pattern or any(ord(c) < 32 for c in pattern):
+                    raise re.error("empty, or holds a control character")
+                regex(pattern)
+            except re.error as exc:
+                raise Refused(f"the commit policy's {key} has an invalid pattern {pattern!r} ({exc})")
+    policy["disclosure_ledger"] = config.get("disclosure_ledger") or policy.get("disclosure_ledger")
+    return policy
+
+
+def classify(policy: dict | None, urls: list[str]) -> str:
+    """strict, public-surface or personal, from the push remotes. Mixed remotes take the stricter class."""
+    def matches(key, url):
+        return any(regex(p).search(url) for p in leaves(policy.get(key)))
+    if not policy or not urls or any(matches("strict_repo_patterns", u) for u in urls):
+        return "strict"
+    if leaves(policy.get("public_surface_patterns")):
+        if all(matches("public_surface_patterns", u) for u in urls):
+            return "public-surface"
+        if any(matches("public_surface_patterns", u) for u in urls):
+            return "strict"  # escalation, never demotion through a broad personal pattern
+    personal = leaves(policy.get("personal_remote_patterns"))
+    return "personal" if personal and all(matches("personal_remote_patterns", u) for u in urls) else "strict"
+
+
+def allowances(policy: dict) -> set:
+    """Identity patterns the disclosure ledger records as published precedent. A configured ledger
+    that is missing or malformed blocks public-surface commits; an entry needs evidence and an
+    approved register, and may only subtract a pattern from an identity group."""
+    path = policy.get("disclosure_ledger")
+    if not path:
+        return set()
+    entities = _read_yaml(str(path), "disclosure ledger").get("entities")
+    if not isinstance(entities, dict) or not entities:
+        raise Refused(f"the disclosure ledger {path} has no entities")
+    groups = leaves(policy.get("ledger_allowance_groups")) or ["confidential_names"]
+    tier1 = policy.get("tier_1_strict_only") if isinstance(policy.get("tier_1_strict_only"), dict) else {}
+    eligible = {p for g in groups for p in leaves(tier1.get(g))}
+    registers = set(leaves(policy.get("ledger_registers")) or ["biography"])
+    found = set()
+    for name, entry in entities.items():
+        if not isinstance(entry, dict) or not leaves(entry.get("evidence")):
+            raise Refused(f"ledger entity {name} has no evidence; precedent without evidence is not precedent")
+        declared = set(leaves(entry.get("registers")))
+        if not declared or declared - registers:
+            raise Refused(f"ledger entity {name} needs registers from: {', '.join(sorted(registers))}")
+        for pattern in leaves(entry.get("hook_patterns")):
+            if pattern not in eligible:
+                raise Refused(f"ledger entity {name} claims {pattern!r}, outside the identity groups {', '.join(groups)}")
+            found.add(pattern)
+    return found
+
+
+def exposure(policy: dict | None, cls: str) -> list[str]:
+    """The tier-1 patterns that apply in a repository of this class."""
+    tier1 = (policy or {}).get("tier_1_strict_only")
+    tier1 = tier1 if isinstance(tier1, dict) else {}
+    if not policy or cls == "personal":
+        return []
+    if cls == "public-surface":
+        groups = leaves(policy.get("public_surface_groups"))
+        allowed = allowances(policy)
+        selected = {g: tier1[g] for g in groups if g in tier1} if groups else tier1
+        return [p for p in dict.fromkeys(leaves(selected)) if p not in allowed]
+    return list(dict.fromkeys(leaves(tier1)))
+
+
+# --- images: the text they carry, never their pixels ------------------------------------------
+# Pixels are compressed bytes, not text: read as lines, they matched short protected names at random (1,743 of the
+# 8,982 images in the principal's repositories; four screenshots in one commit needed four approval codes, 2026-10-30).
+# PNG, JPEG, GIF, WebP, HEIC and AVIF are read by their structure: everything but the pixel data (the coded pixels,
+# their palettes and coding tables) is scanned, compressed text inflated. A file that doesn't parse exactly, and any
+# other format, is read byte for byte as before.
+IMAGE = re.compile(rb"(\x89PNG\r\n\x1a\n)|(\xff\xd8\xff)|(GIF8[79]a)|(RIFF....WEBP)|(....ftyp(?:hei[cxms]|hev[cx]|m[is]f1|avi[fs]))",
+                   re.S)
+SCAN_END = re.compile(rb"\xff[^\x00\xd0-\xd7\xff]|\Z")  # where a JPEG scan's coded data stops: at its next marker
+HEIF_CODED = {b"hvc1", b"hvt1", b"av01", b"avc1", b"vvc1", b"jpeg", b"j2k1", b"unci"}  # item types holding pixels
+
+
+def image_text(blob: bytes) -> list | None:
+    """The lines of text an image file carries, and of whatever follows the image; None for any other file and for
+    one that doesn't parse exactly."""
+    if not IMAGE.match(blob):
+        return None
+    rest, room, texts = blob, [MAX_CONTEXT], []
+    try:
+        while kind := IMAGE.match(rest):
+            found, rest = (_png, _jpeg, _gif, _webp, _heif)[kind.lastindex - 1](rest, room)
+            texts += found
+    except (ValueError, IndexError, KeyError, zlib.error):
+        return None
+    return [line for text in texts + [rest] for line in text.split(b"\n")]
+
+
+def _png(blob: bytes, room: list) -> tuple:
+    """Chunks through IEND, and what follows: image data and palette skipped, compressed text and ICC profiles
+    inflated, Latin-1 text read as such."""
+    texts, i = [], 8
+    while True:
+        size, kind = int.from_bytes(blob[i:i + 4], "big"), blob[i + 4:i + 8]
+        data, i = blob[i + 8:i + 8 + size], i + 12 + size
+        if not (len(kind) == 4 and kind.isalpha() and i <= len(blob)):
+            raise ValueError("a PNG chunk that does not fit")
+        if kind == b"IEND":
+            return texts, blob[i:]
+        if kind in (b"zTXt", b"iCCP"):  # a name, the compression method, then the text or the profile
+            name, packed = data.split(b"\0", 1)
+            data = name + b"\n" + _inflate(packed[1:], room)
+        elif kind == b"iTXt":  # a keyword, the compression flag and method, a language, a translated keyword, the text
+            key, rest = data.split(b"\0", 1)
+            lang, title, text = rest[2:].split(b"\0", 2)
+            data = b"\n".join([key, lang, title, _inflate(text, room) if rest[:1] == b"\1" else text])
+        if kind not in (b"IDAT", b"fdAT", b"PLTE"):
+            texts.append(data.decode("latin-1").encode() if kind in (b"tEXt", b"zTXt") else data)
+
+
+def _jpeg(blob: bytes, room: list) -> tuple:
+    """Segments through EOI, and what follows: comments, APPn segments (EXIF, XMP, ICC, IPTC) and unknown ones
+    scanned; frame, table and scan headers and each scan's coded data skipped."""
+    texts, i = [], 2
+    while True:
+        if blob[i] != 0xFF:
+            raise ValueError("not a JPEG marker")
+        marker = blob[i + 1]
+        i += 1 if marker == 0xFF else 2  # fill bytes may come before a marker
+        if marker == 0xFF or 0xD0 <= marker <= 0xD7 or marker == 0x01:  # fill, or a marker with no segment
+            continue
+        if marker == 0xD9:
+            return texts, blob[i:]
+        size = int.from_bytes(blob[i:i + 2], "big")
+        if size < 2 or i + size > len(blob):
+            raise ValueError("a JPEG segment that does not fit")
+        if not 0xC0 <= marker <= 0xDF:  # 0xC0 to 0xDF: frame, table and scan headers, coding data
+            texts.append(blob[i + 2:i + size])
+        i += size
+        if marker == 0xDA:  # the scan's coded data runs to its next marker
+            i = SCAN_END.search(blob, i).start()
+
+
+def _gif(blob: bytes, room: list) -> tuple:
+    """Blocks through the trailer, and what follows: extensions (comments, plain text, application data such as
+    XMP) scanned as stored; the header, palettes and each image's pixels skipped."""
+    texts, i = [], 13 + _palette(blob[10])
+    while blob[i] != 0x3B:
+        start = i
+        if blob[i] == 0x2C:  # an image: its descriptor, palette and LZW code size, then its pixels
+            i = _blocks(blob, i + 11 + _palette(blob[i + 9]))
+        elif blob[i] == 0x21:  # an extension: its label, then its data
+            i = _blocks(blob, i + 2)
+            texts.append(blob[start:i])
+        else:
+            raise ValueError("not a GIF block")
+    return texts, blob[i + 1:]
+
+
+def _blocks(blob: bytes, i: int) -> int:
+    """Past a GIF run of data sub-blocks and its terminator."""
+    while blob[i]:
+        i += blob[i] + 1
+    return i + 1
+
+
+def _palette(packed: int) -> int:
+    """The size of a GIF color table, from the flags that declare it."""
+    return 3 << ((packed & 7) + 1) if packed & 0x80 else 0
+
+
+def _webp(blob: bytes, room: list) -> tuple:
+    """The RIFF chunks, and what follows."""
+    end = 8 + int.from_bytes(blob[4:8], "little")
+    if end > len(blob):
+        raise ValueError("a WebP file shorter than it says")
+    return _riff(blob[12:end]), blob[end:]
+
+
+def _riff(data: bytes) -> list:
+    """EXIF, XMP, ICC and unknown chunks scanned; the coded image and its alpha skipped, in each animation frame too."""
+    texts, i = [], 0
+    while i < len(data):
+        kind, size = data[i:i + 4], int.from_bytes(data[i + 4:i + 8], "little")
+        if i + 8 + size > len(data):
+            raise ValueError("a WebP chunk that does not fit")
+        body, i = data[i + 8:i + 8 + size], i + 8 + size + size % 2  # chunks are padded to an even size
+        if kind == b"ANMF":  # a frame: its position and timing, then its own chunks
+            texts += _riff(body[16:])
+        elif kind not in (b"VP8 ", b"VP8L", b"ALPH"):
+            texts.append(body)
+    return texts
+
+
+def _heif(blob: bytes, room: list) -> tuple:
+    """HEIC and AVIF: everything but the coded image items' bytes, as stored. EXIF and XMP are items too, in the same
+    box as the coded images, so the item table says which bytes to skip."""
+    top = {kind: (start, end) for kind, start, end in _boxes(blob, 0, len(blob))}
+    if b"moov" in top:
+        raise ValueError("an image sequence: its frames are samples, not items")
+    meta = {kind: (start, end) for kind, start, end in _boxes(blob, top[b"meta"][0] + 4, top[b"meta"][1])}
+    coded = {item for item, kind in _item_types(blob, *meta[b"iinf"]).items() if kind in HEIF_CODED}
+    texts, at = [], 0
+    for start, end in sorted(_locations(blob, *meta[b"iloc"], coded)):
+        texts.append(blob[at:max(at, start)])
+        at = max(at, end)
+    return texts + [blob[at:]], b""
+
+
+def _boxes(data: bytes, i: int, end: int):
+    """(type, body start, end) of each ISOBMFF box from i to end."""
+    while i < end:
+        size, kind, head = int.from_bytes(data[i:i + 4], "big"), data[i + 4:i + 8], 8
+        if size == 1:  # a 64-bit size follows the type
+            size, head = int.from_bytes(data[i + 8:i + 16], "big"), 16
+        elif size == 0:  # the box runs to the end
+            size = end - i
+        if size < head or i + size > end:
+            raise ValueError("a box that does not fit")
+        yield kind, i + head, i + size
+        i += size
+
+
+def _item_types(blob: bytes, start: int, end: int) -> dict:
+    """Item id to item type, from iinf's infe boxes (versions 2 and 3 carry the type)."""
+    types = {}
+    for kind, at, _ in _boxes(blob, start + (6 if blob[start] == 0 else 8), end):
+        if kind == b"infe" and blob[at] >= 2:
+            n = 2 if blob[at] == 2 else 4
+            types[int.from_bytes(blob[at + 4:at + 4 + n], "big")] = blob[at + 6 + n:at + 10 + n]
+    return types
+
+
+def _locations(blob: bytes, start: int, end: int, items: set) -> list:
+    """(start, end) of every extent iloc places in this file, by file offset, for the given items."""
+    version, i, found = blob[start], start + 6, []
+    offset_size, length_size = blob[start + 4] >> 4, blob[start + 4] & 15
+    base_size, index_size = blob[start + 5] >> 4, blob[start + 5] & 15 if version else 0
+
+    def take(n: int) -> int:
+        nonlocal i
+        i += n
+        if i > end:
+            raise ValueError("an item location that does not fit")
+        return int.from_bytes(blob[i - n:i], "big")
+    for _ in range(take(2 if version < 2 else 4)):
+        item, method = take(2 if version < 2 else 4), take(2) & 15 if version else 0
+        here, base = take(2) == 0 and method == 0, take(base_size)  # data in this file, at a file offset
+        for _ in range(take(2)):
+            take(index_size)
+            offset, length = base + take(offset_size), take(length_size)
+            if item in items and here:
+                if not length or offset + length > len(blob):
+                    raise ValueError("an extent outside the file")
+                found.append((offset, offset + length))
+    return found
+
+
+def _inflate(packed: bytes, room: list) -> bytes:
+    """Compressed text, within what is left of the file's bound: more than MAX_CONTEXT in all reads as malformed."""
+    stream = zlib.decompressobj()
+    text = stream.decompress(packed, room[0] + 1)
+    room[0] -= len(text)
+    if room[0] < 0 or not stream.eof:
+        raise ValueError("compressed text that does not inflate within the bound")
+    return text + stream.unused_data
+
+
+# --- reading the commit, byte for byte --------------------------------------------------------
+
+
+def git_bytes(args: list, deadline: float, limit: int = MAX_DIFF, ok: tuple = (0,)) -> bytes:
+    """git's output as bytes, bounded in time and size. A failure or a bound reached refuses."""
+    import selectors
+    import tempfile
+    with tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(["git", *args], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=err)
+        out, selector = bytearray(), selectors.DefaultSelector()
+        selector.register(proc.stdout, selectors.EVENT_READ)
+        try:
+            while True:
+                left = deadline - time.monotonic()
+                if left <= 0 or not selector.select(left):
+                    raise Refused(f"git {args[0]} took longer than {SECONDS} seconds")
+                chunk = os.read(proc.stdout.fileno(), 1 << 16)
+                if not chunk:
+                    break
+                out += chunk
+                if len(out) > limit:
+                    raise Refused(f"git {args[0]} returned more than {limit >> 20} MiB")
+            if proc.wait(timeout=max(0.1, deadline - time.monotonic())) not in ok:
+                err.seek(0)
+                raise Refused(f"git {args[0]} failed: {err.read(400).decode('utf-8', 'replace').strip()}")
+        finally:
+            selector.close()
+            proc.stdout.close()
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait()
+    return bytes(out)
+
+
+def _path(raw: bytes) -> bytes:
+    """A diff's destination path as bytes; git quotes and escapes unusual names."""
+    raw = raw[:-1] if raw.endswith(b"\t") else raw
+    if raw.startswith(b'"'):
+        if len(raw) < 2 or not raw.endswith(b'"'):
+            raise Refused("unterminated quoted path in the staged diff")
+        raw = codecs.escape_decode(raw[1:-1])[0]
+    if not raw.startswith(b"b/"):
+        raise Refused("unrecognized path in the staged diff")
+    return raw[2:]
+
+
+def added(diff: bytes) -> list:
+    """(path, new line number, bytes) for every added line. Hunk counts are followed, so an
+    added line that looks like a diff header stays content."""
+    found, path, old, new, number = [], None, 0, 0, 0
+    for line in diff.split(b"\n"):
+        if old > 0 or new > 0:
+            if line.startswith(b"\\"):
+                continue
+            tag = line[:1]
+            if tag not in (b"+", b"-", b" ") or (tag == b"-" and old < 1) or (tag != b"-" and new < 1):
+                raise Refused("the staged diff is malformed (a hunk's lengths do not match)")
+            old, new = old - (tag != b"+"), new - (tag != b"-")
+            if tag == b"+":
+                found.append((path, number, line[1:]))
+            number += tag != b"-"
+        elif line.startswith(b"diff --git "):
+            path = None
+        elif line.startswith(b"+++ "):
+            path = _path(line[4:])
+        elif line.startswith(b"@@ "):
+            hunk = HUNK.match(line)
+            if path is None or not hunk:
+                raise Refused("the staged diff has a hunk with no file")
+            old, number = int(hunk.group(1) or 1), int(hunk.group(2))
+            new = int(hunk.group(3) or 1)
+        elif line.startswith(b"+"):
+            raise Refused("the staged diff has an added line outside a hunk")
+    if old > 0 or new > 0:
+        raise Refused("the staged diff ends inside a hunk")
+    return found
+
+
+def images(lines: list, deadline: float) -> tuple:
+    """The added lines, each staged image's replaced by the lines of text it carries that its HEAD version did not,
+    and all of that text by path, for the key rule. Only a path with an added line that isn't UTF-8 text is read
+    whole to tell."""
+    texts, before = {}, {}
+    for path in dict.fromkeys(p for p, _, t in lines if b"\0" in t or t.decode("utf-8", "replace").encode() != t):
+        text = image_text(git_bytes(["cat-file", "blob", b":" + path], deadline))
+        if text is not None:
+            old = git_bytes(["cat-file", "blob", b"HEAD:" + path], deadline, ok=(0, 128))  # nothing there: a new file
+            texts[path], before[path] = text, set(image_text(old) or old.split(b"\n"))
+    return [x for x in lines if x[0] not in texts] + [
+        (p, n, line) for p, text in texts.items() for n, line in enumerate(text, 1) if line not in before[p]], texts
+
+
+def key_lines(lines: list) -> set:
+    """Line numbers that belong to a private key: a key header followed by key body lines. A
+    header with no body (a detection rule, a doc example) is not a key."""
+    hits = set()
+    for i, line in enumerate(lines):
+        if KEY_INLINE.search(line):
+            hits.add(i + 1)
+        if not KEY_HEADER.search(line):
+            continue
+        j = i + 1
+        while j < min(len(lines), i + 5) and (not lines[j].strip() or re.match(rb"\s*[A-Za-z-]+: ", lines[j])):
+            j += 1
+        if j < len(lines) and KEY_BODY.fullmatch(lines[j]):
+            end = next((k for k in range(j, min(len(lines), j + 400)) if not KEY_BODY.fullmatch(lines[k])), len(lines))
+            hits.update(range(i + 1, min(len(lines), end + 2) + 1))  # through the short last line and the footer
+    return hits
+
+
+def message_lines(path: str) -> list:
+    """The commit message's lines, without git's comment lines. It must be a small regular file."""
+    fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    with os.fdopen(fd, "rb") as handle:
+        import stat
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise Refused("the commit message is not a regular file")
+        raw = handle.read(MAX_MESSAGE + 1)
+    if len(raw) > MAX_MESSAGE:
+        raise Refused("the commit message is over 1 MiB")
+    return [(b"commit message", n, b"" if line.startswith(b"#") else line) for n, line in enumerate(raw.split(b"\n"), 1)]
+
+
+def _show(path: bytes, number: int, line: bytes) -> str:
+    text = line.decode("utf-8", "backslashreplace")[:160]
+    return f"{path.decode('utf-8', 'backslashreplace')}:{number}: " + "".join(c if c >= " " else "?" for c in text)
+
+
+def _own(found: str, own: set) -> bool:
+    """A repository naming itself (a product's name in its own app repository) is not a disclosure (Rajiv, 2026-10-06)."""
+    plain = re.sub(r"[^a-z0-9]", "", found.lower())
+    return len(plain) >= 4 and any(plain in name for name in own)
+
+
+def scan(lines: list, policy: dict | None, patterns: list[str], deadline: float, approve, staged: bool = True,
+         own: set = frozenset(), texts: dict | None = None) -> list[str]:
+    """Credentials and keys in every line; exposure patterns outside catalog files and allowlisted lines, each
+    hit then put to `approve`. Lines with invalid UTF-8 are matched through a replacement view and never exempted.
+    A key header is left to the key rule (header plus body), whichever tier-0 pattern names it; in an image, the
+    rule reads the text in `texts`."""
+    policy, texts, found, by_path, skip, hits = policy or {}, texts or {}, [], {}, {}, []
+    tier0 = [(n, re.compile(p)) for n, p in CREDENTIALS.items()] + [("credential pattern", regex(p)) for p in leaves(policy.get("tier_0_always"))]
+    exposed = [regex(p) for p in patterns]
+    allow = [regex(p) for p in leaves(policy.get("allowlist_lines"))]
+    excluded = [re.compile(p) for p in CATALOG_PATHS + leaves(policy.get("diff_exclude_paths"))]
+    for path, number, line in lines:
+        text = line.decode("utf-8", "replace")
+        valid = text.encode("utf-8") == line
+        probe = EXAMPLE_KEYS.sub(b" ", KEY_HEADER.sub(b" ", line)).decode("utf-8", "replace")
+        name = next((n for n, rx in tier0 if rx.search(probe)), None)
+        if name:
+            found.append(f"{_show(path, number, line)}  <- looks like {'an' if name[0] in 'AEIOU' else 'a'} {name}; remove it, and rotate it if it was real")
+        if KEY_HEADER.search(line) or KEY_INLINE.search(line) or KEY_BODY.fullmatch(line):
+            by_path.setdefault(path, set()).add(number)
+        if path not in skip:  # a path with invalid UTF-8 or a newline earns no exclusion
+            shown = path.decode("utf-8", "replace")
+            skip[path] = shown.encode("utf-8") == path and "\n" not in shown and any(rx.search(shown) for rx in excluded)
+        if exposed and not skip[path] and any(not _own(m.group(0), own) for rx in exposed for m in rx.finditer(text)):
+            if not (valid and any(rx.search("+" + text) for rx in allow)):
+                hits.append((path, number, line))
+    for path, numbers in by_path.items():
+        content = texts.get(path) or (git_bytes(["cat-file", "blob", b":" + path], deadline, MAX_CONTEXT).split(b"\n")
+                                      if staged else [x[2] for x in lines])
+        keys = key_lines(content) & numbers
+        found += [f"{_show(path, n, content[n - 1])}  <- private key material; never commit a key" for n in sorted(keys)]
+    moved = _in_head({h[2] for h in hits}, deadline) if hits and staged else set()
+    return found + approve([h for h in hits if h[2] not in moved])
+
+
+def read_allowances(store) -> dict:
+    """The approved lines: {"lines": {fingerprint: date approved}}. No file yet is none; one that can't be read blocks."""
+    try:
+        with open(store, encoding="utf-8") as handle:
+            return {**json.load(handle)["lines"]}  # anything but an object of lines raises
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError, LookupError, TypeError) as exc:
+        raise Refused(f"cannot read the approved lines in {store} ({exc}); repair it, never delete it to get past this")
+
+
+def unapproved(hits: list, repo: str, store, approved: dict) -> list[str]:
+    """Disclosure hits the principal has not approved for this repository, file (or commit message) and exact line,
+    each with the code of a request this check files beside its state: it runs in the agent's shell, which neither
+    spends an approval nor writes the sealed store (the guard's sandbox). The hook keeps the line in the store, as a
+    hash and a date, once the session's record shows the principal typing that code, so it passes from then on, while
+    an edit or a new place asks again."""
+    found = []
+    for path, number, line in hits:
+        key = approvals.digest("disclosure-line", [repo, *(b.decode("utf-8", "surrogateescape") for b in (path, line))])
+        if key in approved:
+            continue
+        code = approvals.request("disclosure-line", {"fp": key}, f"line {number} of {os.fsdecode(path)} in {repo}")
+        found.append(f"{_show(path, number, line)}  <- unapproved disclosure for this repository's audience; if it belongs, ask "
+                     f"the principal to type {approvals.how(code)}, then commit again: the hook keeps the line once this session's "
+                     "record shows the code typed")
+    return found
+
+
+def identity(remotes: list[str]) -> str:
+    """The repository an approval binds, alike in every clone on every Mac: its push remotes without scheme, user, `.git`
+    or case; with none, its git folder (shared by its worktrees) under the home directory."""
+    if remotes:
+        return " ".join(sorted({re.sub(r"^(?:[a-z+]+://)?(?:[^@/]+@)?([^/:]+)[:/]+(.*?)(?:\.git)?/*$", r"\1/\2", u.lower())
+                                for u in remotes}))
+    found, home = os.path.realpath(_git("rev-parse", "--git-common-dir").stdout.strip()), os.path.expanduser("~")
+    return "~" + found[len(home):] if paths.inside(found, home) else found
+
+
+def _in_head(lines: set, deadline: float) -> set:
+    """The given lines that already exist, whole, in HEAD: moved text is not a new disclosure."""
+    import tempfile
+    wanted = {line for line in lines if line.strip() and b"\0" not in line}
+    if not wanted or git_bytes(["rev-parse", "-q", "--verify", "HEAD"], deadline, ok=(0, 1)).strip() == b"":
+        return set()
+    with tempfile.NamedTemporaryFile() as patterns:
+        patterns.write(b"\n".join(wanted) + b"\n")
+        patterns.flush()
+        out = git_bytes(["grep", "-h", "-I", "-F", "--no-color", "-f", patterns.name, "HEAD", "--"], deadline, ok=(0, 1))
+    return wanted & set(out.split(b"\n"))
+
+
+def changed_paths(deadline: float) -> list[str]:
+    """Every staged path, both sides of a rename: a claim covers what leaves it as well as what arrives."""
+    fields = git_bytes(["diff", "--cached", "--name-status", "-z", "-M", "--no-color"], deadline).split(b"\0")
+    found, i = [], 0
+    while i < len(fields) and fields[i]:
+        count = 2 if fields[i][:1] in (b"R", b"C") else 1
+        found += [os.fsdecode(p) for p in fields[i + 1:i + 1 + count]]
+        i += 1 + count
+    return found
+
+
+def claims(repo_root: str, session_id: str, staged: list[str]) -> tuple[list[str], str]:
+    """(problems, note): staged paths inside another live session's claim. No board advises;
+    a board that exists but can't be read blocks (R2.6)."""
+    from synthesis import board
+    directory = paths.board() / "sessions"
+    if not directory.is_dir():
+        return [], "no coordination board on this machine, so claims were not checked"
+    try:
+        for entry in directory.glob("*.json"):
+            json.loads(entry.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return [f"the coordination board can't be read ({exc}); repair or remove that entry, then commit"], ""
+    found = []
+    for rel in staged:
+        holders = board.holders(os.path.join(repo_root, rel), exclude=session_id)
+        if holders:
+            h = holders[0]
+            found.append(f"{rel}: inside a claim held by {h.session} ({h.project or '-'}: {h.goal or 'no goal'})"
+                         + ("" if session_id else "; if the claim is yours, commit with SYNTHESIS_SESSION=<your session id>"))
+    return found, ""
+
+
+def push_remotes() -> list[str]:
+    out = subprocess.run(["git", "remote", "-v"], capture_output=True, text=True).stdout
+    return [p[1] for p in (line.split() for line in out.splitlines()) if len(p) >= 3 and p[2] == "(push)"]
+
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # an interpreter with none reads no region label
+    ZoneInfo = None
+# The time an entry gives for itself, in the four places a record states one: the line opens with the day and a
+# time (behind a list mark, a ticked box, a heading, emphasis, a bracket), a parenthesis opens with them or with one
+# of the words below, each saying what was done then (`added`, `as of`), the line opens with a time alone (read
+# only in a session log, in a list item or a heading, under a heading that names the day), or the line opens with
+# one of those words and then the time. A time may be rounded
+# ("18:3x", "about 18:35"), a range, on a 12-hour clock, and may name its zone. Measured on thirty days of commits
+# before this was written (2026-11-12): 688 such stamps, 36 of them later than their commit and 111 rounding the
+# present. Replayed over the same commits, the first form refused five wrapped lines that began with a time by
+# chance: a line with no mark opens an entry only where it begins a paragraph. Counted again after a review
+# (2026-11-13), while the check had no bound: every stamp later than its commit stood at most AHEAD minutes ahead;
+# what that review showed refused farther off was a deadline, a schedule or a zone read as local. After a second
+# review, from the 1,148 stamps the check read in those commits: the words are a closed list (any word in -ed had
+# made `(scheduled <a time>)` a stamp, and the words met were these), and a zone is one of the labels below (a
+# capital word ending in T had been taken for one, and none of the stamps named a zone outside these).
+AHEAD = 30
+_MARKS = r"^[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]+)?(?:\[[xX]\][ \t]+)?(?:#{1,6}[ \t]+)?[*_`\[(]*"
+_CLOCK = r"(?:[01]?\d|2[0-3]):[0-5][\dx](?::\d\d(?:\.\d+)?)?"
+_SPAN = (r"(?P<about>(?:about|around|roughly|approximately|approx\.?|circa|c\.|~|≈)\s*)?(?P<first>" + _CLOCK + r")"
+         r"(?P<ish>\s*-?(?:ish|or so)\b|\s*\((?:approx\.?|about|roughly)\))?(?:\s*(?P<dash>to|-|–|—|until)\s*(?P<last>" + _CLOCK + r"))?"
+         r"(?P<half>\s?(?i:[ap]\.?m\.?)(?![A-Za-z]))?"
+         r"(?P<zone>(?:\s?(?:(?:Z|UTC|GMT|[ECMP][SD]?T)(?:[+-]\d{1,2}(?::?\d\d)?)?\b|(?:IST|BST|CES?T|EES?T|WES?T|JST|KST|HKT|SGT|"
+         r"AE[SD]T|AC[SD]T|AWST|NZ[SD]T|AK[SD]T|HST|MSK)\b|[+-]\d\d:?\d\d\b))?)")
+_DAY = (r"(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)[*_`\])]*"
+        r"(?:(?P<iso>T)|[ \t,:–—]+(?:-[ \t]+)?(?:at[ \t]+)?[*_`]*)")
+_DONE = (r"(?:(?i:as of|current to|added|answered|approved|asked|begun|built|checked|closed|completed|corrected|counted|created|"
+         r"decided|deleted|deployed|done|extended|filed|finished|fixed|found|held|installed|kept|left|made|measured|merged|"
+         r"modified|noted|opened|posted|probed|proven|published|pushed|read|received|recorded|refreshed|released|removed|"
+         r"renamed|replied|returned|reviewed|revised|ruled|run|said|searched|sent|shown|started|stopped|synced|tested|told|updated|"
+         r"verified|written):?[ \t]+)?")
+STAMPS = (re.compile(_MARKS + _DAY + _SPAN), re.compile(r"\(" + _DONE + _DAY + _SPAN),
+          re.compile(_MARKS + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"),
+          # The line opens with one of those words and then the time, a weekday or a day between them or neither
+          # (2026-11-13: `**Revised Fri 07:1x ET:**` was committed at 07:11 and no stamp was read; in thirty days of
+          # commits 110 lines open so, and 28 of them round the time or stand a few minutes after their commit).
+          re.compile(_MARKS + _DONE[:-1] + r"(?:(?:on|at)[ \t]+)?[*_`]*(?:(?P<week>Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?,?[ \t]+)?"
+                     r"(?:(?P<year>\d{4}-)?(?P<month>\d\d)-(?P<day>\d\d)[ \t,]+)?(?:at[ \t]+)?" + _SPAN + r"(?=[\s,.:;)*_\]—-]|$)"))
+ENTRY = re.compile(r"[ \t]*(?:(?:[-*+]|\d+[.)])[ \t]|#{1,6}[ \t])")  # what opens an entry: a list item or a heading
+BOX = re.compile(r"[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[ \]")  # an unchecked box: a plan, whose time is when it is to be done
+REGIONS = {"E": "America/New_York", "C": "America/Chicago", "M": "America/Denver", "P": "America/Los_Angeles"}  # ET, EST and EDT alike
+
+
+def _stamped(found, now: datetime):
+    """(minutes a stamp stands after `now`, whether it is rounded, its words, whether it is a span that had begun by
+    `now`), or None where it names a zone that is not placed here or a day that is none. The stamp is placed by its
+    own day in its own zone, so one that names tomorrow's date in UTC is read; a range, by its later end. A hyphen
+    and a time that would end a range before it began is an offset."""
+    part = found.groupdict()
+    clock, zone, first = part["last"] or part["first"], (part["zone"] or "").strip(), part["last"] and part["first"]
+    if part["last"] and part["dash"] == "-" and (part.get("iso") or part["last"] < part["first"].zfill(5)):
+        clock, zone, first = part["first"], "-" + part["last"], None
+    offset = re.fullmatch(r"(?:UTC|GMT)?([+-])(\d{1,2}):?(\d\d)?", zone)
+    try:
+        if offset:
+            there = timezone((-1 if offset.group(1) == "-" else 1) * timedelta(hours=int(offset.group(2)), minutes=int(offset.group(3) or 0)))
+        elif re.fullmatch(r"[ECMP][SD]?T", zone):
+            there = ZoneInfo(REGIONS[zone[0]])
+        elif zone and zone not in ("Z", "UTC", "GMT"):  # a zone this check names and does not place: what cannot be read is not refused
+            return None
+        else:
+            there = timezone.utc if zone else now.tzinfo
+        today = now.astimezone(there)
+        if part.get("week") and not part.get("day") and part["week"].lower() != ("mon", "tue", "wed", "thu", "fri", "sat", "sun")[today.weekday()]:
+            return None  # a weekday that is not today's names another day
+
+        def placed(clock):
+            hour, minute = clock.split(":")[:2]
+            hour = int(hour) % 12 + 12 * ("p" in part["half"].lower()) if part.get("half") else int(hour)
+            return datetime(int((part.get("year") or f"{today.year}-")[:4]), int(part.get("month") or today.month), int(part.get("day") or today.day),
+                            hour, int(minute) if minute.isdigit() else int(minute[0]) * 10, tzinfo=there)
+        at, minute = placed(clock), now.replace(second=0, microsecond=0)
+        began = bool(first) and placed(first) <= minute
+    except Exception:  # no zone data on this machine, or a day the calendar does not have
+        return None
+    words = found.group(0)[found.start("about" if part["about"] else "first") - found.start():].strip()
+    return int((at - minute).total_seconds() // 60), bool(part["about"] or part["ish"] or "x" in clock), words, began
+
+
+def _around(whole: list) -> tuple:
+    """For each line of a file: whether it stands in a code fence, and the nearest heading above it, outside a
+    fence, that names a day."""
+    fenced, dated, inside, day = [], [], False, ""
+    for line in whole:
+        edge = line.lstrip().startswith(("```", "~~~"))
+        fenced.append(inside or edge)
+        inside ^= edge
+        dated.append(day)
+        if not fenced[-1] and re.match(r"#{1,6}\s", line) and re.search(r"\d{4}-\d\d-\d\d", line):
+            day = line
+    return fenced, dated
+
+
+def _record(path: str, skip: list) -> bool:
+    """A Markdown record these checks read: not in a folder of transcripts, and not what the setting's `skip` names
+    (a folder from the repository's root, or a pattern)."""
+    named = [pattern[2:] if pattern.startswith("./") else pattern for pattern in skip]
+    return (path.lower().endswith((".md", ".markdown")) and not any(part.lower().endswith("transcripts") for part in path.split("/")[:-1])
+            and not any(path.startswith(pattern.rstrip("/") + "/") or fnmatch.fnmatch(path, pattern) for pattern in named))
+
+
+def record_times(lines: list, settings, now: datetime, read) -> list:
+    """Config: {"record_times": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false. In a
+    Markdown file outside a folder of transcripts, an entry's own stamp may not stand 1 to AHEAD minutes after now,
+    and may not round a moment from 15 minutes back to AHEAD ahead: the clock could be read (a request of
+    2026-11-12, after six such times in one day). A moment longer ago may be rounded. Not judged: a time inside an
+    entry's text (three in ten of those are later than their commit, and rightly), a time farther ahead (a
+    deadline, a schedule), the time an unchecked box opens with, a code fence's, and outside a session log a span
+    that had begun (a meeting's hours, in the notes written while it runs). `read(path)` gives a staged file's
+    text, once."""
+    if settings is False:
+        return []
+    skip = settings.get("skip", []) if isinstance(settings, dict) else None
+    if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
+        raise Refused('record_times in the synthesis config must be an object, with "skip" a list of folders or patterns '
+                      "when it has one")
+    if set(settings) - {"skip"}:  # `{"enabled": false}` is an object, and turned the check on
+        raise Refused(f'record_times in the synthesis config has a key this check does not know, "{sorted(set(settings) - {"skip"})[0]}": '
+                      'it takes "skip" alone. To turn the check off, leave record_times out or set it to false')
+    found, texts, here = [], {}, f"{now:%H:%M} here"
+    for raw, number, line in lines:
+        path = os.fsdecode(raw)
+        parts = path.split("/")
+        if not _record(path, skip):
+            continue
+        text = line.decode("utf-8", "replace")
+        if not re.search(r"\d:[0-5][\dx]", text):  # no clock time on the line: nothing to judge, and no file to open
+            continue
+        if path not in texts:
+            texts[path] = read(path).split("\n")
+            texts[path] = (texts[path], *_around(texts[path]))
+        whole, fenced, dated = texts[path]
+        if fenced[number - 1:number] == [True]:
+            continue
+        marked, plan = bool(ENTRY.match(text)), bool(BOX.match(text))  # with no mark, a line opens an entry only where it begins a paragraph
+        opens = marked or bool(text[:1].strip()) and not "".join(whole[max(number - 2, 0):number - 1]).strip()
+        head = (STAMPS[0].match(text) or STAMPS[3].match(text)) if opens and not plan else None
+        stamps = ([head] if head else []) + [m for m in STAMPS[1].finditer(text) if not (head and m.start() < head.end())]
+        bare = STAMPS[2].match(text) if marked and not plan and not head and "sessions" in parts else None
+        if bare and f"{now:%Y-%m-%d}" in "".join(dated[number - 1:number]):  # a list item's own time, under the nearest heading that names today
+            stamps.append(bare)
+        for stamp in stamps:
+            ahead, rounded, words, began = _stamped(stamp, now) or (0, False, "", False)
+            if rounded and -15 <= ahead <= AHEAD:
+                found.append(f"{path}:{number}: `{words}` rounds a time the clock gives (it is {here}). If it is when this entry "
+                             "is written, write the minute `date` prints, in the command that writes the entry; if it is when "
+                             "something else happened, give that time after the words that say what happened. A moment more "
+                             "than 15 minutes old may be rounded")
+            elif 0 < ahead <= AHEAD and not (began and "sessions" not in parts):
+                found.append(f"{path}:{number}: the entry's own time, {words}, is {ahead} min after this commit ({here}): a "
+                             "record's time is read from the clock (`date`) in the command that writes it. For a time in "
+                             "another zone, name the zone; an event's time goes after the words that name the event, not "
+                             "at the head of the line or of a parenthesis")
+    return found
+
+
+# A status and its evidence. 2026-11-12: obligation statuses said colleagues could use a tool "now" when none could; the
+# status was written from an assumption. That a line claims a thing works is meaning, which this does not read. That
+# a table has a column headed Status and a column for evidence is the table's own statement, and a table is held to
+# it. Measured first (2026-11-13), on thirty days of commits: 1,520 rows added to tables with a Status column, 931 of
+# them to tables that also have a column for evidence. Replayed as it stands after a review: 12 rows refused in 6
+# of 1,110 commits, and 11 rows noted in 7. The list of words below is used for a note only: a wrong note costs
+# a line of a commit's output. No approval clears a refusal, so few headers can refuse (a review of 2026-11-13 found
+# a lead's `Source`, a task's `Checked` and a US `State` refused): `Source`, `Checked` and `Basis` keep a row from
+# the note and never refuse it.
+ROW = re.compile(r"^[ \t]*\|(.*)\|[ \t]*$")
+RULE = re.compile(r"[ \t]*\|(?:[ \t]*:?-+:?[ \t]*\|)+[ \t]*")  # a delimiter row, fullmatched: any line that began with two dashes was one
+_QUOTE = re.compile(r"(?:[ \t]{0,3}>[ \t]?)*")  # a block quote's marks
+_ITEM = re.compile(r" {0,3}(?:[-*+]|\d{1,9}[.)])(?:[ \t]|$)")  # a list item's first line
+_CODE = re.compile(r" {4}| {0,3}\t")  # a line of an indented code block, where no list item stands above it
+_STATUS = re.compile(r"(?i)(?:[\w-]+ )?status")  # fullmatched against a header cell's words (`_name`)
+_EVIDENCE = re.compile(r"(?i)\b(?:evidence|proofs?|verified|how we know)\b")
+_SOFT = re.compile(r"(?i)\b(?:sources?|checked|basis)\b")
+# What a cell holds when it says nothing; a line break, `&nbsp;`, an ellipsis and a zero-width character were evidence
+# until a review of 2026-11-13.
+_BLANK = re.compile(r"(?i)<br\s*/?>|&nbsp;|\.{3}|…|[\s*_`~—–\u200b-\u200d\u2060\ufeff-]|n/a|none|tbd|\?")
+_WORKS = re.compile(r"(?i)\b(?:works?|working|live|done|shipped|released|deployed|completed?|ready|available|enabled|passing|passed|"
+                    r"fixed|resolved|installed|running)\b|✅|✓")
+_NOT = re.compile(r"(?i)(?:\b(?:not|never|no longer|cannot)|n['’]t)(?:\s+[\w'’]+){0,2}\s+$")  # ends the words before a claim it negates
+_POINTS = re.compile(r"\[[^\]]+\]\([^)]+\)|`[^`]+`|https?://|(?i:\bunverified\b)")
+
+
+def _name(cell: str) -> str:
+    """A header cell's words: a link's brackets and target, emphasis marks, and a closing colon or parenthesis taken off."""
+    words = re.sub(r"[*_`~]", "", re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", cell))
+    return re.sub(r"(?:\s*\([^)]*\)|\s*:)+\s*$", "", words).strip()
+
+
+def _cells(row: str) -> list:
+    return [cell.strip() for cell in re.split(r"(?<!\\)\|", ROW.match(row).group(1))]
+
+
+def _tables(whole: list) -> list:
+    """(text, top) for each line of a file: its text inside any block quote's marks, and the index of the first row of
+    the block of table rows it stands in (its header, where a delimiter row follows), None where it stands in none:
+    not a row, in a code fence, or indented four spaces or a tab with no list item above it since the last blank line
+    (an indented code block). One pass for the file: walking up from each added row to its table's top took 86 s for
+    40,000 rows (a review of 2026-11-13)."""
+    found, top, depth, inside, listed = [], None, 0, False, False
+    for number, line in enumerate(whole):
+        marks = _QUOTE.match(line).group()
+        text, level = line[len(marks):], marks.count(">")
+        edge = text.lstrip().startswith(("```", "~~~"))
+        listed = bool(text.strip()) and (listed or not (inside or edge) and bool(_ITEM.match(text)))
+        row = not (inside or edge) and ROW.match(text) and (listed or not _CODE.match(text))
+        inside ^= edge
+        top = (top if top is not None and level == depth else number) if row else None
+        depth = level
+        found.append((text, top))
+    return found
+
+
+def status_evidence(lines: list, settings, read) -> tuple:
+    """Config: {"status_evidence": {"skip": ["<folder or pattern>", ...]}}; off when the key is absent or false.
+    (refusals, notes) for the table rows a commit adds to Markdown records. A row is refused where its table has a
+    Status column (`_STATUS`) and a column for evidence (`_EVIDENCE`), the row says something in the first and nothing
+    in any of the second or of a `Source`, `Checked` or `Basis` column (`_SOFT`), and does not say `unverified`: the
+    table is held to its own header, and no word of the status is read. Where the table has a Status column and no
+    column for evidence, rows whose status says a thing works or is done, not negated, with no `_SOFT` cell filled and
+    no link, no code span and not the word `unverified`, are counted in a note for their file. Each file is read
+    once, as staged, and its tables found in one pass (`_tables`)."""
+    if settings is False:
+        return [], []
+    skip = settings.get("skip", []) if isinstance(settings, dict) and not set(settings) - {"skip"} else None
+    if not (isinstance(skip, list) and all(isinstance(pattern, str) for pattern in skip)):
+        raise Refused('status_evidence in the synthesis config must be an object that takes "skip" alone, a list of folders or '
+                      "patterns. To turn the check off, leave status_evidence out or set it to false")
+    found, noted, files, heads = [], {}, {}, {}
+    for raw, number, line in lines:
+        path = os.fsdecode(raw)
+        if b"|" not in line or not _record(path, skip):
+            continue
+        if path not in files:  # a file with CRLF endings is read as its LF twin: no row of one was read (2026-11-13)
+            files[path] = _tables(re.sub(r"\r$", "", read(path), flags=re.M).split("\n"))
+        text, top = files[path][number - 1] if number <= len(files[path]) else ("", None)
+        if top is None or number - 1 <= top + 1:
+            continue  # not a row, or its table's header or the line under it
+        if (path, top) not in heads:  # a table's columns, read once; under a header with no delimiter row, none
+            names = [_name(cell) for cell in _cells(files[path][top][0])] if RULE.fullmatch(files[path][top + 1][0]) else []
+            status = next((k for k, name in enumerate(names) if _STATUS.fullmatch(name)), None)
+            heads[path, top] = (status, [k for k, name in enumerate(names) if k != status and _EVIDENCE.search(name)],
+                                [k for k, name in enumerate(names) if k != status and _SOFT.search(name)])
+        status, hard, soft = heads[path, top]
+        if status is None:
+            continue
+        row = _cells(text)
+        filled = {k for k, cell in enumerate(row) if _BLANK.sub("", cell)}
+        if hard:
+            if status in filled and not filled & {*hard, *soft} and not re.search(r"(?i)\bunverified\b", text):
+                found.append(f"{path}:{number}: this row gives a status and no evidence, in a table that has a column for it. Say "
+                             "where it was checked (a link, a command, a record), or write `unverified`")
+        elif (not filled & set(soft) and not _POINTS.search(text)  # `not done`, `won't be ready`: no claim (2026-11-13)
+              and any(not _NOT.search(said[:claim.start()]) for said in row[status:status + 1] for claim in _WORKS.finditer(said))):
+            noted[path] = noted.get(path, 0) + 1
+    return found, [f"{path}: {count} row{'s' if count != 1 else ''} added to a table with a Status column say a thing works or is done and "
+                   "point at nothing. Give the table a column for evidence (`Evidence`), or write `unverified`" for path, count in noted.items()]
+
+
+def problems(config: dict, session_id: str, repo_root: str, message: str | None = None, now: datetime | None = None) -> tuple[list[str], list[str], str]:
+    """(problems, notes, repository class) for the commit being made, or for its message."""
+    deadline, policy, store = time.monotonic() + SECONDS, load_policy(config), paths.line_allowances()
+    if policy:  # the configured policy, ledger and approved lines, when they live in this repository, are catalogs
+        own = []
+        for path in (config.get("commit_policy"), policy.get("disclosure_ledger"), store):
+            real = os.path.realpath(os.path.expanduser(str(path))) if path else ""
+            if real and real.startswith(os.path.realpath(repo_root) + os.sep):
+                own.append("^" + re.escape(os.path.relpath(real, os.path.realpath(repo_root))) + "$")
+        policy = {**policy, "diff_exclude_paths": leaves(policy.get("diff_exclude_paths")) + own}
+    remotes = push_remotes()
+    cls = classify(policy, remotes)
+    wanted = cls != "personal" and (policy or {}).get("check_commit_message", True) is not False
+    patterns = exposure(policy, cls) if message is None else exposure(policy, "strict") if wanted else []
+    approved = read_allowances(store) if patterns else {}  # read whenever it could decide a line, so damage shows at once
+    approve = lambda hits: unapproved(hits, identity(remotes), store, approved) if hits else []  # noqa: E731
+    own = {re.sub(r"[^a-z0-9]", "", s.lower()) for u in remotes for s in re.split(r"[/:]", u.removesuffix(".git"))[-2:]}
+    if message is not None:  # commit messages stay generic wherever outsiders read the log (2025-12-21)
+        return scan(message_lines(message), policy, patterns, deadline, approve, False, own), [], cls
+    diff = git_bytes(["diff", "--cached", "--no-ext-diff", "--no-textconv", "--text", "--no-color", "--src-prefix=a/",
+                      "--dst-prefix=b/", "--no-renames", "--diff-filter=AM", "-U0"], deadline)
+    lines, texts = images(added(diff), deadline)
+    found = scan(lines, policy, patterns, deadline, approve, own=own, texts=texts)
+    noted = []
+    brought = HOOK == "pre-merge-commit" or any(os.path.exists(name) for name in git_bytes(  # what a merge, a squash merge, a
+        ["rev-parse", *(word for name in ("MERGE_HEAD", "MERGE_MSG", "SQUASH_MSG", "rebase-merge", "rebase-apply")
+                        for word in ("--git-path", name))], deadline).split(b"\n") if name)
+    if not brought:  # cherry-pick, a revert and a stopped rebase leave: their lines were judged when they were first committed
+        staged = lambda path: git_bytes(["cat-file", "blob", ":" + path], deadline).decode("utf-8", "replace")  # noqa: E731
+        found += record_times(lines, config.get("record_times", False), now or datetime.now().astimezone(), staged)
+        unproven, noted = status_evidence(lines, config.get("status_evidence", False), staged)
+        found += unproven
+    names = git_bytes(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACR"], deadline).split(b"\0")
+    found += [f"{os.fsdecode(n)}: a credential file name; keep secrets out of git (a public certificate can be .crt)"
+              for n in names if n and SECRET_FILE.search(os.fsdecode(n))]
+    held, note = claims(repo_root, session_id, changed_paths(deadline))
+    return found + held, noted + ([note] if note else []), cls
+
+
+def _git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def _same(a, b):
+    try:
+        return os.path.samefile(a, b)
+    except OSError:
+        return os.path.realpath(a) == os.path.realpath(b)
+
+
+def repository_hooks(repo_root, common_dir, running):
+    """(hooks to run, problem): the repository's own hooks for this event, minus the one running now."""
+    # A clean automatic merge goes through the same delegate as any commit, as in 2.x.
+    delegate = os.path.join(repo_root, ".githooks", "pre-commit" if HOOK == "pre-merge-commit" else HOOK)
+    declared = HOOK != "commit-msg" and (os.path.lexists(os.path.join(repo_root, ".githooks", "required")) or _git(
+        "-C", repo_root, "ls-files", "--error-unmatch", "--", ".githooks/required").returncode == 0)
+    if declared:  # an unstaged rm leaves the declaration in the index; a staged `git rm` withdraws it
+        if not os.path.lexists(delegate):
+            return [], ".githooks/required is declared but .githooks/pre-commit is missing: create it as an executable file and commit it beside the marker"
+        if not os.path.isfile(delegate):
+            return [], ".githooks/required is declared but .githooks/pre-commit is not a regular file: replace it with an executable file"
+        if not os.access(delegate, os.X_OK):
+            return [], ".githooks/required is declared but .githooks/pre-commit is not executable: run chmod +x .githooks/pre-commit"
+    chain = []
+    for hook in (delegate, os.path.join(common_dir, "hooks", HOOK)):
+        if not os.path.isfile(hook) or any(_same(hook, h) for h in [running] + chain):
+            continue
+        if os.access(hook, os.X_OK):
+            chain.append(hook)
+        else:
+            print(f"synthesis commit check: skipped {hook}: not executable"
+                  + (" (add .githooks/required to make this an error)" if hook == delegate else ""), file=sys.stderr)
+    return chain, None
+
+
+def main(argv=None):
+    args = sys.argv[1:] if argv is None else argv
+    if args[:1] == ["--classify"]:  # which class this repository is, and why a commit would be checked so
+        try:
+            policy = load_policy(paths.config())
+            cls = classify(policy, push_remotes())
+            ledger = policy.get("disclosure_ledger") if policy else None  # read and checked whatever the class
+            print(cls + (f" ({len(allowances(policy))} ledger allowances read cleanly)" if ledger else ""))
+        except (OSError, ValueError) as exc:
+            print(f"synthesis commit check: {exc}", file=sys.stderr)
+            return 1
+        return 0
+    where = _git("rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir", "--git-path", f"hooks/{HOOK}")
+    lines = where.stdout.splitlines()
+    if where.returncode != 0 or len(lines) != 4:
+        print(f"synthesis commit check: cannot locate the repository ({where.stderr.strip()}); commit blocked", file=sys.stderr)
+        return 1
+    repo_root, git_dir, common_dir, running = lines[0], lines[1], os.path.abspath(lines[2]), os.path.abspath(lines[3])
+    try:  # every commit first keeps the checkout's uncommitted changes recoverable (2026-10-20), once: not again at its message
+        from synthesis import board, checkout
+        if HOOK != "commit-msg":
+            me = board.load(paths.session_id()) if paths.session_id() else None
+            checkout.snapshot(repo_root, "commit", paths.session_id(), first=tuple(getattr(me, "claims", None) or ()))
+    except Exception:
+        pass
+    if os.environ.get(CHAINED) == git_dir + HOOK:  # a repository hook called the check again: already done
+        return 0
+    try:
+        message = (args[0] if args else "") if HOOK == "commit-msg" else None
+        found, notes, cls = problems(paths.config(), paths.session_id(), repo_root, message)
+    except (OSError, ValueError) as exc:  # Refused is a ValueError
+        print(f"synthesis commit check: {exc}; commit blocked", file=sys.stderr)
+        return 1
+    chain, problem = repository_hooks(repo_root, common_dir, running)
+    found += [problem] if problem else []
+    for note in notes:
+        print(f"synthesis commit check: {note}", file=sys.stderr)
+    if found:
+        print(f"synthesis commit check refused this {'message' if message is not None else 'commit'} "
+              f"({cls} repository):\n  " + "\n  ".join(found[:20])
+              + (f"\n  ... and {len(found) - 20} more" if len(found) > 20 else "")
+              + (f"\n{NEVER_REWORD}" if any(approvals.how("") in f for f in found) else ""), file=sys.stderr)
+        return 1
+    for hook in chain:
+        env = {**os.environ, CHAINED: git_dir + HOOK, "SYNTHESIS_REPO_CLASS": cls}
+        code = subprocess.run([hook, *args], env=env).returncode
+        if code != 0:
+            print(f"synthesis commit check: the repository's own hook {hook} refused this commit (exit {code})", file=sys.stderr)
+            return code
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

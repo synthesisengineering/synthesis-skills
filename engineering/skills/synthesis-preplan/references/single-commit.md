@@ -18,7 +18,7 @@ Contents:
 
 ## The routing test
 
-The [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.30.0/skills/synthesis-thinking-framework/references/decision-ownership.md)
+The [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.31.0/skills/synthesis-thinking-framework/references/decision-ownership.md)
 applies in this lane too. Carry the controlling instruction and existing grants;
 honor explicit supervised pauses and continue delegated technical work without
 new approval. Lane changes retain required review, tests and action boundaries.
