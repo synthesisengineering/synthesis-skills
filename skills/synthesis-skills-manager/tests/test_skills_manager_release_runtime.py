@@ -76,6 +76,10 @@ def checkout(where, version="5.1.0", runtime=False, carry=""):
     (repo / build_collections.LIST).write_text(json.dumps(COLLECTIONS))
     for license_file in build_collections.LICENSES:
         (repo / license_file).write_text(f"{license_file} terms.\n")
+    scripts = Path("skills") / "synthesis-skills-manager" / "scripts"  # a release builds its collections with its own
+    (repo / scripts).mkdir(parents=True)
+    for name in ("build_collections.py", "build_directory_package.py"):
+        (repo / scripts / name).write_bytes((ROOT / scripts / name).read_bytes())
     (repo / "CHANGELOG.md").write_text(f"# Changelog\n\n## [{version}] - 2026-11-15\n\n- x\n")
     if runtime:
         (repo / "synthesis").mkdir()

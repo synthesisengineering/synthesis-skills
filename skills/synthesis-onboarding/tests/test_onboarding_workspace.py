@@ -467,7 +467,7 @@ def two_copies(work, *names):
     for name in names:
         for dest in places(name):
             dest.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(work / "skills" / name, dest)
+            shutil.copytree(work / "skills" / name, dest, dirs_exist_ok=True)  # one folder for both: written twice
             written[str(dest)] = workspace._digest(dest)
     (setup.install._home() / "org-skills.json").parent.mkdir(parents=True, exist_ok=True)
     (setup.install._home() / "org-skills.json").write_text(json.dumps(written))
@@ -555,6 +555,81 @@ def test_a_link_the_person_made_to_another_folder_is_theirs_and_kept(tmp_path):
     agents, claude = places("review")
     assert os.readlink(claude) == str(mine) and agents.is_dir()
     assert lines == [f"skill review: installed in {agents}; {claude} kept (a link to {mine}, not setup's)"]
+
+
+# Review round 1 of C8, B1: where both entries were one folder (either skills folder linked to the other), the
+# conversion moved the only copy aside through the link and removed it, leaving a link that pointed at itself; with
+# ~/.claude linked elsewhere it left a link leading nowhere, which later runs called fine.
+
+def readable(name) -> bool:
+    """The skill reads, through either harness's entry, as its source."""
+    return all((place / "SKILL.md").read_text() == SKILL.format(name=name) for place in places(name))
+
+
+@pytest.mark.parametrize("linked", ["claude", "agents"])
+@pytest.mark.parametrize("before", ["two copies recorded", "nothing"])
+def test_one_folder_for_both_entries_is_one_copy_and_nothing_of_it_is_removed(tmp_path, linked, before):
+    work = org_skills(tmp_path, "review")
+    agents_root, claude_root = Path.home() / ".agents" / "skills", Path.home() / ".claude" / "skills"
+    real, alias = (agents_root, claude_root) if linked == "claude" else (claude_root, agents_root)
+    real.mkdir(parents=True)
+    alias.parent.mkdir(parents=True)
+    alias.symlink_to(real)  # one folder for both harnesses: a person's own way out of the duplicate warning
+    if before == "two copies recorded":
+        two_copies(work, "review")  # an earlier setup wrote the one folder twice and recorded both
+    for _ in range(2):
+        lines = workspace.install_org_skills(work)
+        assert readable("review") and (real / "review").is_dir() and not (real / "review").is_symlink()
+        assert not (setup.install._home() / "backups").exists() and not list(real.glob(".review.*"))
+        agents, claude = places("review")
+        assert lines[0].endswith(f"{claude} is the same folder as {agents}, so the skill has one copy"), lines
+
+
+def test_a_claude_folder_linked_elsewhere_gets_a_link_that_leads_to_the_copy(tmp_path):
+    work = org_skills(tmp_path, "review")
+    elsewhere = Path.home() / "dotfiles" / "claude"
+    (elsewhere / "skills").mkdir(parents=True)
+    (Path.home() / ".claude").symlink_to(elsewhere)  # a dotfiles manager keeps Claude Code's folder elsewhere
+    workspace.install_org_skills(work)
+    agents, claude = places("review")
+    assert claude.is_symlink() and os.readlink(claude) == os.path.relpath(agents, elsewhere / "skills") and readable("review")
+    before = snapshot(Path.home() / "dotfiles")
+    assert workspace.install_org_skills(work) == [f"skill review: current in {agents}; {claude} links to it"]
+    assert snapshot(Path.home() / "dotfiles") == before
+
+
+def test_a_link_in_setups_words_that_leads_nowhere_is_put_right_never_called_fine(tmp_path):
+    work = org_skills(tmp_path, "review")
+    elsewhere = Path.home() / "dotfiles" / "claude"
+    (elsewhere / "skills").mkdir(parents=True)
+    (Path.home() / ".claude").symlink_to(elsewhere)
+    workspace.install_org_skills(work)
+    agents, claude = places("review")
+    claude.unlink()
+    claude.symlink_to("../../.agents/skills/review")  # setup's words, which lead nowhere from where the folder really is
+    assert not claude.exists()
+    lines = workspace.install_org_skills(work)
+    assert readable("review") and lines == [f"skill review: current in {agents}; {claude} led nowhere and now links to it"]
+
+
+def test_a_per_skill_link_of_the_persons_from_one_entry_to_the_other_is_one_copy(tmp_path):
+    work = org_skills(tmp_path, "review")
+    agents, claude = places("review")
+    shutil.copytree(work / "skills" / "review", claude)
+    agents.parent.mkdir(parents=True)
+    agents.symlink_to(claude)  # the person's own link, so the two folders hold the skill once
+    for _ in range(2):
+        lines = workspace.install_org_skills(work)
+        assert readable("review") and claude.is_dir() and not claude.is_symlink() and os.readlink(agents) == str(claude)
+        assert lines[0].endswith(f"{claude} is the same folder as {agents}, so the skill has one copy"), lines
+
+
+def test_a_link_that_fails_its_check_is_taken_out_and_never_left_behind(tmp_path):
+    copy, entry = tmp_path / "copy", tmp_path / "skills" / "review"
+    copy.mkdir()
+    with pytest.raises(setup.SetupError, match="does not lead to"):
+        workspace._link(entry, "../nowhere/review", copy)
+    assert not os.path.lexists(entry) and not list(entry.parent.iterdir())
 
 
 def test_a_dry_run_says_how_it_would_join_two_copies_and_writes_nothing(tmp_path):

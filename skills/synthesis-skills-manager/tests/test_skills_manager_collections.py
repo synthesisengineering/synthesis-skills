@@ -608,7 +608,26 @@ def test_what_cannot_be_read_exits_2_and_says_why(tmp_path, capsys):
     assert code == 2 and lines[0].startswith("cannot continue: ")
 
 
-@pytest.mark.parametrize("argv", [[], ["out", "--check"]])
+def test_tree_builds_from_the_commit_checks_and_writes_the_tree_a_release_commits(tmp_path, capsys):
+    """Review round 1 of C8, B3: a release ran the installed runtime's build, an earlier release's, so a change to how
+    collections are built shipped a release late (C8's own stopped at its check). The release now runs the build script
+    of the commit it releases, from its clone, and takes the tree it writes into that clone's objects."""
+    repo = checkout(tmp_path)
+    code, lines = run(capsys, "--tree", "--repo-root", repo)
+    files, modes = collections.build(repo, commit=True)
+    holds = f"3 collections, 3 skills, {len(files)} files, version 5.8.0"
+    assert (code, lines) == (0, [f"tree {collections.tree(repo, files, modes)} branch collections: {holds}"])
+    assert git(repo, "status", "--porcelain") == ""  # objects in its store, nothing in its checkout
+    assert run(capsys, "--tree", "--dry-run", "--repo-root", repo) == (0, [f"checked branch collections: {holds}; nothing written"])
+
+
+def test_tree_refuses_collections_that_fail_a_check_and_writes_no_tree(tmp_path, capsys):
+    repo = checkout(tmp_path, {**SOUND, "lost": skill("lost", category=None)})
+    code, lines = run(capsys, "--tree", "--repo-root", repo)
+    assert code == 1 and lines[0] == "refused: 1 problem; nothing written" and lines[1].startswith("skills/lost/SKILL.md")
+
+
+@pytest.mark.parametrize("argv", [[], ["out", "--check"], ["--tree", "--check"], ["--check", "--dry-run"]])
 def test_exactly_one_thing_is_asked_for(argv, capsys):
     with pytest.raises(SystemExit) as stopped:
         collections.main(argv)

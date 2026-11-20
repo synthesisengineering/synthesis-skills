@@ -67,6 +67,9 @@ state = json.loads(STATE.read_text()) if STATE.exists() else {{"markets": {{}}, 
 fail = os.environ.get("FAKE_FAIL", "")
 if fail and " ".join(args).startswith(fail):
     print(f"error: {{fail}} failed", file=sys.stderr); sys.exit(1)
+garbled = os.environ.get("FAKE_GARBLED", "")
+if garbled and " ".join(args).startswith(garbled):
+    print("not a list"); sys.exit(0)
 
 
 def save():
@@ -117,7 +120,7 @@ def install(plugin_id, cache_root):
 if NAME == "claude":
     cache_root = HOME / ".claude" / "plugins" / "cache"
     if args[:2] == ["plugin", "list"]:
-        out([{{"id": pid, "version": p["version"], "enabled": True, "installPath": p["cache"],
+        out([{{"id": pid, "version": p["version"], "enabled": p.get("enabled", True), "installPath": p["cache"],
                **({{"readFromFolder": p["folder"]}} if p["folder"] else {{}})}} for pid, p in state["plugins"].items()])
     if args[:3] == ["plugin", "marketplace", "list"]:
         out([{{"name": n, "source": m["kind"], **({{"path": m["path"]}} if m.get("path") else {{"repo": m["repo"]}})}}
@@ -148,7 +151,7 @@ if NAME == "codex":
     if args[:2] == ["plugin", "list"]:
         only = args[args.index("-m") + 1] if "-m" in args else None
         out({{"installed": [{{"pluginId": pid, "name": pid.split("@")[0], "marketplaceName": pid.split("@")[1],
-                              "version": p["version"], "enabled": True}} for pid, p in state["plugins"].items()
+                              "version": p["version"], "enabled": p.get("enabled", True)}} for pid, p in state["plugins"].items()
                              if only in (None, pid.split("@")[1])], "available": []}})
     if args[:3] == ["plugin", "marketplace", "list"]:
         out({{"marketplaces": [{{"name": n, "root": m.get("path") or "", "marketplaceSource": {{
@@ -179,7 +182,7 @@ if NAME == "muse":
         print("usage: muse plugins <command>\n\nCommands:\n  install <path>\n  list [--json]\n  update <id>\n  remove <id>\n"
               "  inspect <id>\n  approve <id>"); sys.exit(0)
     if args[:2] == ["plugins", "list"]:
-        out({{"plugins": [{{"record": {{"id": pid, "version": p["version"], "enabled": True, "source": {{"path": p["folder"]}},
+        out({{"plugins": [{{"record": {{"id": pid, "version": p["version"], "enabled": p.get("enabled", True), "source": {{"path": p["folder"]}},
                                         "cache_path": p["cache"]}}}} for pid, p in state["plugins"].items()]}})
     if args[:2] in (["plugins", "install"], ["plugins", "update"]):
         folder = args[2] if args[1] == "install" else state["plugins"][args[2]]["folder"]
@@ -238,7 +241,7 @@ def run(*argv, capsys) -> tuple:
 
 
 def collections_folder() -> Path:
-    return setup.install._home() / FOLDER
+    return setup.paths.install_dir() / FOLDER  # sealed: no file tool changes the hooks Claude Code reads there
 
 
 def record() -> Path:
@@ -451,3 +454,88 @@ def test_the_doctor_and_setup_agree_on_the_plugin_that_carries_the_guard():
     spec = setup.collections_builder().read_spec(setup.REPO)
     assert spec["collections"][spec["core"]]["name"] == setup.doctor.CORE
     assert spec["marketplace"]["name"] == setup.doctor.COLLECTIONS
+
+
+# ---- review round 1 of C8 ---------------------------------------------------------------------------------------------
+
+def test_the_collections_claude_code_reads_in_place_are_sealed_from_every_file_tool():
+    """B2: Claude Code reads the core's hooks from setup's folder itself, so a file tool that could write there could empty
+    them. The folder is inside the sealed install folder: the guard refuses the write, and the guard's sandbox denies it to
+    Claude Code's file tools, as it denies the whole set's copy."""
+    from synthesis import guards, sandbox
+    hooks = setup.collections_folder() / "core" / "hooks" / "hooks.json"
+    assert setup.paths.install_dir() in hooks.parents
+    for tool, given in (("Write", {"content": '{"hooks": {}}'}), ("Edit", {"old_string": "hooks", "new_string": "x"})):
+        assert guards.check(tool, {"file_path": str(hooks), **given}, {}, cwd=str(Path.home())), tool
+    assert f"Edit({sandbox._rule(setup.paths.install_dir())}/**)" in sandbox.claude_managed()["permissions"]["deny"]
+
+
+def enabling(client: str) -> str:
+    return {"claude": f"claude plugin enable {CORE}@{MARKET}",
+            "codex": f'`enabled = true` under `[plugins."{CORE}@{MARKET}"]` in {setup.paths.codex_home() / "config.toml"}',
+            "muse": "enable it in Muse's plugin settings"}[client]
+
+
+@pytest.mark.parametrize("client", ["claude", "codex", "muse"])
+def test_a_disabled_core_stops_collections_before_anything_is_installed(harnesses, capsys, client):
+    """B4: the core turned off is the guard turned off, so no collection is added beside it."""
+    assert run("plugin", "--collections", "writing", "--clients", client, capsys=capsys)[0] == 0
+    state = harnesses[client][2]
+    data = json.loads(state.read_text())
+    data["plugins"][next(pid for pid in data["plugins"] if pid.split("@")[0] == CORE)]["enabled"] = False
+    state.write_text(json.dumps(data))
+    before = acts(harnesses, client)
+    code, lines = run("plugin", "--collections", "engineering", "--clients", client, capsys=capsys)
+    assert code == 1 and acts(harnesses, client) == before
+    assert not any(pid.split("@")[0] == ENGINEERING for pid in held(harnesses, client))
+    assert any(line.startswith(f"{client}: {CORE} is installed but disabled") and "no collection was added" in line
+               and enabling(client) in line for line in lines), lines
+
+
+def test_muse_collections_from_elsewhere_are_named_in_one_refusal_the_core_last(harnesses, capsys):
+    """N1: one refusal at a time, the core first, left Muse holding a collection without its guard once followed."""
+    elsewhere = Path.home() / "elsewhere"
+    harnesses["muse"][2].write_text(json.dumps({"markets": {}, "plugins": {
+        CORE: {"version": "5.0.0", "cache": "/x", "folder": str(elsewhere / "core")},
+        WRITING: {"version": "5.0.0", "cache": "/y", "folder": str(elsewhere / "writing")}}}))
+    code, lines = run("plugin", "--collections", "writing", "--clients", "muse", capsys=capsys)
+    assert code == 1 and acts(harnesses, "muse") == []
+    said = next(line for line in lines if line.startswith("muse: ") and "remove" in line)
+    assert f"`muse plugins remove {WRITING}`, then `muse plugins remove {CORE}`" in said, said
+
+
+def test_a_muse_plugin_named_like_a_collection_is_not_taken_for_one_or_removed(harnesses, capsys):
+    """N4: Muse names no marketplace for a plugin installed from a folder, so the collections are known by their own five
+    names, never by the name's start."""
+    binary, _, state = harnesses["muse"]
+    acme = {"version": "1.0.0", "cache": "/a", "folder": str(Path.home() / "acme")}
+    state.write_text(json.dumps({"markets": {}, "plugins": {"synthesis-skills-acme": acme,
+                                                             "synthesis-skills": {**acme, "folder": "/w"}}}))
+    assert setup.holdings("muse", binary)[1] == {}  # the whole set beside an unrelated plugin: no collection, no refusal
+    state.write_text(json.dumps({"markets": {}, "plugins": {"synthesis-skills-acme": acme}}))
+    assert run("plugin", "--collections", "writing", "--clients", "muse", capsys=capsys)[0] == 0
+    assert sorted(held(harnesses, "muse")) == sorted([CORE, WRITING, "synthesis-skills-acme"])
+    assert run("uninstall", "--clients", "muse", capsys=capsys)[0] == 0
+    assert sorted(held(harnesses, "muse")) == ["synthesis-skills-acme"]
+
+
+def test_uninstall_keeps_the_runtime_while_a_harness_plugin_list_cannot_be_read(harnesses, capsys, monkeypatch):
+    """N6: a harness whose list cannot be read may hold a guard that runs the runtime: without it, that guard would hold
+    every call there."""
+    assert run("plugin", "--collections", "writing", "--clients", "claude", capsys=capsys)[0] == 0
+    monkeypatch.setenv("FAKE_GARBLED", "plugin list")
+    code, lines = run("uninstall", "--clients", "claude", capsys=capsys)
+    assert code == 1 and (setup.install._home() / "current").exists()
+    assert lines[-1].startswith("stopped: the runtime stays") and "claude" in lines[-1], lines
+
+
+def test_uninstall_keeps_the_runtime_when_codexs_collections_listing_cannot_be_read(harnesses, capsys, monkeypatch):
+    """N6: Codex's whole-set marketplace shows the whole set, and the collections' marketplace prints no list: whether the
+    core is there cannot be told, so the runtime stays."""
+    harnesses["codex"][2].write_text(json.dumps({"markets": {"synthesis-engineering": {"kind": "git", "repo": "x"}}, "plugins": {
+        "synthesis-skills@synthesis-engineering": {"version": "5.0.0", "cache": "/x", "folder": None}}}))
+    setup.install.install(setup.REPO)
+    monkeypatch.setenv("FAKE_GARBLED", f"plugin list --json -m {MARKET}")
+    code, lines = run("uninstall", "--clients", "codex", capsys=capsys)
+    assert code == 1 and (setup.install._home() / "current").exists()
+    assert lines[-1].startswith("stopped: the runtime stays") and "codex" in lines[-1], lines
