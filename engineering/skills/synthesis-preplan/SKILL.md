@@ -44,7 +44,7 @@ Rules 1 to 8 are the 1.1.0 rules, in their order.
 
 ## Decision ownership and execution mode
 
-Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.28.2/skills/synthesis-thinking-framework/references/decision-ownership.md) before asking or locking a choice. Record `supervised` or `delegated`, its controlling instruction, delegated scope and remaining approval gates. User and project instructions take precedence over this workflow's defaults. Existing grants remain usable within their scope; preferences and packet records do not create authority.
+Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.28.3/skills/synthesis-thinking-framework/references/decision-ownership.md) before asking or locking a choice. Record `supervised` or `delegated`, its controlling instruction, delegated scope and remaining approval gates. User and project instructions take precedence over this workflow's defaults. Existing grants remain usable within their scope; preferences and packet records do not create authority.
 
 For an explicitly supervised preplanning session, pause at the assessment, decision summary and handoff review points below. For delegated work, publish those artifacts as checkpoints and continue through technical choices without another approval. An explicit user-requested pause remains binding in either mode. Keep the same verification and independent audit obligations.
 

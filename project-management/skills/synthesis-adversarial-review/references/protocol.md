@@ -28,7 +28,7 @@ For [typed domain review](../../synthesis-autopilot/references/domain-quality.md
 This skill governs the review protocol. It does not grant publication, deployment,
 communication, or repair authority. Those approval boundaries survive the review.
 
-Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.28.2/skills/synthesis-thinking-framework/references/decision-ownership.md).
+Apply the shared [decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.28.3/skills/synthesis-thinking-framework/references/decision-ownership.md).
 Record the technical sufficiency owner and the controlling instruction before review.
 Explicit supervised checkpoints remain binding; a designated integrator may resolve
 technical sufficiency under delegation without asking the principal again. Existing
