@@ -37,6 +37,10 @@ undone is never one row among many. It leads the day plan in its own section and
 evidence (synthesis-daily-rituals, references/critical-deadlines.md). On 2026-11-06 an enrollment
 window sat as one row among two hundred in a packet and closed unanswered.
 
+What When NOT to use it said of the generator, moved word for word from SKILL.md in 2.5.0, so that rule 7 could
+carry its four limits: "The generator refuses below five without `--allow-small`." "The generator refuses a row
+that recommends nothing, unless it is blind." "The generator refuses a row tagged `critical`."
+
 ## Two defects that are permanent fixtures
 
 Both shipped in the reference implementation; one reached the principal in real use. They are

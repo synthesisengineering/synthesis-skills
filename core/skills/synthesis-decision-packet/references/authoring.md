@@ -8,6 +8,8 @@ Contents:
 - Prior positions and contrary evidence: the `prior_position` block
 - Content requirements: filters, disagreement, summary band, severity rail, recommending against your own work
 - The reader contract (v1.1.0): plain labels, `impact` both ways, options labeled by what they do, consequences on the buttons, glosses, `audience`, `--strict-reader`
+- Blind rows: the principal's own judgment, with no recommendation (2026-10-27)
+- A comfortable reading path: `intro`, `handled`, `baseline`, material once, messages as their words, asking in Codex (2026-10-08)
 
 ## The six load-bearing properties
 
