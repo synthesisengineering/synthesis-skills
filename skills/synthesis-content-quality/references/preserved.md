@@ -32,11 +32,12 @@ Why each part changed:
 - **Binding rules 1 to 4 and 6 to 10.** Rewritten to W5 (the action as the bold head, then the scope and the
   reason) and made complete on their own (W2), each from the skill's own text.
   - Rule 1 names its scope, every review, from review-method.md's "Keep four outputs separate in every review",
-    and says what a request for an authorship verdict gets: the quality and style findings, and the outside
-    evidence that could settle it (drafts, a disclosure, a provider mark), from the same section's "The latter two
-    require external provenance evidence" and its definition of technical provenance.
+    and says what a request for an authorship verdict gets: a judgment of the text's editorial merits, and the
+    outside evidence that could settle authorship, from the same section's definition of editorial quality and
+    its "The latter two require external provenance evidence".
   - Rule 2's head, "Ask the mode first", becomes an action: settle the detector mode before applying patterns.
-    The ask is kept for a request that leaves the mode open, and meanwhile the review runs in the default the
+    The ask is kept for text with wrapper lines when the request leaves the mode open (with none, both modes
+    give the same findings), and meanwhile the review runs in the default the
     5.0.0 rule already set, artifact mode for editorial work, since a rule that makes the model stop names its
     trigger and what goes ahead without asking (W7). "Chat-log forensics" names the material the mode governs, a
     whole chat response or log under study (W14), from review-method.md's "the full LLM response including
@@ -78,7 +79,7 @@ Why each part changed:
   "(template, era, zone)", which that file's opening lines give. The historical-patterns line adds a catalog
   change to when it is read (rule 11), and the bibliography line says when to read it. "Procedure and Required
   finding record: below." goes with the two sections; the coverage-map line names both maps, and the preserved.md
-  line is new. With every binding rule complete on its own, the shorter lines keep SKILL.md 408 bytes under the
+  line is new. With every binding rule complete on its own, the shorter lines keep SKILL.md 401 bytes under the
   8,000-byte limit, the room W19 asks for.
 
 ### The two rules the evaluation found weakest
@@ -104,10 +105,14 @@ before it) found no regression and two rules agents with the skill miss most.
   narrowly but still beyond any evidence given. One Opus answer failed in that second way. The 5.0.0 rule named
   the tests and not what a rewrite of a flagged passage must do. The rule now says that, asked to rewrite one (a
   passage the review or the user flagged, as the case's editor did), the answer writes the new text out, claiming
-  only what the evidence in hand supports, and names the failure seen, the conditional template (W12), from
+  only what the evidence in hand supports, and that a template may follow the rewrite but never replace it
+  (W12, W15), from
   A2-SUB-001's fix ("convert it into a specific claim with evidence") and the record's "concrete repair". It also
   says what each test checks, from substance-and-depth.md, and that the tests run in every review (W14), from
   step 4.
+
+The first gate of the rewrite found four phrases that Sonnet carried into answers they did not fit; their first
+wording and the change to each are in [coverage-map.md](coverage-map.md), "After the first gate".
 
 ### The 5.0.0 SKILL.md, word for word
 
