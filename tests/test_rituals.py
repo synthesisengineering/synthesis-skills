@@ -352,6 +352,22 @@ def test_a_link_whose_repository_is_not_on_this_machine_is_none(isolated_home, t
     assert rituals.settings(rituals.config(), "alpha")["streak"] == "none"
 
 
+def test_workspace_settings_are_read_under_the_workspaces_root_synthesis_names(isolated_home, tmp_path, monkeypatch):
+    """The ritual reader looks for workspaces where the guard does: `SYNTHESIS_WORKSPACES`, else ~/workspaces. Before,
+    it read the real home's folder whatever a test or a machine set, so a test of the rituals failed on any Mac that
+    keeps a workspace's own settings (2026-11-19: three such files on the principal's Mac, none on CI's runners)."""
+    root = tmp_path / "elsewhere"
+    (root / "alpha" / ".agents").mkdir(parents=True)
+    (root / "alpha" / ".agents" / "rituals.json").write_text(json.dumps({"streak": "none"}), encoding="utf-8")
+    monkeypatch.setenv("SYNTHESIS_WORKSPACES", str(root))
+    assert rituals.workspace_files() == [root / "alpha" / ".agents" / "rituals.json"]
+
+
+def test_every_test_starts_with_an_empty_workspaces_root(isolated_home, tmp_path):
+    """The shared fixture keeps this machine's workspaces out of every test, as it keeps its synthesis home out."""
+    assert Path(os.environ["SYNTHESIS_WORKSPACES"]).is_relative_to(tmp_path) and rituals.workspace_files() == []
+
+
 @pytest.mark.parametrize("bad, says", [("{not json", "cannot be read"), ("[1, 2]", "must be an object"),
                                        ('{"quiet_after_days": 0}', "whole number of days")])
 def test_a_workspace_file_that_cannot_be_read_stops_the_rituals_and_names_itself(isolated_home, tmp_path, monkeypatch, bad, says):
