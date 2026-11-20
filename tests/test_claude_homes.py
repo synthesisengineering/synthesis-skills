@@ -155,6 +155,18 @@ def test_a_config_that_will_not_parse_keeps_the_folders_the_last_readable_one_na
 
 
 @pytest.mark.parametrize("seat", [False, True])
+def test_a_config_never_read_in_full_falls_back_to_no_folder_alone(team, monkeypatch, capsys, seat):
+    """With no config read in full yet, so no record, a config that will not parse still leaves the guard more than this
+    process's own folder: ~/.claude, and each ~/.claude* folder in the home, which is how another account's is named."""
+    home, folder, space = team
+    other, call = _other(home, folder, monkeypatch, seat), {"session_id": "S1", "cwd": str(space)}
+    paths.config_file().write_text("{not json", encoding="utf-8")
+    for target, said in _kept(other):
+        assert said in _hooked({"tool_name": "Write", "tool_input": {"file_path": str(target), "content": "x"}, **call}, capsys), target
+    assert not (paths.approvals() / paths.HOMES_KEPT).exists()  # nothing was read in full, so nothing was recorded
+
+
+@pytest.mark.parametrize("seat", [False, True])
 def test_with_a_claude_home_that_names_no_folder_the_sealed_set_still_holds_every_folder(team, monkeypatch, write_config, seat):
     home, folder, _ = team
     write_config(json.loads(json.dumps(TYPO)))
