@@ -1,6 +1,6 @@
 ---
 name: synthesis-inbox-cleanup
-description: "Manifest-driven inbox cleanup for iCloud/IMAP, Microsoft 365 and outlook.com (Mail.app) and Gmail (workspace-mcp, server-side filters), with prompt-injection defenses. Use to clean up an inbox, sweep email, categorize senders, build email rules, archive promotions or set up Gmail filters."
+description: "Clean up iCloud, Microsoft 365, outlook.com and Gmail inboxes from a manifest: sort senders, archive, filters. Use to sweep an inbox."
 license: "Apache-2.0"
 depends_on: []
 metadata:

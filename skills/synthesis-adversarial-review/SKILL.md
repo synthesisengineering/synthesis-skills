@@ -1,6 +1,6 @@
 ---
 name: synthesis-adversarial-review
-description: "Run bounded adversarial review by differently shaped agents against the principal's outcome: artifact-complete rounds, production-topology handoffs, concessions, a markdown findings table, sufficiency rulings, post-publication acceptance. Use for adversarial, cross-agent or red-team review."
+description: "Bounded adversarial review by differently shaped agents, with a findings table and rulings. Use for red-team or cross-agent review."
 license: "Apache-2.0"
 depends_on: ["synthesis-grounding-discipline", "synthesis-anti-shortcuts", "synthesis-project-management"]
 metadata:

@@ -56,3 +56,11 @@ The row above still records why the routes stay in SKILL.md, including the 1.5.0
 
 The old route is verbatim in [preserved.md](preserved.md). The "AGENT HEURISTIC" prefix
 and the link stay. SKILL.md lists preserved.md in Contents; version 2.0.0 became 2.0.1.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Route a request to the right synthesis engineering, coding, writing, project-management, knowledge, operations or agent-governance skill while keeping specialist metadata out of Codex's bounded prompt. Use when a task appears to match a synthesis workflow but the user did not name the exact skill."
+```

@@ -59,3 +59,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Scan a built site for configured internal markers (draft notes, placeholders, private comments) before an approved deploy, and refuse on any hit. Use for publication gates, rendered-output inspection, pre-deploy marker scans or build.sh deploy checks."
+```

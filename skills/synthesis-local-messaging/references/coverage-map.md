@@ -161,3 +161,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Read an authorized local iMessage or WhatsApp database window into pointer-only notes, and send a principal-approved message to an existing iMessage or SMS chat, groups included, through the send guard. Use for message triage, daily or 30-day review, or an approved reply. No transcript export."
+```

@@ -13,6 +13,7 @@ or the named preserved file.
 - [Reference files](#reference-files)
 - [Scripts and data by verdict](#scripts-and-data-by-verdict)
 - [Edge cases and the tests that hold them](#edge-cases-and-the-tests-that-hold-them)
+- [The full description](#the-full-description)
 
 ## Coverage check result
 
@@ -174,3 +175,11 @@ The 3.0.0 text is verbatim in [preserved.md](preserved.md#replaced-in-301-2026-1
 The replaced harness-install.md sentence is verbatim in
 [preserved.md](preserved.md#replaced-on-2026-10-20). The skill's version is unchanged until
 the next release.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Install synthesis on a Mac for Claude Code, Codex and Muse, bring a workspace's repositories onto a new Mac from repos.yaml, enroll an organization's config, update or uninstall, then verify with synthesis doctor. Use to onboard, install, set up, update, repair or diagnose synthesis."
+```

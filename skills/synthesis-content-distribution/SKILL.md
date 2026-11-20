@@ -1,6 +1,6 @@
 ---
 name: synthesis-content-distribution
-description: "Promote content on social media: strategic brief, platform posts for LinkedIn, X, Hacker News, Reddit, BlueSky and Instagram, social-register checks, a social.md sidecar, and engagement follow-up. Use to promote a blog post or article, or to write posts about an event or topic."
+description: "Promote an article or event on social media: posts for LinkedIn, X, Hacker News, Reddit, BlueSky, Instagram. Use to write or share posts."
 license: "CC0-1.0"
 depends_on: []
 metadata:

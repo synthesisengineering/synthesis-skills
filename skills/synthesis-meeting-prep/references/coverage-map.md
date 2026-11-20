@@ -63,3 +63,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Prepare a principal for a meeting as a chief of staff would: model the readers, weigh 60+ factors, deliver a scannable pack with a capture half, then debrief transcripts into decisions, commitments and profile updates. Use for 1:1s, reviews, forums, external meetings, interviews and follow-through."
+```

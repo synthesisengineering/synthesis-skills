@@ -1,6 +1,6 @@
 ---
 name: synthesis-disclosure-policy
-description: "Decide whether a real organization or person may be named or identified outward-facing: published precedent vs unapproved disclosure, precedent ledger, five tests, surface classes, git-hook enforcement. Use for: can I name this company, disclosure policy, precedent ledger, public bio names."
+description: "Decide whether a real company or person may be named in public: precedent ledger and five tests. Use for 'can I name this company'."
 license: "Apache-2.0"
 depends_on: []
 metadata:

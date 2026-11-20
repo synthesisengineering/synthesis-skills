@@ -61,3 +61,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Provision machine secrets from a vault (1Password's op CLI) onto a Mac by hand, owner-only, with nothing in git. Use when asked to: fleet secrets, secrets manifest, materialize secrets, op backend, vault provisioning, check secrets, enroll a Mac's secrets, rotate secrets."
+```

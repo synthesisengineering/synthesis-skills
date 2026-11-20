@@ -1,6 +1,6 @@
 ---
 name: synthesis-technical-advisor
-description: "Configure an LLM as a senior technical advisor for software development and engineering. Use for technical advisor, tech setup, configure advisor, technical assistant, architecture review, code review guidance, and engineering decisions."
+description: "Set up an LLM as a senior technical advisor for software engineering. Use to configure an assistant for architecture or code advice."
 license: CC0-1.0
 depends_on: []
 metadata:

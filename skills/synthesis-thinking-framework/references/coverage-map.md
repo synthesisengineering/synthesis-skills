@@ -8,6 +8,7 @@ Contents:
 - 3.1.0 to 3.2.0: SKILL.md; references/protocol.md; where the binding rules state the moved sections; files
   unchanged
 - 2.1.1 to 3.0.0 (v5), with the 2.1.1 frontmatter; 3.0.0 to 3.0.1; 3.0.1 to 3.1.0
+- The full description, word for word
 
 ## 3.1.0 to 3.2.0: the rewrite to the D8 standard
 
@@ -121,3 +122,11 @@ metadata:
 |---|---|
 | Decision ownership and execution, its last paragraph ("Use the decisive-uncertainty method when a missing fact could change the next decision. ... remain explicit.", 492 bytes, one line) | `references/decisive-uncertainty.md`, at its head (verbatim; its link now names the file it sits in), with one sentence left in its place that points there. Moved to make room under SKILL.md's 8,000 bytes for binding rule 10; binding rule 8 still summarizes it |
 | (new) Binding rule 10, decide what the goals already decide. The test is the principal's ruling of 2026-11-16; the list of what still goes to them is the project's rule as the brief for plan item 22.37(d) gave it, with a checkpoint they reserved, whose answer is never written from the agent's own judgement, added in review round 1. The list's approval item names the runtime's typed approval; this skill ships in the hook-free directory package, which has no such approval and whose check refuses the runtime's term for it, and five packaged skills link to its decision-ownership contract, so the item reads "an approval only they can give" (the CHANGELOG quotes the rule). SKILL.md is 7,872 bytes | SKILL.md; in full in `references/decision-ownership.md`, "Decide what the goals already decide" |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Five-mode thinking (first principles, systems, complexity, analogical, design) with a pre-response protocol, depth calibration and decision ownership. Use for non-trivial problems, open decisions, strategy, debugging approach, or when a missing fact could change the next decision."
+```

@@ -20,3 +20,11 @@ Every part of the 1.1.1 SKILL.md and where it lives now. Nothing was removed.
 | Line | Change and reason |
 |---|---|
 | "Preflight consumes current implementation-integrity and audit evidence. ..." (Where This Fits) | The link to the decision-ownership contract now reads `../../synthesis-thinking-framework/references/decision-ownership.md`, because the paragraph moved one directory deeper into references/. The words are unchanged. |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Pre-merge gate that grades six dimensions (branch, clean tree, tests and types, code audit, temporary workarounds, commit history) into a mechanical go/no-go verdict. Use for preflight, pre-merge or pre-PR check, ready to merge, can I ship this, branch ready, quality gate, merge readiness."
+```

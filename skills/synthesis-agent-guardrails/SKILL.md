@@ -1,6 +1,6 @@
 ---
 name: synthesis-agent-guardrails
-description: "Pre-tool guards beyond sends: the account a calendar or mail call acts as, a browser call's Chrome profile, deploys and their date rules, destructive commands; the reply check and day-end provenance scan. Use to configure them, or when a deploy, delete, calendar or browser call is blocked."
+description: "Guards on mail and calendar accounts, browser profiles, deploys and destructive commands. Use to set them up or when a call is blocked."
 license: "Apache-2.0"
 depends_on: []
 metadata:

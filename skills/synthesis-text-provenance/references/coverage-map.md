@@ -69,3 +69,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Use to plan, record and audit text provenance for hosted and open-weight models: watermark capability checks, reproducible manifests, mixed-authorship lineage, text-integrity audits, authorized detector results. Not for defeating provider marks, evading detectors or disguising AI authorship."
+```

@@ -1,6 +1,6 @@
 ---
 name: synthesis-pr-review
-description: "Delta review of a pull request in a synthesis-coded project: regression risk, root cause, scope, and handoff to adopt-and-adapt integration. Use when asked to: PR review, pull request, code review, review PR, delta review, review pull request, check PR, evaluate PR."
+description: "Review a pull request's changes: regression risk, root cause, scope, then hand off to integration. Use to review or check a PR."
 license: "CC0-1.0"
 depends_on: ["synthesis-code-integration", "synthesis-codebase-review"]
 metadata:

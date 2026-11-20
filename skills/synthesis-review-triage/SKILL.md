@@ -1,6 +1,6 @@
 ---
 name: synthesis-review-triage
-description: "Prioritize a PR review queue: classify, exclude, detect author responses, score by review gap, CI, age, size and labels, and gate re-reviews (full, delta or skip). Use when asked to triage PRs, which PR to review next, review queue, PR backlog, review priority or review workload."
+description: "Prioritize a pull request review queue by review gap, CI, age and size, and gate re-reviews. Use to triage PRs or pick the next to review."
 license: "CC0-1.0"
 depends_on: []
 metadata:

@@ -1,6 +1,6 @@
 ---
 name: synthesis-decision-packet
-description: "Collect five or more parallel decisions from a principal in one sitting: a self-contained HTML packet with a recommendation per row, consequence-labeled buttons, notes and a paste-back summary, filed in the project. Use when a review, migration, upgrade, triage or backlog pass needs rulings."
+description: "Collect five or more decisions in one sitting: an HTML packet with a recommendation per row. Use when a review or triage needs rulings."
 license: "Apache-2.0"
 depends_on: []
 metadata:

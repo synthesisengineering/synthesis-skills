@@ -1,6 +1,6 @@
 ---
 name: synthesis-clean-text
-description: "Enforce clean-text and no-hidden-marker requirements, audit inspectable characters and provenance, and state the verification boundary for statistical text marks. Use when generating clean text, checking hidden characters, addressing watermark concerns, or selecting a controlled generation path."
+description: "Produce and audit clean text with no hidden characters or markers. Use to check for hidden characters or to answer a watermark concern."
 license: "CC0-1.0"
 user-invocable: false
 depends_on: []

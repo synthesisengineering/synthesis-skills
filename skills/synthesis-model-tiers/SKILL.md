@@ -1,11 +1,11 @@
 ---
 name: synthesis-model-tiers
-description: "Cross-provider model-tier convention: role labels judgment, routine and bulk resolved to model IDs per provider in tiers.yaml, routed by whether the cause is known. Use for model tiers, which model or effort level, model selection, switching models, model equivalents, or updating the model table."
+description: "Map the judgment, routine and bulk roles to each provider's models in tiers.yaml. Use to choose a model or effort level, or for model tiers."
 license: "CC0-1.0"
 depends_on: []
 metadata:
   author: "Rajiv Pant"
-  version: "3.0.1"
+  version: "3.0.2"
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"

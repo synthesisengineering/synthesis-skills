@@ -1,6 +1,6 @@
 ---
 name: synthesis-content-framing
-description: "Frame synthesis engineering and synthesis coding articles: topic, sophistication, engagement and confidentiality gates; attribution and terminology rules. Use when writing synthesis engineering content, framing technical articles, checking content quality gates, or publishing thought leadership."
+description: "Frame synthesis engineering and synthesis coding articles: topic, depth, confidentiality, attribution, terminology. Use when writing them."
 license: "CC0-1.0"
 depends_on: []
 metadata:
