@@ -193,14 +193,46 @@ def test_an_untagged_item_that_reads_like_a_critical_class_is_listed_until_class
     assert after["critical"]["unclassified"] == [] and after["critical"]["open"] == [] and after["status"] == "CLEAR"
 
 
-def test_the_words_that_flag_an_untagged_item_come_from_the_ritual_config_when_it_names_them(tmp_path):
+LEASE_AND_ENROLLMENT = ("### Renew the lease\n**Decay ID:** lease\n**Decays:** 2026-11-06 (notice period)\n"
+                        "### Open enrollment for next year\n**Decay ID:** enroll\n**Decays:** 2026-11-06 (window closes)\n")
+
+
+def test_the_words_that_flag_an_untagged_item_come_from_the_ritual_settings_when_they_name_them(tmp_path):
     root, state = tmp_path / "plans", tmp_path / "state"
-    plan(root, "2026-10-16", "### Renew the lease\n**Decay ID:** lease\n**Decays:** 2026-11-06 (notice period)\n"
-                             "### Open enrollment for next year\n**Decay ID:** enroll\n**Decays:** 2026-11-06 (window closes)\n")
+    plan(root, "2026-10-16", LEASE_AND_ENROLLMENT)
     state.mkdir()
-    (state / "config.json").write_text(json.dumps({"critical_words": ["lease"], "workspaces": {}}), encoding="utf-8")
+    (state / "config.json").write_text(json.dumps({"defaults": {"critical_words": ["lease"]}, "workspaces": {}}), encoding="utf-8")
     _, got = report(root, "2026-10-20", env={"RITUAL_STATE_DIR": str(state)})
     assert [row["title"] for row in got["critical"]["unclassified"]] == ["Renew the lease"]
+
+
+def test_a_workspaces_own_critical_words_flag_its_untagged_items(tmp_path):
+    """2026-11-20, the operations seat: words written into a workspace's own settings file
+    (`<workspace>/.agents/rituals.json`, where 5.27.1 moved each workspace's settings) were never read. The sweep took
+    the list from the top of config.json alone, so the workspace kept the ten built-in words."""
+    plans = tmp_path / "plans"
+    plan(plans, "2026-10-16", LEASE_AND_ENROLLMENT)
+    own = Path(os.environ["SYNTHESIS_WORKSPACES"]) / "desk" / ".agents" / "rituals.json"
+    own.parent.mkdir(parents=True)
+    own.write_text(json.dumps({"plans_dirs": [str(plans)], "critical_words": ["lease", "fraud"]}), encoding="utf-8")
+    proc = sweep("--as-of", "2026-10-20", "--workspace", "desk", "--json", env=declare(tmp_path / "state"))
+    got = json.loads(proc.stdout)
+    assert [row["title"] for row in got["critical"]["unclassified"]] == ["Renew the lease"], got["gaps"]
+
+
+@pytest.mark.parametrize("key", ["critical_words", "ledger_closed_words"])
+def test_a_word_list_at_the_top_of_the_ritual_config_is_refused_by_name(tmp_path, key):
+    """Before 5.28.2 the sweep read these lists only at the top of config.json, while each workspace's settings live
+    in its own file or under `defaults`. A list left at the top is read for no workspace, so it is refused, naming
+    where it goes, rather than ignored."""
+    root, state = tmp_path / "plans", tmp_path / "state"
+    plan(root, "2026-10-16", LEASE_AND_ENROLLMENT)
+    state.mkdir()
+    (state / "config.json").write_text(json.dumps({key: ["lease"], "workspaces": {}}), encoding="utf-8")
+    code, got = report(root, "2026-10-20", env={"RITUAL_STATE_DIR": str(state)})
+    reason = " ".join(row["reason"] for row in got["gaps"])
+    assert code == 2 and got["status"] == "BLOCKED", got
+    assert key in reason and "defaults" in reason and ".agents/rituals.json" in reason, reason
 
 
 # --- alerts --------------------------------------------------------------------------------------
