@@ -23,6 +23,7 @@ documents ("§4–5") and the skill's evaluation cases cite; rules 1 to 8 still 
 | 2.2.0 | 2.3.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "2.2.0"` | `version: "2.3.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning and no script interface changed. No script prints the skill's version and the skill keeps no release notes, so this map and preserved.md are the record of the change |
 | Title | Title | Kept |
 | Opening paragraph | Opening paragraph | Kept word for word |
 | The line above rule 1: "Rules 1 to 8 carry the methodology section numbers other documents cite (for example "§4–5"). New rules are appended." | The line above rule 1, its first two sentences | Kept word for word |
