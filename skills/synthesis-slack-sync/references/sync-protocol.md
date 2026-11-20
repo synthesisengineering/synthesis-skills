@@ -71,7 +71,7 @@ Thread replies do NOT appear as channel-level messages. The only way to detect t
 
 **Source C: Threads surfaced by Step 1.** Any message returned by Step 1 that shows "Thread: N replies" must be re-read, even if the parent message is from a previous day. Channel reads return messages in reverse chronological order — a thread from 3 days ago can appear in the channel read if it had recent activity.
 
-**Source D: Replies to older threads, found by search (v4.0.0).** A reply posted today to a thread older than yesterday is on none of the lists above, and the channel read may not surface its parent. For each channel, search the window for thread replies, and search the window for the principal's own messages; every thread parent a hit names joins the re-read list (lesson 2026-10-01: find threads by search).
+**Source D: Replies to older threads, found by search (v4.0.0).** A reply posted today to a thread older than yesterday is on none of the lists above, and the channel read may not surface its parent. For each channel, search the window for thread replies, and search the window for the principal's own messages, as `from:<@principal_user_id>` with the member id the config declares and preflight prints, never `from:me`: on 2026-11-19 a connector's `from:me` returned another person's message as the principal's newest, since `me` is whatever account the connector searches as. Every thread parent a hit names joins the re-read list (lesson 2026-10-01: find threads by search).
 
 ```
 slack_read_thread(channel_id, message_ts=PARENT_TS)

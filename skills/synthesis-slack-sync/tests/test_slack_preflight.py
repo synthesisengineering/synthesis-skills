@@ -32,6 +32,7 @@ WATERMARK = SKILLS_ROOT / "synthesis-daily-rituals" / "scripts" / "sync_watermar
 
 CONFIG = """
 workspace: example-workspace
+principal_user_id: U0EXAMPLE00
 channels:
   - id: C0EXAMPLE01
     name: team-general
@@ -176,6 +177,35 @@ def test_cli_refuses_a_malformed_config(tmp_path: Path) -> None:
     assert missing.returncode == 2
 
 
+# --- the principal's own messages are searched by user id (A21) ---------------------------------
+# On 2026-11-19 a connector's `from:me` returned another person's message as the newest of the principal's own, and an
+# explicit `from:<@ID>` returned the right one: `me` names whatever account the connector searches as.
+
+
+def test_the_table_names_the_principal_for_the_own_message_search(tmp_path: Path) -> None:
+    done = run_cli("--config", str(write_config(tmp_path)))
+    assert done.returncode == 0, done.stderr
+    assert "from:<@U0EXAMPLE00>" in done.stdout and "from:me" not in done.stdout
+
+
+def test_a_config_that_names_no_principal_exits_one_and_keeps_the_declared_set(tmp_path: Path) -> None:
+    done = run_cli("--config", str(write_config(tmp_path, CONFIG.replace("principal_user_id: U0EXAMPLE00\n", ""))), "--json")
+    assert done.returncode == 1
+    assert "principal_user_id" in done.stderr and "from:me" in done.stderr
+    assert json.loads(done.stdout) == {"slack": ["C0EXAMPLE01", "C0EXAMPLE02", "D0EXAMPLE01", "D0EXAMPLE02", "C0EXAMPLE03"]}
+
+
+@pytest.mark.parametrize("value", ["me", "D0EXAMPLE01", "C0EXAMPLE01", "<@U0EXAMPLE00>", "u0example00", "U", "'U0 EX'"])
+def test_a_principal_that_is_no_user_id_is_refused(tmp_path: Path, value: str) -> None:
+    done = run_cli("--config", str(write_config(tmp_path, CONFIG.replace("U0EXAMPLE00", value))))
+    assert done.returncode == 2 and "principal_user_id" in done.stderr
+
+
+def test_an_enterprise_grid_user_id_is_a_principal(tmp_path: Path) -> None:
+    done = run_cli("--config", str(write_config(tmp_path, CONFIG.replace("U0EXAMPLE00", "W0EXAMPLE00"))))
+    assert done.returncode == 0 and "from:<@W0EXAMPLE00>" in done.stdout
+
+
 # --- the documented rules the mechanism depends on ----------------------------------------------
 
 
@@ -185,6 +215,7 @@ def test_slack_sync_names_the_preflight_command_and_census() -> None:
     assert "scripts/preflight.py --config" in text
     assert "census" in text
     assert "produced by hand" not in text
+    assert "principal_user_id" in text and "from:<@" in text
 
 
 def test_rituals_take_the_declared_set_from_preflight() -> None:
@@ -204,6 +235,7 @@ def test_the_documented_config_shape_reads(tmp_path: Path) -> None:
     assert data["workspace"] == "example-workspace"
     assert data["dm_channels"] == [] and data["group_dm_channels"] == []
     assert [c["id"] for c in data["channels"]] == ["C0EXAMPLE01", "C0EXAMPLE02"]
+    assert data["principal_user_id"] == "U0EXAMPLE00"
 
 
 # Quotes, escapes, comments and booleans: the shared reader's cases in tests/test_yamlish.py.
@@ -218,7 +250,8 @@ def test_a_config_that_cannot_be_read_or_declares_nothing_is_refused(tmp_path: P
 
 def test_a_json_config_is_read_as_json(tmp_path: Path) -> None:
     path = tmp_path / "slack-sync.json"
-    path.write_text(json.dumps({"workspace": "w", "channels": [{"id": "C0JSON", "name": "j"}]}), encoding="utf-8")
+    path.write_text(json.dumps({"workspace": "w", "principal_user_id": "U0JSON00", "channels": [{"id": "C0JSON", "name": "j"}]}),
+                    encoding="utf-8")
     done = run_cli("--config", str(path), "--json")
     assert done.returncode == 0 and json.loads(done.stdout) == {"slack": ["C0JSON"]}
 

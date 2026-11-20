@@ -30,6 +30,7 @@ The distinction was paid for: the rule once failed to fire precisely because the
 Not weak evidence — none. The search index lags, misses thread replies, and fails silently on malformed modifiers: a `from:@Display Name` modifier with a space in it returns zero instead of erroring. Two protocols follow:
 
 - **To establish that something did not happen,** use a bounded direct read: `slack_read_channel` with an explicit `oldest`/`latest` window on the specific channel, or `slack_read_thread` on the known parent. State the bounds in the finding — "not present in #channel between t1 and t2" — never the unbounded "didn't happen."
+- **Name a person by member id,** `from:<@U…>`, never `from:me`: `me` is whatever account the connector searches as, and on 2026-11-19 it returned another person's message as the principal's newest.
 - **Before trusting any null result from a modifier-bearing query** (`from:`, `in:`, `to:`), re-run it without the modifier. If the unmodified query finds results the modified one missed, the modifier was broken, and every zero it produced is uninterpretable.
 
 Absence claims are a grounding problem: a negative result is only evidence if the instrument could have produced a positive one. The general discipline — positive controls, scoped negative findings, truncated-output rules — lives in [synthesis-grounding-discipline](../../synthesis-grounding-discipline/SKILL.md); this section is its Slack instance.

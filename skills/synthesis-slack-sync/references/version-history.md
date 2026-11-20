@@ -9,6 +9,14 @@ release-by-release record of why each rule exists — the incidents and the
 design choices — so the main document stays within the repository's
 500-line budget without losing the reasoning. Newest first.
 
+## v4.1.0 — The principal's own messages are searched by member id
+
+On 2026-11-19 a seat's search for the principal's own messages used the connector's `from:me`, which returned
+another person's message as the principal's newest; an explicit `from:<@ID>` returned the right one, since `me`
+is whatever account the connector searches as. The config now declares `principal_user_id`; preflight validates it
+(a member id, `U…` or `W…`), prints it as the `from:<@ID>` Step 2's Source D names, exits 1 when it is missing and
+2 when it is malformed. Source D and the lookup protocol say never `from:me`.
+
 ## v4.0.0 — v5 skill format
 
 v4.0.0 (2026-10-05): SKILL.md is restructured into the v5 skill format so it
