@@ -17,6 +17,8 @@ The Procedure gives a session's steps in brief, and the sections after it give e
 
 **During work.** After each task, update CONTEXT.md under your claim. Keep the current-state block (Phase, Status, Last session, Plan, Next actions) current: it is what returns after compaction. Archive when CONTEXT.md passes 120 lines.
 
+**Refresh.** Re-run `date` and `git log`, re-read CONTEXT.md and the newest session entry, and report where memory disagrees: long conversations drift unseen.
+
 **Check.** Run the doctor for this project:
 
 ```bash

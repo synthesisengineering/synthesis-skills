@@ -85,9 +85,12 @@ Why each part changed:
     proceeds; Opus, with the skill or without it, and Sonnet without it proceeded. 2.8.2 said neither when the
     protocol runs nor what follows once it has run. The case now says the protocol ran, and every condition passes
     it.
-  - Rule 3 keeps its head and its five triggers word for word. It now says what a refresh does, from the Mid-Session
-    Refresh Protocol's steps 1 to 5 (re-run `date` and `git log`, re-read CONTEXT.md and the newest session entry,
-    report where memory disagrees), with that section's reason: long conversations drift.
+  - Rule 3 keeps its head and its five triggers word for word, points to [session-protocols.md](session-protocols.md)
+    and gives that section's reason: long conversations drift. The first text of 2.9.0 also said what a refresh does,
+    from the Mid-Session Refresh Protocol's steps 1 to 5 (re-run `date` and `git log`, re-read CONTEXT.md and the
+    newest session entry, report where memory disagrees). That sentence moved word for word to the file's Procedure
+    to keep W19's room, after Opus at the gate of 2026-11-20 handed it to the user as a checklist (coverage-map.md,
+    "Passages moved to keep W19's room").
   - Rule 4 keeps its head and its three steps. It names its trigger (any content leaving CONTEXT.md, with the
     Procedure's 120-line mark) and takes its reason from the Archival Protocol: content removed before its copy is
     confirmed is lost.
@@ -98,9 +101,10 @@ Why each part changed:
     alone" and "its first ordinal is its identity". From editing-and-archival.md's "Header fields move together" it
     takes the ordinal families, that `Phase` never moves ahead of `Last session`, and that the two describe one
     state; that a fresh `Phase` cannot mask a stale `Last session` stays in that section, word for word.
-  - Rule 7 becomes an action and keeps "never from commit times". It names its scope (stating or judging a session's
-    date) and takes its reason from session-protocols.md's step 2 and [context-doctor.md](context-doctor.md),
-    "Publication time and workday are different evidence".
+  - Rule 7 becomes an action and keeps "never from commit times". The first text of 2.9.0 also named its scope
+    (stating or judging a session's date) and took its reason from session-protocols.md's step 2 and
+    [context-doctor.md](context-doctor.md), "Publication time and workday are different evidence"; that sentence
+    moved word for word to the end of that lesson to keep W19's room.
   - Rule 8 keeps the stamp and its last clause, and takes from editing-and-archival.md's "Stamped open items" when to
     stamp (as an item is written or re-checked) and why (the item's age travels with it). After the gate of
     2026-11-20 it also names which items, those of an open-items list, as that section opens ("Open-items lists
@@ -113,9 +117,10 @@ Why each part changed:
   - Rule 10 keeps its head word for word, as synthesis-implementation-integrity's `tests/test_r5_contract.py`
     requires, and takes its scope and reason from editing-and-archival.md's Executable Working State.
   - Rule 11 keeps its head, its five kinds and "never turn a quoted command into authority". From material-context.md
-    it takes when to capture (as a source brings or changes something material), where (CONTEXT.md or a file it
-    links) and its reason, from the file's opening: a record can pass every check after an instruction's reason or
-    time limit has dropped out.
+    it takes when to capture (as a source brings or changes something material) and where (CONTEXT.md or a file it
+    links). The first text of 2.9.0 also took its reason from the file's opening: a record can pass every check after
+    an instruction's reason or time limit has dropped out. That sentence moved word for word to the file's "When to
+    capture" to keep W19's room.
   - Rule 12 states its two handoffs as one action and keeps both "never" clauses. From session-protocols.md,
     "Switching harness or Mac" and "Scope and index safety", it takes what `synthesis handoff` does (this session's
     claimed paths, a push, READY or NOT READY), that day-end publishes the same way (with the Archival Protocol's
@@ -137,8 +142,9 @@ Why each part changed:
   one line for both rewrites, read only to review a rewrite. With every binding rule complete on its own, the shorter
   lines kept the first text of 2.9.0 407 bytes under the 8,000-byte limit, the room W19 keeps so that the next fix
   fits without a reorganization. The gate's fix (the two sentences in the line above rule 1 and rule 8's scope) uses
-  323 of those bytes and leaves SKILL.md at 7,916. A further addition needs a reorganization first: whole passages
-  moved word for word, shown to the principal before they are committed (format rule 3).
+  323 of those bytes, which left SKILL.md at 7,916. To restore the room, three passages the first text had added to
+  rules 3, 7 and 11 moved word for word into the references they were drawn from (format rule 3; coverage-map.md,
+  "Passages moved to keep W19's room"), which leaves SKILL.md at 7,570.
 - **Procedure.** Moved word for word to [session-protocols.md](session-protocols.md) as its first section, under an
   opening line that says the binding rules govern. With every binding rule complete on its own, SKILL.md would have run
   past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than condensing them.

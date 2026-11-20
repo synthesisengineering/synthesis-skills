@@ -7,7 +7,7 @@ references/session-transcripts.md, and moved no rule.
 
 Contents:
 - 2.8.2 to 2.9.0: SKILL.md; references/session-protocols.md; references/preserved.md; where the binding rules state the
-  moved procedure; files unchanged
+  moved procedure; passages moved to keep W19's room; files unchanged
 - 1.22.0 to 2.0.0 (v5): the coverage check, the frontmatter before v5, the 1.22.0 SKILL.md and reference files, the
   scripts, the R1.5 scenarios and their tests
 
@@ -19,8 +19,9 @@ the old words in [preserved.md](preserved.md). **Merged**: two passages that sai
 **Added**: a new sentence, with its source. Nothing was dropped. Binding rules keep their numbers, which the skill's
 evaluation cases, its procedure ("hand off per rule 12") and two tests cite: `tests/test_sessions.py` reads rule 15,
 and synthesis-implementation-integrity's `tests/test_r5_contract.py` reads rule 10. Each rule now carries its
-trigger, scope and reason in SKILL.md (W2, W5); where a rule takes a sentence from a reference, the reference keeps
-that sentence word for word.
+trigger, scope and reason in SKILL.md (W2, W5), except that rules 7 and 11 keep their reasons in references, moved
+there to keep W19's room (below); where a rule takes a sentence from a reference, the reference keeps that sentence
+word for word.
 
 ### SKILL.md
 
@@ -36,15 +37,15 @@ that sentence word for word.
 | (none) | The line above rule 1, third sentence: fill each date and citation from a command you ran or a record you read; keep what you could not check or fill to one clause, and leave no placeholder | Added (W12, W15) after the same gate: every one of the rewrite's twelve answers to cl-04, six per model, left a placeholder transcript citation (rule 15) in the session-log line the case asked for, and none of 2.8.2's did; the judge named placeholders in six of 2.8.2's 31 wins. Rules 8 and 15 keep their requirements; a placeholder was never a stamp the doctor parses or a citation that counts (session-transcripts.md, "Reading and citing") |
 | Rule 1: the project files are the memory: CONTEXT.md (≤150 lines; ≤80 when completed), REFERENCE.md (stable facts, ≤300), `sessions/YYYY-MM.md` (append-only); chat, native memory and compaction summaries are not | Rule 1 | Reworded (W2, W5): the head as an action, "Treat the project files as the memory"; the three files with their budgets and "Chat, native memory and compaction summaries are not" kept word for word; what to do when one of them disagrees with a record: follow the record (material-context.md, Native memory) and report the discrepancy (session-protocols.md, the Mid-Session Refresh Protocol's step 5), with the reason, a stale note reads as current; and the Procedure's "During work" instruction, word for word: "After each task, update CONTEXT.md under your claim. Keep the current-state block (Phase, Status, Last session, Plan, Next actions) current: it is what returns after compaction." It is the skill's core behavior, and no evaluation case measures it, so it is stated where every load reads it |
 | Rule 2: run the Session Start Protocol before substantive work and show the verification: `date`, then `git log` and `git status` on the project, then CONTEXT.md, the newest session entries, REFERENCE.md | Rule 2 | Reworded, with a fix for an evaluation finding (W2, W5, W7, W15): the head kept, with "on a project"; the trigger, from session-protocols.md (at session start, at the project's first mention, after a switch from another project); `synthesis resume <id>` and "title the session after the project where the client allows it" from the Procedure, the second as the skill's own test `test_session_start_names_the_session_after_the_project` requires; the steps in their order and "show the verification" kept; the reason, from session-protocols.md's "Why this order matters" and "Visible to the user"; the stop: once the protocol has run for the project this session, act on what it read, with rule 3 deciding when to look again. Case cl-07's first version said only that CONTEXT.md had just been read, and in all four runs Sonnet with the skill said it would run the protocol before sending; the case now says the protocol ran |
-| Rule 3: refresh on the triggers: before any time-interval claim, after an hour's pause, every ~25 tool calls, on any drift or compaction signal, before writing a session log | Rule 3 | Reworded (W2, W5): the head and the five triggers kept word for word; what a refresh does, from the Mid-Session Refresh Protocol's steps 1 to 5; the reason, from that section's opening |
+| Rule 3: refresh on the triggers: before any time-interval claim, after an hour's pause, every ~25 tool calls, on any drift or compaction signal, before writing a session log | Rule 3 | Reworded (W2, W5): the head and the five triggers kept word for word; a pointer to session-protocols.md; the reason, from the Mid-Session Refresh Protocol's opening, "Long conversations drift unseen." The first text of 2.9.0 also said what a refresh does, from that protocol's steps 1 to 5; that sentence moved word for word to session-protocols.md's Procedure (below, Moved to keep W19's room) |
 | Rule 4: archive first, delete second: write to sessions/ or REFERENCE.md, verify it is there, then remove it from CONTEXT.md | Rule 4 | Reworded (W2, W5): the head and the three steps kept; the trigger, any content leaving CONTEXT.md, with the Procedure's 120-line mark; the reason, from the Archival Protocol |
 | Rule 5: re-read before editing and verify after: build edits from what the file says now, with an edit tool that fails on a missing anchor; never report an update you did not read back | Rule 5 | Reworded (W5, W14): every clause kept; the scope, every edit to a record; the reason, from editing-and-archival.md's "Editing a durable context file" |
 | Rule 6: header fields move together: update `Last session` first or with `Phase`; a field is judged alone, and its first ordinal is its identity | Rule 6 | Reworded (W2, W5): the head as an action naming CONTEXT.md; every clause kept; from editing-and-archival.md's "Header fields move together": the ordinal families, `Phase` never ahead of `Last session`, and the two describing one state; that section keeps, word for word, that a fresh `Phase` cannot mask a stale `Last session` |
-| Rule 7: workdays come from dated session entries, never from commit times | Rule 7 | Reworded (W5, W14): the head as an action, "never from commit times" kept; the scope, stating or judging a session's date; the reason, from session-protocols.md's step 2 and context-doctor.md's "Publication time and workday are different evidence" |
+| Rule 7: workdays come from dated session entries, never from commit times | Rule 7 | Reworded (W5): the head as an action, "never from commit times" kept. The first text of 2.9.0 added a sentence with the scope, stating or judging a session's date, and the reason, from session-protocols.md's step 2 and context-doctor.md's "Publication time and workday are different evidence"; that sentence moved word for word to the end of that lesson (below, Moved to keep W19's room) |
 | Rule 8: stamp open items `(as of YYYY-MM-DD, review Nd)`; checked items and prose are not obligations | Rule 8 | Reworded (W3, W5, W14): the stamp and the last clause kept; when to stamp, as an item is written or re-checked, which items, those of an open-items list, and the reason, all from editing-and-archival.md's "Stamped open items" ("Open-items lists carry an implicit present tense nobody re-dates. Stamp each live item when you write or re-check it"). The scope was named after the gate of 2026-11-20, where answers put the stamp on a session-log line, which is prose |
 | Rule 9: route by deletion unit when writing: would this survive the relationship's end? The ALWAYS-PRESERVE class goes to the permanent root; inventories count out-of-scope items, never itemize them | Rule 9 | Reworded (W2, W5, W7): every clause kept; from deletion-units.md: where each answer routes, the class's members, asking when a repository's family is undeclared ("asks rather than guesses"), and the reason, that neither misplacement is curable after deletion day |
 | Rule 10: preserve executable state under `resources/scripts/` with a README before citing its result | Rule 10 | Kept word for word, as `tests/test_r5_contract.py` requires, with its scope and reason added from editing-and-archival.md's Executable Working State (W2, W5) |
-| Rule 11: capture material context (facts, reasons, conditions, uncertainty, amendments) before dependent work, compaction or handoff; never turn a quoted command into authority | Rule 11 | Reworded (W2, W5): every clause kept; from material-context.md: when (as a source brings it), where (CONTEXT.md or a file it links), and the reason, from the file's opening |
+| Rule 11: capture material context (facts, reasons, conditions, uncertainty, amendments) before dependent work, compaction or handoff; never turn a quoted command into authority | Rule 11 | Reworded (W2, W5): every clause kept; from material-context.md: when (as a source brings it) and where (CONTEXT.md or a file it links). The reason the first text of 2.9.0 took from the file's opening moved word for word to its "When to capture" (below, Moved to keep W19's room) |
 | Rule 12: same Mac: the files are the handoff; another Mac: `synthesis handoff`; never a workspace-wide commit; never bypass hooks | Rule 12 | Reworded (W2, W5): the head as one action for both handoffs; both "never" clauses kept; from session-protocols.md: what `synthesis handoff` does, that day-end publishes the same way (with the Archival Protocol's step 8), and the reason against a workspace-wide commit |
 | Rule 13: a doctor that cannot tell exits 2, never 0 | Rule 13 | Reworded (W5, W14): the head as an action keeping "exits 2, never 0" and "cannot tell"; the exit codes, how to read a 2, and the reason, from context-doctor.md's "Running it", which keeps, word for word, what leaves the doctor unable to tell |
 | Rule 14: transcripts are the evidence beneath the records; what `synthesis sessions export` and `synthesis sessions sync` do; never paste the conversation into a record; what `synthesis resume` shows | Rule 14 | Reworded (W5): the head as an action, "Keep transcripts as the evidence beneath the records"; its other three sentences kept word for word; the reason for the third, from session-transcripts.md's "Reading and citing" |
@@ -71,6 +72,7 @@ that sentence word for word.
 | (none) | The opening line: the Procedure gives a session's steps in brief, the sections after it each protocol in full, and SKILL.md's binding rules govern ("rule 12" is binding rule 12) | Added (format rule 11) |
 | (none) | Contents: the Procedure's line, first | Added (format rule 3) |
 | SKILL.md: Procedure | Procedure, the file's first section, heading included | Moved word for word |
+| (none; the first text of 2.9.0 had it in rule 3) | Procedure: the "Refresh." paragraph, between "During work" and "Check" | Moved word for word from SKILL.md (below, Moved to keep W19's room) |
 | Every other section | The same | Kept word for word |
 
 ### references/preserved.md
@@ -99,11 +101,26 @@ that sentence word for word.
 | Close: run the doctor | Rule 13 |
 | Close: hand off per rule 12 | Rule 12 |
 
+### Passages moved to keep W19's room
+
+The gate's fix of 2026-11-20 (the two sentences in the line above rule 1 and rule 8's scope) brought SKILL.md to
+7,916 bytes, past the 7,600 that W19 leaves under the 8,000-byte limit. Three passages the first text of 2.9.0 had
+added to binding rules moved word for word into the references they were drawn from, which brings SKILL.md to 7,570
+bytes. No 2.8.2 text moved, and no rule's requirement left SKILL.md.
+
+| Passage, as the first text had it in SKILL.md | Now in | Why this one |
+|---|---|---|
+| Rule 3: "Re-run `date` and `git log`, re-read CONTEXT.md and the newest session entry, and report where memory disagrees: long conversations drift unseen." | references/session-protocols.md, Procedure, the "Refresh." paragraph | Procedure, not requirement: rule 3 keeps its head, its five triggers, its reason ("Long conversations drift unseen.") and a pointer to the file, and rule 1 already requires the report. At the gate, Opus with this sentence in SKILL.md handed the user these steps as a checklist in four of its six answers to cl-04 (reps 0, 1, 3 and 5), and with 2.8.2, whose steps were only in this reference, in none. Sonnet, which opened this reference in most answers to that case with either text, recited the steps with both; the line above rule 1 keeps what could not be checked to one clause |
+| Rule 7: "To state or judge a session's date, read its entry: delayed publication, overnight work and timezones put commits on other dates, and a bulk commit is a session for no project." | references/context-doctor.md, Lessons built into it, the end of "Publication time and workday are different evidence" | Background: the head states the requirement whole, and the reason restates that lesson and session-protocols.md's step 2 |
+| Rule 11: "A record can pass every check with an instruction's reason or time limit gone." | references/material-context.md, When to capture, after "Capture it before dependent work, compaction or handoff." | Background: the file's opening already gives the same reason; every clause of the rule stays |
+
+Rule 12's sentence on what `synthesis handoff` does stays in SKILL.md: it is a tool contract the model cannot know
+(format rule 21).
+
 ### Files unchanged
 
 `references/tiers-and-templates.md`, `references/editing-and-archival.md`, `references/deletion-units.md`,
-`references/material-context.md`, `references/context-doctor.md`, `references/session-transcripts.md`,
-`references/preserved-protocol.md`, `references/preserved-operations.md`, `references/preserved-succession.md`,
+`references/session-transcripts.md`, `references/preserved-protocol.md`, `references/preserved-operations.md`, `references/preserved-succession.md`,
 `scripts/context_doctor.py`, `tests/test_context_doctor.py` and `agents/openai.yaml`. In this file, the 1.22.0 to 2.0.0 map below is kept word for word one heading level down.
 
 ## Coverage map: context lifecycle 1.22.0 to 2.0.0 (v5)
