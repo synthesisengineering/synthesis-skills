@@ -264,10 +264,12 @@ python3 ~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py plug
 
 `--collections` takes the names in the table, comma-separated; a name that is none of them is
 refused, with every name listed, before anything changes. Setup builds the five collections from
-its own checkout into `~/.synthesis/v5/collections`, checks them, installs the runtime, then the
-core and the collections you named, the core first, so a harness whose core does not install gets
-no collection. It records your choice, so the update command, `onboard.sh` with `plugin`, keeps and
-updates the collections you chose; with none chosen it installs the whole set, as before.
+its own checkout into `~/.synthesis/v5/install/collections`, a folder no agent's file tool may
+write, checks them, installs the runtime, then the core and the collections you named, the core
+first, so a harness whose core does not install gets no collection, and one whose core you turned
+off gets none beside it until you turn it back on. It records your choice, so the update command,
+`onboard.sh` with `plugin`, keeps and updates the collections you chose; with none chosen it
+installs the whole set, as before.
 `--dry-run` lists everything it would build, run and write. Approve the core's hooks where the
 harness asks: in Codex's `/hooks`, and in Muse with `muse plugins approve synthesis-skills-core`.
 

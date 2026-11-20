@@ -172,10 +172,16 @@ diverged commits is skipped and named.
 Shared skills repositories are data sources, not execution authorities. Setup
 copies `skills/<name>/` (or top-level `<name>/`, never both layouts at once) once, into
 `~/.agents/skills/<name>`, which Codex and Muse read, and makes Claude Code's entry,
-`~/.claude/skills/<name>`, the relative link `../../.agents/skills/<name>`, checked
-after it is made; never `~/.codex/skills/`. Muse reads both folders and warns once for
-each skill it finds in both, and counts a link to one folder once. Setup records what it
-wrote (`~/.synthesis/v5/org-skills.json`), and a copy someone edited since, or one setup
+`~/.claude/skills/<name>`, a relative link to it (`../../.agents/skills/<name>` where
+both folders are where they are named), worked out from where each folder really is and
+checked after it is made; never `~/.codex/skills/`. Where the two entries are one folder
+already (either skills folder a link to the other, or one skill's entry a link to the
+other's), the skill has one copy, and nothing of it is moved or removed; a link of setup's
+own that leads elsewhere or nowhere is put right, and one that fails its check is taken
+out again (review round 1 of C8, B1: through a linked folder, the only copy was
+removed). Muse reads both folders and warns once for each skill it finds in both, and
+counts a link to one folder once. Setup records what it wrote
+(`~/.synthesis/v5/org-skills.json`), and a copy someone edited since, or one setup
 did not write, is kept and named, as is a link of the person's to another folder. A
 second copy an earlier setup wrote in `~/.claude/skills/` is moved aside, compared with
 its source (or with what setup or 4.x recorded writing there), and only then removed;

@@ -149,6 +149,7 @@ the manifests: Claude Code shows the entry, not the manifest, before an install.
 ```bash
 python3 skills/synthesis-skills-manager/scripts/build_collections.py --check
 python3 skills/synthesis-skills-manager/scripts/build_collections.py OUT_DIR
+python3 skills/synthesis-skills-manager/scripts/build_collections.py --tree [--dry-run]
 ```
 
 `--check` builds from the checkout's files and writes nothing: `ok: 5 collections, 73
@@ -156,9 +157,12 @@ skills, 753 files, version 5.22.0; nothing written` (exit 0). With a folder that
 exist yet, it builds from the last commit and writes the branch's tree there, whole or
 not at all: `built OUT_DIR: ...` (exit 0); it refuses while a file it reads differs from
 that commit. A defect prints `refused: N problems; nothing written`, then each problem,
-and exits 1; what cannot be read prints `cannot continue: <why>` and exits 2. It reads
-files with `build_directory_package.py`'s code and runs on Python 3.9. CI runs the same
-checks on every pull request, in
+and exits 1; what cannot be read prints `cannot continue: <why>` and exits 2. `--tree`,
+the release's, builds from the last commit as a folder build does, checks it, and writes the
+tree into the repository's own objects from memory: `tree <id> branch collections: ...`
+(with `--dry-run`, `checked branch collections: ...; nothing written`). It reads files with
+`build_directory_package.py`'s code, reads the runtime only where the whole set has hooks to
+carry, and runs on Python 3.9. CI runs the same checks on every pull request, in
 [tests/test_skills_manager_collections.py](../tests/test_skills_manager_collections.py).
 
 ## What fails the check
@@ -179,8 +183,16 @@ that does not list exactly the collections, each from its folder.
 
 `release.py` builds the collections from the commit it releases and checks them before it
 tags anything: collections that fail a check, or a collections file it cannot read, stop
-the release with nothing published, a dry run included. It writes the folders into git as
-a tree (`build_collections.tree`) and, for each push remote, commits that tree on top of
+the release with nothing published, a dry run included. The build is the commit's own: the
+release runs its fresh clone's `build_collections.py --tree`, with its own interpreter,
+isolated (`-I`), in a process of its own, and reads back only the tree id it prints; a clone
+without the script is refused. The release tool runs from the installed runtime, an earlier
+release, and until review round 1 of C8 (B3) it built with that release's `build_collections`,
+so a change to how collections are built shipped one release late; C8's own release stopped at
+the earlier build's check. A runtime installed before this change still builds with its own, so
+the release that ships it is made by its own release tool: install the merged checkout's runtime
+first (`synthesis install <checkout>`, which waits for the principal's code), then run the
+release launcher. For each push remote, the release commits the tree on top of
 the remote's `collections` head, so no release rewrites the branch a harness installs
 from; a run again after a server error finds the head already holding the tree and
 reuses it. The commit takes the release commit's identity and time, unsigned, and names
@@ -217,8 +229,8 @@ installed from it, each in an empty home.
   plugin's name (`synthesis-skills-engineering:synthesis-code-planning` in Codex).
 - Muse with the guard in the core: its launcher updates itself and signs in first, so it
   was not run on 2026-11-20; setup's Muse lines are those it runs for the whole set.
-- The branch on GitHub carries the guard in its core from the first release built with
-  ruling C8; until then its core has no hooks (its head was `Collections of v5.28.1` on
-  2026-11-20).
+- The branch on GitHub carries the guard in its core from the release that ships ruling C8,
+  made with its own release tool (above); until then its core has no hooks (its head was
+  `Collections of v5.28.1` on 2026-11-20).
 - In Muse 1.4.20, `muse plugins update` did not move a plugin installed from a marketplace
   to the marketplace's newer snapshot; removing it and installing it again did.

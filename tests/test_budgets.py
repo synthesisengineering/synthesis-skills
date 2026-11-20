@@ -3018,8 +3018,33 @@ ROOT = Path(__file__).resolve().parents[1]
 # core's Muse hooks); sources 12 (the guard's files, their modes and the whole set's Muse hooks); build 6 (the guard
 # carried verbatim in the core); verify 15 (the guard held to the whole set's bytes, its missing files named, the core's
 # Muse hooks compared, a core script's reach into a carried skill's scripts allowed).
+# Then the plugin 88 more, for review round 1 of C8 (2026-11-20: an organization skill's only copy removed through a
+# linked skills folder; the collections built where a file tool could empty the core's hooks; the release building the
+# collections with the installed runtime's earlier build, which stopped C8's own release; collections installed beside
+# a disabled core; Muse's collections known by how a name starts; the runtime removed while a plugin list could not be
+# read). skills/synthesis-onboarding/scripts/setup.py 38: collection_plugins 9 with its 2 blank lines (Muse's
+# collections known by their five names from the collections file, the core's alone where it cannot be read;
+# muse_record uses it in its line); collections_folder 2 (its docstring: the folder inside the sealed install folder);
+# install_collections 6 (its docstring 1, a disabled core refused before anything installs 3, and one left disabled
+# after install 2); off 6 with its 2 blank lines (the refusal, naming how each harness enables the core);
+# _muse_collection_steps 5 (its docstring 1; the loop notes a collection from elsewhere in 1 line in place of its own
+# 2-line refusal; one refusal after the loop names them all, the core last, 5); remove_collections 4 (a Codex
+# collections listing that prints no list refused, in 5 lines in place of 1); _uninstall 2 (a harness whose plugin list
+# cannot be read keeps the runtime 1, and the stopping message 1 more). workspace.py 30: _claude_entry 15 (its
+# docstring 3; the link worked out from where each folder really is, in its line; the link's words and the one-folder
+# test 1, setup's link standing only where it leads to the copy 1, entries that are one folder left as one copy 4,
+# setup's own link that leads elsewhere or nowhere put right 6; a copy set aside removed only beside the skill's own
+# copy, in its line); _link 3 (its docstring 1, a link that fails its check taken out again 1, its message 1 more);
+# _same 4 and _spare 4, each with its 2 blank lines; install_org_skills's leftover copy checked by _spare in its line.
+# skills/synthesis-skills-manager/scripts/build_collections.py 12: the module docstring 4 (`--tree`, its output and the
+# release's use of it); the runtime's import at the top with its refusal 6 fewer, read in guard_paths instead 5 (only
+# where the whole set has hooks to carry); main 9 (the `--tree` option 3, `--dry-run` 1, and the tree's line 5 more).
+# release.py 8: the module docstring 1 (stage 4 builds with the clone's own script); the runtime's build no longer
+# imported, 1 fewer; BUILD 1; collections 7 (its docstring 3; the clone's build_collections.py --tree run in a process
+# of its own, its line read for the tree and the branch, a refusal and a failure each named, 4 more than the build run
+# in this process took).
 CORE_BUDGET = 26473
-PLUGIN_BUDGET = 53799
+PLUGIN_BUDGET = 53887
 
 
 def _lines(files):

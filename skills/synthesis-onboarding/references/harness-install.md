@@ -478,20 +478,25 @@ in any other collection.
 
 Setup builds the same five folders from the files git tracks in its own checkout
 (`~/.synthesis/v5/source`, or the git checkout it runs from; a copy that is no git checkout is
-refused) into `~/.synthesis/v5/collections`, checked before anything changes: a
+refused) into `~/.synthesis/v5/install/collections`, checked before anything changes: a
 build that fails its check, or whose core lacks a hook, a hook script or the runtime's hook entry,
-installs nothing. It installs the runtime first, as for the whole set, then the core and the
-chosen collections in every harness it finds, the core first, so a harness whose core does not
-install gets no collection. The choice is recorded in `~/.synthesis/v5/install/collections.json`:
-a later `setup.py plugin` keeps it, and `--collections` adds to it. The collections installed
-are this checkout's release; `--ref` picks only the whole set's.
+installs nothing. The folder is inside the sealed install folder because Claude Code reads the
+core's hooks there in place: the guard refuses a file tool's write there, and the guard's sandbox
+denies it (`Edit(~/.synthesis/v5/install/**)`), as it denies the whole set's copy in Claude Code's
+plugin cache (review round 1 of C8, B2: in `~/.synthesis/v5/collections` a Write could have emptied
+the core's `hooks/hooks.json`). It installs the runtime first, as for the whole set, then the core
+and the chosen collections in every harness it finds, the core first, so a harness whose core does
+not install gets no collection. The choice is recorded in
+`~/.synthesis/v5/install/collections.json`: a later `setup.py plugin` keeps it, and `--collections`
+adds to it. The collections installed are this checkout's release; `--ref` picks only the whole
+set's.
 
 ### What each harness supports, and what setup runs
 
 Probed with Claude Code 2.1.316 and Codex 0.169.1 in empty homes on 2026-11-20:
 
 - **Claude Code** adds a folder as a marketplace: `claude plugin marketplace add
-  ~/.synthesis/v5/collections`, then `claude plugin install synthesis-skills-core@synthesis-collections`
+  ~/.synthesis/v5/install/collections`, then `claude plugin install synthesis-skills-core@synthesis-collections`
   and each collection. It installs a plugin's declared dependency with it (a collection names the
   core), runs an enabled plugin's hooks with no approval step, and reads a folder marketplace's
   plugin in place: its list names the folder (`readFromFolder`), `claude plugin update` says there
@@ -500,7 +505,7 @@ Probed with Claude Code 2.1.316 and Codex 0.169.1 in empty homes on 2026-11-20:
   and installs only what the harness does not hold yet. Removing a marketplace uninstalls its
   plugins, so a `synthesis-collections` marketplace from elsewhere (the branch on GitHub) is
   removed, added again from the folder, and every collection it held installed again.
-- **Codex** adds a local marketplace: `codex plugin marketplace add ~/.synthesis/v5/collections --json`,
+- **Codex** adds a local marketplace: `codex plugin marketplace add ~/.synthesis/v5/install/collections --json`,
   then `codex plugin add synthesis-skills-core@synthesis-collections` and each collection. It
   resolves no dependency, so the core is its own line; it copies the plugin into its cache at each
   `add`, so every run adds each again; and `codex plugin marketplace upgrade` refuses a local
@@ -512,9 +517,12 @@ Probed with Claude Code 2.1.316 and Codex 0.169.1 in empty homes on 2026-11-20:
   only; its whole listing, which may fetch the remote catalog, only when neither shows the guard,
   since absent is said only from there.
 - **Muse** installs each collection from its own folder of the build, `muse plugins install
-  ~/.synthesis/v5/collections/<name> --json`, and records that folder; later runs refresh it and
-  run `muse plugins update <plugin> --json`, as for the whole set's bundle. A collection Muse holds
-  from anywhere else is refused, with the command that removes it. The core's hooks wait for
+  ~/.synthesis/v5/install/collections/<name> --json`, and records that folder; later runs refresh it
+  and run `muse plugins update <plugin> --json`, as for the whole set's bundle. Muse names no
+  marketplace for a plugin installed from a folder, so its records are known as the collections' by
+  the five names in the collections file, never by how a name starts. Collections Muse holds from
+  anywhere else are refused together, with the commands that remove them, the core last, so following
+  them never leaves a collection without its guard. The core's hooks wait for
   `muse plugins approve synthesis-skills-core`. Muse was not run in these probes (its launcher
   updates itself and signs in first); its commands are the ones setup already runs for the whole
   set on every release, and the tests hold setup to them.
@@ -522,17 +530,23 @@ Probed with Claude Code 2.1.316 and Codex 0.169.1 in empty homes on 2026-11-20:
 ### One guard in each harness
 
 A harness that holds the whole set has every collection already: `--collections` adds nothing
-there, says so with the command that removes the whole set, and updates it as before. Setup never
-installs the whole set beside the core: the whole set's install is refused where the listing shows
-the core, naming the command that updates the collections. The doctor holds the core to every check
-it holds the whole set to (installed and enabled, its bytes the runtime's, its hooks wired,
-approved where the harness asks), and fails a harness that holds both, since each hook would run
-twice and a call both copies judge is held even once approved, or a collection with no core.
+there, says so with the command that removes the whole set, and updates it as before. A core that
+is installed but disabled is a guard that does not run: `--collections` stops in that harness before
+anything is installed beside it and names how to enable it (`claude plugin enable
+synthesis-skills-core@synthesis-collections`; in Codex, `enabled = true` under its
+`[plugins."synthesis-skills-core@synthesis-collections"]` in `config.toml`; in Muse, its plugin
+settings), and a core left disabled after an install is a failure. Setup never installs the whole
+set beside the core: the whole set's install is refused where the listing shows the core, naming the
+command that updates the collections. The doctor holds the core to every check it holds the whole
+set to (installed and enabled, its bytes the runtime's, its hooks wired, approved where the harness
+asks), and fails a harness that holds both, since each hook would run twice and a call both copies
+judge is held even once approved, or a collection with no core.
 
 `setup.py uninstall` takes the collections out of each harness too, the core last, with their
-marketplace, the built folder and the record, before it removes the runtime; while a core it could
-not remove is still installed, the runtime stays and uninstall exits 1, since that core's hooks
-would hold every guarded call without it.
+marketplace, the built folder and the record, before it removes the runtime. While a core it could
+not remove is still installed, or a harness's plugin list (or Codex's collections listing) cannot be
+read, so a guard may still be there, the runtime stays and uninstall exits 1, since that guard's
+hooks would hold every guarded call without it.
 
 ### Without setup
 
