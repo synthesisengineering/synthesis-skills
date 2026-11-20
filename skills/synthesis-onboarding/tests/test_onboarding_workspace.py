@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -233,6 +234,7 @@ def test_enrollment_clones_installs_skills_and_writes_the_instruction_pair(tmp_p
     assert (ws / "ai-knowledge-example-team" / "README.md").is_file()
     for root in (".claude/skills", ".agents/skills"):
         assert (Path.home() / root / "team-review" / "SKILL.md").is_file()
+    assert linked("team-review")  # one copy, which Claude Code's entry links to
     assert not (Path.home() / ".codex" / "skills").exists()
     agents = (ws / "AGENTS.md").read_text()
     assert agents.startswith(workspace.ARCHIVE_NOTE) and "## Organization\n\nTeam rules." in agents
@@ -412,7 +414,8 @@ def test_a_malformed_repos_manifest_stops_with_its_line_not_a_traceback(tmp_path
 
 def test_setup_refreshes_an_unedited_4x_skill_copy_and_keeps_an_edited_one(tmp_path):
     """4.x installed organization skills into the same folders and left a .source.json naming its commit;
-    v5 had no record of writing them, so every upgrader kept the old copies (2026-10-06)."""
+    v5 had no record of writing them, so every upgrader kept the old copies (2026-10-06). Claude Code's copy is now a
+    link to the one copy: an unedited 4.x copy there goes, and an edited one is kept in a dated backup."""
     _, work = remote(tmp_path, "org-skills", {"skills/alpha/SKILL.md": "old alpha\n", "skills/beta/SKILL.md": "old beta\n"})
     commit = git("-C", str(work), "rev-parse", "HEAD")
     for name in ("alpha", "beta"):
@@ -426,9 +429,148 @@ def test_setup_refreshes_an_unedited_4x_skill_copy_and_keeps_an_edited_one(tmp_p
     lines = workspace.install_org_skills(work)
     assert (Path.home() / ".claude" / "skills" / "alpha" / "SKILL.md").read_text() == "new alpha\n"
     assert (Path.home() / ".agents" / "skills" / "beta" / "SKILL.md").read_text() == "new beta\n"
-    assert (Path.home() / ".claude" / "skills" / "beta" / "SKILL.md").read_text() == "old beta, edited by hand\n"
-    assert any("beta: kept" in line for line in lines) and not any("alpha: kept" in line for line in lines)
-    assert "skill beta: installed for Codex" in lines  # only the copy it wrote, never both by default
+    kept = list((setup.install._home() / "backups").glob("org-skills.*/beta"))
+    assert len(kept) == 1 and (kept[0] / "SKILL.md").read_text() == "old beta, edited by hand\n"
+    assert not list((setup.install._home() / "backups").glob("org-skills.*/alpha"))  # 4.x's, unedited: nothing to keep
+    assert all(os.readlink(Path.home() / ".claude" / "skills" / name) == f"../../.agents/skills/{name}" for name in ("alpha", "beta"))
+    assert any(line.startswith("skill alpha: updated in ") and "matched what 4.x installed, was removed" in line for line in lines)
+    assert any(line.startswith("skill beta: updated in ") and f"was kept in {kept[0]}" in line for line in lines)
+
+
+# ---- an organization's skills: one copy, and Claude Code's entry a link to it ---------------------------------------
+# Muse reads both ~/.claude/skills and ~/.agents/skills and warns once for each skill it finds in both, while a link to
+# one folder counts once. So setup keeps one real copy, in the Agent Skills folder that Codex and Muse read, and Claude
+# Code's entry is a relative link to it. A second copy an earlier setup wrote is moved aside, compared with its source,
+# and only then removed; one that differs is kept in a dated backup folder.
+
+SKILL = "---\nname: {name}\n---\n\nThe {name} method.\n"
+
+
+def org_skills(tmp_path, *names):
+    """A checkout of an organization's skills repository holding these skills."""
+    _, work = remote(tmp_path, "org-skills", {f"skills/{name}/SKILL.md": SKILL.format(name=name) for name in names})
+    return work
+
+
+def places(name):
+    """(the one real copy, Claude Code's entry) of a skill."""
+    return Path.home() / ".agents" / "skills" / name, Path.home() / ".claude" / "skills" / name
+
+
+def ledger():
+    return json.loads((setup.install._home() / "org-skills.json").read_text())
+
+
+def two_copies(work, *names):
+    """Each skill installed as setup installed it before: a real copy in each folder, both in its ledger."""
+    written = {}
+    for name in names:
+        for dest in places(name):
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(work / "skills" / name, dest)
+            written[str(dest)] = workspace._digest(dest)
+    (setup.install._home() / "org-skills.json").parent.mkdir(parents=True, exist_ok=True)
+    (setup.install._home() / "org-skills.json").write_text(json.dumps(written))
+
+
+def linked(name) -> bool:
+    """Claude Code's entry is the relative link to the one copy, and reads as it: checked after every run."""
+    agents, claude = places(name)
+    return (claude.is_symlink() and os.readlink(claude) == f"../../.agents/skills/{name}" and agents.is_dir()
+            and not agents.is_symlink() and claude.resolve() == agents.resolve())
+
+
+def test_a_fresh_install_writes_one_copy_and_links_claude_codes_entry_to_it(tmp_path):
+    work = org_skills(tmp_path, "review")
+    lines = workspace.install_org_skills(work)
+    agents, claude = places("review")
+    assert linked("review") and (claude / "SKILL.md").read_text() == SKILL.format(name="review")
+    assert list(ledger()) == [str(agents)]  # one copy, one record
+    assert lines == [f"skill review: installed in {agents}; {claude} links to it"]
+    assert not (Path.home() / ".codex" / "skills").exists()  # Codex's own folder stays Codex's
+
+
+def test_two_copies_an_earlier_setup_wrote_become_one_copy_and_a_link(tmp_path):
+    work = org_skills(tmp_path, "review", "audit")
+    two_copies(work, "review", "audit")
+    (work / "skills" / "audit" / "SKILL.md").write_text("---\nname: audit\n---\n\nRevised.\n")  # the source moved on since
+    lines = workspace.install_org_skills(work)
+    assert linked("review") and linked("audit")
+    assert (places("audit")[1] / "SKILL.md").read_text() == "---\nname: audit\n---\n\nRevised.\n"
+    assert not (setup.install._home() / "backups").exists()  # neither second copy held anything of the person's
+    assert sorted(p.name for p in (Path.home() / ".claude" / "skills").iterdir()) == ["audit", "review"]  # nothing left aside
+    assert sorted(ledger()) == sorted(str(places(name)[0]) for name in ("audit", "review"))
+    agents, claude = places("review")
+    assert f"skill review: current in {agents}; {claude}, a second copy that matched its source, was removed and now links to it" in lines
+    agents, claude = places("audit")
+    assert (f"skill audit: updated in {agents}; {claude}, a second copy that matched what setup wrote there, was removed and "
+            "now links to it") in lines
+
+
+def test_a_second_copy_someone_edited_is_kept_in_a_dated_backup_and_its_place_links_to_the_one_copy(tmp_path):
+    work = org_skills(tmp_path, "review")
+    two_copies(work, "review")
+    agents, claude = places("review")
+    (claude / "SKILL.md").write_text(SKILL.format(name="review") + "My own step.\n")
+    (claude / "notes.md").write_text("mine\n")
+    lines = workspace.install_org_skills(work)
+    kept = list((setup.install._home() / "backups").glob("org-skills.*/review"))
+    assert len(kept) == 1 and re.fullmatch(r"org-skills\.\d{8}T\d{6}", kept[0].parent.name)
+    assert (kept[0] / "SKILL.md").read_text().endswith("My own step.\n") and (kept[0] / "notes.md").read_text() == "mine\n"
+    assert linked("review") and (agents / "SKILL.md").read_text() == SKILL.format(name="review")
+    assert lines == [f"skill review: current in {agents}; {claude}, a second copy that differs from its source, was kept in "
+                     f"{kept[0]} and now links to it"]
+
+
+def test_a_second_run_changes_nothing(tmp_path):
+    work = org_skills(tmp_path, "review", "audit")
+    two_copies(work, "review", "audit")
+    workspace.install_org_skills(work)
+    before = snapshot(Path.home())
+    lines = workspace.install_org_skills(work)
+    assert snapshot(Path.home()) == before  # no copy, link or ledger written again
+    assert lines == [f"skill {name}: current in {places(name)[0]}; {places(name)[1]} links to it" for name in ("audit", "review")]
+
+
+def test_a_copy_left_aside_by_an_interrupted_run_is_compared_and_kept_or_removed(tmp_path):
+    work = org_skills(tmp_path, "review", "audit")
+    workspace.install_org_skills(work)
+    root = Path.home() / ".claude" / "skills"
+    shutil.copytree(work / "skills" / "review", root / ".review.aside-41")  # the source's own bytes: nothing to keep
+    shutil.copytree(work / "skills" / "audit", root / ".audit.aside-41")
+    (root / ".audit.aside-41" / "SKILL.md").write_text("edited before the run stopped\n")
+    workspace.install_org_skills(work)
+    assert sorted(p.name for p in root.iterdir()) == ["audit", "review"] and linked("audit") and linked("review")
+    kept = list((setup.install._home() / "backups").glob("org-skills.*/*"))
+    assert [p.name for p in kept] == ["audit"] and (kept[0] / "SKILL.md").read_text() == "edited before the run stopped\n"
+
+
+def test_a_link_the_person_made_to_another_folder_is_theirs_and_kept(tmp_path):
+    work = org_skills(tmp_path, "review")
+    mine = tmp_path / "my-review"
+    shutil.copytree(work / "skills" / "review", mine)
+    places("review")[1].parent.mkdir(parents=True)
+    places("review")[1].symlink_to(mine)
+    lines = workspace.install_org_skills(work)
+    agents, claude = places("review")
+    assert os.readlink(claude) == str(mine) and agents.is_dir()
+    assert lines == [f"skill review: installed in {agents}; {claude} kept (a link to {mine}, not setup's)"]
+
+
+def test_a_dry_run_says_how_it_would_join_two_copies_and_writes_nothing(tmp_path):
+    work = org_skills(tmp_path, "review", "audit")
+    two_copies(work, "review", "audit")
+    (places("audit")[1] / "SKILL.md").write_text("edited\n")
+    before = snapshot(Path.home())
+    lines = workspace.install_org_skills(work, dry_run=True)
+    assert snapshot(Path.home()) == before
+    backups = setup.install._home() / "backups"
+    agents, claude = places("audit")
+    assert lines == [
+        f"skill audit: current in {agents}; would move the second copy at {claude} aside, keep it in a dated backup under "
+        f"{backups} (it differs from its source) and link {claude} to it",
+        f"skill review: current in {places('review')[0]}; would move the second copy at {places('review')[1]} aside, remove "
+        f"it (it matches its source) and link {places('review')[1]} to it"]
 
 
 # ---- a dry run writes nothing (reported 2026-10-20) -----------------------------
@@ -492,7 +634,8 @@ def test_org_dry_run_writes_nothing_and_says_what_it_would_do(tmp_path, local_gi
     lines = dry_run(["org", "--org-repo", org], capsys)
     assert snapshot(Path.home()) == before and list(temp_root.iterdir()) == []
     assert "ai-knowledge-example-team: would fetch, then fast-forward if behind" in conditional(lines)
-    assert "skill team-review: would install for Claude Code and Codex" in lines
+    agents, claude = (Path.home() / root / "skills" / "team-review" for root in (".agents", ".claude"))
+    assert f"skill team-review: would update {agents}; {claude} links to it" in lines
     assert f"{ws / 'AGENTS.md'}: would write it, with CLAUDE.md importing it" in lines
     assert "Your workspace is ready" not in lines
     workspace.enroll(org, lambda line: None)  # the run itself then does what the dry run described
