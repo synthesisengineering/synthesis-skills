@@ -3040,8 +3040,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # full, so with no record, left a process its own folder alone): homes_unread 5 (its line, docstring 3, the config a
 # call is judged under then, naming each ~/.claude* folder in the home, 1) with its 2 blank lines; the hook's
 # unreadable config, and _homes' when the file cannot be read, are that config in their lines.
-CORE_BUDGET = 26696
-PLUGIN_BUDGET = 53508
+# Then each 4 more, all in synthesis/paths.py, for review round 2 of C2 (R2-B1: while the config could not be read,
+# any ~/.claude* folder counted as a Claude home, a decoy a command made among them, whose projects link led the
+# memory-notes exemption into the sealed folders): homes_unread 4 more (its docstring 2; the home read where it really
+# is 1; a folder kept only where it and its projects lead where their names say, over 2 lines in place of 1).
+CORE_BUDGET = 26700
+PLUGIN_BUDGET = 53512
 
 
 def _lines(files):
