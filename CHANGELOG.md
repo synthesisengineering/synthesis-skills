@@ -4,7 +4,7 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
-## [5.28.3] - 2026-11-20
+## [5.28.4] - 2026-11-20
 
 - **The model table names November's releases** (model tiers 3.0.2). Every role list was verified on 2026-11-20
   against the provider's own documentation, with the page, excerpt and identifiers in
