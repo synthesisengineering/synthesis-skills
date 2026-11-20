@@ -1,4 +1,4 @@
-"""Build the five collections: the synthesis skills in plugins without hooks, one folder each, beside the whole set.
+"""Build the five collections: the synthesis skills in plugins of their own, one folder each, beside the whole set.
 
     python3 skills/synthesis-skills-manager/scripts/build_collections.py OUT_DIR
     python3 skills/synthesis-skills-manager/scripts/build_collections.py --check
@@ -6,17 +6,21 @@
 assets/collections.json lists the collections. Each skill names its own in its SKILL.md frontmatter (metadata.category),
 or the file's awaiting_room names it while that SKILL.md has no room for the line under 8,000 bytes. A collection's
 folder holds every tracked file of its skills that is not a test, byte for byte, the repository's two license files, and
-its own manifests for Claude Code, Codex and Muse at the repository's version, none registering a hook. Every collection
-but the core declares the core as a dependency in its Claude Code manifest; Codex and Muse resolve none, so their install
-lines name both. Two marketplace files at the top list the five. The release publishes it all as the `collections`
-branch, through `tree`. Files are read as build_directory_package.py reads a package's, with its code.
+its own manifests for Claude Code, Codex and Muse at the repository's version. The core also carries the whole set's
+guard (ruling C8, 2026-11-20): its hooks as each harness reads them and the runtime they run, as the runtime's install
+takes it, every byte the whole set's; no other collection holds or registers a hook. Every collection but the core
+declares the core as a dependency in its Claude Code manifest; Codex and Muse resolve none, so their install lines name
+both. Two marketplace files at the top list the five. The release publishes it all as the `collections` branch, through
+`tree`; setup.py builds the same folders to install the collections a person picks. Files are read as
+build_directory_package.py reads a package's, with its code.
 
 The build refuses, writing nothing, when a skill names no collection, more than one, or one the file does not list;
 when a skill depends on one outside its own collection and the core, or on one outside its own folder that its scripts
 load (the core installs in a folder of its own); and when the folders built are not what they should be: a file that is
-no manifest, license or file of the collection's skills, a file that differs from its source, a hook, a skill or license
-missing, a manifest with another name, version or dependency, a Muse manifest that does not list exactly the
-collection's skills, or a marketplace that does not list exactly the collections, each from its folder.
+no manifest, license, file of the collection's skills or of the core's guard, a file that differs from its source, a
+hook outside the core, a guard file, skill or license missing, a manifest with another name, version, dependency or
+hook, a Muse manifest that does not list exactly the collection's skills, or a marketplace that does not list exactly
+the collections, each from its folder.
 
 One line on stdout, and the exit code:
   OUT_DIR              built OUT_DIR: 5 collections, 73 skills, 753 files, version 5.22.0             0
@@ -46,6 +50,14 @@ from build_directory_package import (MANIFEST, Unreadable, committed, count, dep
                                      read_json, tracked)
 
 REPO = Path(__file__).resolve().parents[3]
+if str(REPO) not in sys.path:  # the runtime's own rule for what its install takes, which the core's guard carries
+    sys.path.insert(1, str(REPO))
+try:
+    from synthesis import install  # noqa: E402
+except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
+    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from a "
+          "checkout of synthesis-skills, or the core collection, which carries the runtime", file=sys.stderr)
+    sys.exit(2)
 LIST = "skills/synthesis-skills-manager/assets/collections.json"
 MANIFESTS = (".claude-plugin/plugin.json", MANIFEST, ".muse-plugin/plugin.json")  # each collection's own, at its top
 MARKETPLACES = (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json")  # at the top of the branch
@@ -56,6 +68,7 @@ CARRIABLE = ("yamlish",)  # runtime modules a collection may carry beside its sc
 #                           state, no hook (R1-3 of 5.22.0's review: of 34 scripts that imported the runtime, 23 read it)
 CAUGHT = ("ImportError", "ModuleNotFoundError", "Exception")  # an `except` that takes a module's absence
 PRESENT = ("is_file", "exists", "is_dir")  # an `if` that asks first whether a file is there
+HOOKS, MUSE_HOOKS = "hooks/hooks.json", ".muse-plugin/hooks"  # the whole set's hooks: Claude Code's and Codex's, Muse's
 
 
 def read_spec(repo: Path, commit: bool = False) -> dict:
@@ -123,17 +136,35 @@ def hooked(value) -> bool:
     return isinstance(value, list) and any(map(hooked, value))
 
 
-def described(spec: dict, name: str) -> str:
+def described(spec: dict, name: str, guarded: bool = False) -> str:
     """A collection's description, in its manifests and its marketplace entry, where a harness shows it: what it holds,
-    then that it builds on the core (the core's own leaves that out), then what it lacks and where the whole set is."""
+    then that it builds on the core (the core's own leaves that out), then that the core carries the guard (where the
+    whole set has one to carry), then where the whole set is."""
     return " ".join(part for part in (spec["collections"][name]["description"],
-                                      spec.get("with_core") if name != spec["core"] else "", spec.get("without")) if part)
+                                      spec.get("with_core") if name != spec["core"] else "",
+                                      spec.get("guard") if guarded else "", spec.get("whole_set")) if part)
 
 
-def manifests(spec: dict, name: str, skills: list, whole: dict) -> dict:
-    """{path: manifest} of one collection, at the whole set's version."""
+def guard_paths(paths: set, install_text: str) -> set:
+    """The paths of the whole set's guard, which the core carries (ruling C8, 2026-11-20): its hooks as each harness
+    reads them, and the runtime they run as the runtime's install takes it (`install.takes`: the runtime package, the
+    scripts of each skill it keeps at a stable path, and the CHANGELOG), so the core's runtime is the whole set's to the
+    byte. None where the whole set has no hooks/hooks.json, as a checkout made for a test may not."""
+    if HOOKS not in paths:
+        return set()
+    try:
+        names = install.carried_in(install_text) if install_text else ()
+    except install.Refused as error:
+        raise Unreadable(str(error))
+    return {path for path in paths if path == HOOKS or path.startswith(MUSE_HOOKS + "/") or install.takes(path, names)}
+
+
+def manifests(spec: dict, name: str, skills: list, whole: dict, guarded: bool = False, hooks: list = ()) -> dict:
+    """{path: manifest} of one collection, at the whole set's version. `guarded`: the core carries the whole set's guard,
+    which every description says; `hooks`, the core's alone: the whole set's Muse hooks, which its Muse manifest
+    registers (Claude Code and Codex read hooks/hooks.json by its place)."""
     entry, version, core = spec["collections"][name], whole.get("version"), spec["collections"][spec["core"]]["name"]
-    said = described(spec, name)
+    said = described(spec, name, guarded)
     shared = {key: whole[key] for key in SHARED if key in whole}
     head = {"name": entry["name"], "version": version, "description": said, **shared,
             "keywords": entry.get("keywords", []), "skills": "./skills/"}
@@ -146,17 +177,17 @@ def manifests(spec: dict, name: str, skills: list, whole: dict) -> dict:
                 "schemaVersion": 1, "name": entry["name"], "displayName": interface["displayName"], "version": version,
                 "description": said, "compat": {"source": "native", "manifestDir": ".muse-plugin"},
                 "capabilities": {"skills": [{"id": skill, "path": f"skills/{skill}/SKILL.md"} for skill in skills],
-                                 "commands": [], "hooks": [], "mcpServers": [], "reminders": []}}}
+                                 "commands": [], "hooks": list(hooks), "mcpServers": [], "reminders": []}}}
 
 
-def marketplaces(spec: dict, whole: dict) -> dict:
+def marketplaces(spec: dict, whole: dict, guarded: bool = False) -> dict:
     """{path: marketplace}: Claude Code's (which Muse reads too) and Codex's, listing the collections, the core first."""
     market, entries = spec["marketplace"], spec["collections"]
     facts = {key: whole[key] for key in ("author", "homepage") if key in whole}
     return {MARKETPLACES[0]: {
         "$schema": "https://anthropic.com/claude-code/marketplace.schema.json", "name": market["name"],
         "description": market.get("description", ""), "owner": market.get("owner", {}),
-        "plugins": [{"name": entries[name]["name"], "description": described(spec, name), "source": f"./{name}",
+        "plugins": [{"name": entries[name]["name"], "description": described(spec, name, guarded), "source": f"./{name}",
                      "category": entries[name].get("category", "development"), **facts} for name in order(spec)]},
             MARKETPLACES[1]: {
         "name": market["name"], "interface": {"displayName": market.get("displayName", market["name"])},
@@ -292,38 +323,62 @@ def impure(text: bytes) -> list:
 
 def sources(repo: Path, commit: bool = False) -> tuple:
     """(the collections file, the whole set's Codex manifest, (skill files, their modes), (licenses, their modes), (the
-    runtime's files a collection may carry, their modes), every path the repository tracks)."""
+    runtime's files a collection may carry, their modes), every path the repository tracks, (the whole set's guard,
+    which the core carries: {path: bytes}, their modes, and the hooks its Muse manifest registers))."""
     spec, whole = read_spec(repo, commit), committed(repo, MANIFEST) if commit else read_json(repo / MANIFEST)
     runtime = ["synthesis/__init__.py", *(f"synthesis/{module}.py" for module in CARRIABLE)]
     listed = git(repo, "ls-tree", "-r", "--name-only", "-z", "HEAD") if commit else git(repo, "ls-files", "-z")
-    return (spec, whole, tracked(repo, ["skills"], commit), tracked(repo, list(LICENSES), commit),
-            tracked(repo, runtime, commit), set(listed.split("\0")) - {""})
+    paths, skills = set(listed.split("\0")) - {""}, tracked(repo, ["skills"], commit)
+    text_of = (lambda path: git(repo, "show", f"HEAD:{path}")) if commit else \
+        (lambda path: (repo / path).read_text(encoding="utf-8"))  # noqa: E731
+    wanted = guard_paths(paths, text_of("synthesis/install.py") if "synthesis/install.py" in paths else "")
+    held, held_modes = tracked(repo, ["synthesis", HOOKS, MUSE_HOOKS, "CHANGELOG.md"], commit) if wanted else ({}, {})
+    muse = (committed(repo, ".muse-plugin/plugin.json") if commit else read_json(repo / ".muse-plugin/plugin.json")) \
+        if wanted and ".muse-plugin/plugin.json" in paths else {}
+    carried = {path: held[path] if path in held else skills[0].get(path) for path in wanted}
+    if any(data is None for data in carried.values()):  # a path the guard names that no file read gives: a test's, say
+        raise Unreadable(f"the guard names {sorted(p for p, d in carried.items() if d is None)[0]}, which cannot be read")
+    return (spec, whole, skills, tracked(repo, list(LICENSES), commit), tracked(repo, runtime, commit), paths,
+            (carried, {path: held_modes.get(path) or skills[1].get(path, "100644") for path in carried},
+             list((muse.get("capabilities") or {}).get("hooks") or [])))
 
 
 def build(repo: Path, commit: bool = False) -> tuple:
     """({path: bytes}, {path: git's mode}) of the folders and the two marketplace files, from the checkout's files or
     the last commit's (`commit`). The same commit gives the same bytes. A skill in no collection, or in several, is in
-    no folder, and `verify` names it."""
-    spec, whole, (skills, modes), (licenses, license_modes), (runtime, _), paths = sources(repo, commit)
+    no folder, and `verify` names it. The core carries the whole set's guard, byte for byte (`guard_paths`)."""
+    spec, whole, (skills, modes), (licenses, license_modes), (runtime, _), paths, (guarding, guard_modes, hooks) = \
+        sources(repo, commit)
     home, files, kept, every = homes(spec, skills)[0], {}, {}, {**modes, **license_modes}
     everywhere, at = paths | ancestors(paths), f"{whole.get('repository', '')}/{{}}/v{whole.get('version')}"
     for name in order(spec):
         mine = sorted(skill for skill, collection in home.items() if collection == name)
         ours = {path: data for path, data in skills.items() if path.split("/")[1] in mine}
-        modules = carry(needs(ours))  # the runtime's YAML reader where its scripts read it, where the whole set holds it
+        guarded = name == spec["core"] and bool(guarding)
+        modules = set() if guarded else carry(needs(ours))  # the YAML reader where its scripts read it; the core: all
         carried = {**ours, **licenses, **{path: data for path, data in runtime.items()
                                           if modules and (path == "synthesis/__init__.py" or path[10:-3] in modules)}}
-        held = set(carried) | ancestors(set(carried))
+        verbatim = guarding if guarded else {}  # the guard: the whole set's bytes, links and all
+        held = set(carried) | set(verbatim) | ancestors(set(carried) | outside(verbatim, mine))
         files.update({f"{name}/{path}": relink(path, data, held, everywhere, paths, at) for path, data in carried.items()})
+        files.update({f"{name}/{path}": data for path, data in verbatim.items()})
         kept.update({f"{name}/{path}": every.get(path, "100644") for path in carried})
-        files.update({f"{name}/{path}": text(made) for path, made in manifests(spec, name, mine, whole).items()})
-    files.update({path: text(made) for path, made in marketplaces(spec, whole).items()})
+        kept.update({f"{name}/{path}": guard_modes.get(path, "100644") for path in verbatim})
+        files.update({f"{name}/{path}": text(made) for path, made in manifests(
+            spec, name, mine, whole, bool(guarding), hooks if guarded else ()).items()})
+    files.update({path: text(made) for path, made in marketplaces(spec, whole, bool(guarding)).items()})
     return files, kept
+
+
+def outside(guarding: dict, mine: list) -> set:
+    """The guard's paths but its copies of other collections' scripts, whose skill folders the core does not hold: a
+    link from the core to such a folder still leads to the repository's."""
+    return {path for path in guarding if not (path.startswith("skills/") and path.split("/")[1] not in mine)}
 
 
 def verify(repo: Path, files: dict, commit: bool = False) -> list:
     """Each reason these folders may not be published, read from the built files themselves; empty when they may."""
-    spec, whole, (skills, _), (licenses, _), (runtime, _), paths = sources(repo, commit)
+    spec, whole, (skills, _), (licenses, _), (runtime, _), paths, (guarding, _, hooks) = sources(repo, commit)
     everywhere, at = paths | ancestors(paths), f"{whole.get('repository', '')}/{{}}/v{whole.get('version')}"
     home, found = homes(spec, skills)
     found += bounds(spec, skills, home)
@@ -331,14 +386,18 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
     optional, taken = spec.get("optional_loads") or {}, set()
     found += [f"synthesis/{module}.py imports {other}, so no collection can carry it alone" for module in CARRIABLE
               if f"synthesis/{module}.py" in runtime for other in impure(runtime[f"synthesis/{module}.py"])]
+    stable = {path.split("/")[1] for path in guarding if path.startswith("skills/")}  # the skills whose scripts it keeps
     for name, entry in spec["collections"].items():
         mine = sorted(skill for skill, collection in home.items() if collection == name)
         held = {path[len(name) + 1:]: data for path, data in files.items() if path.startswith(name + "/")}
         need = needs({path: data for path, data in skills.items() if path.split("/")[1] in mine})
-        modules, scripts = carry(need), scripts | set(need)
-        expected = {"synthesis/__init__.py", *(f"synthesis/{module}.py" for module in modules)} if modules else set()
+        guarded = name == spec["core"] and bool(guarding)  # the core, carrying the whole set's guard and its runtime
+        modules = {path[10:-3] for path in guarding if re.fullmatch(r"synthesis/\w+\.py", path)} if guarded else carry(need)
+        scripts |= set(need)
+        expected = set(guarding) if guarded else {"synthesis/__init__.py", *(f"synthesis/{module}.py" for module in modules)} \
+            if modules else set()
         should = {path for path in skills if path.split("/")[1] in mine} | set(licenses) | expected
-        should |= ancestors(should)  # what the folder holds, which a link from inside it may lead to
+        should |= ancestors(should - (expected - outside(guarding, mine) if guarded else set()))  # where a link may lead
         for path, (top, late) in sorted(need.items()):  # a script runs where it is installed, or is named as needing more
             gone = sorted(top - modules)
             if path in whole_set:
@@ -351,13 +410,17 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
                       if not caught and module not in modules]
         for path in sorted(need):  # a path into another skill's folder finds it beside the script, or is named (R1-20)
             for other in sorted(reaches(path, skills[path], set(home))):
-                taken.add((path, other))
-                exempt = home[other] == name or path in whole_set or other in optional.get(path, {})
+                taken.add((path, other))  # the guard's copy of a skill's scripts is beside every script of the core
+                exempt = home[other] == name or path in whole_set or other in optional.get(path, {}) or (
+                    guarded and other in stable)
                 found += [] if exempt else [f"{name}/{path}: reaches {other}'s folder, which is in {home[other]}, not "
                                             f"beside it in {name}; name the load under optional_loads with what the "
                                             "script does without it, or keep the two in one collection"]
         for path, data in sorted(held.items()):
             parts = path.split("/")
+            if guarded and path in guarding:  # the whole set's guard: its bytes, links and all
+                found += [f"{name}/{path}: differs from its source"] * (guarding[path] != data)
+                continue
             found += [f"{name}/{path}: holds a hook"] * ("hooks" in parts or parts[-1] == "hooks.json")
             if path in MANIFESTS:
                 continue
@@ -372,8 +435,9 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
                 data.decode("utf-8", "replace")) if path.endswith(".md") and leaving(path, target, should, everywhere)]
             found += [f"{name}/{path}: not a manifest, a license or a file of a skill in {name}"] if source is None else \
                 [f"{name}/{path}: differs from its source"] * (source != data)
-        found += [f"{name}/{path}: missing" for path in [*(f"skills/{skill}/SKILL.md" for skill in mine), *licenses,
-                                                         *sorted(expected)] if path not in held]
+        found += [f"{name}/{path}: missing" + ("; the core carries the guard" if guarded and path in guarding else "")
+                  for path in [*(f"skills/{skill}/SKILL.md" for skill in mine), *licenses, *sorted(expected)]
+                  if path not in held]
         made = {}
         for path in MANIFESTS:
             try:
@@ -386,7 +450,13 @@ def verify(repo: Path, files: dict, commit: bool = False) -> list:
             elif (made[path].get("name"), made[path].get("version")) != (entry["name"], whole.get("version")):
                 found.append(f"{name}/{path}: names {made[path].get('name')} {made[path].get('version')}, not "
                              f"{entry['name']} {whole.get('version')}")
-            found += [f"{name}/{path}: registers a hook"] * hooked(made[path])
+            registered = made[path].get("capabilities") if guarded and path == MANIFESTS[2] else None
+            if isinstance(registered, dict):  # the core's Muse manifest registers the whole set's hooks, and nothing else
+                found += [f"{name}/{path}: registers hooks other than the whole set's"] * (registered.get("hooks") != hooks)
+                found += [f"{name}/{path}: registers a hook"] * hooked({**made[path], "capabilities": {
+                    **registered, "hooks": []}})
+            else:
+                found += [f"{name}/{path}: registers a hook"] * hooked(made[path])
         declared, wanted = made[MANIFESTS[0]].get("dependencies", []), [] if name == spec["core"] else [core]
         found += [f"{name}/{MANIFESTS[0]}: depends on {declared}, not on {wanted}"] * (declared != wanted)
         listed = (made[MANIFESTS[2]].get("capabilities") or {}).get("skills")

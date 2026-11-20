@@ -40,7 +40,8 @@ COMMIT = "Commit work left uncommitted"
 NAMED = 100  # the most paths one commit in the plan names; past it, what is work there is the principal's to decide
 LIVE = "Your claim covers {}, which holds uncommitted or unpushed work: commit and push it, or reply with what it is."
 APPROVE = {"codex": "approve the synthesis hooks inside Codex: run `/hooks` there and trust each one",
-           "muse": f"run `muse plugins approve {doctor.PLUGIN}`, then approve each hook Muse names"}
+           "muse": f"run `muse plugins approve {doctor.PLUGIN}` (`{doctor.CORE}` where collections are installed), then "
+                   "approve each hook Muse names"}
 AGENT_FIXES = {"instruction adapters": "give each folder one set of instructions, `AGENTS.md` with a `CLAUDE.md` of the one "
                "line `@AGENTS.md`: ", "decision packets": "rebuild each page with its own generator (build_packet.py or "
                "build_sheet.py): ", "teardown": "", "prompt check": "mend the rituals' config as the line says: "}
