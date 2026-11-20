@@ -1,16 +1,35 @@
 # Decision packet: background
 
-The origin measurement, how this skill relates to its neighbors, the changelog and related skills. Moved verbatim from the 1.8.0 SKILL.md.
+When to use the skill, the origin measurement, how this skill relates to its neighbors, the changelog and related skills. Moved verbatim from the 1.8.0 SKILL.md; When to use it moved word for word from the 2.4.0 SKILL.md in 2.5.0. Read it when unsure a packet fits, or which neighbor fits better.
 
 Contents:
+- When to use it: decision ownership first, five or more parallel decisions of the same shape, natural fits
 - The origin measurement: why the other shapes fail
-- Relationship to other skills: autopilot, the adversarial review family, the handoff queue
-- Changelog 1.0.0 to 2.0.0
+- Relationship to other skills: autopilot, the adversarial review family, board messages (`synthesis msg`)
+- Changelog 1.0.0 to 2.4.0
 - Related
 
 The 1.8.0 SKILL.md still carried this version line under its title, though its frontmatter said 1.8.0:
 
 **Version 1.7.0** (2026-09-26)
+
+## When to use it
+
+Moved word for word from the 2.4.0 SKILL.md in 2.5.0, its link one folder deeper. Binding rules 7 and 12 now state its first paragraph, complete, and govern where a wording differs.
+
+First apply [decision ownership](../../synthesis-thinking-framework/references/decision-ownership.md).
+Packets collect decisions that actually belong to the principal (binding rule 7).
+Honor an explicit supervised review request.
+Existing user grants remain usable within their scope; the new record format does
+not require the user to repeat them.
+
+Load when you owe your principal **five or more parallel decisions of the same shape**, each
+needing supporting context, where you have a defensible recommendation per item and the decisions
+matter enough to deserve attention but are too numerous for per-item conversation.
+
+Natural fits: review findings to fix or waive · dependency bumps to take or hold · drafts to
+publish, edit, or kill · files to migrate or leave · flaky tests to quarantine or fix · features
+to build now, later, or never · candidates to advance on a defined rubric.
 
 ## The origin measurement
 

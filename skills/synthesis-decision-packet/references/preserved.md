@@ -1,4 +1,8 @@
-# Decision packet: passages replaced by the v5 script pass (M3)
+# Decision packet: passages replaced by the v5 script pass (M3) and since, through 2.5.0
+
+Read this only to review what a change replaced. The passages below are no longer instructions; they are kept
+word for word so the reasoning stays readable (ruling D8). Newest first: the 2.5.0 rewrite to the D8 standard,
+then the M3 passages and the later replacements of 2.0.1 and 2.1.0.
 
 Lines the 2.0.0 prose carried (from the 1.8.0 SKILL.md and reference files) that stopped
 describing the scripts when they were slimmed on 2026-10-05. Each passage is verbatim, under
@@ -6,6 +10,8 @@ a heading that says what it was and why it went. The scripts these lines describ
 readable at any time with `git show origin/main:skills/synthesis-decision-packet/scripts/<name>`.
 
 Contents:
+- Retired in 2.5.0, the rewrite to the D8 standard: why each part of SKILL.md changed, then the 2.4.0
+  SKILL.md word for word
 - Claimed provenance (`--provenance`) and input digests in the record (verdict: SLIM, drop claimed-provenance fields)
 - Legacy unbound summaries (`--legacy-unbound`) (verdict: SLIM, drop legacy-format parsing)
 - `-o` preserving existing bytes (changed: `-o` is a working copy)
@@ -16,6 +22,177 @@ Contents:
 - The worked example's rulings file before M3
 - The handoff queue (`handoff.py`, replaced by `synthesis msg` in v5)
 - The context doctor in binding rule 9 (the check is `synthesis doctor`'s)
+- A sentence in "When to use it" that restated binding rule 7 (2.1.0)
+
+## Retired in 2.5.0: the rewrite to the D8 standard
+
+2.5.0 rewrote SKILL.md to the repository's rewrite standard, `docs/skill-writing.md` (writing rules W1 to
+W19). Every rule's new place is in [coverage-map.md](coverage-map.md). A passage moved word for word to another
+file is recorded there; the whole 2.4.0 SKILL.md is below all the same, so every word of it stays readable in
+one place. The references keep their text; what they gained (When to use it and a changelog entry in
+background.md, two contents lists) is in the coverage map.
+
+### SKILL.md
+
+Why each part changed:
+
+- **Opening paragraphs.** The first, the origin measurement, is the story behind the skill (format rule 12),
+  and its words already stand in background.md's "The origin measurement", so it left SKILL.md (W19). One
+  sentence saying what the skill is for takes its place (format rule 2). The second, "The property to preserve
+  above all others", is kept word for word without its bold (W13).
+- **The line above rule 1.** "Rules 1 to 6 are the six load-bearing properties in their original order, so "the
+  sixth load-bearing property" still resolves; new rules are appended." was a note on numbering; W6 now keeps
+  every skill's numbers, rules 1 to 6 keep their order, and authoring.md's contents names them as the six
+  properties. In its place, a new line (W8, format rule 11) says the rules hold against a contrary request and
+  how to answer one, as the skill's absolutes already held: "never pre-select it", "never hand-author rows or
+  hand-edit generator output", `authorization.granted: false`, "only a recorded ruling closes one".
+- **Binding rules 1 to 15.** Each rewritten to W5 (the action as the bold head, then the scope, the reason and,
+  where the skill states one, the stop) and made complete on its own (W2), from the skill's own text. Rule 1
+  names its four parts and the blind-row exception, from authoring.md and When NOT to use it. Rules 2 to 6 take
+  their reasons from authoring.md's six properties; rule 5 also says that the principal's own wording is read as
+  text and not recorded, from filing-and-authority.md, and rule 6 names both filing commands with `--file-into`.
+  Rule 9 says what to do instead of a hand edit and what the doctor flags. Rule 10 names the `disagreement` and
+  `prior_position` blocks. Rule 11 names its check, from enforcement.md's two fixtures (format rule 14). Rule 13
+  names the failure to avoid, a summary and a link (W12). Rule 14 names the narrative sources that close nothing.
+  Rule 15 keeps every item, says why in its head, and names the Codex sentence's scope, any question for the
+  principal, with "or a filed packet" from authoring.md.
+- **Binding rule 7.** It sent the model to the decision-ownership contract in synthesis-thinking-framework, which
+  an evaluation harness that opens only this skill's files cannot read; the B1 baseline report found that for
+  code-planning's link to the same file. The rule now states the contract's classes itself (W2), and takes the
+  stop it had in When to use it, "Honor an explicit supervised review request".
+- **Binding rule 8.** At the pinned baseline (v5.0.14) Opus with the skill passed 5 of its 6 checks. Every element
+  is kept and each is named as the author meets it in the spec (W14): a plain label with an internal ID only as a
+  chip, context saying what the thing is in the reader's words, both sides of `impact`, never a bare Yes or No,
+  a one-clause gloss; it says what `--strict-reader` refuses, and gives the 0-of-15 measurement as its reason,
+  stated as what goes wrong (format rule 12).
+- **Binding rule 12.** The weakest rule at the pinned baseline: on dp-11 Opus with the skill passed 0 of 2.
+  The rule now names its trigger as the model meets it, acting on any chosen row, such as a deletion, deploy,
+  send or spend (W7, W14), says why a ruling cannot authorize (anyone can paste a summary, from
+  filing-and-authority.md), names the checks and where they are made (the principal's authority, the current
+  scope and the exact target, with the principal or another authentic source), and says what goes ahead without
+  a new confirmation: a grant already given, within its scope, from When to use it. No capitals or stronger
+  wording were added (W10), and no near-miss sentence, since no case has shown one (W15).
+- **Contents.** Shorter link text and descriptions, so the rules fit with the room W19 leaves under 8,000 bytes;
+  every reference keeps a line saying when to read it, coverage-map.md and preserved.md share one, and the
+  sections line names the one section left below.
+- **When to use it.** Moved word for word to background.md, its link one folder deeper; rules 7 and 12 state its
+  first paragraph, and the opening paragraph and When NOT to use it carry its scope.
+- **When NOT to use it.** Kept word for word.
+- **Use.** The command block stands word for word in filing-and-authority.md's Use section, which Contents names
+  for every command and what it prints; rules 6, 9 and 14 name each script. With every binding rule complete on
+  its own, SKILL.md would otherwise have run past the room W19 leaves, and format rule 3 moves whole passages
+  rather than condensing them.
+
+The 2.4.0 SKILL.md, verbatim:
+
+````markdown
+---
+name: synthesis-decision-packet
+description: "Collect five or more parallel decisions from a principal in one sitting: a self-contained HTML packet with a recommendation per row, consequence-labeled buttons, notes and a paste-back summary, filed in the project. Use when a review, migration, upgrade, triage or backlog pass needs rulings."
+license: "Apache-2.0"
+depends_on: []
+metadata:
+  author: "Rajiv Pant"
+  version: "2.4.0"
+  format: v5
+  source_repo: "github.com/synthesisengineering/synthesis-skills"
+  source_type: "public"
+  category: core
+---
+
+# Decision Packet
+
+When N unresolved decisions belong to the principal, collecting them one at a time
+scales poorly. The measurement that produced this skill is blunt: **26 rounds of per-item
+conversation produced 0 of 30 decisions. One packet produced 30 of 30, in one pass, in one
+paste.**
+
+**The property to preserve above all others: the principal's cost scales with the number of
+*sittings*, not the number of *items*.**
+
+## Binding rules
+
+Rules 1 to 6 are the six load-bearing properties in their original order, so "the sixth load-bearing property" still resolves; new rules are appended.
+
+1. **Self-contained rows:** item, recommendation, reasoning, link. The principal never leaves the packet to decide.
+2. **Mark the recommendation on the control; never pre-select it.** A packet that opens decided reports decisions nobody made.
+3. **A free-text note box on every row,** beside the buttons. Never force the principal into your option set.
+4. **Local persistence keyed by exact spec and item.** A change anywhere in the spec starts fresh choices.
+5. **The packet generates the paste-able summary,** so the person never composes the structure.
+6. **File in the owning project's `resources/artifacts/`, never only as a chat artifact:** `build_packet.py --file-into` files spec and page; `record_rulings.py` files the rulings.
+7. **Only decisions that belong to the principal.** Execute constraint-determined choices and resolve delegated technical choices yourself.
+8. **The reader contract: a packet is a stranger-read document.** Name the `audience`, use plain labels, state `impact` both ways, label options by what pressing them does, gloss terms of art, and build every packet for a principal with `--strict-reader`.
+9. **Generate from a data array; never hand-author rows or hand-edit generator output.** `synthesis doctor` flags unverifiable packet pages in its *decision packets* check.
+10. **Surface disagreement and prior positions with exact sources; never converge first,** and recommend against your own prior work where that is true.
+11. **Open every generated packet before handing it over.** Both permanent defects were found by loading the page, not reading the source.
+12. **A recorded ruling authorizes nothing** (`authorization.granted: false`). The action owner checks principal, scope and exact target before acting.
+13. **Show the complete material** for correspondence, code, images, media or documents in `review_assets`; external references are never fetched.
+14. **Unanswered decisions carry forward by exact id; only a recorded ruling closes one.** `carry_forward.py` writes the successor spec, and refuses a reconciliation with missing, extra or duplicate ids or a narrative "answered" with no ruling recorded against the exact spec.
+15. **Keep the reading path short:** changes against the reviewed `baseline`, material once, messages as their words, wire copies as `reference`, settled items in `handled`. On Codex, ask in the final reply, never only in a question card.
+
+## Contents
+
+- [references/authoring.md](references/authoring.md): the six properties in full, review material, prior positions, content requirements, the reader contract, a comfortable reading path. Read it before writing any spec.
+- [references/filing-and-authority.md](references/filing-and-authority.md): the commands and what they print, filing, recording rulings, schema-2 records, action authority, carrying unanswered decisions forward. Read it when generating, filing, recording or replacing a packet.
+- [references/enforcement.md](references/enforcement.md): integrity markers, what the generator refuses, the two permanent fixtures. Read it when a build is refused, the doctor flags a packet, or before changing the generator.
+- [references/review-assets.md](references/review-assets.md): the review-asset contract. Read it before constructing `review_assets`.
+- [references/worked-example.md](references/worked-example.md): a complete spec, the filed copies, the paste and its rulings file. Read it before your first packet.
+- [references/background.md](references/background.md): the origin measurement, relationship to autopilot, adversarial review and board messages between agents (`synthesis msg`), changelog, related skills. Read it when choosing between this skill and a neighbor.
+- [references/coverage-map.md](references/coverage-map.md): where the 1.8.0 text and old scripts now live. Read it when tracing an old rule or command.
+- [references/preserved.md](references/preserved.md): lines the v5 script pass replaced, verbatim, with reasons. Read it for the earlier wording.
+- When to use it, When NOT to use it, Use: below.
+
+## When to use it
+
+First apply [decision ownership](../synthesis-thinking-framework/references/decision-ownership.md).
+Packets collect decisions that actually belong to the principal (binding rule 7).
+Honor an explicit supervised review request.
+Existing user grants remain usable within their scope; the new record format does
+not require the user to repeat them.
+
+Load when you owe your principal **five or more parallel decisions of the same shape**, each
+needing supporting context, where you have a defensible recommendation per item and the decisions
+matter enough to deserve attention but are too numerous for per-item conversation.
+
+Natural fits: review findings to fix or waive · dependency bumps to take or hold · drafts to
+publish, edit, or kill · files to migrate or leave · flaky tests to quarantine or fix · features
+to build now, later, or never · candidates to advance on a defined rubric.
+
+## When NOT to use it
+
+- **Fewer than about five decisions.** Just ask in chat. The generator refuses below five without
+  `--allow-small`.
+- **The decisions are not parallel in shape.** A packet of unlike questions is a form, and a form
+  is worse than a conversation.
+- **You have no recommendation per item.** Then the packet is a questionnaire and *your analysis
+  is not finished*. Do the analysis. The generator refuses a row that recommends nothing,
+  unless it is blind.
+
+- **A deadline whose miss cannot be undone.** It is never one row among many: it leads the day
+  plan in its own section (synthesis-daily-rituals) and closes only on evidence. The generator
+  refuses a row tagged `critical`.
+
+The failure mode of a good pattern is over-application. These four limits are the skill.
+
+## Use
+
+```bash
+python3 scripts/build_packet.py --schema              # the spec format
+python3 scripts/build_packet.py spec.json -o packet.html --strict-reader
+python3 scripts/build_packet.py spec.json --stdout    # to a pipe
+python3 scripts/build_packet.py spec.json --strict-reader \
+    --file-into PROJECT/resources/artifacts/         # + <date>-<slug>-spec.json, <date>-<slug>.html
+python3 scripts/record_rulings.py paste.txt \
+    --spec PROJECT/resources/artifacts/<date>-<slug>-spec.json \
+    --file-into PROJECT/resources/artifacts/         # -> <date>-<slug>-rulings.json
+python3 scripts/carry_forward.py PROJECT/resources/artifacts/<date>-<slug>-spec.json \
+    --successor next-spec.json                       # the unanswered rows, ids unchanged
+python3 scripts/carry_forward.py PROJECT/resources/artifacts/<date>-<slug>-spec.json \
+    --check reconciliation.json                      # every id answered or carried, once
+```
+
+What each command prints: [references/filing-and-authority.md](references/filing-and-authority.md).
+````
 
 ## Claimed provenance and input digests in the record
 
