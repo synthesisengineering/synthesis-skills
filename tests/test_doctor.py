@@ -128,6 +128,21 @@ def test_self_test_at_background_priority_reports_the_time_without_judging_it(ru
     assert doctor.check_self_test(home, runs=1, run=allow, background=lambda: True).status == "fail"
 
 
+def test_a_claude_homes_self_test_runs_the_stable_hook_as_that_homes_sessions_run_it(runtime, tmp_path):
+    """C2: the seat's hook runs with its folder in CLAUDE_CONFIG_DIR and its transcript in that folder's projects."""
+    home, _ = runtime
+    folder, seen = tmp_path / ".claude-team", []
+    assert doctor.check_home_self_test(home, "claude ~/.claude-team", folder).status == "ok"
+
+    def watched(argv, **kwargs):
+        seen.append((json.loads(kwargs["input"]), kwargs["env"]))
+        return allow(argv, **kwargs)
+    check = doctor.check_home_self_test(home, "claude ~/.claude-team", folder, run=watched)
+    assert check.status == "fail" and check.name == "claude ~/.claude-team self-test" and "let `rm -rf ~` through" in check.detail
+    payload, env = seen[0]
+    assert env["CLAUDE_CONFIG_DIR"] == str(folder) and payload["transcript_path"].startswith(str(folder / "projects") + os.sep)
+
+
 def test_background_priority_is_read_from_the_os():
     assert doctor.background_priority() is False  # this test process runs at normal priority
     if sys.platform == "darwin":
@@ -792,6 +807,26 @@ def test_claude_code_must_keep_transcripts_past_its_30_day_default(tmp_path):
     assert doctor.check_claude_retention(settings).status == "ok"
 
 
+def test_a_claude_homes_hooks_run_only_where_no_settings_layer_turns_them_off():
+    """C2: a seat in another Claude account's folder runs no guard where a layer of settings it reads turns hooks off
+    (`disableAllHooks` anywhere, a managed `allowManagedHooksOnly` that does not force the plugin on, a managed layer
+    that turns the plugin off: the organization's server-managed settings reach that seat after its login), and holds
+    no call when the guard fails where the PreToolUse handler lacks onFailure. A layer that cannot be read says nothing."""
+    seat, own, remote, managed = "claude ~/.claude-team", "~/.claude-team/settings.json", "~/.claude-team/remote-settings.json", "managed"
+    on = doctor.check_hooks_on(seat, REPO_HOOKS, [(own, {"cleanupPeriodDays": 3650}, False)])
+    assert on.status == "ok" and on.name == "claude ~/.claude-team hooks on"
+    for layers, said in (([(own, {"disableAllHooks": True}, False)], "disableAllHooks"),
+                         ([(remote, {"allowManagedHooksOnly": True}, True)], "allowManagedHooksOnly"),
+                         ([(managed, {"enabledPlugins": {PLUGIN_ID: False}}, True)], "turns synthesis-skills off")):
+        off = doctor.check_hooks_on(seat, REPO_HOOKS, layers)
+        assert off.status == "fail" and said in off.detail, off
+    forced = [(remote, {"allowManagedHooksOnly": True}, True), (managed, {"enabledPlugins": {PLUGIN_ID: True}}, True)]
+    assert doctor.check_hooks_on(seat, REPO_HOOKS, forced).status == "ok"  # a plugin managed settings force on runs
+    open_ = {"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": doctor.STABLE_HOOK + " pre-tool-use"}]}]}}
+    assert "onFailure" in doctor.check_hooks_on(seat, open_, []).detail
+    assert doctor.check_hooks_on(seat, REPO_HOOKS, [(remote, None, True)]).status == "unknown"
+
+
 def test_board_entries_left_in_the_state_folder_are_named(tmp_path):
     assert doctor.check_board(tmp_path).status == "ok"
     (tmp_path / "state" / "sessions").mkdir(parents=True)
@@ -1084,6 +1119,51 @@ def test_doctor_reports_a_healthy_machine_and_writes_no_harness_state(machine, c
     assert any(line.split()[:4] == ["ok", "codex", "skill", "catalog"] for line in lines[1:])
     assert any(line.split()[:4] == ["ok", "claude", "fail", "closed"] for line in lines[1:])
     assert snapshot(home) == before
+
+
+def fake_claude_by_home(fakebin: Path, listings: dict) -> None:
+    """A claude CLI whose plugin listing is the one for the folder CLAUDE_CONFIG_DIR names, else the one under ""."""
+    (fakebin / "claude-homes.json").write_text(json.dumps(listings))
+    script = fakebin / "claude"
+    script.write_text(f"""#!{sys.executable}
+import json, os, sys
+if sys.argv[1:2] == ["--version"]:
+    print("2.1.316 (Claude Code)")
+else:
+    listings = json.load(open({str(fakebin / 'claude-homes.json')!r}))
+    sys.stdout.write(json.dumps(listings.get(os.environ.get("CLAUDE_CONFIG_DIR", ""), listings[""])))
+""")
+    script.chmod(0o755)
+
+
+def test_the_doctor_checks_each_claude_home_the_config_names_and_fails_one_whose_hooks_would_not_run(machine, tmp_path, monkeypatch):
+    """C2: a seat in another Claude account's folder has no guard unless the plugin runs its hooks there, so the doctor
+    checks that folder as it checks ~/.claude, before anyone signs in there, writing nothing in it, and fails a home
+    whose hooks would not run: the folder missing, no plugin in it, or hooks off by a setting it reads."""
+    from synthesis import sandbox
+    home, fakebin, _ = machine
+    monkeypatch.setattr(sandbox, "CLAUDE_MANAGED", tmp_path / "managed" / "managed-settings.json")  # never this Mac's own
+    folder, kept = home / ".claude-team", '{"cleanupPeriodDays": 3650}'
+    team = plugin_copy(folder / "plugins" / "cache" / "synthesis-engineering" / "synthesis-skills" / "5.0.0", tmp_path / "source")
+    (folder / "settings.json").write_text(kept)
+    default = json.loads((fakebin / "claude.json").read_text())
+    entry = {"id": PLUGIN_ID, "version": "5.0.0", "enabled": True, "installPath": str(team)}
+    fake_claude_by_home(fakebin, {"": default, str(folder): [entry]})
+    paths.config_file().write_text(json.dumps({"claude_homes": ["~/.claude-team", "~/.claude-gone"]}))
+    before = snapshot(home)
+    lines = {c.name: c for c in doctor.run_checks()}
+    assert snapshot(home) == before
+    for part in ("plugin", "package", "hooks", "hooks on", "self-test"):
+        assert lines[f"claude ~/.claude-team {part}"].status == "ok", lines[f"claude ~/.claude-team {part}"]
+    gone = lines["claude ~/.claude-gone plugin"]
+    assert gone.status == "fail" and "not there" in gone.detail
+    for listing, settings, part in (([], kept, "plugin"), ([entry], '{"cleanupPeriodDays": 3650, "disableAllHooks": true}', "hooks on")):
+        fake_claude_by_home(fakebin, {"": default, str(folder): listing})
+        (folder / "settings.json").write_text(settings)
+        found = {c.name: c for c in doctor.run_checks()}
+        assert found[f"claude ~/.claude-team {part}"].status == "fail", found[f"claude ~/.claude-team {part}"]
+    paths.config_file().write_text(json.dumps({"claude_homes": "~/.claude-team"}))
+    assert {c.name: c for c in doctor.run_checks()}["claude homes"].status == "fail"
 
 
 # --- approvals that wait ----------------------------------------------------------------------------------------------

@@ -55,6 +55,21 @@ def test_claude_update_refreshes_the_marketplace_then_the_plugin(tmp_path, monke
     assert calls(log)[1:3] == ["plugin marketplace update synthesis-engineering", f"plugin update {PLUGIN_ID}"]
 
 
+def test_the_marketplace_read_is_the_one_of_the_claude_folder_setup_installs_into(tmp_path, monkeypatch):
+    """C2: a seat signed in to another Claude account runs from a folder of its own, and setup installs into it with
+    CLAUDE_CONFIG_DIR naming it; the ref its marketplace tracks is that folder's, never ~/.claude's."""
+    def marketplace(folder, ref):
+        known = folder / "plugins" / "known_marketplaces.json"
+        known.parent.mkdir(parents=True)
+        known.write_text(json.dumps({setup.MARKETPLACE: {"source": {"repo": setup.SOURCE, "ref": ref}}}))
+    marketplace(Path.home() / ".claude", "stable")
+    marketplace(tmp_path / ".claude-team", "v5.0.0")
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    assert setup.configured_ref("claude") == "stable"
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / ".claude-team"))
+    assert setup.configured_ref("claude") == "v5.0.0"
+
+
 def test_codex_update_upgrades_the_snapshot_before_adding(tmp_path, monkeypatch):
     listing = {"installed": [{"pluginId": PLUGIN_ID, "name": "synthesis-skills", "version": "5.0.0",
                               "marketplaceName": "synthesis-engineering", "enabled": True}]}
