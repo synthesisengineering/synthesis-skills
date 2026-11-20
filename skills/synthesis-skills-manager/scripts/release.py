@@ -27,7 +27,8 @@ Stages, each gating the next:
      must be on its main there.
   3. Release train: a board claim on the main checkout's CHANGELOG.md. Another live session
      holding it means another release is under way: refuse and name it.
-  4. Publish from the clone: build the five collections from its commit and check them (build_collections.py), then
+  4. Publish from the clone: build the five collections from its commit and check them with its own build script
+     (build_collections.py --tree, run from the clone in a process of its own), then
      create the tag, push main, stable, the tag and the collections, as the `collections` branch, in one atomic push;
      success is read back with `git ls-remote`, never from an exit status.
      Then the GitHub release for the tag, its notes the CHANGELOG entry, read back as latest,
@@ -63,7 +64,6 @@ for path in (PLUGIN, PLUGIN / "skills" / "synthesis-onboarding" / "scripts", Pat
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 import setup  # noqa: E402  (each harness's install commands)
-import build_collections  # noqa: E402  (the collections, published beside the whole set as a branch of built folders)
 try:
     from synthesis import board, doctor, guards, install, paths  # noqa: E402
 except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
@@ -81,6 +81,7 @@ CANONICAL, TAP = guards.RELEASE_REPOSITORY, "synthesisengineering/homebrew-tap"
 # ignored, hooks and a file monitor off (5.24.0). Run as a script, every git it starts ignores replace refs too.
 GIT = ("git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false")
 CANONICAL_URL = f"https://github.com/{CANONICAL}.git"
+BUILD = "skills/synthesis-skills-manager/scripts/build_collections.py"  # the collections' build, the clone's own copy
 TAG = re.compile(r"v\d+\.\d+\.\d+")
 STALE_CLONE = 6 * 3600  # seconds: no release runs this long, so an older clone whose run is gone is left over
 FORMULA = "Formula/synthesis.rb"
@@ -306,18 +307,25 @@ def hold_train(repo: Path, session: str, version: str) -> str:
 
 def collections(repo: Path, dry_run: bool = False) -> tuple:
     """(the git tree of the collections built from HEAD's commit, the branch that publishes them), built and checked
-    before anything is tagged or pushed, so collections that fail a check publish nothing. A dry run writes no tree."""
-    try:
-        branch = build_collections.read_spec(repo, commit=True).get("branch", "collections")
-        files, modes = build_collections.build(repo, commit=True)
-        found = build_collections.verify(repo, files, commit=True)
-        tree = "" if dry_run or found else build_collections.tree(repo, files, modes)
-    except build_collections.Unreadable as exc:
-        raise setup.SetupError(f"cannot build the collections: {exc}") from exc
-    if found:
-        raise setup.SetupError(f"the collections fail {len(found)} check{'s' * (len(found) > 1)}, so nothing was "
-                               f"published: {'; '.join(found[:3])}")
-    return tree, branch
+    before anything is tagged or pushed, so collections that fail a check publish nothing. The build is the clone's own
+    script, run from the clone with this interpreter, isolated, in a process of its own: this copy is the installed
+    runtime's, an earlier release, whose build is not the one this release ships (review round 1 of C8, B3: C8's own
+    release stopped at the earlier build's check). It writes the tree into the clone's objects; a dry run writes none."""
+    script = Path(repo) / BUILD
+    if not script.is_file():
+        raise setup.SetupError(f"cannot build the collections: {repo} holds no {BUILD}")
+    proc = setup.run([sys.executable, "-I", "-B", str(script), "--repo-root", str(repo), "--tree",
+                      *(["--dry-run"] if dry_run else [])], 900, env=clean_env())
+    lines = (proc.stdout or "").strip().splitlines()
+    first = lines[0] if lines else ""
+    made = re.match(r"(?:tree ([0-9a-f]{40,64})|checked) branch (\S+):", first)
+    if proc.returncode == 0 and made and bool(made.group(1)) != dry_run:
+        return made.group(1) or "", made.group(2)
+    if proc.returncode == 1 and first.startswith("refused: "):
+        raise setup.SetupError(f"the collections fail {len(lines) - 1} check{'s' * (len(lines) > 2)}, so nothing was "
+                               f"published: {'; '.join(lines[1:4])}")
+    said = first[len("cannot continue: "):] if first.startswith("cannot continue: ") else setup._tail(proc)
+    raise setup.SetupError(f"cannot build the collections: {said}")
 
 
 def collections_head(repo: Path, remote: str, branch: str, tree: str, version: str, made: dict) -> str:

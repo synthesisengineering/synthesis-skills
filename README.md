@@ -28,8 +28,8 @@ and work in any client that reads Agent Skills. The skills that coordinate sessi
 guard actions need the runtime, which installs in Claude Code, Codex and Muse.
 
 The whole set is the way to install synthesis. Someone who wants one discipline can
-install one of five collections instead, each a plugin without hooks: see
-[One collection, without the hooks](#one-collection-without-the-hooks).
+pick collections of the skills instead, and add others later; every collection comes with
+the core and the guard: see [Pick your collections](#pick-your-collections).
 
 ## What you get
 
@@ -246,39 +246,60 @@ wrote, and keeps your config and the board.
 
 `install.sh` remains only so older links keep working; it runs `onboard.sh`.
 
-### One collection, without the hooks
+### Pick your collections
 
-Someone who wants one discipline can install a collection instead of the whole set: a
-plugin that holds that discipline's skills and nothing else. A collection has no hooks and
-runs no synthesis runtime, so installing one changes nothing else on the Mac and asks for
-no approval. It also has no guards, no board, no approvals and none of the rituals' state;
-where one of its skills describes those, it describes the whole set. Its scripts run from
-its folder: a collection whose scripts read settings carries the runtime's YAML reader for
-them, and the eleven scripts that need the runtime itself (its board, approvals, the
-rituals' records, installing synthesis) say so in one line. A link that would lead out of
-a collection's folder points at the file on GitHub at the release's tag. Each release
-publishes the five collections, built from its own files, as the `collections` branch of
-this repository.
+Someone who wants one discipline can install collections of the skills in place of the whole set,
+and add others later. A collection is a plugin that holds one discipline's skills. Every collection
+installs with the core, and the core carries the guard: the four hooks that hold sends, drafts and
+deploys for your approval and refuse destructive commands, and the runtime they run, with the
+`synthesis` command, the board and the rituals' records. Picking collections leaves out skills,
+never the guard.
+
+Setup installs them in every harness it finds, each with its own commands:
+
+```bash
+# A whole Mac with the writing skills alone: the writing collection, the core and the guard
+curl -fsSL https://raw.githubusercontent.com/synthesisengineering/synthesis-skills/stable/onboard.sh | sh -s -- plugin --collections writing
+
+# Later: add engineering and keep writing
+python3 ~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py plugin --collections engineering
+```
+
+`--collections` takes the names in the table, comma-separated; a name that is none of them is
+refused, with every name listed, before anything changes. Setup builds the five collections from
+its own checkout into `~/.synthesis/v5/install/collections`, a folder no agent's file tool may
+write, checks them, installs the runtime, then the core and the collections you named, the core
+first, so a harness whose core does not install gets no collection, and one whose core you turned
+off gets none beside it until you turn it back on. It records your choice, so the update command,
+`onboard.sh` with `plugin`, keeps and updates the collections you chose; with none chosen it
+installs the whole set, as before.
+`--dry-run` lists everything it would build, run and write. Approve the core's hooks where the
+harness asks: in Codex's `/hooks`, and in Muse with `muse plugins approve synthesis-skills-core`.
+
+One harness runs one guard. A harness that holds the whole set has every collection already, so
+`--collections` adds nothing there; setup never installs the whole set beside the core, and
+`synthesis doctor` fails a harness that holds both, or a collection without the core. Each skill
+names its collection in its frontmatter (`metadata.category`); each release builds the same five
+folders from its own files and publishes them as the `collections` branch of this repository.
 
 | Collection | Plugin | Its skills, each named without `synthesis-` |
 |---|---|---|
-| Core, which every other collection builds on | `synthesis-skills-core` | action-sheet, agent-guardrails, anti-shortcuts, checkpoint, context-lifecycle, decision-packet, grounding-discipline, implementation-integrity, kb-edit, model-tiers, okf, onboarding, project-management, skill-router, skills-manager, thinking-framework, tree-of-thought |
+| Core, which every other collection builds on, with the guard | `synthesis-skills-core` | action-sheet, agent-guardrails, anti-shortcuts, checkpoint, context-lifecycle, decision-packet, grounding-discipline, implementation-integrity, kb-edit, model-tiers, okf, onboarding, project-management, skill-router, skills-manager, thinking-framework, tree-of-thought |
 | Project management | `synthesis-skills-project-management` | adversarial-review, agent-conformance, autopilot, kb-distribution, knowledge-capture, project-resume, waiting |
 | Engineering | `synthesis-skills-engineering` | bitbucket, code-audit, code-integration, code-planning, codebase-review, git-hooks, llm-setup, local-model-runtime, pr-review, preflight, preplan, review-triage, technical-advisor |
 | Writing | `synthesis-skills-writing` | article-refresh, article-writing, clean-text, content-distribution, content-framing, content-quality, creative-writer, disclosure-policy, executive-communication, fact-checking, link-research, promotion-gate, reader-briefing, response-merger, text-provenance, voice-profiler, writing-craft, writing-pitfalls |
 | Chief of staff | `synthesis-skills-chief-of-staff` | absence-coordination, agent-correspondence, catchup-ledger, chief-of-staff, concise-messaging, daily-rituals, fleet-secrets, inbox-cleanup, local-messaging, mac-sync, machine-sync, meeting-prep, meeting-transcripts, message-exports, message-guard, quick-answers, repo-guard, slack-sync |
 
-Each harness installs a collection with its own commands; here, engineering. Put another
-collection's plugin name in its place, or install the core by itself with its own line.
-Claude Code installs the core with a collection, as its declared dependency. Codex and
-Muse resolve no dependencies between plugins, so their lines install the core too.
+Each harness's own commands install a collection from the published branch too; here,
+engineering. Claude Code installs the core with a collection, as its declared dependency. Codex
+and Muse resolve no dependencies between plugins, so their lines install the core too:
 
 ```bash
 # Claude Code
 claude plugin marketplace add synthesisengineering/synthesis-skills@collections
 claude plugin install synthesis-skills-engineering@synthesis-collections
 
-# Codex
+# Codex: then approve the core's hooks in /hooks
 codex plugin marketplace add synthesisengineering/synthesis-skills --ref collections
 codex plugin add synthesis-skills-core@synthesis-collections
 codex plugin add synthesis-skills-engineering@synthesis-collections
@@ -287,9 +308,11 @@ codex plugin add synthesis-skills-engineering@synthesis-collections
 muse plugins marketplace add synthesis-collections https://github.com/synthesisengineering/synthesis-skills.git#collections
 muse plugins install synthesis-skills-core@synthesis-collections
 muse plugins install synthesis-skills-engineering@synthesis-collections
+muse plugins approve synthesis-skills-core
 ```
 
-Then restart the harness. To update after a release:
+Then restart the harness; the first session start installs the runtime from the core where none
+is installed yet. The branch follows the latest release. To update after a release:
 
 ```bash
 # Claude Code: the core too, since updating a collection leaves its dependency as it was
@@ -310,11 +333,12 @@ muse plugins remove synthesis-skills-engineering
 muse plugins install synthesis-skills-engineering@synthesis-collections
 ```
 
-To move to the whole set, install it as above; its marketplace sits beside the
-collections' in every harness. Then remove each collection and the core, so that no skill
-is installed twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`,
+The runtime moves to a new release with setup or the release script, never at a session start.
+To move to the whole set, install it as above; its marketplace sits beside the collections' in
+every harness. Then remove each collection and the core, the core last, so that no hook runs
+twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`,
 `codex plugin remove <plugin>@synthesis-collections` or `muse plugins remove <plugin>`.
-Claude Code keeps the core when the collection that brought it is removed.
+`setup.py uninstall` takes the collections out with the rest.
 
 ## Skill list
 

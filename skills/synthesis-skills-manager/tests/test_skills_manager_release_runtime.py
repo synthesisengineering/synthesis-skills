@@ -76,6 +76,10 @@ def checkout(where, version="5.1.0", runtime=False, carry=""):
     (repo / build_collections.LIST).write_text(json.dumps(COLLECTIONS))
     for license_file in build_collections.LICENSES:
         (repo / license_file).write_text(f"{license_file} terms.\n")
+    scripts = Path("skills") / "synthesis-skills-manager" / "scripts"  # a release builds its collections with its own
+    (repo / scripts).mkdir(parents=True)
+    for name in ("build_collections.py", "build_directory_package.py"):
+        (repo / scripts / name).write_bytes((ROOT / scripts / name).read_bytes())
     (repo / "CHANGELOG.md").write_text(f"# Changelog\n\n## [{version}] - 2026-11-15\n\n- x\n")
     if runtime:
         (repo / "synthesis").mkdir()
@@ -366,9 +370,12 @@ try:
     runpy.run_path(script, run_name="__main__")
 except SystemExit as exc:
     code = exc.code
-names = ("setup", "build_collections", "build_directory_package", "synthesis", "synthesis.board", "synthesis.guards")
-print("\nLOADED " + json.dumps({"code": code, "files": {n: getattr(sys.modules.get(n), "__file__", None) for n in names}}),
-      file=sys.stderr)
+# The collections' build is no module of this process: the release runs its fresh clone's own build_collections.py in a
+# process of its own (review round 1 of C8, B3), so nothing of it loads here, from the runtime or anywhere else.
+names = ("setup", "synthesis", "synthesis.board", "synthesis.guards")
+built = [n for n in ("build_collections", "build_directory_package") if n in sys.modules]
+print("\nLOADED " + json.dumps({"code": code, "files": {n: getattr(sys.modules.get(n), "__file__", None) for n in names},
+                                "built": built}), file=sys.stderr)
 """
 
 
@@ -411,6 +418,7 @@ def test_a_dry_run_from_the_runtime_reads_the_repository_from_repo_root_and_its_
     assert loaded["code"] == 0, ran.stdout + ran.stderr
     for name, file in loaded["files"].items():
         assert file and Path(os.path.realpath(file)).is_relative_to(runtime), (name, file)
+    assert loaded["built"] == []  # the build ran from the release's fresh clone, in a process of its own
     assert f"would tag v9.9.9 at {head[:12]}" in ran.stdout and "to origin" in ran.stdout, ran.stdout
     assert "claude: not on this Mac; skipped" in ran.stdout and "release complete: v9.9.9" in ran.stdout
     network = log.read_text()

@@ -4,6 +4,23 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.31.0] - 2026-11-20
+
+- **Install only the collections a person picks, guard included** (BACKLOG C8, the principal's ruling of 2026-11-20).
+  `setup.py plugin --collections <names>` installs the core first, then the named collections, in Claude Code, Codex
+  and Muse; the choice is recorded, so a later run adds a collection and keeps the rest; naming none keeps the whole set,
+  as before. The core collection now carries the whole set's hooks and the runtime they run, byte for byte, so no install
+  path leaves the guard out; the doctor fails a harness that holds both the whole set and the core, or a collection
+  without the core; a disabled core is refused before anything installs; uninstall removes the core last and keeps the
+  runtime while any harness's list cannot be read. The collections are built inside the sealed install folder, and the
+  release builds them with its fresh clone's own script. **Behavior change:** anyone who installed the earlier hookless
+  collections gets the guard's hooks when they update the core; Claude Code runs them at once, while Codex and Muse ask for
+  approval. Releasing this version starts with `synthesis install <merged checkout>` (AGENTS.md, Releases).
+- **An organization's skills are kept once.** The onboarding's org-skill install keeps one real copy in
+  `~/.agents/skills` and links Claude Code's entry to it, so Muse no longer sees each skill twice; old copies convert by
+  move, verify, then delete, and a folder already linked to the other counts as one copy. Two review rounds; every
+  finding fixed tests first.
+
 ## [5.30.0] - 2026-11-20
 
 - **A second Claude Code folder can be the only seat that drives a Chrome profile** (BACKLOG C2, step 4 of the

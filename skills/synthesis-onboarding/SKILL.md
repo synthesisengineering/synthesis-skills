@@ -35,7 +35,7 @@ proves each part.
 ## Contents
 
 - **Procedure** (below): new install, new Mac, organization member, update, uninstall.
-- [references/harness-install.md](references/harness-install.md): each harness's commands and edge cases, Codex settings, runtime, commit check, first config, hook trust, uninstall, and one collection without hooks instead of the whole set. Read before installing or when a harness line fails.
+- [references/harness-install.md](references/harness-install.md): each harness's commands and edge cases, Codex settings, runtime, commit check, first config, hook trust, uninstall, and picking collections (`--collections`), each with the core and its guard, in place of the whole set. Read before installing or when a harness line fails.
 - [references/new-mac.md](references/new-mac.md): cloning a workspace from `repos.yaml`, what is skipped and why, workspace instructions, the 2026-09-20 lesson. Read when bringing a workspace onto a Mac.
 - [references/org-manifest.md](references/org-manifest.md): the schema-2 manifest, migration from schema 1, checking a manifest, enrollment, repository and instruction rules. Read for any organization.
 - [references/kernel.example.md](references/kernel.example.md): the public instruction baseline setup writes first into an organization workspace's `AGENTS.md`. Read when changing it.
@@ -58,7 +58,7 @@ S=~/.synthesis/v5/source/skills/synthesis-onboarding/scripts/setup.py
 `python3 "$S"` installs the plugin in every harness found, sets Codex's keys, installs
 the runtime, asks about the commit check (`--git-hooks`) and a first config, and offers
 to bring a workspace. `--day-end [auto|codex|claude]` also links the day-end launcher and
-schedules the weekday nudge; `--sessions-export` schedules the hourly copy of session transcripts. Read each line: `<harness>: installed …`, `… not found; skipped`,
+schedules the weekday nudge; `--sessions-export` schedules the hourly copy of session transcripts. `--collections writing` installs those collections (comma-separated), the core and its guard in place of the whole set, and a later name adds one ([harness-install.md](references/harness-install.md#pick-your-collections---collections)). Read each line: `<harness>: installed …`, `… not found; skipped`,
 `codex config: …`, `synthesis runtime <hash> at …`, then the restart sentence. Then run
 `synthesis doctor` and relay anything waiting for the person's hook approval. A person
 with no knowledge repository yet starts one with `python3 "$S" workspace --new NAME`

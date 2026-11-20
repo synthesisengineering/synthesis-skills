@@ -829,8 +829,8 @@ def test_no_python_file_defines_a_function_or_a_class_twice_at_its_top():
 
 # ---- every skill is in exactly one collection ------------------------------------------------
 
-# A release publishes five collections beside the whole set, each a plugin without hooks (plan item 12.1, ruled
-# 2026-11-14). A skill names its own in its frontmatter, as `metadata.category`; the skills manager's collections file
+# A release publishes five collections beside the whole set (plan item 12.1, ruled 2026-11-14), the core carrying the
+# whole set's guard (ruling C8, 2026-11-20). A skill names its own in its frontmatter, as `metadata.category`; the skills manager's collections file
 # lists the collections, and names under `awaiting_room` the collection of a skill whose SKILL.md has no room for that
 # line under 8,000 bytes. A skill depends only on its own collection or the core. The core is a plugin of its own,
 # installed in a folder of its own, so a dependency that a skill's scripts load from beside it is in its own collection.
