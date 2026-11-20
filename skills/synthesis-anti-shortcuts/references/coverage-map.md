@@ -55,6 +55,7 @@ documents ("§4–5") and the skill's evaluation cases cite; rules 1 to 8 still 
 |---|---|---|
 | (none) | Title and opening line: what the file holds, when to read it, and that the binding rules govern where a wording differs | Added (format rules 4 and 11) |
 | SKILL.md: When to Apply, When NOT to Apply, The scanner | The same three sections, in the same order | Moved word for word |
+| The scanner: "`--catalog <file>` (JSON; YAML needs PyYAML)" | "`--catalog <file>` (JSON or YAML)" | Corrected after the move, as its own change: the scanner reads a YAML catalog with the plugin's standard-library reader (its docstring: "`--catalog` also accepts a YAML catalog in the same shape"), as the v5 script changes below record (since 2026-10-06); the old words are in preserved.md, in the 2.2.0 SKILL.md |
 
 ### Where the binding rules state the moved sections
 

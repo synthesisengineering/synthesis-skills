@@ -72,6 +72,10 @@ Why each part changed:
   and an opening line that say the binding rules govern. With every binding rule complete on its own, SKILL.md
   would have run past the room W19 leaves under 8,000 bytes, and format rule 3 moves whole passages rather than
   condensing them.
+- **The scanner's `--catalog` flag.** After the move, references/applying.md says "(JSON or YAML)" for "(JSON;
+  YAML needs PyYAML)": the scanner has read a YAML catalog with the plugin's standard-library reader since
+  2026-10-06 (coverage map, v5 script changes), so the old words no longer described it. They are in the 2.2.0
+  SKILL.md below.
 - **The Pattern, Pre-Response Self-Check.** methodology.md already held both word for word (The Pattern, and
   section 6), so the SKILL.md copies are merged into those (format rule 11); rules 2, 3 and 6 state them.
 
