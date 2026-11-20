@@ -4,6 +4,20 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.29.0] - 2026-11-20
+
+- **Same-day meeting briefs are a required day-start step** (synthesis-daily-rituals 3.20.0; BACKLOG A24, the
+  principal's request relayed by an operations seat). After the live calendar read, the new `meeting_briefs.py` sorts
+  the day's meetings: the ones to brief (accepted, optional ones included, the principal's part and the agenda with
+  each), each existing lead-time pack to refresh rather than rewrite, declined meetings, holds and unclear attendance
+  listed apart, and a calendar that could not be read reported as a coverage gap that blocks a clean day-start, never
+  as a day without meetings; the earliest meeting comes first. Each brief is built with synthesis-meeting-prep, led by
+  the purpose and the decision or ask, written as a private note in the workspace, linked in the plan, and the earliest
+  is surfaced before it starts even while the wider sync runs (day-start Step 1a, with Steps 4, 6 and 8). Binding rule
+  18 carries the step; four incident sentences moved word for word from rules 2, 3, 12 and 16 to the version history,
+  a move the principal saw before it was committed. Tests first: a mixed day with a presenter's agenda and an existing
+  pack, the JSON, exit codes and 17 kinds of unreadable input.
+
 ## [5.28.3] - 2026-11-20
 
 - **synthesis-context-lifecycle 2.9.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is
