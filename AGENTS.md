@@ -153,5 +153,9 @@ can rewrite it. So, with any login that can act on this repository:
   it, after drift: GitHub must serve the tag on its `main` with CI passed, and nothing older than the running runtime or
   GitHub's highest version tag installs. On a new Mac, where no runtime is installed yet, the checkout's copy runs it
   (`python3 skills/synthesis-skills-manager/scripts/release.py --install-only --tag v<version>`).
+- Releasing 5.31.0, the first version whose release tool builds the collections with its fresh clone's own
+  `build_collections.py`, starts with `synthesis install <merged checkout>`, which waits for the principal's code:
+  every release tool installed before it builds the collections with its own older script and refuses. Later
+  releases need no such step.
 
 See `CONTRIBUTING.md` for contribution structure and licensing.
