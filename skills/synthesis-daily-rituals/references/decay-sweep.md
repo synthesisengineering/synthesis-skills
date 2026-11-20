@@ -196,8 +196,8 @@ anything struck through set aside and a link read as its words, opens with a tic
 of the closing words with no question mark after it: SENT, SUPERSEDED, DECAYED, CLOSED, RELEASED, RESOLVED, LAPSED,
 DONE, ANSWERED, REPLIED; and nothing after that takes it back or says it is partly done (not, yet, still, awaiting,
 waiting, pending, but, reopened, partly, in part: `Paid in part`, `Done, but reopened`). A tick at the end closes
-nothing by itself (`In review ✅` is open, `Replied ✅` is closed by its word). A top-level `ledger_closed_words` list in the ritual config
-adds a seat's own words and phrases to those (`"N/A"`, `"Not needed"`); a value that is no such list adds nothing
+nothing by itself (`In review ✅` is open, `Replied ✅` is closed by its word). A `ledger_closed_words` list in the workspace's ritual settings
+(or under `defaults`) adds a seat's own words and phrases to those (`"N/A"`, `"Not needed"`); a value that is no such list adds nothing
 and is said in this view (`config`), where it blocks no record. Every other status is open, an empty one included:
 a status the reader does not know is not read as finished. The view gives the count, the oldest date, how many
 have been owed more than fourteen days, how many carry no date and how many rows had too few cells to read, then
