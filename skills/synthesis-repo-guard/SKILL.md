@@ -1,6 +1,6 @@
 ---
 name: synthesis-repo-guard
-description: "Finds work stranded on this Mac: repositories with uncommitted, unpushed or unpulled changes or a detached HEAD, in a read-only scan with a JSON report and a count-only alert. Use at day-end, before switching Macs, or when asked what is unsynced or what is left to commit."
+description: "Find work stranded on this Mac: uncommitted, unpushed or unpulled changes. Use at day end, before switching Macs, or for 'what's unsynced'."
 license: "Apache-2.0"
 depends_on: []
 metadata:

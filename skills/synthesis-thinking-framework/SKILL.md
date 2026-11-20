@@ -1,6 +1,6 @@
 ---
 name: synthesis-thinking-framework
-description: "Five-mode thinking (first principles, systems, complexity, analogical, design) with a pre-response protocol, depth calibration and decision ownership. Use for non-trivial problems, open decisions, strategy, debugging approach, or when a missing fact could change the next decision."
+description: "Five-mode thinking (first principles, systems, complexity, analogy, design) for non-trivial problems, open decisions, strategy, debugging."
 license: "CC0-1.0"
 depends_on: []
 metadata:

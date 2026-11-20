@@ -7,6 +7,7 @@ restructure, kept word for word one heading level down.
 Contents:
 - 2.0.0 to 2.1.0: SKILL.md; references/self-check.md; files unchanged
 - 1.1.1 to 2.0.0 (v5): the section map
+- The full description, word for word
 
 ## 2.0.0 to 2.1.0: the rewrite to the D8 standard
 
@@ -79,3 +80,11 @@ Every part of the 1.1.1 SKILL.md and where it lives now. Nothing was removed.
 | `depends_on`, `source_repo`, `source_type` metadata | Kept (the installer and source checks read them) |
 
 Links moved into `references/` gained one `../` so they still resolve.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Keep agent output tied to evidence: record only what a source surfaced, re-verify cached facts, prove absence with a positive control, never complete truncated output, and validate paths before writes or deletes. Use before recording, quoting, claiming absence or deleting."
+```

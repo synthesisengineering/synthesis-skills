@@ -1,6 +1,6 @@
 ---
 name: synthesis-local-model-runtime
-description: "Profile a computer, compare Ollama, LM Studio, llama.cpp and MLX-LM, recommend open-weight models that fit its memory and storage, install and update them with identity receipts, and verify inference. Use for local models, Ollama, which model fits this Mac or PC, model inventory or local benchmarks."
+description: "Pick, install and verify open-weight local models (Ollama, LM Studio, llama.cpp, MLX). Use for local models or 'which model fits this Mac'."
 license: "Apache-2.0"
 depends_on: []
 metadata:

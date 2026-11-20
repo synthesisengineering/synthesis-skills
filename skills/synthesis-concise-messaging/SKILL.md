@@ -1,6 +1,6 @@
 ---
 name: synthesis-concise-messaging
-description: "Condense a message to five sentences or fewer with the High-Five Habit, for email, Slack, text and social posts. Use when asked to condense, shorten, tighten or make a message shorter, reduce message length, write a brief or concise message, or draft an email template."
+description: "Condense a message to five sentences or fewer (the High-Five Habit). Use to shorten or tighten an email, Slack message, text or post."
 license: "CC0-1.0"
 depends_on: []
 metadata:

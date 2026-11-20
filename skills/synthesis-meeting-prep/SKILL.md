@@ -1,6 +1,6 @@
 ---
 name: synthesis-meeting-prep
-description: "Prepare a principal for a meeting as a chief of staff would: model the readers, weigh 60+ factors, deliver a scannable pack with a capture half, then debrief transcripts into decisions, commitments and profile updates. Use for 1:1s, reviews, forums, external meetings, interviews and follow-through."
+description: "Prepare a principal for a meeting with a scannable pack, then debrief into decisions and commitments. Use for 1:1s, reviews, interviews."
 license: "CC0-1.0"
 depends_on: ["synthesis-context-lifecycle"]
 metadata:

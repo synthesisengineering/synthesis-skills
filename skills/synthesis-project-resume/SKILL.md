@@ -1,6 +1,6 @@
 ---
 name: synthesis-project-resume
-description: "Start or resume any synthesis project in any harness on any machine with verified context: classify the session (continuing, fresh, wrong project), load the records, respect live claims, surface other Macs' changes. Use when pasting a resume prompt or (re)opening project work."
+description: "Start or resume a synthesis project with verified context: load its records, respect live claims. Use for a resume prompt or reopening work."
 license: "CC0-1.0"
 depends_on: []
 metadata:

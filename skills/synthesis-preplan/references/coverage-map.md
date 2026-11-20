@@ -60,3 +60,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Lock architecture decisions for a ticket or issue with real design choices: resolve delegated technical choices, ask structured questions for the user's, and hand a reviewable decision set to the planning step. Use to preplan, pre-plan a ticket, lock decisions, or list its open design questions."
+```

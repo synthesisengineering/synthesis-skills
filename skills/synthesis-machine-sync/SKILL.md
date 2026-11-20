@@ -1,6 +1,6 @@
 ---
 name: synthesis-machine-sync
-description: "Move work between the principal's Macs and bring a Mac in or out: leave with synthesis handoff, arrive and resume, set up a new Mac, retire an old one. Use for: move work to another Mac, resume on another Mac, machine sync, bootstrap a new Mac, enroll a Mac, retire a Mac."
+description: "Move work between Macs with synthesis handoff, and bring a Mac in or out. Use to resume on another Mac, set up a new Mac or retire one."
 license: "Apache-2.0"
 depends_on: ["synthesis-mac-sync", "synthesis-daily-rituals"]
 metadata:

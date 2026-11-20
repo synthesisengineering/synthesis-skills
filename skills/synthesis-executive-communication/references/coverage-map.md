@@ -22,3 +22,11 @@ Every part of the 1.0.0 SKILL.md and where it lives now. Nothing was removed.
 | Line | Change and reason |
 |---|---|
 | The five Related Skills entries (`synthesis-reader-briefing`, `synthesis-concise-messaging`, `synthesis-writing-craft`, `synthesis-writing-pitfalls`, `synthesis-content-quality`) | Each link now starts `../../` instead of `../`, because the list moved one directory deeper into references/. The words are unchanged. |
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Translate technical work for CEOs, CFOs, boards and other non-technical executives: persona tests, de-jargoning, consequence over mechanism, trusted upward reports. Use for executive updates, progress reports, executive summaries, board updates, leadership status or business-term translation."
+```

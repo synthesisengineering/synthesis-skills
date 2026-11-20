@@ -1,6 +1,6 @@
 ---
 name: synthesis-text-provenance
-description: "Use to plan, record and audit text provenance for hosted and open-weight models: watermark capability checks, reproducible manifests, mixed-authorship lineage, text-integrity audits, authorized detector results. Not for defeating provider marks, evading detectors or disguising AI authorship."
+description: "Plan, record and audit text provenance: watermarks, manifests, mixed authorship. Not for evading detectors or disguising AI authorship."
 license: Apache-2.0
 depends_on: []
 metadata:

@@ -70,3 +70,11 @@ For pattern-detection of register failures, see [`synthesis-writing-pitfalls`](.
 - [`synthesis-concise-messaging`](../synthesis-concise-messaging/SKILL.md) — Brevity-focused messaging methodology
 This skill draws on the writing-craft tradition. For the working bibliography and recommended reading, see [`references/recommended-reading.md`](references/recommended-reading.md). The skill is intended for AI agents assisting writers; humans should read the original works.
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Positive writing principles from the writing-craft tradition for AI agents drafting, editing or reviewing prose on a writer's behalf: sentences, pacing, voice, register, structure, revision. Use with synthesis-content-quality and synthesis-writing-pitfalls."
+```

@@ -1,6 +1,6 @@
 ---
 name: synthesis-code-audit
-description: "Score a code diff on ten dimensions (conventions, reuse, consistency, security, scalability, future-proofing, quality, tests, docs, cleanup) with PASS, WARNING, FAIL or UNKNOWN and an overall verdict; PR review mode cross-references reviewer comments. Use to audit or review a diff."
+description: "Score a code diff on ten dimensions, from security to tests and docs, with a verdict. Use to audit a diff or a PR's review comments."
 license: "CC0-1.0"
 depends_on: []
 metadata:

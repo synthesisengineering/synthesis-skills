@@ -1,6 +1,6 @@
 ---
 name: synthesis-action-sheet
-description: "One page of what the principal must still do after agents act: done items folded, staged sends awaiting approval codes, their own messages and tasks with exact text, Copy, open-in-app links, marks, Me or Agent, and a paste-back. Use after a decision packet or daily plan."
+description: "One page of what the principal must still do after agents act: approvals, sends, tasks. Use after a decision packet or daily plan."
 license: "Apache-2.0"
 depends_on: ["synthesis-decision-packet"]
 metadata:
@@ -44,6 +44,7 @@ so the two are separate pages.
 - [references/publishing.md](references/publishing.md): the three-line chat contract, the adapter for each harness, the optional private host on Cloudflare Pages behind Access, and code expiry. Read it when handing a sheet over or setting up the host.
 - [references/filing-and-records.md](references/filing-and-records.md): the commands and what they print, the actions record, confirming marks, acting on rows handed to the agent, carrying forward. Read it when the paste comes back.
 - [references/background.md](references/background.md): the origin, why a separate skill, related skills, changelog. Read it when choosing between this skill and a neighbor.
+- [references/coverage-map.md](references/coverage-map.md): the full description, word for word.
 - Use: below.
 
 ## Use

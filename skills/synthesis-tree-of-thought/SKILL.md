@@ -1,6 +1,6 @@
 ---
 name: synthesis-tree-of-thought
-description: "Multi-expert collaborative reasoning technique. Use when asked to apply tree of thought, multi-expert brainstorming, collaborative reasoning, expert panel analysis, or when a problem benefits from simulating multiple domain experts debating step by step to reach a well-vetted conclusion."
+description: "Simulate several domain experts debating step by step to reach a vetted conclusion. Use for tree of thought or expert-panel brainstorming."
 license: "CC0-1.0"
 depends_on: []
 metadata:

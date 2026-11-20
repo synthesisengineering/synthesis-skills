@@ -9,6 +9,7 @@ Contents:
   unchanged
 - 1.2.1 to 2.0.0 (v5): the section map, the existing reference files, scripts and tests, the v5 script changes, the
   lines the coverage check reports, the 1.2.1 frontmatter, and the 2.0.1 change
+- The full description, word for word
 
 ## 2.2.0 to 2.3.0: the rewrite to the D8 standard
 
@@ -185,3 +186,11 @@ file's own contents line name the new section. The three 2.0.0 lines are verbati
 escalation policy and the private phrase catalog listed in the same guardrails section are
 not part of this change.
 
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Catch the lazy-shortcut antipattern: costume vocabulary that hides deferral, dismissal or false consultation. Constraint-first protocol, sub-agent dispatch and acceptance hygiene, pre-response self-check. Use to avoid shortcuts, audit for laziness, check for deferral or enforce the best solution."
+```

@@ -14,6 +14,7 @@ is here and in [preserved.md](preserved.md).
 - [2.21.6 reference files](#2216-reference-files)
 - [Scripts](#scripts)
 - [Edge cases from the code evaluation](#edge-cases-from-the-code-evaluation)
+- [The full description](#the-full-description)
 
 ## Coverage check results
 
@@ -225,3 +226,11 @@ synthesis-project-resume's; R2 cases belong to the board in `synthesis/`.
   convention is synthesis-autopilot's plan-file convention, so one marking serves both.
   No earlier sentence changed or moved; SKILL.md had room (6,628 bytes before).
 - Review round 1 of plan item 22.37: [backlog.md](backlog.md)'s side-quest test allows an important issue that serves the principal's goals, beside unblocking the current item and the principal's own request, as rule 16 does; it had named only the other two.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Run synthesis projects as markdown records in git and keep parallel sessions from colliding. Use for project setup, naming, index, lessons, session start and end, claims before writes, one context owner, peer messages, worktrees, handoff between harnesses or Macs, Codex dispatch."
+```

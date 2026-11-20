@@ -1,6 +1,6 @@
 ---
 name: synthesis-code-planning
-description: "Plan and implement code: apply constraints, compare only the viable approaches that remain, resolve delegated technical choices, and implement with evidence. Use when asked to generate code, implement a feature, write code, or tackle a coding task."
+description: "Plan and implement code: apply constraints, weigh only viable options, decide delegated choices. Use to write code or implement a feature."
 license: "CC0-1.0"
 user-invocable: false
 depends_on: []

@@ -78,3 +78,11 @@ alone, NUL-separated paths) belong to `synthesis handoff` and its core tests.
 ## One word changed for the public-repo scanner
 
 Commit-message rule 5 (in repo-sync.md and in preserved.md) said history "can leak" a word this public repository's disclosure scanner refuses; it now says "private information", the same meaning and strength.
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Keep several Macs in step: config files through iCloud, repositories and remotes through git, and work moved with synthesis handoff. Use for: mac sync, run my mac-sync, sync config, push or pull config to iCloud, sync repos, repo status, leaving this Mac."
+```

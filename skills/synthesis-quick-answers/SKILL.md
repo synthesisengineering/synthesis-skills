@@ -1,6 +1,6 @@
 ---
 name: synthesis-quick-answers
-description: "Run a cheap, read-mostly companion session for ad hoc workspace lookups so focused sessions stay on task. Every answer names its source and a Verified, Cached or Uncertain tier. Use for a quick-answers, FAQ or lookup companion; not for decisions, drafting or sending messages."
+description: "A cheap companion session for quick workspace lookups, each answer sourced. Use for an FAQ or lookup companion; not for decisions or sends."
 license: "CC0-1.0"
 depends_on:
   - synthesis-project-management

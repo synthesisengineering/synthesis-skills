@@ -1,6 +1,6 @@
 ---
 name: synthesis-local-messaging
-description: "Read an authorized local iMessage or WhatsApp database window into pointer-only notes, and send a principal-approved message to an existing iMessage or SMS chat, groups included, through the send guard. Use for message triage, daily or 30-day review, or an approved reply. No transcript export."
+description: "Triage local iMessage and WhatsApp messages into pointer notes, and send an approved iMessage or SMS reply. Use for text message triage."
 license: "Apache-2.0"
 depends_on: ["synthesis-project-management", "synthesis-message-guard"]
 metadata:

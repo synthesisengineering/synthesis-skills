@@ -1,6 +1,6 @@
 ---
 name: synthesis-kb-distribution
-description: "Publish an OKF knowledge base to Claude and ChatGPT as an organization plugin, and serve it to people outside those workspaces through a read-only connector with Google sign-in and an access list. Use to set up, deploy, check or change knowledge-base distribution."
+description: "Publish an OKF knowledge base to Claude and ChatGPT as an organization plugin and a read-only connector. Use to deploy or change it."
 license: Apache-2.0
 depends_on:
   - synthesis-okf
@@ -10,6 +10,7 @@ metadata:
   format: v5
   source_repo: "github.com/synthesisengineering/synthesis-skills"
   source_type: "public"
+  category: project-management
 ---
 
 # Synthesis Knowledge-Base Distribution
@@ -69,6 +70,7 @@ Notebook (`scripts/publish_drive.py`).
   every environment variable, a local run, deployment on Google Cloud Run, adding it in ChatGPT
   and Claude, changing the access list and operating it. Read it before deploying, configuring or
   troubleshooting the connector.
+- [references/coverage-map.md](references/coverage-map.md): the full description, word for word.
 - Commands, Setting it up, Checking it: below.
 
 ## Commands

@@ -46,3 +46,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Reconcile missed and pending commitments after a break in the daily-ritual cadence: sweep plans, transcripts and context over any window, classify every item into a dated catch-up ledger, and route survivors without flooding the plan. Use for post-vacation catch-up or what did I miss."
+```

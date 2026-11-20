@@ -52,3 +52,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Edit, validate and ship Markdown knowledge-base changes through the repository's .agents/knowledge-base.yaml workflow. Use to update a knowledge base, edit KB content, fix a durable fact, add a concept, ship a KB edit, open a KB review request, or sync a KB checkout after publication."
+```

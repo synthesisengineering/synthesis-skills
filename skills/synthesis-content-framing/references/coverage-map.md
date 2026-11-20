@@ -100,3 +100,11 @@ Line 603 of the 2.0.0 references/quality-gates.md text:
 ```markdown
 **If topic gate fails, STOP. This article does not belong on synthesis coding or synthesis engineering sites.**
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Frame synthesis engineering and synthesis coding articles: topic, sophistication, engagement and confidentiality gates; attribution and terminology rules. Use when writing synthesis engineering content, framing technical articles, checking content quality gates, or publishing thought leadership."
+```

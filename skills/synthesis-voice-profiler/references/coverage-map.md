@@ -38,3 +38,11 @@ metadata:
   source_type: "public"
 ---
 ```
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Build a writing voice profile from the user's samples and diagnostic questions, output as a voice section for CLAUDE.md or AGENTS.md that writing skills consume. Use when asked to create a voice profile, analyze writing style, extract voice, profile my writing or build a voice section."
+```

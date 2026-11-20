@@ -14,6 +14,7 @@ or the named preserved file.
 - [Scripts and data by verdict](#scripts-and-data-by-verdict)
 - [Edge cases and the tests that hold them](#edge-cases-and-the-tests-that-hold-them)
 - [Reworded lines (old wording)](#reworded-lines-old-wording)
+- [The full description](#the-full-description)
 
 ## Coverage check result
 
@@ -137,3 +138,11 @@ proves the enforcement declarations true.
 
 The old lines are verbatim in [preserved.md](preserved.md#replaced-in-the-final-v5-sweep-2026-10-05). SKILL.md is unchanged.
 
+
+## The full description
+
+The description in SKILL.md's frontmatter was shortened to fit Claude Code's skill listing (BACKLOG C6, 2026-11-20); this is the full description it replaced, word for word.
+
+```yaml
+description: "Audit and verify that synthesis behaves the same in Claude Code, Codex and Muse: source lint, installed parity, hook wiring and trust, AGENTS.md/CLAUDE.md adapters, skill catalogs, and project handoff between harnesses. Use for parity audits, instruction migrations, or checks after install."
+```
