@@ -346,6 +346,13 @@ def homes_kept() -> list:
     return [Path(h) for h in listed if isinstance(h, str) and os.path.isabs(h)] if isinstance(listed, list) else []
 
 
+def homes_unread() -> dict:
+    """The config a call is judged under while the file cannot be read: one that names, beside the folders the last
+    config read in full named (`homes_kept`, which `claude_dirs` adds), each ~/.claude* folder in the home, as another
+    account's is named, so that no process falls back to its own folder alone (review round 1 of C2, B1)."""
+    return {"claude_homes": [str(folder) for folder in Path.home().glob(".claude?*") if folder.is_dir()]}
+
+
 def keep_homes(config: dict) -> None:
     """The hook's record, in the sealed approvals folder, of the other Claude folders a config it read in full names. A
     config with a value that names no folder leaves the record as it was, and so does a record that cannot be written."""

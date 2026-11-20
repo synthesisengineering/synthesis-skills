@@ -4028,7 +4028,7 @@ def _homes() -> tuple:
         try:
             _CALL["homes"] = tuple(map(str, paths.claude_dirs(paths.config())))
         except (OSError, ValueError):
-            _CALL["homes"] = tuple(map(str, paths.claude_dirs({})))
+            _CALL["homes"] = tuple(map(str, paths.claude_dirs(paths.homes_unread())))
     return _CALL["homes"]
 
 
