@@ -161,7 +161,8 @@ def test_owed_today_needs_every_expected_workspace_closed(isolated_home):
 def test_the_nudge_entry_point_fails_toward_nudging(isolated_home, tmp_path):
     def owed(env_home):
         return subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "rituals.py"), "--owed-today"],
-                              env={"SYNTHESIS_HOME": str(env_home), "PATH": "/usr/bin:/bin"}, capture_output=True).returncode
+                              env={"SYNTHESIS_HOME": str(env_home), "PATH": "/usr/bin:/bin",
+                                   "SYNTHESIS_WORKSPACES": os.environ["SYNTHESIS_WORKSPACES"]}, capture_output=True).returncode
     assert owed(tmp_path / "empty") == 0
     log(isolated_home, rec("day-start", "alpha", date.today()))
     assert owed(isolated_home) == 1
