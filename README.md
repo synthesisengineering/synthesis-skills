@@ -97,6 +97,9 @@ What PreToolUse holds:
   whichever browser was selected last. Map each workspace to its browser in `browser_routing`,
   and a session's browser calls wait until it has selected that browser itself and the
   selection succeeded, again after any other session selects. Nothing is checked until you set it.
+  A profile paired with another Claude account is driven by a seat in a Claude Code folder of its
+  own, signed in to that account: name the folder in the workspace's `claude_home`, and only that
+  folder's sessions drive it, other sessions told to hand the task over.
 
 The configuration lives in `~/.synthesis/v5/config.json`. A missing file means the
 defaults above. The keys are documented in the

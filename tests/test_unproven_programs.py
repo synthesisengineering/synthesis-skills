@@ -818,6 +818,8 @@ def test_a_write_where_synthesis_paths_lead_inside_an_f_string_waits(world):
     "from synthesis import paths\ndef go(m):\n    return m.home()\nprint(go(paths))\n",                # a module handed on
     "from synthesis import paths\nwhere = paths.state\n(where() / 'approvals' / 'x.json').write_text('{}')\n",  # where its paths lead
     "from synthesis import paths\nopen(str(paths.board()) + '/sessions/x.json', 'w').write('{}')\n",
+    "from synthesis import paths\nfor home in paths.homes_kept():\n    (home / 'settings.json').write_text('{}')\n",  # a Claude
+    "from synthesis import paths\nfor home in paths.homes_unread()['claude_homes']:\n    open(home + '/settings.json', 'w')\n",  # folder (C2)
     "from synthesis.paths import os as o\no.remove('/tmp/x')\n",                                          # a name its module imports
     "import importlib\nimport synthesis\nm = importlib.import_module('synthesis.' + 'sends')\n",      # a name it builds
     "from synthesis.approvals import *\n",                                                              # every name at once

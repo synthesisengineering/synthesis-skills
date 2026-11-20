@@ -833,7 +833,8 @@ def natives(days: float = 0, unread: list | None = None) -> list:
     copy and stamped complete): a folder it cannot list goes into `unread` as (harness, folder, why), and a
     transcript it can name and not look at is returned, so that its copy fails by name. The desktop app's agent-mode
     sessions are read as Claude Code's, from their own folders, and a folder on the way to them that cannot be
-    listed is in `unread` too."""
+    listed is in `unread` too; so are those of each other Claude account's folder the config names (C2), and a config
+    whose Claude homes cannot be read is in `unread` as the config file."""
     since, found, absent = time.time() - days * 86400 if days else 0, [], (FileNotFoundError, NotADirectoryError)
     for harness, base in paths.transcript_roots().items():
         pattern = {"claude-code": "*/**/*.jsonl", "codex": "**/rollout-*.jsonl", "muse": "*/*/*/*"}[harness]
@@ -841,6 +842,10 @@ def natives(days: float = 0, unread: list | None = None) -> list:
         if harness == "claude-code":  # the desktop app's agent-mode sessions, and any folder on the way that cannot be listed
             closed = [] if unread is not None else None
             extra = paths.desktop_agent_roots(closed)
+            try:  # every Claude home's but the one this process's harness names, which is `base`
+                extra += [home / "projects" for home in paths.claude_dirs(paths.config(), strict=True) if home / "projects" != base]
+            except (OSError, ValueError) as exc:
+                closed = (closed or []) + [(str(paths.config_file()), f"the Claude homes it names cannot be read ({exc})")]
             if unread is not None:
                 unread.extend((harness, folder, why) for folder, why in closed)
         for b in [base, *extra]:  # Codex moves archived ones; the desktop app's agent-mode sessions keep their own folders

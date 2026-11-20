@@ -327,7 +327,8 @@ def transcript(session: dict | None) -> str:
 
 
 def _account_folders() -> dict:
-    """Each harness's folders under the account's own home, where a note 5.23's prompt hook wrote may lie (A9); none for an
+    """Each harness's folders under the account's own home, where a note 5.23's prompt hook wrote may lie (A9), and the
+    records of each other Claude account's folder the config names (C2), its `~/` read as that home too; none for an
     account the user database does not know (the integration review of 5.24.1)."""
     try:
         home = paths.account_home()
@@ -335,19 +336,29 @@ def _account_folders() -> dict:
         return {}
     return {"claude-code": home / ".claude" / "projects", "codex": home / ".codex" / "sessions", "codex-archived": home /
             ".codex" / "archived_sessions", "muse": home / ".local" / "share" / "muse" / "sessions",
-            "desktop": home / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions"}
+            "desktop": home / "Library" / "Application Support" / "Claude" / "local-agent-mode-sessions", **_homes_records(home)}
+
+
+def _homes_records(home=None) -> dict:
+    """{a name: the records folder} of each other Claude account's folder the config names, `~/` read as `home` (default:
+    this home); none where the config cannot be read."""
+    try:
+        return {f"claude-code {other}": other / "projects" for other in paths.claude_homes(paths.config(), home)}
+    except (OSError, ValueError):
+        return {}
 
 
 def remember(session_id: str, transcript_path: str) -> None:
     """Record where the harness keeps a session's transcript, as its prompt hook names it, for a command that session
-    runs, with the folders each harness keeps its records in as this process's environment names them. The prompt hook
-    records them: the harness starts it, with the harness's own environment, which no agent's command sets, while a
-    check a script enters runs inside the agent's command, which can name any folder as a harness's for itself. The
-    sealed approvals folder holds them, which only the hook writes."""
+    runs, with the folders each harness keeps its records in as this process's environment names them, and those of
+    each Claude home the config names (C2). The prompt hook records them: the harness starts it, with the harness's own
+    environment, which no agent's command sets, while a check a script enters runs inside the agent's command, which
+    can name any folder as a harness's for itself. The sealed approvals folder holds them, which only the hook writes."""
     if re.fullmatch(r"[\w.-]+", str(session_id or "")) and transcript_path and os.path.isabs(str(transcript_path)):
         record = {"path": str(transcript_path), "folders": {**{name: str(root) for name, root in paths.transcript_roots().items()},
                                                             "codex-archived": str(paths.codex_home() / "archived_sessions"),  # as sessions.natives reads them
-                                                            "desktop": str(paths.desktop_dir() / "local-agent-mode-sessions")}}
+                                                            "desktop": str(paths.desktop_dir() / "local-agent-mode-sessions"),
+                                                            **{name: str(root) for name, root in _homes_records().items()}}}
         if paths.read_json(_dir("records") / f"{session_id}.json") != record:
             paths.write_json(_dir("records") / f"{session_id}.json", record)
 

@@ -322,12 +322,14 @@ def pre_tool_use(payload, began=None):
             tool_input = payload.get("tool_input") or {}
             try:
                 config, unreadable = paths.config(), None
+                paths.keep_homes(config)  # the Claude folders it names, for a call judged while it cannot be read (C2)
             except (OSError, ValueError) as exc:
-                config, unreadable = {}, exc
+                config, unreadable = paths.homes_unread(), exc
             if unreadable is not None and tool not in guards.FILE_TOOLS:
                 reason = (f"synthesis guard config is unreadable ({unreadable}); fix {paths.config_file()}"
                           if guards.guarded(tool, tool_input) else "")
-            else:  # a file tool is judged without the config it cannot read: the folders and settings it guards need none (22.20)
+            else:  # a file tool is judged without the config it cannot read: the folders and settings it guards need none (22.20),
+                # the other Claude folders those the last config read in full named, and each ~/.claude* (`paths.homes_unread`)
                 try:
                     reason = guards.check(tool, tool_input, config, cwd=str(payload.get("cwd") or "") or None, session=payload)
                 except approvals.Unverified as exc:

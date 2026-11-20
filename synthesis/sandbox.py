@@ -58,25 +58,35 @@ def tilde(path) -> str:
 
 def _harness() -> list:
     """(path, folder, sandbox only, records) for each harness's records, hook and sandbox settings, and programs (the
-    note's 2.1). Claude Code's own records go to its sandbox alone, so its file tools keep the memory files the guard
-    allows; `records` names a folder of session records."""
-    roots, user, desktop, claude = paths.transcript_roots(), Path.home(), paths.desktop_dir(), paths.transcript_roots()["claude-code"].parent
+    note's 2.1), each Claude home's among them (`_claudes`). Claude Code's own records go to its sandbox alone, so its
+    file tools keep the memory files the guard allows; `records` names a folder of session records."""
+    roots, user, desktop, ((claude, state), *others) = paths.transcript_roots(), Path.home(), paths.desktop_dir(), _claudes()
     codex = paths.codex_home()
-    return [(roots["claude-code"], True, True, "claude-code"), (desktop / "local-agent-mode-sessions", True, True, "desktop"),
+    return [(claude / "projects", True, True, "claude-code"), (desktop / "local-agent-mode-sessions", True, True, "desktop"),
             (desktop / "claude-code", True, True, ""), (claude / "settings.json", False, False, ""),
-            (claude / "settings.local.json", False, False, ""), (claude_json(), False, False, ""), (claude / "plugins", True, False, ""),
+            (claude / "settings.local.json", False, False, ""), (state, False, False, ""), (claude / "plugins", True, False, ""),
             (roots["codex"], True, False, "codex"), (codex / "archived_sessions", True, False, "codex-archived"),
             (codex / "config.toml", False, False, ""), (codex / "hooks.json", False, False, ""), (codex / "plugins", True, False, ""),
             (roots["muse"], True, False, "muse"), (user / ".config" / "muse", True, False, ""),
             (user / "Library" / "LaunchAgents", True, False, ""), (user / ".local" / "share" / "claude", True, False, ""),
-            (user / ".local" / "bin", True, False, "")]
+            (user / ".local" / "bin", True, False, "")] + [entry for other, kept in others for entry in (
+                (other / "projects", True, True, f"claude-code {tilde(other)}"), (other / "settings.json", False, False, ""),
+                (other / "settings.local.json", False, False, ""), (kept, False, False, ""), (other / "plugins", True, False, ""))]
 
 
-def claude_json() -> Path:
-    """Claude Code's own state file, which holds the user's and each project's MCP servers: beside its folder, or inside
-    the one `CLAUDE_CONFIG_DIR` names."""
-    named = os.environ.get("CLAUDE_CONFIG_DIR")
-    return Path(named) / ".claude.json" if named else Path.home() / ".claude.json"
+def _claudes() -> list:
+    """(folder, its state file) for each Claude Code folder synthesis serves (paths.claude_dirs): the one this process's
+    harness names, then ~/.claude and each other Claude account's folder the config names (C2), in an order no
+    process's `CLAUDE_CONFIG_DIR` changes. The state file holds the user's and each project's MCP servers: beside
+    ~/.claude, inside any other folder and inside the one the variable names. Only the first where the config cannot be
+    read: the doctor says why."""
+    try:
+        config = paths.config()
+    except (OSError, ValueError):
+        config = {}
+    named, default = os.environ.get("CLAUDE_CONFIG_DIR"), Path.home() / ".claude"
+    return [(c, Path.home() / ".claude.json" if c == default and not (named and Path(named) == c) else c / ".claude.json")
+            for c in paths.claude_dirs(config)]
 
 
 def sealed() -> list:
@@ -107,10 +117,11 @@ def codex_rules() -> list:
     """(folder, access) for Codex's profile (the note's 4.3): the folders a session writes, the synthesis home's parent
     read-only so no ancestor of a sealed folder can be renamed away, the approval records stated again, and each
     harness's own folders read-only."""
-    home, user, roots = paths.home(), Path.home(), paths.transcript_roots()
+    home, user, roots, ((claude, state), *others) = paths.home(), Path.home(), paths.transcript_roots(), _claudes()
     above = home.parent if home.parent not in (user, Path(home.anchor)) else home
-    harness = [roots["claude-code"].parent, claude_json(), paths.codex_home(), roots["muse"].parent, user / ".config" / "muse",
+    harness = [claude, state, paths.codex_home(), roots["muse"].parent, user / ".config" / "muse",
                user / "Library" / "LaunchAgents", paths.desktop_dir(), user / ".local" / "share" / "claude", user / ".local" / "bin"]
+    harness += [p for other, kept in others for p in ((other,) if kept.parent == other else (other, kept))]  # each Claude home (C2)
     return [(home / w, "write") for w in WRITABLE] + [(above, "read"), (home / APPROVALS, "read")] + [(p, "read") for p in harness]
 
 
@@ -543,16 +554,17 @@ def _repos() -> list:
 
 
 def _claude_settings() -> list:
-    """(settings file, its repository or None) for each Claude Code settings file a session here may load."""
-    claude = paths.transcript_roots()["claude-code"].parent
-    return [(claude / "settings.json", None), (claude / "settings.local.json", None)] + [
+    """(settings file, its repository or None) for each Claude Code settings file a session here may load, a session of
+    another Claude home's among them (C2)."""
+    claudes = [claude for claude, _ in _claudes()]
+    return [(claude / name, None) for claude in claudes for name in ("settings.json", "settings.local.json")] + [
         (repo / name, repo) for repo in _repos() for name in PROJECT[:2]]
 
 
 def _commands() -> list:
     """(where, command text, {variable: folder}) for each hook, MCP server and launch agent, the user's and each
-    repository's: each runs with full access, outside every sandbox."""
-    claude, codex, found = paths.transcript_roots()["claude-code"].parent, paths.codex_home(), []
+    repository's, each Claude home's (C2): each runs with full access, outside every sandbox."""
+    codex, found, others = paths.codex_home(), [], _claudes()
 
     def hooks(file: Path, values: dict):
         events = paths.read_json(file).get("hooks")
@@ -563,9 +575,10 @@ def _commands() -> list:
                         found.append((f"{tilde(file)} {event}", hook["command"], values))
     for file, repo in _claude_settings() + [(codex / "hooks.json", None)]:
         hooks(file, {"CLAUDE_PROJECT_DIR": str(repo)} if repo else {})
-    for file in sorted((claude / "plugins" / "cache").glob("*/*/*/hooks/hooks.json")):
-        hooks(file, {"CLAUDE_PLUGIN_ROOT": str(file.parent.parent)})
-    for file in dict.fromkeys([claude_json()] + [r / PROJECT[2] for r in _repos()]):
+    for claude, _ in others:
+        for file in sorted((claude / "plugins" / "cache").glob("*/*/*/hooks/hooks.json")):
+            hooks(file, {"CLAUDE_PLUGIN_ROOT": str(file.parent.parent)})
+    for file in dict.fromkeys([state for _, state in others] + [r / PROJECT[2] for r in _repos()]):
         data = paths.read_json(file)
         tables = [data.get("mcpServers")] + [p.get("mcpServers") for p in (data.get("projects") or {}).values() if isinstance(p, dict)]
         found += [(f"{tilde(file)} mcpServers.{name}", " ".join(map(str, [spec["command"], *(spec.get("args") or [])])), {})
@@ -600,12 +613,14 @@ def _paths_in(text: str, values: dict) -> list:
 
 def _write_area() -> list:
     """The folders a sandboxed shell may write here, beyond a session's own: temp, the D8 entries, Claude Code's added
-    directories, Codex's trusted projects and the folders a Codex session writes."""
-    settings = paths.read_json(paths.transcript_roots()["claude-code"].parent / "settings.json")
-    added = (settings.get("permissions") or {}).get("additionalDirectories") if isinstance(settings.get("permissions"), dict) else []
+    directories, each Claude home's (C2), Codex's trusted projects and the folders a Codex session writes."""
+    added = []
+    for claude, _ in _claudes():
+        allowed = paths.read_json(claude / "settings.json").get("permissions")
+        added += allowed.get("additionalDirectories") or [] if isinstance(allowed, dict) else []
     projects = codex_config().get("projects")
     roots = [*WRITE_AREA, *[str(paths.home() / w) for w in WRITABLE], "/tmp", "/var/tmp", "/private/var/folders",
-             os.environ.get("TMPDIR", ""), *[str(d) for d in added or [] if isinstance(d, str)],
+             os.environ.get("TMPDIR", ""), *[str(d) for d in added if isinstance(d, str)],
              *[p for p, v in (projects.items() if isinstance(projects, dict) else ()) if isinstance(v, dict) and v.get("trust_level") == "trusted"]]
     return [os.path.realpath(os.path.expanduser(r)) for r in roots if r and os.path.isabs(os.path.expanduser(r))]
 
