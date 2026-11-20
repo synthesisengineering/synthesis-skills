@@ -123,11 +123,11 @@ def check_config(home: Path) -> Check:
 
 
 def run_hook(home: Path, payload: dict, run=subprocess.run, env: dict | None = None):
-    """Run the stable hook's pre-tool-use once, with `env` over this process's environment. Returns (denied, reason, ms)."""
+    """Run the stable hook's pre-tool-use once, in `env` (default: this process's environment). Returns (denied, reason, ms)."""
     start = time.perf_counter()
     try:
         stdout = run([str(home / "bin" / "synthesis-hook"), "pre-tool-use"], input=json.dumps(payload), capture_output=True,
-                     text=True, timeout=10, env={**os.environ, **(env or {}), "SYNTHESIS_HOME": str(home)}).stdout
+                     text=True, timeout=10, env={**(os.environ if env is None else env), "SYNTHESIS_HOME": str(home)}).stdout
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"could not run: {exc}", (time.perf_counter() - start) * 1000
     ms = (time.perf_counter() - start) * 1000
@@ -165,10 +165,10 @@ def check_self_test(home: Path, runs: int = 3, run=subprocess.run, background=ba
 
 
 def check_home_self_test(home: Path, harness: str, folder: Path, run=subprocess.run) -> Check:
-    """The stable hook, run as a session of another Claude account's folder runs it (C2: the folder in CLAUDE_CONFIG_DIR,
-    a transcript in its projects), must deny `rm -rf ~` as it does anywhere."""
+    """The stable hook, run as a session of a Claude folder runs it (C2: in its environment, `_seat_env`, a transcript in
+    its projects), must deny `rm -rf ~` as it does anywhere."""
     payload = {**SELF_TEST, "transcript_path": str(folder / "projects" / "doctor-self-test" / "doctor-self-test.jsonl")}
-    denied, reason, _ = run_hook(home, payload, run, {"CLAUDE_CONFIG_DIR": str(folder)})
+    denied, reason, _ = run_hook(home, payload, run, _seat_env(folder))
     if denied and "recursive delete" in reason:
         return Check("ok", f"{harness} self-test", "the stable hook, run as this folder's sessions run it, denied `rm -rf ~`")
     return Check("fail", f"{harness} self-test", f"the stable hook, run as this folder's sessions run it, let `rm -rf ~` through "
@@ -2221,10 +2221,11 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
 
 
 def claude_home_checks(homes: list, procs: dict, home: Path, runtime: str) -> list:
-    """Each other Claude account's folder the config names (C2): its seat runs no guard unless the folder is there, the
-    plugin is installed and enabled in it, its code is the runtime's, its four events call the stable hook, no settings
-    layer it reads turns hooks off, and the stable hook, run as that folder's sessions run it, denies the self-test.
-    Its listing is the one `procs` started under its own name; a folder that is not there is not listed, nor made."""
+    """Each Claude folder but this process's own, which the harness lines check (C2: another Claude account's, and
+    ~/.claude from that account's seat): its sessions run no guard unless the folder is there, the plugin is installed
+    and enabled in it, its code is the runtime's, its four events call the stable hook, no settings layer it reads turns
+    hooks off, and the stable hook, run as that folder's sessions run it, denies the self-test. Its listing is the one
+    `procs` started under its own name; a folder that is not there is not listed, nor made."""
     checks = []
     for folder in homes:
         harness = f"claude {_short(folder)}"
@@ -2241,6 +2242,13 @@ def claude_home_checks(homes: list, procs: dict, home: Path, runtime: str) -> li
                        check_hooks_on(harness, hooks, _layers(folder)), check_claude_retention(folder / "settings.json", _short(folder))]
         checks += [check_home_self_test(home, harness, folder)] if (home / "bin" / "synthesis-hook").is_file() else []
     return checks
+
+
+def _seat_env(folder: Path) -> dict:
+    """The environment a session of a Claude folder runs in: CLAUDE_CONFIG_DIR naming it, or unset for ~/.claude, whose
+    state file Claude Code keeps beside it only while the variable is unset."""
+    env = {key: value for key, value in os.environ.items() if key != "CLAUDE_CONFIG_DIR"}
+    return env if paths.resolved(folder) == paths.resolved(Path.home() / ".claude") else {**env, "CLAUDE_CONFIG_DIR": str(folder)}
 
 
 def _layers(folder: Path) -> list:
@@ -2299,14 +2307,15 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         config = paths.config()
     except (OSError, ValueError):
         config = {}
-    try:  # each other Claude account's folder (C2), listed as Claude Code lists it for that folder's own sessions
-        homes = paths.claude_homes(config)
+    try:  # each Claude folder but this process's own (C2; N4 of its review), listed as Claude Code lists it for its own sessions
+        own = paths.resolved(paths.transcript_roots()["claude-code"].parent)
+        homes = [folder for folder in paths.claude_dirs(config, strict=True) if paths.resolved(folder) != own]
     except ValueError as exc:
         homes = []
         checks.append(Check("fail", "claude homes", f"the config's Claude homes cannot be read ({exc}): no folder of another Claude "
                             "account is checked, and the guard refuses every browser call until it is fixed"))
     for folder in [f for f in homes if f.is_dir()] if "claude" in clis else ():
-        started[str(folder)] = _start([clis["claude"]] + LISTINGS["claude"], {**os.environ, "CLAUDE_CONFIG_DIR": str(folder)})
+        started[str(folder)] = _start([clis["claude"]] + LISTINGS["claude"], _seat_env(folder))
     catalog = _background(app_server_query, clis["codex"], "skills/list",
                           {"cwds": [str(cwd)], "forceReload": False}) if "codex" in clis else None
     if not clis:

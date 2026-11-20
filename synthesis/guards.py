@@ -1279,7 +1279,7 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
     if not isinstance(routing, dict) or not isinstance(routing.get("workspaces"), dict):
         return "browser_routing in the synthesis config needs a \"workspaces\" map; browser calls are blocked until it is fixed"
     found, me, name = _browser_workspace(config, cwd, session), paths.session_id(session), tool[len(BROWSER):]
-    refused, home = _seat(name, routing["workspaces"], found, config, session)
+    refused, home = _seat(name, tool_input, routing["workspaces"], found, config, session)
     if refused or found is None:
         return refused
     root, meta = found
@@ -1316,14 +1316,15 @@ def check_browser(tool: str, tool_input: dict, config: dict, cwd: str, session: 
     return _account_hold(name, tool_input, named, config, device, label, session) if named else None
 
 
-def _seat(name: str, workspaces: dict, found: tuple | None, config: dict, session: dict | None) -> tuple:
+def _seat(name: str, tool_input: dict, workspaces: dict, found: tuple | None, config: dict, session: dict | None) -> tuple:
     """(why a browser call is refused, else None; the Claude home whose latest selection this session's is kept with, ""
     for every session outside the homes the config names, which one extension pairing serves). A seat signed in to
     another Claude account runs from a Claude Code folder of its own and sees only that account's browsers (C2,
-    2026-11-20), so an entry's `claude_home` gives the entry's device to that home's sessions alone: any other session
-    started in the workspace is refused before it selects and told to hand the task over, and the home's sessions are
-    refused in every other workspace and outside every one. The home is where the hook payload's transcript lies, past
-    any link, never a variable a command sets; with a home configured, a session whose home cannot be told is refused."""
+    2026-11-20), so an entry's `claude_home` gives the entry's device to that home's sessions alone: any other session is
+    refused that device wherever it runs (review round 1 of C2, N1), and one started in the workspace is refused before it
+    selects, each told to hand the task over; the home's sessions are refused in every other workspace and outside
+    every one. The home is where the hook payload's transcript lies, past any link and in any case (N2), never a
+    variable a command sets; with a home configured, a session whose home cannot be told is refused."""
     try:
         homes = [os.path.realpath(h) for h in paths.claude_homes(config)]
     except ValueError as exc:
@@ -1335,17 +1336,21 @@ def _seat(name: str, workspaces: dict, found: tuple | None, config: dict, sessio
         return ("This call's hook payload names no transcript, so the guard cannot tell which Claude home, and so which Claude "
                 "account's browsers, this session runs from: browser calls other than list_connected_browsers are refused."), ""
     home, owner = next((h for h in homes if paths.inside(os.path.realpath(given), os.path.join(h, "projects"))), ""), (
-        lambda meta: os.path.realpath(os.path.expanduser(meta["claude_home"].strip())) if "claude_home" in meta else None)
-    mine = owner(found[1]) if found else None
-    if name == "list_connected_browsers" or mine == home:
+        lambda meta: paths.resolved(meta["claude_home"].strip()) if "claude_home" in meta else None)
+    me, mine, wanted = paths.resolved(home) if home else "", owner(found[1]) if found else None, (
+        str(tool_input.get("deviceId") or "") if name == "select_browser" else None)
+    held = next(((root, meta) for root, meta in workspaces.items() if isinstance(meta, dict) and owner(meta) not in (None, me)
+                 and str(meta.get("device") or "").strip() == wanted), None)  # another home's device, asked for by this session
+    if name == "list_connected_browsers" or mine == me and not held:
         return None, home
-    if mine:
-        return (f"This workspace's browser, {found[1].get('label') or found[0]} ({found[1].get('device')}), is driven only by sessions of "
-                f"the Claude home {found[1]['claude_home']}, signed in to a Claude account of its own, and this session runs from "
+    if held or mine:
+        root, meta = held or found
+        return (f"The browser {meta.get('label') or root} ({meta.get('device')}), set for {root}, is driven only by sessions of the "
+                f"Claude home {meta['claude_home']}, signed in to a Claude account of its own, and this session runs from "
                 f"{'the Claude home ' + home if home else 'another Claude home'}. Send the task to that seat: write what to read or "
                 "do, and any exact text to send, in a file, then `synthesis msg` its session the file's path; it runs the task "
                 "there and answers on the board."), home
-    theirs = [(root, meta) for root, meta in workspaces.items() if isinstance(meta, dict) and owner(meta) == home]
+    theirs = [(root, meta) for root, meta in workspaces.items() if isinstance(meta, dict) and owner(meta) == me]
     return (f"This session runs from the Claude home {theirs[0][1]['claude_home']}, whose sessions drive only " + ", ".join(
         f"{meta.get('label') or root} ({meta.get('device')}), for {root}" for root, meta in theirs) + ": no other workspace's "
         "browser, and none from outside that workspace. Start the session there, or send this task to a session of the "

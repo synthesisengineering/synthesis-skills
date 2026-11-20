@@ -692,7 +692,13 @@ def stage_sandbox(clients: list, dry_run: bool = False, seal: bool = False) -> l
     home's sealed install folder, and the one command that installs it, which the principal runs with his password (his
     ruling of 2026-11-15). Setup installs neither; it says what is installed and whether it holds the keys. Only
     `setup.py sandbox` passes `seal`, which makes Codex's profile read-only where the guard's records are: the rollout's
-    step 2, after its test that Codex runs its hooks inside its sandbox (review round 1 of 5.25.0, finding 1)."""
+    step 2, after its test that Codex runs its hooks inside its sandbox (review round 1 of 5.25.0, finding 1). Nothing
+    is staged while a Claude folder the config names cannot be read: the file would leave it unsealed (C2, B1)."""
+    try:
+        paths.claude_dirs(paths.config(), strict=True)
+    except (OSError, ValueError) as exc:
+        raise SetupError(f"sandbox: nothing staged, since the Claude folders {paths.config_file()} names cannot be read ({exc}): fix "
+                         "it, then run this again") from None
     lines = configure_codex(dry_run, seal=True) if seal and "codex" in clients else []
     for name in (n for n in ("claude", "codex") if n in clients):
         label, copy, there = sandbox.LABELS[name], sandbox.staged(name), sandbox.target(name)

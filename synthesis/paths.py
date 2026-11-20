@@ -279,41 +279,82 @@ def transcript_roots() -> dict:
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 
+HOMES_KEPT = "claude-homes.json"  # in approvals(): the other Claude folders the last config the hook read in full named
+
+
+def resolved(path) -> str:
+    """A folder as two are compared: where it really leads, `~` read, spelled as a Mac's file system compares names, so
+    a link to a folder, or its name in other capitals, is that folder (review round 1 of C2, N2)."""
+    return spelled(os.path.realpath(os.path.expanduser(str(path))))
+
+
+def _named_homes(config: dict, base: Path | None = None) -> tuple:
+    """(the folders, why each other value names none, whether the config names any) of what the config gives as other
+    Claude accounts' folders: each value of `claude_homes` and each `browser_routing` workspace's `claude_home`, each read
+    on its own, `~/` read as `base` (default: this home), once each as `resolved` compares them."""
+    listed, routing = config.get("claude_homes", []), config.get("browser_routing")
+    spaces = routing.get("workspaces") if isinstance(routing, dict) else None
+    values = (listed if isinstance(listed, list) else [listed]) + [
+        m["claude_home"] for m in (spaces.values() if isinstance(spaces, dict) else ()) if isinstance(m, dict) and "claude_home" in m]
+    found, problems, home = {}, [] if isinstance(listed, list) else ["claude_homes must be a list of folders"], str(base or Path.home())
+    for value in values:
+        text = value.strip() if isinstance(value, str) else ""
+        folder = Path(os.path.normpath(home + text[1:] if text[:2] == "~/" else text)) if text.startswith(("/", "~/")) else None
+        if folder is None:
+            problems.append(f"it names {value!r}, which is no absolute or ~/ path")
+        elif resolved(folder) == resolved(Path(home) / ".claude"):
+            problems.append("it names ~/.claude, the default home, by that name, another spelling or a link: name only the "
+                            "folders of other Claude accounts")
+        else:
+            found.setdefault(resolved(folder), folder)
+    return list(found.values()), problems, "claude_homes" in config or bool(values)
+
+
 def claude_homes(config: dict, base: Path | None = None) -> list:
     """The Claude Code configuration folders of other Claude accounts the config names, each one a seat runs from with
     `CLAUDE_CONFIG_DIR` set to it (C2, 2026-11-20): every folder in `claude_homes` and every one a `browser_routing`
-    workspace binds with `claude_home`, once each, `~/` read as `base` (default: this home). ValueError, saying why,
-    for a list of another shape, a value that is no absolute or `~/` path, or ~/.claude, the default home, whose
-    sessions share one extension pairing with every folder the config does not name."""
-    listed, routing = config.get("claude_homes", []), config.get("browser_routing")
-    spaces = routing.get("workspaces") if isinstance(routing, dict) else None
-    if not isinstance(listed, list):
-        raise ValueError("claude_homes must be a list of folders")
-    found, home = [], str(base or Path.home())
-    for value in listed + [m["claude_home"] for m in (spaces.values() if isinstance(spaces, dict) else ()) if isinstance(m, dict) and "claude_home" in m]:
-        text = value.strip() if isinstance(value, str) else ""
-        if not text.startswith(("/", "~/")):
-            raise ValueError(f"it names {value!r}, which is no absolute or ~/ path")
-        found.append(Path(os.path.normpath(home + text[1:] if text[0] == "~" else text)))
-    if Path(os.path.normpath(home)) / ".claude" in found:
-        raise ValueError("it names ~/.claude, the default home: name only the folders of other Claude accounts")
-    return list(dict.fromkeys(found))
+    workspace binds with `claude_home`, once each (`_named_homes`). ValueError, saying why, for a list of another shape,
+    a value that is no absolute or `~/` path, or ~/.claude, the default home, whose sessions share one extension pairing
+    with every folder the config does not name."""
+    found, problems, _ = _named_homes(config, base)
+    if problems:
+        raise ValueError(problems[0])
+    return found
 
 
 def claude_dirs(config: dict | None, strict: bool = False) -> list:
-    """Every Claude Code configuration folder synthesis serves, once each: the one this process's harness names
-    (`CLAUDE_CONFIG_DIR`, else ~/.claude), then, where the config names other Claude accounts' folders, ~/.claude and
-    each of those, in that order also when a seat's own process names one of them, so that what is built from the list
-    (the sealed set setup stages) reads the same from any process. Config that names none it can read adds none (with
-    `strict`, ValueError says why)."""
-    own = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    """Every Claude Code configuration folder synthesis serves, once each as `resolved` compares them: the one this
+    process's harness names (`CLAUDE_CONFIG_DIR`, else ~/.claude), then, where the config names any Claude home,
+    ~/.claude and each folder named, in that order also when a seat's own process names one of them, so that what is
+    built from the list (the sealed set setup stages) reads the same from any process. A value that names no folder
+    drops none of the others, and the folders of the last config the hook read in full (`homes_kept`) are kept with
+    them, so a config that cannot be read drops none either (review round 1 of C2, B1). With `strict`, the config's own
+    folders alone, and ValueError says why a value names none."""
+    own, (found, problems, named) = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude"), _named_homes(config or {})
+    if strict and problems:
+        raise ValueError(problems[0])
+    others, kept = found + ([] if strict else homes_kept()), {}
+    for folder in [own] * (resolved(own) not in {resolved(o) for o in others}) + [Path.home() / ".claude"] * bool(named or others) + others:
+        kept.setdefault(resolved(folder), folder)
+    return list(kept.values())
+
+
+def homes_kept() -> list:
+    """The other Claude accounts' folders the last config the hook read in full named (`keep_homes`): what the guard keeps
+    while the config cannot be read, or names a folder wrongly."""
+    listed = read_json(approvals() / HOMES_KEPT).get("homes")
+    return [Path(h) for h in listed if isinstance(h, str) and os.path.isabs(h)] if isinstance(listed, list) else []
+
+
+def keep_homes(config: dict) -> None:
+    """The hook's record, in the sealed approvals folder, of the other Claude folders a config it read in full names. A
+    config with a value that names no folder leaves the record as it was, and so does a record that cannot be written."""
     try:
-        others = claude_homes(config or {})
-    except ValueError:
-        if strict:
-            raise
-        others = []
-    return list(dict.fromkeys([own] * (own not in others) + [Path.home() / ".claude"] * bool(others) + others))
+        listed = [str(home) for home in claude_homes(config)]
+        if (read_json(approvals() / HOMES_KEPT).get("homes") or []) != listed:
+            write_json(approvals() / HOMES_KEPT, {"homes": listed})
+    except (ValueError, OSError):
+        pass
 
 
 def harness_settings(claude: tuple = ()) -> list:
