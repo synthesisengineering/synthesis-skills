@@ -122,12 +122,12 @@ def check_config(home: Path) -> Check:
     return Check("ok", "config", f"{_short(file)} parses ({len(data)} keys)")
 
 
-def run_hook(home: Path, payload: dict, run=subprocess.run):
-    """Run the stable hook's pre-tool-use once. Returns (denied, reason, ms)."""
+def run_hook(home: Path, payload: dict, run=subprocess.run, env: dict | None = None):
+    """Run the stable hook's pre-tool-use once, with `env` over this process's environment. Returns (denied, reason, ms)."""
     start = time.perf_counter()
     try:
-        stdout = run([str(home / "bin" / "synthesis-hook"), "pre-tool-use"], input=json.dumps(payload),
-                     capture_output=True, text=True, timeout=10, env={**os.environ, "SYNTHESIS_HOME": str(home)}).stdout
+        stdout = run([str(home / "bin" / "synthesis-hook"), "pre-tool-use"], input=json.dumps(payload), capture_output=True,
+                     text=True, timeout=10, env={**os.environ, **(env or {}), "SYNTHESIS_HOME": str(home)}).stdout
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"could not run: {exc}", (time.perf_counter() - start) * 1000
     ms = (time.perf_counter() - start) * 1000
@@ -162,6 +162,17 @@ def check_self_test(home: Path, runs: int = 3, run=subprocess.run, background=ba
     if ms > HOOK_BUDGET_MS:
         return Check("warn", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms, over the {HOOK_BUDGET_MS} ms budget")
     return Check("ok", "hook self-test", f"denied `rm -rf ~` in {ms:.0f} ms")
+
+
+def check_home_self_test(home: Path, harness: str, folder: Path, run=subprocess.run) -> Check:
+    """The stable hook, run as a session of another Claude account's folder runs it (C2: the folder in CLAUDE_CONFIG_DIR,
+    a transcript in its projects), must deny `rm -rf ~` as it does anywhere."""
+    payload = {**SELF_TEST, "transcript_path": str(folder / "projects" / "doctor-self-test" / "doctor-self-test.jsonl")}
+    denied, reason, _ = run_hook(home, payload, run, {"CLAUDE_CONFIG_DIR": str(folder)})
+    if denied and "recursive delete" in reason:
+        return Check("ok", f"{harness} self-test", "the stable hook, run as this folder's sessions run it, denied `rm -rf ~`")
+    return Check("fail", f"{harness} self-test", f"the stable hook, run as this folder's sessions run it, let `rm -rf ~` through "
+                 f"({reason or 'no decision'}): its seat would run unguarded")
 
 
 def check_wait_check() -> Check:
@@ -618,20 +629,22 @@ def check_codex_board(config: dict, board: Path, sealed: Path, outbox: Path) -> 
     return Check("ok", "codex board access", f"Codex's sandbox may write {_short(board)} and {_short(outbox)}")
 
 
-def check_claude_retention(settings: Path) -> Check:
+def check_claude_retention(settings: Path, where: str = "") -> Check:
     """Claude Code deletes a transcript idle past cleanupPeriodDays, 30 when unset, at its next start (2026-10-30:
-    this Mac kept 9 main sessions from August and 11 from September, against 97 from October)."""
+    this Mac kept 9 main sessions from August and 11 from September, against 97 from October). `where` names another
+    Claude account's folder (C2) at the head of the line."""
     try:
         days = json.loads(settings.read_text(encoding="utf-8")).get("cleanupPeriodDays")
     except (OSError, ValueError, AttributeError):
         days = None
+    at = f"{where}: " if where else ""
     if not isinstance(days, int) or isinstance(days, bool):
-        return Check("fail", "claude transcripts", "cleanupPeriodDays is unset, so Claude Code deletes a transcript idle "
+        return Check("fail", "claude transcripts", f"{at}cleanupPeriodDays is unset, so Claude Code deletes a transcript idle "
                      "30 days: run the onboarding setup for claude")
     if days < 365:
-        return Check("warn", "claude transcripts", f"cleanupPeriodDays = {days}: run `synthesis sessions export` at "
+        return Check("warn", "claude transcripts", f"{at}cleanupPeriodDays = {days}: run `synthesis sessions export` at "
                      "least that often, or Claude Code deletes transcripts first")
-    return Check("ok", "claude transcripts", f"kept {days:,} days")
+    return Check("ok", "claude transcripts", f"{at}kept {days:,} days")
 
 
 CLAUDE_ON_FAILURE = (2, 1, 295)  # the first Claude Code that honors a hook's onFailure (its hooks reference)
@@ -684,6 +697,30 @@ def check_claude_fail_closed(hooks: dict, version: str, where: str = "") -> Chec
                      "it), so a guard that times out or crashes lets the call through: update Claude Code")
     return Check("ok", "claude fail closed", f"Claude Code {version} holds a guarded call when the guard times out, crashes "
                  "or cannot start")
+
+
+def check_hooks_on(harness: str, hooks: dict, layers: list) -> Check:
+    """Claude Code runs a plugin's hooks unless a settings layer it reads turns them off: `disableAllHooks` in any layer, a
+    managed layer's `allowManagedHooksOnly` where no managed layer forces the plugin on, or a managed layer that turns
+    the plugin off (its hooks and settings references); another Claude account's server-managed settings reach its seat
+    after the login (C2). And it holds a guarded call when the guard fails only where the PreToolUse handler says
+    `"onFailure": "block"`. layers: (where, its settings, or None where they cannot be read, whether it is managed)."""
+    name = f"{harness} hooks on"
+    switch = {where: data.get("enabledPlugins").get(f"{PLUGIN}@{MARKETPLACE}") for where, data, managed in layers
+              if managed and data and isinstance(data.get("enabledPlugins"), dict)}
+    problems = [f"{where} sets disableAllHooks" for where, data, _ in layers if data and data.get("disableAllHooks") is True] + [
+        f"{where} sets allowManagedHooksOnly, and no managed layer forces {PLUGIN} on" for where, data, managed in layers
+        if managed and data and data.get("allowManagedHooksOnly") is True and True not in switch.values()] + [
+        f"{where} turns {PLUGIN} off" for where, on in switch.items() if on is False]
+    handlers = [handler for event, _, handler in hooks_json_entries(hooks or {}) if event == "PreToolUse"]
+    problems += ['its PreToolUse hook lacks "onFailure": "block", so a guard that fails lets the call through'] * (
+        not handlers or any(handler.get("onFailure") != "block" for handler in handlers))
+    if problems:
+        return Check("fail", name, "this folder's sessions would run unguarded: " + "; ".join(problems))
+    unread = [where for where, data, _ in layers if data is None]
+    if unread:
+        return Check("unknown", name, f"cannot tell: {', '.join(unread)} cannot be read, and may turn its hooks off")
+    return Check("ok", name, "no settings layer it reads turns hooks or the plugin off, and a guard that fails holds the call")
 
 
 def check_sessions_repos(repos: dict, state: Path, now: float = 0) -> list:
@@ -2043,10 +2080,10 @@ def _assign(table: dict, key: list, raw: str, made=None, number: int = 0) -> Non
         table[key[-1]] = _value(raw)
 
 
-def _start(argv: list):
+def _start(argv: list, env: dict | None = None):
     try:
         return subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, start_new_session=True)
+                                stderr=subprocess.PIPE, text=True, start_new_session=True, env=env)
     except OSError as exc:
         return exc
 
@@ -2183,6 +2220,46 @@ def harness_checks(found: list, procs: dict, home: Path, runtime: str, catalog=N
     return checks, versions
 
 
+def claude_home_checks(homes: list, procs: dict, home: Path, runtime: str) -> list:
+    """Each other Claude account's folder the config names (C2): its seat runs no guard unless the folder is there, the
+    plugin is installed and enabled in it, its code is the runtime's, its four events call the stable hook, no settings
+    layer it reads turns hooks off, and the stable hook, run as that folder's sessions run it, denies the self-test.
+    Its listing is the one `procs` started under its own name; a folder that is not there is not listed, nor made."""
+    checks = []
+    for folder in homes:
+        harness = f"claude {_short(folder)}"
+        listing, error = _finish(procs[str(folder)]) if str(folder) in procs else (None, "claude is not on this Mac to list its plugins")
+        if not folder.is_dir():
+            checks.append(Check("fail", f"{harness} plugin", f"{_short(folder)} is not there: install the plugin into it (setup.py "
+                                "plugin, with CLAUDE_CONFIG_DIR naming it) before its seat signs in"))
+            continue
+        entry = claude_entry(listing)
+        checks.append(check_plugin(harness, entry, error))
+        if entry:
+            hooks = _hooks_file(entry["path"])
+            checks += [check_package(harness, entry["path"], runtime), check_hooks_wired(harness, _commands(hooks)),
+                       check_hooks_on(harness, hooks, _layers(folder)), check_claude_retention(folder / "settings.json", _short(folder))]
+        checks += [check_home_self_test(home, harness, folder)] if (home / "bin" / "synthesis-hook").is_file() else []
+    return checks
+
+
+def _layers(folder: Path) -> list:
+    """(where, its settings or None, managed) for each settings layer a session of a Claude folder reads that can turn
+    hooks off: the folder's own settings.json, the machine's managed settings and their drop-ins, and the folder's copy
+    of its organization's server-managed settings (remote-settings.json). A file that is not there is no layer."""
+    from synthesis import sandbox
+    found, drops = [], sorted((sandbox.CLAUDE_MANAGED.parent / "managed-settings.d").glob("*.json"))
+    for file, managed in [(folder / "settings.json", False), (sandbox.CLAUDE_MANAGED, True), *((d, True) for d in drops), (folder / "remote-settings.json", True)]:
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError):
+            data = None
+        found.append((_short(file), data if isinstance(data, dict) else None, managed))
+    return found
+
+
 def _background(fn, *args):
     """Run fn(*args) on a thread; the returned getter waits for (result, error)."""
     from concurrent.futures import ThreadPoolExecutor
@@ -2218,16 +2295,24 @@ def run_checks(home: Path | None = None, find=find_client, latest_ref: str = "",
         path = find(h)                     # means a version probe, which overlaps the others' listings
         if path:
             clis[h], started[h] = path, _start([path] + LISTINGS[h])
+    try:
+        config = paths.config()
+    except (OSError, ValueError):
+        config = {}
+    try:  # each other Claude account's folder (C2), listed as Claude Code lists it for that folder's own sessions
+        homes = paths.claude_homes(config)
+    except ValueError as exc:
+        homes = []
+        checks.append(Check("fail", "claude homes", f"the config's Claude homes cannot be read ({exc}): no folder of another Claude "
+                            "account is checked, and the guard refuses every browser call until it is fixed"))
+    for folder in [f for f in homes if f.is_dir()] if "claude" in clis else ():
+        started[str(folder)] = _start([clis["claude"]] + LISTINGS["claude"], {**os.environ, "CLAUDE_CONFIG_DIR": str(folder)})
     catalog = _background(app_server_query, clis["codex"], "skills/list",
                           {"cwds": [str(cwd)], "forceReload": False}) if "codex" in clis else None
     if not clis:
         checks.append(Check("warn", "harnesses", "no claude, codex or muse found on PATH or in their install folders"))
     found, versions = harness_checks(list(clis), started, home, runtime, catalog, cwd)
-    checks += found + [check_sandbox(list(clis))]
-    try:
-        config = paths.config()
-    except (OSError, ValueError):
-        config = {}
+    checks += found + claude_home_checks(homes, started, home, runtime) + [check_sandbox(list(clis))]
     planned = _background(lambda: check_plan_judge(config)) if config.get("judge") not in (None, False) else None  # beside the rest
     repos = workspace_repos(config)
     from synthesis import board, project, rituals

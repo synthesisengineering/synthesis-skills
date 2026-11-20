@@ -153,10 +153,11 @@ def plugin_entry(client: str, binary: str):
 
 
 def configured_ref(client: str):
-    """The git ref the harness's synthesis marketplace tracks, or None when unknown."""
+    """The git ref the harness's synthesis marketplace tracks, or None when unknown: Claude Code's in the folder it is
+    run with, which CLAUDE_CONFIG_DIR names for another Claude account's seat (C2)."""
     try:
         if client == "claude":
-            known = json.loads((Path.home() / ".claude" / "plugins" / "known_marketplaces.json").read_text())
+            known = json.loads((Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude") / "plugins" / "known_marketplaces.json").read_text())
             source = (known.get(MARKETPLACE) or {}).get("source") or {}
             return source.get("ref") if source.get("repo") == SOURCE else None
         config = doctor.read_toml((paths.codex_home() / "config.toml").read_text(encoding="utf-8"))

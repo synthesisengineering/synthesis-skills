@@ -45,10 +45,10 @@ AGENT_FIXES = {"instruction adapters": "give each folder one set of instructions
                "line `@AGENTS.md`: ", "decision packets": "rebuild each page with its own generator (build_packet.py or "
                "build_sheet.py): ", "teardown": "", "prompt check": "mend the rituals' config as the line says: "}
 NOT_RUN = {  # each doctor check this review does not run, and why; a test holds every check to here or to a call below
-    **dict.fromkeys(("check_plugin", "check_package", "check_hooks_wired", "check_codex_trust", "check_muse_approval",
+    **dict.fromkeys(("check_plugin", "check_package", "check_hooks_wired", "check_codex_trust", "check_muse_approval", "check_hooks_on",
                      "check_codex_managed_hooks", "check_codex_catalog", "check_claude_fail_closed", "check_versions"),
                     "it reads what a harness's own program answers, and starting one writes the harness's housekeeping"),
-    **dict.fromkeys(("check_self_test", "check_shell_name"), "it runs the hook, which writes what it saw"),
+    **dict.fromkeys(("check_self_test", "check_shell_name", "check_home_self_test"), "it runs the hook, which writes what it saw"),
     "check_wait_check": "the turn-end check it runs writes that turn's record",
     "check_seal": "it tries the writes the sandbox must refuse",
     "check_plan_judge": "it asks a model to judge a plan",
@@ -323,8 +323,8 @@ def installed(report, config, home: Path, fetch: bool) -> None:
         checks += [("pr gate", lambda: doctor.check_pr_gate(config["pr_gated"], doctor.workspace_repos(config), run=_screened))] if config.get(
             "pr_gated") is not None else []
         checks += [("temporary addresses", lambda: doctor.check_temporary_addresses(config))] if "temporary_addresses" in config else []
-    checks += [("codex", codex)] * _present("codex") + [("claude transcripts", lambda: doctor.check_claude_retention(
-        paths.transcript_roots()["claude-code"].parent / "settings.json"))] * _present("claude")
+    checks += [("codex", codex)] * _present("codex") + [("claude transcripts", lambda c=c, n=n: doctor.check_claude_retention(
+        c / "settings.json", doctor._short(c) if n else "")) for n, c in enumerate(paths.claude_dirs(config))] * _present("claude")  # each Claude home's (C2)
     checks += [("latest release", lambda: doctor.check_latest({"runtime": _version(home)}, "stable"))] if fetch else []
     for name, read in checks:
         found = report.guard("installed", name, read, [])

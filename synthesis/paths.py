@@ -279,14 +279,52 @@ def transcript_roots() -> dict:
             "muse": Path(env.get("XDG_DATA_HOME") or user / ".local" / "share") / "muse" / "sessions"}
 
 
-def harness_settings() -> list:
+def claude_homes(config: dict, base: Path | None = None) -> list:
+    """The Claude Code configuration folders of other Claude accounts the config names, each one a seat runs from with
+    `CLAUDE_CONFIG_DIR` set to it (C2, 2026-11-20): every folder in `claude_homes` and every one a `browser_routing`
+    workspace binds with `claude_home`, once each, `~/` read as `base` (default: this home). ValueError, saying why,
+    for a list of another shape, a value that is no absolute or `~/` path, or ~/.claude, the default home, whose
+    sessions share one extension pairing with every folder the config does not name."""
+    listed, routing = config.get("claude_homes", []), config.get("browser_routing")
+    spaces = routing.get("workspaces") if isinstance(routing, dict) else None
+    if not isinstance(listed, list):
+        raise ValueError("claude_homes must be a list of folders")
+    found, home = [], str(base or Path.home())
+    for value in listed + [m["claude_home"] for m in (spaces.values() if isinstance(spaces, dict) else ()) if isinstance(m, dict) and "claude_home" in m]:
+        text = value.strip() if isinstance(value, str) else ""
+        if not text.startswith(("/", "~/")):
+            raise ValueError(f"it names {value!r}, which is no absolute or ~/ path")
+        found.append(Path(os.path.normpath(home + text[1:] if text[0] == "~" else text)))
+    if Path(os.path.normpath(home)) / ".claude" in found:
+        raise ValueError("it names ~/.claude, the default home: name only the folders of other Claude accounts")
+    return list(dict.fromkeys(found))
+
+
+def claude_dirs(config: dict | None, strict: bool = False) -> list:
+    """Every Claude Code configuration folder synthesis serves, once each: the one this process's harness names
+    (`CLAUDE_CONFIG_DIR`, else ~/.claude), then, where the config names other Claude accounts' folders, ~/.claude and
+    each of those, in that order also when a seat's own process names one of them, so that what is built from the list
+    (the sealed set setup stages) reads the same from any process. Config that names none it can read adds none (with
+    `strict`, ValueError says why)."""
+    own = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+    try:
+        others = claude_homes(config or {})
+    except ValueError:
+        if strict:
+            raise
+        others = []
+    return list(dict.fromkeys([own] * (own not in others) + [Path.home() / ".claude"] * bool(others) + others))
+
+
+def harness_settings(claude: tuple = ()) -> list:
     """Each harness's hook and sandbox settings, and the launch agents that run with full access: what an approval rests
     on as much as the runtime does, so a write there waits for the principal's code (the guard's sandbox, design 2.1).
-    The plugin caches are not among them: the skills' scripts run from there, and the sandbox seals them for a shell."""
+    The plugin caches are not among them: the skills' scripts run from there, and the sandbox seals them for a shell.
+    `claude`: the Claude Code folders whose settings these are (default: the one this process's harness names)."""
     env, user = os.environ, Path.home()
-    claude, muse = Path(env.get("CLAUDE_CONFIG_DIR") or user / ".claude"), Path(env.get("XDG_CONFIG_HOME") or user / ".config") / "muse"
-    return [claude / "settings.json", claude / "settings.local.json", codex_home() / "config.toml", codex_home() / "hooks.json", muse,
-            user / "Library" / "LaunchAgents"]
+    claude, muse = [Path(c) for c in claude] or [Path(env.get("CLAUDE_CONFIG_DIR") or user / ".claude")], Path(env.get("XDG_CONFIG_HOME") or user / ".config") / "muse"
+    return [p for c in claude for p in (c / "settings.json", c / "settings.local.json")] + [
+        codex_home() / "config.toml", codex_home() / "hooks.json", muse, user / "Library" / "LaunchAgents"]
 
 
 def desktop_dir() -> Path:
