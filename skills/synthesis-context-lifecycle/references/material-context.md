@@ -19,7 +19,8 @@ project's own files.
 
 Use this protocol during ordinary project work when a source introduces or
 changes a material fact, decision, constraint, commitment, risk or question.
-Capture it before dependent work, compaction or handoff. A provisional capture
+Capture it before dependent work, compaction or handoff. A record can pass
+every check with an instruction's reason or time limit gone. A provisional capture
 may remain pending; it must remain discoverable: write it into CONTEXT.md, the
 plan, REFERENCE.md or a file under `resources/` that CONTEXT.md links to.
 
