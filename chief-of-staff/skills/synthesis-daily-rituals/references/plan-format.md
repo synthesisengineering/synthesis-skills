@@ -5,6 +5,9 @@ synthesis-console's `docs/cockpit-design.md`; the two change together.
 Cockpit Mode, the `## 📅 Calendar` section, and meeting-prep packs are
 specified in [version-history.md](version-history.md) (v2.10.0–v2.12.0);
 the draft fence and numbering conventions in v2.5.0 and v2.6.0 there.
+Every day-start briefs each meeting the principal plans to attend and links
+the briefs under `## 📋 Prep packs` ([day-start.md](day-start.md), Step 1a);
+a brief keeps the v2.12.0 pack's file contract.
 
 ## Daily Plan Structure: Preserve and Reorganize
 
@@ -44,6 +47,10 @@ The daily plan follows this canonical structure. On each update, consolidate int
 [H3 question per decision. Each H3 has **Option A:** / **Option B:** lines,
  a **Consequences:** line when it commits the principal's time, and a **Recommendation:** line. The cockpit renders option buttons that record
  a `**Decided:** Option X — <ISO>` marker back to the file on click.]
+
+## 📋 Prep packs                  ← one line per same-day brief, in start order (day-start Step 1a)
+- [HH:MM–HH:MM] · [Meeting title] · [[file name]](absolute path)
+Not briefed: [the declined meetings; the holds; any calendar a GAP left unread]
 
 ## Priority Tasks                  ← cockpit: TODAY region
 ### Do today — not negotiable      ← collapsible bucket (P0, expanded by default)
@@ -112,6 +119,10 @@ Within each section, the parser also recognizes structural patterns. Adhering to
 **Travel section** (`## Travel: needs your attention`), in a workspace that checks travel:
 - One H3 per in-person event the travel check flagged, in date order, with what it lacks, word for word from `travel_check.py`. It leaves the plan when the event's address, travel line and both blocks are in place, or the principal has decided not to go.
 - **A leaving or returning time anywhere in a plan or a draft is taken from a travel block and says which block.** "You leave about 6" and "back around 11" are estimates; on 2026-11-11 both went out with no source, and the real train reached home at 11:48.
+
+**Prep packs section** (`## 📋 Prep packs`), on every day with a meeting to brief ([day-start.md](day-start.md), Step 1a):
+- One line per brief in start order: `- HH:MM–HH:MM · <title> · [<file name>](<absolute path to the brief>)`, with `(refreshed)` after a lead-time pack the day-start refreshed. The first is the brief surfaced in the reply before its meeting.
+- Then one line, `Not briefed:`, naming the declined meetings and the holds; each meeting of unclear attendance stands in the decisions as attend or not. A `GAP` line from `meeting_briefs.py` is written here word for word, since the meetings of a calendar not read are unknown, not none.
 
 **Critical deadlines section** (`## Critical deadlines: needs your attention`):
 - The first H2 of the plan from seven days before the earliest critical deadline until every one is closed, and the first thing in every brief. One H3 per deadline, in date order.
