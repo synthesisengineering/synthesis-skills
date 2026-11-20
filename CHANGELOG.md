@@ -4,6 +4,22 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.28.1] - 2026-11-19
+
+- **synthesis-decision-packet 2.5.0, rewritten to the skill-writing standard** (BACKLOG B1). Every binding rule is stated
+  whole, with when it applies and why; When to use it moves word for word into `references/background.md`, and the
+  2.4.0 text stays verbatim in `references/preserved.md`. The first text's gate found it weaker on one limit, on both
+  models in the same case: asked for a packet of six unlike decisions, the answers built one (Opus 14 of 18 against
+  18, Sonnet 12 of 18 against 16, on the when-not checks). So rule 7 now asks for five or more decisions of the same
+  shape, each with a recommendation, and binds the four limits of When NOT to use it even against a request for a
+  packet; the three sentences on what the generator refuses move word for word to `references/enforcement.md`. Gate
+  at six repetitions against the pinned earlier text, nothing weaker and something better on both models: Opus 100%
+  (144 of 144) against 94% (136 of 144), Sonnet 98% (141 of 144) against 99% (142 of 144), when-not 18 of 18 on each.
+- **The ritual settings are read under the workspaces root synthesis names** (`SYNTHESIS_WORKSPACES`, else
+  `~/workspaces`, as the guard reads it). 5.27.1's reader took the real home's folder whatever a machine or a test
+  set, so six ritual tests failed on any Mac that keeps a workspace's own settings, and none on CI's runners; every
+  test now starts with an empty workspaces root. Tests first.
+
 ## [5.28.0] - 2026-11-19
 
 - **synthesis-slack-sync 4.1.0: the principal's own messages are searched by member id, never `from:me`** (BACKLOG

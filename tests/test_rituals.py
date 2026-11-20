@@ -161,7 +161,8 @@ def test_owed_today_needs_every_expected_workspace_closed(isolated_home):
 def test_the_nudge_entry_point_fails_toward_nudging(isolated_home, tmp_path):
     def owed(env_home):
         return subprocess.run([sys.executable, "-S", str(ROOT / "synthesis" / "rituals.py"), "--owed-today"],
-                              env={"SYNTHESIS_HOME": str(env_home), "PATH": "/usr/bin:/bin"}, capture_output=True).returncode
+                              env={"SYNTHESIS_HOME": str(env_home), "PATH": "/usr/bin:/bin",
+                                   "SYNTHESIS_WORKSPACES": os.environ["SYNTHESIS_WORKSPACES"]}, capture_output=True).returncode
     assert owed(tmp_path / "empty") == 0
     log(isolated_home, rec("day-start", "alpha", date.today()))
     assert owed(isolated_home) == 1
@@ -350,6 +351,22 @@ def test_a_link_whose_repository_is_not_on_this_machine_is_none(isolated_home, t
     (tmp_path / "workspaces" / "alpha" / "ai-knowledge-alpha" / ".agents" / "rituals.json").unlink()
     assert linked.is_symlink() and rituals.workspace_files() == []
     assert rituals.settings(rituals.config(), "alpha")["streak"] == "none"
+
+
+def test_workspace_settings_are_read_under_the_workspaces_root_synthesis_names(isolated_home, tmp_path, monkeypatch):
+    """The ritual reader looks for workspaces where the guard does: `SYNTHESIS_WORKSPACES`, else ~/workspaces. Before,
+    it read the real home's folder whatever a test or a machine set, so a test of the rituals failed on any Mac that
+    keeps a workspace's own settings (2026-11-19: three such files on the principal's Mac, none on CI's runners)."""
+    root = tmp_path / "elsewhere"
+    (root / "alpha" / ".agents").mkdir(parents=True)
+    (root / "alpha" / ".agents" / "rituals.json").write_text(json.dumps({"streak": "none"}), encoding="utf-8")
+    monkeypatch.setenv("SYNTHESIS_WORKSPACES", str(root))
+    assert rituals.workspace_files() == [root / "alpha" / ".agents" / "rituals.json"]
+
+
+def test_every_test_starts_with_an_empty_workspaces_root(isolated_home, tmp_path):
+    """The shared fixture keeps this machine's workspaces out of every test, as it keeps its synthesis home out."""
+    assert Path(os.environ["SYNTHESIS_WORKSPACES"]).is_relative_to(tmp_path) and rituals.workspace_files() == []
 
 
 @pytest.mark.parametrize("bad, says", [("{not json", "cannot be read"), ("[1, 2]", "must be an object"),

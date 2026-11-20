@@ -97,8 +97,10 @@ def read() -> tuple[list[dict], int]:  # (records, malformed lines): a bad line 
 def workspace_files() -> list[Path]:
     """Each workspace's own ritual settings, `<workspace>/.agents/rituals.json`: kept in that workspace's private
     repository and linked there as its other manifests are, so they reach every machine by git, on any system (the
-    principal's question of 2026-11-19: iCloud is Mac-only). A link whose repository is not on this machine is none."""
-    return [f for f in sorted((Path.home() / "workspaces").glob("*/.agents/rituals.json")) if f.exists()]
+    principal's question of 2026-11-19: iCloud is Mac-only). A link whose repository is not on this machine is none. The
+    workspaces are where the guard looks for them: `SYNTHESIS_WORKSPACES`, else ~/workspaces."""
+    root = Path(os.environ.get("SYNTHESIS_WORKSPACES") or Path.home() / "workspaces")
+    return [f for f in sorted(root.glob("*/.agents/rituals.json")) if f.exists()]
 
 
 def config() -> dict:  # an unreadable file raises: refuse rather than guess

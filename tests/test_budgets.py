@@ -2972,8 +2972,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # the value read 1, none declared 2, the strip 1, the member-id check 2, the return 1) with its 2 blank lines;
 # render_table's principal line 2; main's read of it 1; main's end 2 more (the missing principal's message over 2
 # lines, and one return for both causes in place of two returns).
-CORE_BUDGET = 26414
-PLUGIN_BUDGET = 53218
+# Then each 2 more, and the plugin 1 more besides, for 5.28.1 (the ritual reader's test isolation: C7's reader of
+# 5.27.1 read the real home's ~/workspaces whatever a machine or a test set, so six ritual tests failed on a Mac that
+# keeps a workspace's own settings, none on CI's runners): synthesis/rituals.py's workspace_files 2 more (its docstring
+# names the root, and the root read from SYNTHESIS_WORKSPACES, as the guard reads it, else ~/workspaces); the root
+# conftest.py 1 (its autouse fixture sets that root to an empty folder beside the synthesis home, for every test).
+CORE_BUDGET = 26416
+PLUGIN_BUDGET = 53221
 
 
 def _lines(files):
