@@ -460,7 +460,7 @@ def install_org_skills(repo: Path, dry_run: bool = False) -> list:
         copy = _one_copy(skill, repo, agents, ledger, dry_run)
         lines.append(f"skill {skill.name}: {copy}; {_claude_entry(skill, repo, agents, claude, ledger, backup, dry_run)}")
         for left in sorted(claude.parent.glob(f".{skill.name}.aside-*")) if claude.parent.is_dir() else []:
-            why = _matches(left, skill, repo, recorded)  # a copy an interrupted run moved aside: kept unless it holds nothing
+            why = _matches(left, skill, repo, recorded) if _spare(left, agents) else ""  # kept unless it holds nothing
             if dry_run:
                 said = f"would remove it (it matches {why})" if why else f"would keep it in a dated backup under {backup.parent}"
             elif why:
@@ -495,15 +495,30 @@ def _one_copy(skill: Path, repo: Path, agents: Path, ledger: dict, dry_run: bool
 
 
 def _claude_entry(skill: Path, repo: Path, agents: Path, claude: Path, ledger: dict, backup: Path, dry_run: bool) -> str:
-    """Claude Code's entry for the skill, as the relative link to its one copy, checked before and after it changes: a
-    link of the person's to elsewhere stays; a second copy is moved aside, compared, and removed or kept in `backup`."""
-    text = f"../../.agents/skills/{skill.name}"
-    if claude.is_symlink():
-        if os.readlink(claude) != text:
-            return (f"would keep {claude}" if dry_run else f"{claude} kept") + f" (a link to {os.readlink(claude)}, not setup's)"
+    """Claude Code's entry for the skill, as a relative link to its one copy worked out from where each folder really is,
+    and checked before and after it changes. Entries that are one folder (either skills folder linked to the other, or one
+    skill's entry linked to the other's) are one copy, and nothing changes; a link of the person's to elsewhere stays;
+    setup's own link that leads elsewhere or nowhere is put right; a second copy is moved aside, compared, and removed or
+    kept in `backup`. The only copy is never removed (review round 1 of C8, B1: through a linked folder it was)."""
+    text = os.path.relpath(Path(os.path.realpath(agents.parent)) / agents.name, os.path.realpath(claude.parent))
+    words, one = {f"../../.agents/skills/{skill.name}", text}, _same(claude, agents)
+    if claude.is_symlink() and os.readlink(claude) in words and (one or dry_run and not os.path.lexists(agents)):
         if not dry_run:
             ledger.pop(str(claude), None)
         return f"{claude} links to it"
+    if one:
+        if not dry_run:
+            ledger.pop(str(claude), None)  # one folder: the copy's own record stands for it
+        return f"{claude} is the same folder as {agents}, so the skill has one copy"
+    if claude.is_symlink():
+        if os.readlink(claude) not in words:
+            return (f"would keep {claude}" if dry_run else f"{claude} kept") + f" (a link to {os.readlink(claude)}, not setup's)"
+        led = f"led to {os.path.realpath(claude)}, not the copy," if os.path.exists(claude) else "led nowhere"
+        if dry_run:
+            return f"would link {claude}, which {led.rstrip(',')}, to it"
+        _link(claude, text, agents)
+        ledger.pop(str(claude), None)
+        return f"{claude} {led} and now links to it"
     if not os.path.lexists(claude):
         if dry_run:
             return f"would link {claude} to it"
@@ -525,11 +540,23 @@ def _claude_entry(skill: Path, repo: Path, agents: Path, claude: Path, ledger: d
         os.rename(aside, claude)  # the second copy back where it was
         raise
     ledger.pop(str(claude), None)
-    why = _matches(aside, skill, repo, recorded)
+    why = _matches(aside, skill, repo, recorded) if _spare(aside, agents) else ""  # never the only copy
     if why:
         _remove(aside)
         return f"{claude}, a second copy that matched {why}, was removed and now links to it"
     return f"{claude}, a second copy that differs from its source, was kept in {_keep(aside, backup)} and now links to it"
+
+
+def _same(one: Path, other: Path) -> bool:
+    """Whether two entries are there and are one folder, however either is reached: through a link of its own, or a
+    folder above it that links to the other's."""
+    return os.path.lexists(one) and os.path.lexists(other) and os.path.realpath(one) == os.path.realpath(other)
+
+
+def _spare(copy: Path, agents: Path) -> bool:
+    """Whether a copy set aside is a second copy: the skill's one copy is a folder of its own beside it, holding SKILL.md."""
+    real = Path(os.path.realpath(agents))
+    return real.is_dir() and (real / "SKILL.md").is_file() and str(real) != os.path.realpath(copy)
 
 
 def _remove(copy: Path) -> None:
@@ -562,8 +589,9 @@ def _keep(copy: Path, backup: Path) -> Path:
 
 
 def _link(entry: Path, text: str, copy: Path) -> None:
-    """Make `entry` the relative link `text`, beside it then renamed into place, and check that it reads as `copy`. A
-    link of setup's own left beside it by an interrupted run goes; it holds nothing."""
+    """Make `entry` the relative link `text`, beside it then renamed into place, and check that it reads as `copy`; one that
+    does not is taken out again, never left behind. A link of setup's own left beside it by an interrupted run goes; it
+    holds nothing."""
     entry.parent.mkdir(parents=True, exist_ok=True)
     for left in entry.parent.glob(f".{entry.name}.link-*"):
         if left.is_symlink():
@@ -576,7 +604,9 @@ def _link(entry: Path, text: str, copy: Path) -> None:
         if os.path.lexists(made):
             made.unlink()
     if os.readlink(entry) != text or os.path.realpath(entry) != os.path.realpath(copy):
-        raise setup.SetupError(f"{entry} does not lead to {copy} once linked as {text}; check both, then run this again")
+        entry.unlink()
+        raise setup.SetupError(f"{entry} does not lead to {copy} once linked as {text}, so it was taken out again; check "
+                               "both, then run this again")
 
 
 def _from_4x(dest: Path, repo: Path, skill: Path) -> bool:

@@ -128,8 +128,19 @@ def muse_record(binary: str):
     if not isinstance(data, dict) or not isinstance(data.get("plugins"), list):
         raise SetupError("Muse's plugin list is unreadable; refusing to guess whether synthesis is installed")
     records = [p.get("record") for p in data["plugins"] if isinstance(p, dict) and isinstance(p.get("record"), dict)]
-    SEEN["muse"] = {str(r.get("id")): r for r in records if str(r.get("id", "")).startswith(f"{PLUGIN}-")}
+    SEEN["muse"] = {str(r.get("id")): r for r in records if r.get("id") in collection_plugins()}
     return next((r for r in records if r.get("id") == PLUGIN), None)
+
+
+def collection_plugins() -> set:
+    """The collections' own plugin names, from the collections file: Muse names no marketplace for a plugin installed
+    from a folder, so its records are known as the collections' by these names, never by how a name starts (review
+    round 1 of C8, N4). The core's alone where the file cannot be read, so the guard is still known."""
+    try:
+        spec = json.loads((REPO / "skills" / "synthesis-skills-manager" / "assets" / "collections.json").read_text("utf-8"))
+        return {str(entry["name"]) for entry in spec["collections"].values()} | {doctor.CORE}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {doctor.CORE}
 
 
 def plugin_entry(client: str, binary: str):
@@ -726,8 +737,10 @@ def collections_builder():
 
 
 def collections_folder() -> Path:
-    """The collections setup built: the marketplace each harness installs them from, setup's own to replace."""
-    return install._home() / "collections"
+    """The collections setup built: the marketplace each harness installs them from, setup's own to replace. It is inside
+    the sealed install folder, since Claude Code reads the core's hooks there in place: the guard refuses a file tool's
+    write there, and the guard's sandbox denies it, as for the whole set's copy (review round 1 of C8, B2)."""
+    return paths.install_dir() / "collections"
 
 
 def collections_record() -> Path:
@@ -885,7 +898,8 @@ def install_collections(client: str, binary: str, spec: dict, chosen: list, vers
     so a harness whose core does not install gets no collection. Collections it holds already stay, and are brought up
     to the folder (Claude Code reads a folder marketplace's plugin in place; Codex copies one at each add; Muse records
     each bundle's folder and is updated from it). A harness that holds the whole set has every collection: it is
-    updated as the whole set; one with the whole set and the core both is refused."""
+    updated as the whole set; one with the whole set and the core both is refused, and so is a core installed but
+    disabled, before anything is installed beside a guard that does not run (review round 1 of C8, B4)."""
     entries, folder, market = spec["collections"], collections_folder(), spec["marketplace"]["name"]
     core = entries[spec["core"]]["name"]
     whole, held = holdings(client, binary)
@@ -898,10 +912,13 @@ def install_collections(client: str, binary: str, spec: dict, chosen: list, vers
         return [install_plugin(client, binary, dry_run=dry_run),
                 f"{client}: holds the whole set, {PLUGIN}, which has every collection and the guard, so --collections added "
                 f"nothing here; to keep only the collections, remove it (`{remove}`) and run this again"]
+    if (held.get(core) or {}).get("enabled") is False:
+        raise SetupError(off(client, core, market, "so its hooks, the guard, do not run there, and no collection was added "
+                                                   "beside it"))
     dirs = {entries[name]["name"]: name for name in collections_builder().order(spec)}
     wanted = [plugin for plugin, name in dirs.items() if plugin == core or name in chosen or plugin in held]
     if client == "muse":
-        steps, moved = _muse_collection_steps(binary, wanted, held, dirs, folder), False
+        steps, moved = _muse_collection_steps(binary, wanted, held, dirs, folder, core), False
     else:
         steps, moved = _marketplace(client, binary, market, folder)
         for plugin in wanted:
@@ -921,29 +938,44 @@ def install_collections(client: str, binary: str, spec: dict, chosen: list, vers
     after = holdings(client, binary)[1]
     if core not in after:
         raise SetupError(f"{client}: the plugin list does not show {core} after install, so the guard is not in place")
+    if after[core].get("enabled") is False:
+        raise SetupError(off(client, core, market, "after install, so its hooks, the guard, do not run there"))
     groups = (("installed", [p for p in wanted if moved or p not in held]),
               ("updated", [p for p in wanted if not moved and p in held and held[p].get("version") != version]),
               ("current", [p for p in wanted if not moved and p in held and held[p].get("version") == version]))
-    off = [p for p in wanted if p in after and after[p].get("enabled") is False]
+    down = [p for p in wanted if p in after and after[p].get("enabled") is False]
     return [f"{client}: " + "; ".join(f"{verb} {', '.join(group)}" for verb, group in groups if group) + f" (from {folder}); "
-            f"{core} carries the guard" + (f"; disabled, so enable it in the harness's plugin settings: {', '.join(off)}" if off else "")
+            f"{core} carries the guard" + (f"; disabled, so enable it in the harness's plugin settings: {', '.join(down)}" if down else "")
             + (f"; to let its guards run, approve its hooks yourself with `muse plugins approve {core}`" if client == "muse" else "")]
 
 
-def _muse_collection_steps(binary: str, wanted: list, held: dict, dirs: dict, folder: Path) -> list:
+def off(client: str, core: str, market: str, why: str) -> str:
+    """The refusal for a core installed but disabled, naming how each harness turns it back on."""
+    enable = {"claude": f"enable it with `claude plugin enable {core}@{market}`",
+              "codex": f"set `enabled = true` under `[plugins.\"{core}@{market}\"]` in {paths.codex_home() / 'config.toml'}",
+              "muse": "enable it in Muse's plugin settings"}[client]
+    return f"{client}: {core} is installed but disabled {why}: {enable}, then run this again"
+
+
+def _muse_collection_steps(binary: str, wanted: list, held: dict, dirs: dict, folder: Path, core: str) -> list:
     """Muse installs each collection from its own folder, which it records: an install for a new one, an update for one
-    installed from setup's folder; one installed from anywhere else is refused, with the command that removes it."""
+    installed from setup's folder. Those installed from anywhere else are refused together, with the commands that remove
+    them, the core last, so following them never leaves a collection without its guard (review round 1 of C8, N1)."""
     help_text = run([binary, "plugins", "--help"], 30).stdout
     if not all(re.search(rf"(?m)^\s+{verb}\b", help_text) for verb in ("list", "install", "update")):
         raise SetupError("muse: this build's `plugins` command lacks list, install or update; update Muse first")
-    steps = []
+    steps, foreign = [], {}
     for plugin in wanted:
         bundle, record = folder / dirs[plugin], held.get(plugin)
         source = str(((record or {}).get("source") or {}).get("path") or "")
         if record and os.path.realpath(source) != os.path.realpath(bundle):
-            raise SetupError(f"muse: {plugin} is installed from {source or 'a marketplace'}, which setup does not own; remove "
-                             f"it with `muse plugins remove {plugin}` and run this again")
+            foreign[plugin] = source or "a marketplace"
         steps.append([binary, "plugins", "update", plugin, "--json"] if record else [binary, "plugins", "install", str(bundle), "--json"])
+    if foreign:
+        names = sorted(foreign, key=lambda plugin: plugin == core)
+        raise SetupError(f"muse: {_listed(names)} {'is' if len(names) == 1 else 'are'} installed from folders setup does not "
+                         f"own ({', '.join(f'{p} from {foreign[p]}' for p in names)}); remove {'it' if len(names) == 1 else 'them'} "
+                         f"with {', then '.join(f'`muse plugins remove {p}`' for p in names)}, and run this again")
     return steps
 
 
@@ -952,7 +984,11 @@ def remove_collections(client: str, binary: str, dry_run: bool = False) -> list:
     just read shows them, and Codex's own marketplace where that listing did not."""
     held = dict(SEEN.get(client, {}))
     if client == "codex" and not held:
-        held = doctor.codex_entries(_parsed(binary, doctor.CORE_LISTINGS["codex"], LIST_TIMEOUT), paths.codex_home(), whole=False)
+        listed = _parsed(binary, doctor.CORE_LISTINGS["codex"], LIST_TIMEOUT)
+        if listed is None:  # what cannot be read may hold the core (review round 1 of C8, N6)
+            raise SetupError(f"codex: `{' '.join(doctor.CORE_LISTINGS['codex'])}` printed no list, so whether {doctor.CORE} is "
+                             "installed there cannot be told")
+        held = doctor.codex_entries(listed, paths.codex_home(), whole=False)
     if not held:
         return []
     market, gone = doctor.COLLECTIONS, sorted(held, key=lambda plugin: (plugin == doctor.CORE, plugin))
@@ -1369,13 +1405,14 @@ def _uninstall(clients: list, dry_run: bool, session: dict | None = None) -> int
         print(f"{exc}\nstopped: nothing was removed, and the runtime stays, since the hooks declared in Codex's own "
               "hooks.json run it; mend the file and run uninstall again")
         return 1
-    guarded = []  # harnesses whose collections' core could not be taken out: its hooks run the runtime, which stays
+    guarded = []  # harnesses that may still hold a guard, whose hooks run the runtime: it stays (review round 1 of C8, N6)
     for client in clients:
         binary = doctor.find_client(client)
         try:
             entry = plugin_entry(client, binary) if binary else None
-        except SetupError as exc:
+        except SetupError as exc:  # a list that cannot be read may hold the whole set or the core
             lines.append(str(exc))
+            guarded.append(client)
             continue
         if not entry:
             lines.append(f"{client}: {PLUGIN} not installed")
@@ -1392,8 +1429,9 @@ def _uninstall(clients: list, dry_run: bool, session: dict | None = None) -> int
             lines.append(str(exc))
             guarded.append(client)
     if guarded:
-        print("\n".join(lines + [f"stopped: the runtime stays, since {doctor.CORE} is still installed in {', '.join(guarded)} "
-                                 "and its hooks run it; take it out there, then run uninstall again"]))
+        print("\n".join(lines + [f"stopped: the runtime stays, since what {', '.join(guarded)} {'holds' if len(guarded) == 1 else 'hold'} "
+                                 "could not all be read or taken out, and a guard left there runs it: without it, every call "
+                                 "there would be held; mend that, then run uninstall again"]))
         return 1
     for gone in (collections_folder(), collections_record()):  # setup's own build and record of the choice
         if os.path.lexists(gone):

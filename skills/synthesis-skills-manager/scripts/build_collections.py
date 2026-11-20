@@ -2,6 +2,7 @@
 
     python3 skills/synthesis-skills-manager/scripts/build_collections.py OUT_DIR
     python3 skills/synthesis-skills-manager/scripts/build_collections.py --check
+    python3 skills/synthesis-skills-manager/scripts/build_collections.py --tree [--dry-run]   # the release's
 
 assets/collections.json lists the collections. Each skill names its own in its SKILL.md frontmatter (metadata.category),
 or the file's awaiting_room names it while that SKILL.md has no room for the line under 8,000 bytes. A collection's
@@ -25,12 +26,15 @@ the collections, each from its folder.
 One line on stdout, and the exit code:
   OUT_DIR              built OUT_DIR: 5 collections, 73 skills, 753 files, version 5.22.0             0
   --check              ok: 5 collections, 73 skills, 753 files, version 5.22.0; nothing written        0
-  either, on a defect  refused: 2 problems; nothing written      (then each problem on its own line)    1
+  --tree               tree <id> branch collections: 5 collections, ...   (the tree, in the repository's own
+                       objects; with --dry-run, `checked branch collections: ...; nothing written`)     0
+  any, on a defect     refused: 2 problems; nothing written      (then each problem on its own line)    1
   any                  cannot continue: <why>    (the file, a manifest, a file or git cannot be read, a
                        skill holds a symbolic link, or OUT_DIR exists or cannot be written)            2
 Folders are cut from the last commit, as a package is, and a build refuses with 1 while a file it would read differs
-from that commit; `--check` reads the checkout's files. `--repo-root DIR` reads another checkout. Standard library only;
-runs on Python 3.9.
+from that commit; `--check` reads the checkout's files. A release runs `--tree` from its fresh clone, so the
+collections it publishes are built by the commit it releases, never by the runtime it runs from. `--repo-root DIR`
+reads another checkout. Standard library only; runs on Python 3.9.
 """
 
 import argparse
@@ -52,12 +56,6 @@ from build_directory_package import (MANIFEST, Unreadable, committed, count, dep
 REPO = Path(__file__).resolve().parents[3]
 if str(REPO) not in sys.path:  # the runtime's own rule for what its install takes, which the core's guard carries
     sys.path.insert(1, str(REPO))
-try:
-    from synthesis import install  # noqa: E402
-except ImportError as exc:  # no runtime beside this copy; one that fails otherwise as it loads keeps its traceback
-    print(f"{__file__} needs the synthesis runtime, which cannot be imported ({exc}), so nothing ran. Run it from a "
-          "checkout of synthesis-skills, or the core collection, which carries the runtime", file=sys.stderr)
-    sys.exit(2)
 LIST = "skills/synthesis-skills-manager/assets/collections.json"
 MANIFESTS = (".claude-plugin/plugin.json", MANIFEST, ".muse-plugin/plugin.json")  # each collection's own, at its top
 MARKETPLACES = (".claude-plugin/marketplace.json", ".agents/plugins/marketplace.json")  # at the top of the branch
@@ -152,6 +150,11 @@ def guard_paths(paths: set, install_text: str) -> set:
     byte. None where the whole set has no hooks/hooks.json, as a checkout made for a test may not."""
     if HOOKS not in paths:
         return set()
+    try:  # read only where there is a guard to carry, so a checkout with no runtime builds its collections all the same
+        from synthesis import install
+    except ImportError as error:
+        raise Unreadable(f"the whole set has {HOOKS}, and the runtime that says what its guard carries cannot be imported "
+                         f"from beside this script ({error})")
     try:
         names = install.carried_in(install_text) if install_text else ()
     except install.Refused as error:
@@ -507,13 +510,17 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="build_collections.py", description=__doc__.split("\n\n")[0])
     parser.add_argument("out", nargs="?", type=Path, help="the folder to write; it must not exist yet")
     parser.add_argument("--check", action="store_true", help="verify the collections and write nothing")
+    parser.add_argument("--tree", action="store_true", help="build from the last commit, check it, and write its git tree "
+                        "into the repository's own objects, printing `tree <id> branch <name>`: what a release commits as "
+                        "the collections branch, built by the commit it releases (review round 1 of C8, B3)")
+    parser.add_argument("--dry-run", action="store_true", help="with --tree: build and check, and write nothing")
     parser.add_argument("--repo-root", type=Path, default=REPO)
     args = parser.parse_args(argv)
-    if bool(args.out) == args.check:
-        parser.error("give the folder to write, or --check")
-    repo, commit = args.repo_root.resolve(), bool(args.out)
+    if [bool(args.out), args.check, args.tree].count(True) != 1 or args.dry_run and not args.tree:
+        parser.error("give the folder to write, --check, or --tree (with --dry-run, or not)")
+    repo, commit = args.repo_root.resolve(), bool(args.out) or args.tree
     try:
-        if commit and os.path.lexists(args.out):
+        if args.out and os.path.lexists(args.out):
             raise Unreadable(f"{args.out} exists; a build writes a folder of its own")
         files, modes = build(repo, commit)
         found = verify(repo, files, commit)
@@ -525,7 +532,7 @@ def main(argv=None) -> int:
         if found:
             print("\n".join([f"refused: {count(len(found), 'problem')}; nothing written"] + found))
             return 1
-        if commit:  # written whole beside OUT_DIR, then put in its place: a write that fails leaves no OUT_DIR
+        if args.out:  # written whole beside OUT_DIR, then put in its place: a write that fails leaves no OUT_DIR
             staging = Path(tempfile.mkdtemp(prefix=f".{args.out.name}.", dir=args.out.parent))
             for path, data in files.items():
                 (staging / path).parent.mkdir(parents=True, exist_ok=True)
@@ -537,7 +544,12 @@ def main(argv=None) -> int:
         skills = {path.split("/")[2] for path in files if path.split("/")[1:2] == ["skills"]}
         holds = (f"{count(len(spec['collections']), 'collection')}, {count(len(skills), 'skill')}, "
                  f"{count(len(files), 'file')}, version {version}")
-        print(f"built {args.out}: {holds}" if commit else f"ok: {holds}; nothing written")
+        branch = spec.get("branch", "collections")
+        if args.tree:  # the tree from memory into the repository's own objects, held to the files built
+            print(f"checked branch {branch}: {holds}; nothing written" if args.dry_run else
+                  f"tree {tree(repo, files, modes)} branch {branch}: {holds}")
+        else:
+            print(f"built {args.out}: {holds}" if commit else f"ok: {holds}; nothing written")
         return 0
     except (Unreadable, OSError) as error:
         print(f"cannot continue: {error}")
