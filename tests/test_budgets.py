@@ -2982,8 +2982,24 @@ ROOT = Path(__file__).resolve().parents[1]
 # the top of config.json): synthesis/rituals.py's config() refuses a word list left at the top, naming where it goes
 # (the check with its comment 1, the message over 2 lines). decay_sweep.py's collect() reads both lists from the
 # workspace's settings in the same 2 lines it read them from the top in.
+# Then the plugin 428 more, all in synthesis-daily-rituals' new meeting_briefs.py, for BACKLOG A24 (the principal's
+# request of 2026-11-20, relayed by the operations seat: same-day meeting briefs a required step of the day-start);
+# the core is as it was. judge 75 (the preferences' zone, addresses, hold title and markers, each a list of strings
+# and no marker a plain word, as slot_check.py holds; the read's window, calendars and entries checked, nothing judged
+# on one it cannot read; the principal known by a self mark or an address, or the read refused; each meeting put in
+# its group, a brief with the principal's part, the agenda and the links; the packs no meeting to brief has, each with
+# why; the first still to brief), report 41 (the first line, each gap, each brief with its agenda and links, the lines
+# apart and the counts), read_events 34 (today's entries, one meeting however many calendars carry it, the principal's
+# answers over every copy), assign 29 (a pack by its Event line, then by title or file name at the same start, then at
+# another, which says it moved; a new brief's path never over a file there), main 28 (the preferences read only where
+# they are or are named, the read, the text or the JSON, the exit code), the constants 28, the docstring with its
+# first line 28, packs_of 25 (the day's packs by file name, a pack that cannot be read refused), classify 23,
+# agenda_of 19, moment 16 (a fraction of a second Python 3.9 cannot read taken off), the imports 13, combine 12,
+# links_of 11 (the ways into the call left out), the closing guard 11 (a refusal is exit 2 and one line, never a
+# traceback), is_hold 7, mine 7, plain 6, slug 5, stop 4, norm 4 and the bytecode line 2, each with the blank lines
+# after it.
 CORE_BUDGET = 26419
-PLUGIN_BUDGET = 53224
+PLUGIN_BUDGET = 53652
 
 
 def _lines(files):

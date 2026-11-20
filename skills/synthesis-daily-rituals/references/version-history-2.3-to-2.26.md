@@ -38,6 +38,9 @@ Contents:
 
 ## v2.26.0 — Lead-time meeting preps: high-stakes meetings get prepared a business day ahead
 
+> Note (2026-11-20): on the meeting's day, the day-start's required briefs step refreshes a lead-time pack in place,
+> and every workspace briefs its same-day meetings, with or without this config ([day-start.md](day-start.md), Step 1a).
+
 Same-day prep packs (v2.12.0) are right for routine meetings and structurally wrong for
 high-stakes ones: a strategy-bearing 1:1 prepared minutes before it starts gets a summary of
 what the *agent* has been processing lately, not what the *counterpart* cares about —
@@ -285,6 +288,10 @@ In v2.13.0 (2026-07-08), the source-code sync steps (Day-Start 3a, Day-End 2) en
 In v2.12.1 (2026-07-08), the source-code sync steps (Day-Start 3a, Day-End 2) drop the "associated with active work" qualifier from v2.7.0. The workspace's `AGENTS.md` "Workspace Repos" table is the COMPLETE decision about what to sync: every repo the table marks **Yes** gets synced on every ritual run, whether or not it feels active. The agent must not re-apply its own judgment about which repos are "active" — that judgment layer is exactly what let a collaborator repo drift unnoticed for ~6 weeks (its default branch still tracked a legacy remote after a Git-host migration, silently accumulating "unpushed" commits that the repo guard then flagged repeatedly). Wherever the "associated with active work" phrasing survives in older version notes below, this rule supersedes it. A workspace that wants a repo excluded marks it **No** in the table, with the reason.
 
 ## v2.12.0 — Cockpit Mode: meeting-prep packs (`meeting-preps/` + `## 📋 Prep packs`)
+
+> Note (2026-11-20): the meeting-prep step this section made optional is a required day-start step, for every meeting
+> the principal plans to attend, the earliest first ([day-start.md](day-start.md), Step 1a). The file contract below is
+> the briefs' file contract.
 
 In v2.12.0, the Day-Start ritual gains an optional **meeting-prep step** (runs inside Step 6, after the calendar fetch): for each substantive meeting on today's calendar, write a one-pager prep pack to `<knowledge-root>/meeting-preps/YYYY-MM-DD-HHMM-slug.md` and index today's packs in the day plan under a `## 📋 Prep packs` H2 (one list line per pack, linking to the consumer's `/prep/<source>/<slug>` route or the file path).
 

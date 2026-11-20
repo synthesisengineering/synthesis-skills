@@ -6,6 +6,27 @@ design choices, the config schemas each version introduced — so the main
 document can stay within the repository's size limit for a `SKILL.md`
 (8,000 bytes since v5; 500 lines before it) without losing the reasoning. Newest first.
 
+## The incidents behind binding rules 2, 3, 12 and 16
+
+Moved word for word from the ends of those rules in SKILL.md, to make room there for binding rule 18 (same-day meeting
+briefs, [day-start.md](day-start.md), Step 1a). Each rule keeps its words before the passage.
+
+- Rule 2, the declared lists decide: "a judgment layer let a repo drift unseen for six weeks."
+- Rule 3, a run proves its own coverage: "2026-09-01: a 09:15 read hid a 09:27 answer."
+- Rule 12, a critical deadline is never one item among many: "An enrollment window once closed as one dated row among a hundred."
+- Rule 16, what another person relies on is checked first: "A test two colleagues relied on once stopped, unseen through two check-ins."
+
+## v3.20.0 — Same-day meeting briefs at day-start
+
+The principal's request of 2026-11-20, relayed by an operations seat: same-day prep becomes a required day-start
+step. After the live calendar read, `meeting_briefs.py` sorts the day's meetings: the ones to brief (accepted, optional
+ones included), each existing lead-time pack to refresh rather than rewrite, declined meetings, holds and unclear
+attendance listed apart, and a calendar that could not be read reported as a coverage gap, never as a day without
+meetings; the earliest meeting comes first. Each brief is built with synthesis-meeting-prep, led by the purpose and the
+decision or ask, written as a private note and linked in the plan (day-start Step 1a, with Steps 4, 6 and 8). Binding
+rule 18 carries the step; to make room, the incident sentences of rules 2, 3, 12 and 16 moved here word for word, a
+move the principal saw and approved before it was committed.
+
 ## v3.10.0 — What other people rely on
 
 v3.10.0 (2026-11-12) adds a health check of everything a person other than the principal relies

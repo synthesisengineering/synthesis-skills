@@ -94,6 +94,7 @@ Use this variant whenever the board (`synthesis who`) shows other live seats —
 - Full sync reads (fetch, channel reads, transcript capture) — reads never need a window
 - `sync_watermark.py advance` for each target this ritual read and saved, and the end-of-sync gate (rule 4)
 - The decay sweep, `decay_sweep.py --alert`: it only reads (rule 4)
+- The same-day meeting briefs (day-start Step 1a): each brief's file claimed by itself (rule 1), and a pack inside a live seat's claim refreshed through that seat
 - Daily plan creation with the `decision`/`deferred` lines the rules above produce
 - CONTEXT.md + session archive updates for the ritual's own files
 - `ritual_state.py record` with `--mode concurrent-seats`
