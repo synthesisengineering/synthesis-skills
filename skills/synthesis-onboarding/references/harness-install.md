@@ -13,7 +13,7 @@
 - [Hook trust stays with the person](#hook-trust-stays-with-the-person)
 - [An approval that lasts through releases (`--codex-user-hooks`)](#an-approval-that-lasts-through-releases---codex-user-hooks)
 - [Restart, verify, uninstall](#restart-verify-uninstall)
-- [One collection instead of the whole set](#one-collection-instead-of-the-whole-set)
+- [Pick your collections (`--collections`)](#pick-your-collections---collections)
 
 ## What setup does, in order
 
@@ -443,48 +443,122 @@ person's that Codex would not read is a `codex hooks file` warning of its own.
   unedited, and keeps `config.json` and `state/` (settings, board, approvals), saying
   what it kept.
 
-## One collection instead of the whole set
+## Pick your collections (`--collections`)
 
-The whole set is what setup installs, and what to recommend: it alone has the hooks, the
-runtime, the guards, the board and the rituals' state. For a person who wants one
-discipline and no hooks, each release also publishes five collections, plugins of the
-same skills grouped by what they do, as the `collections` branch of this repository: core
-(`synthesis-skills-core`, which every other collection builds on), project management,
-engineering, writing and chief of staff (`synthesis-skills-<name>`). Each skill names its
-collection in its frontmatter (`metadata.category`); the README lists every collection's
-skills, and the skills manager's `references/collections.md` says how they are built.
+The principal's ruling C8 (2026-11-20): someone may want only the synthesis writing skills, and
+the core skills and the guards those need come with them; adding another collection later is
+easy. So setup takes `--collections` with `plugin` or the full install:
 
-Setup does not install a collection; each harness's own commands do, with no approval
-step, since a collection registers no hook. For engineering:
+```bash
+python3 "$S" plugin --collections writing          # the writing collection, the core and the guard
+python3 "$S" plugin --collections engineering      # later: adds engineering, keeps writing
+python3 "$S" plugin                                # an update: keeps and updates the ones chosen
+```
+
+`onboard.sh` passes the same (`curl -fsSL .../onboard.sh | sh -s -- plugin --collections writing`).
+The names are the collections file's: core, project-management, engineering, writing and
+chief-of-staff, comma-separated; a name that is none of them is refused, with all five named,
+before anything changes. With no `--collections` and none chosen before, the whole set stays
+what setup installs. `--dry-run` lists the build, every harness command, the record and the
+runtime, and writes nothing.
+
+### The design: the core carries the guard
+
+Each release builds the five collections with the skills manager's `build_collections.py` and
+publishes them as the `collections` branch. The core collection (`synthesis-skills-core`) now
+carries the whole set's guard as well as its skills: `hooks/hooks.json`, which Claude Code and
+Codex read by its place; the hooks Muse's manifest registers, with their scripts; and the runtime
+those hooks run, exactly what the runtime's install takes (`install.takes`: the runtime package,
+the scripts of each skill it keeps at a stable path, and the CHANGELOG), every byte the whole
+set's. Its runtime therefore hashes as the whole set's, so the doctor's package check holds a
+collections install to the runtime as it holds the whole set, and a first session start can
+install the runtime from the core's own folder. The other four hold no hook; each depends on the
+core. The build refuses a core that does not hold the guard as the whole set holds it, and a hook
+in any other collection.
+
+Setup builds the same five folders from the files git tracks in its own checkout
+(`~/.synthesis/v5/source`, or the git checkout it runs from; a copy that is no git checkout is
+refused) into `~/.synthesis/v5/collections`, checked before anything changes: a
+build that fails its check, or whose core lacks a hook, a hook script or the runtime's hook entry,
+installs nothing. It installs the runtime first, as for the whole set, then the core and the
+chosen collections in every harness it finds, the core first, so a harness whose core does not
+install gets no collection. The choice is recorded in `~/.synthesis/v5/install/collections.json`:
+a later `setup.py plugin` keeps it, and `--collections` adds to it. The collections installed
+are this checkout's release; `--ref` picks only the whole set's.
+
+### What each harness supports, and what setup runs
+
+Probed with Claude Code 2.1.316 and Codex 0.169.1 in empty homes on 2026-11-20:
+
+- **Claude Code** adds a folder as a marketplace: `claude plugin marketplace add
+  ~/.synthesis/v5/collections`, then `claude plugin install synthesis-skills-core@synthesis-collections`
+  and each collection. It installs a plugin's declared dependency with it (a collection names the
+  core), runs an enabled plugin's hooks with no approval step, and reads a folder marketplace's
+  plugin in place: its list names the folder (`readFromFolder`), `claude plugin update` says there
+  is nothing to update, and edits there take effect at the next session start. So a rebuild of
+  the folder is the update; setup runs `claude plugin marketplace update synthesis-collections`
+  and installs only what the harness does not hold yet. Removing a marketplace uninstalls its
+  plugins, so a `synthesis-collections` marketplace from elsewhere (the branch on GitHub) is
+  removed, added again from the folder, and every collection it held installed again.
+- **Codex** adds a local marketplace: `codex plugin marketplace add ~/.synthesis/v5/collections --json`,
+  then `codex plugin add synthesis-skills-core@synthesis-collections` and each collection. It
+  resolves no dependency, so the core is its own line; it copies the plugin into its cache at each
+  `add`, so every run adds each again; and `codex plugin marketplace upgrade` refuses a local
+  marketplace ("not configured as a Git marketplace"), so setup never runs it there. The core's
+  hooks wait for the person's approval in `/hooks`, keyed by
+  `synthesis-skills-core@synthesis-collections`, as the whole set's are by its own id; with
+  `--codex-user-hooks` setup declares them in Codex's `hooks.json` and switches the core's
+  copies off by those keys. Codex is asked for the whole set's marketplace and the collections'
+  only; its whole listing, which may fetch the remote catalog, only when neither shows the guard,
+  since absent is said only from there.
+- **Muse** installs each collection from its own folder of the build, `muse plugins install
+  ~/.synthesis/v5/collections/<name> --json`, and records that folder; later runs refresh it and
+  run `muse plugins update <plugin> --json`, as for the whole set's bundle. A collection Muse holds
+  from anywhere else is refused, with the command that removes it. The core's hooks wait for
+  `muse plugins approve synthesis-skills-core`. Muse was not run in these probes (its launcher
+  updates itself and signs in first); its commands are the ones setup already runs for the whole
+  set on every release, and the tests hold setup to them.
+
+### One guard in each harness
+
+A harness that holds the whole set has every collection already: `--collections` adds nothing
+there, says so with the command that removes the whole set, and updates it as before. Setup never
+installs the whole set beside the core: the whole set's install is refused where the listing shows
+the core, naming the command that updates the collections. The doctor holds the core to every check
+it holds the whole set to (installed and enabled, its bytes the runtime's, its hooks wired,
+approved where the harness asks), and fails a harness that holds both, since each hook would run
+twice and a call both copies judge is held even once approved, or a collection with no core.
+
+`setup.py uninstall` takes the collections out of each harness too, the core last, with their
+marketplace, the built folder and the record, before it removes the runtime; while a core it could
+not remove is still installed, the runtime stays and uninstall exits 1, since that core's hooks
+would hold every guarded call without it.
+
+### Without setup
+
+The published branch holds the same folders, so each harness's own lines install a collection with
+the guard: Claude Code brings the core as the collection's dependency, and the Codex and Muse lines
+name it. For engineering:
 
 - **Claude Code:** `claude plugin marketplace add synthesisengineering/synthesis-skills@collections`,
-  then `claude plugin install synthesis-skills-engineering@synthesis-collections`, which
-  installs the core with it as its declared dependency.
+  then `claude plugin install synthesis-skills-engineering@synthesis-collections`.
 - **Codex:** `codex plugin marketplace add synthesisengineering/synthesis-skills --ref collections`,
   then `codex plugin add synthesis-skills-core@synthesis-collections` and
-  `codex plugin add synthesis-skills-engineering@synthesis-collections`. Codex resolves
-  no dependency between plugins, so the core is its own line.
+  `codex plugin add synthesis-skills-engineering@synthesis-collections`.
 - **Muse:** `muse plugins marketplace add synthesis-collections https://github.com/synthesisengineering/synthesis-skills.git#collections`
   (Muse names a branch after `#`), then `muse plugins install synthesis-skills-core@synthesis-collections`
   and `muse plugins install synthesis-skills-engineering@synthesis-collections`.
 
-To update after a release: in Claude Code, `claude plugin marketplace update synthesis-collections`,
-then `claude plugin update` for the core and for each collection (updating a collection
-leaves its dependency as it was); in Codex, `codex plugin marketplace upgrade synthesis-collections`,
-then `codex plugin add` for each again; in Muse 1.4.20, `muse plugins marketplace update synthesis-collections`,
-then `muse plugins remove <plugin>` and `muse plugins install <plugin>@synthesis-collections`
-for each, since `muse plugins update` refreshes from the snapshot it installed from. Each
-of these was run in isolated harness homes on 2026-11-14, from a local copy of the branch.
-
-What a collection does not have: no hook runs, so nothing checks a send, a deploy or a
-commit and no approval code exists; there is no `synthesis` command, so no board, claims,
-doctor or handoff. A collection whose scripts read settings carries the runtime's YAML
-reader for them, so they run from its folder; the eleven scripts the collections file names
-as needing the whole set (the rituals' record tools, autopilot's, setup, workspace, release
-and Codex dispatch) say so in one line. A collection is installed in a folder of its own,
-apart from the core's, so a link that would lead from it into another skill's folder points
-instead at that file on GitHub at the release's tag. To move to the whole set, install it as above (its marketplace sits beside
-the collections' in every harness), then remove each collection and the core, so that no
-skill is installed twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`
-(Claude Code keeps the core when the collection that brought it goes),
+Then approve the core's hooks where the harness asks (Codex's `/hooks`, `muse plugins approve
+synthesis-skills-core`). The first session start installs the runtime from the core's folder where
+none is installed, as the whole set's does. The branch follows the latest release, so this runtime
+moves only with `setup.py plugin` or the release script; a session start never replaces one. To
+update after a release: in Claude Code, `claude plugin marketplace update synthesis-collections`,
+then `claude plugin update` for the core and each collection; in Codex, `codex plugin marketplace
+upgrade synthesis-collections`, then `codex plugin add` for each again; in Muse 1.4.20, `muse plugins
+marketplace update synthesis-collections`, then `muse plugins remove <plugin>` and `muse plugins
+install <plugin>@synthesis-collections` for each, since `muse plugins update` refreshes from the
+snapshot it installed from (each run in isolated harness homes on 2026-11-14). To move to the whole
+set, install it as above, then remove each collection and the core, the core last, so that no hook
+runs twice: `claude plugin uninstall <plugin>@synthesis-collections --yes`,
 `codex plugin remove <plugin>@synthesis-collections`, or `muse plugins remove <plugin>`.

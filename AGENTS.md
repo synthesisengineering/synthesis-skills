@@ -19,9 +19,11 @@ Codex and Muse while remaining compatible with the Agent Skills standard.
 - `skills/synthesis-onboarding/scripts/setup.py` installs the native plugin in
   each harness; native plugins are the only installation path.
 - `skills/synthesis-skills-manager/assets/collections.json` lists the five
-  collections, plugins without hooks that each release builds from `skills/` and
-  publishes as the `collections` branch; each skill names its own in its frontmatter
-  (`metadata.category`). That branch is a build output: never edit it by hand.
+  collections, plugins that each release builds from `skills/` and publishes as the
+  `collections` branch, and that setup's `--collections` installs; the core carries the
+  whole set's guard, its hooks and their runtime, so no collection installs without it.
+  Each skill names its own in its frontmatter (`metadata.category`). That branch is a
+  build output: never edit it by hand.
 
 Never edit installed plugin caches or user-level skill copies. Make the change
 here, verify it, merge it to `main`, then update the installed plugins.

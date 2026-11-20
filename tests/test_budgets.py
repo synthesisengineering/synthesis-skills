@@ -2982,8 +2982,44 @@ ROOT = Path(__file__).resolve().parents[1]
 # the top of config.json): synthesis/rituals.py's config() refuses a word list left at the top, naming where it goes
 # (the check with its comment 1, the message over 2 lines). decay_sweep.py's collect() reads both lists from the
 # workspace's settings in the same 2 lines it read them from the top in.
-CORE_BUDGET = 26419
-PLUGIN_BUDGET = 53224
+# Then the core 54 more and the plugin 575, for the principal's ruling C8 of 2026-11-20 (pick collections of the skills
+# in place of the whole set, the core skills and the guard coming with them, another collection easy to add later; no
+# install of synthesis skills leaves the guard out) and one fix besides. synthesis/doctor.py 53: the core's plugin and
+# marketplace named 1, and its listings beside the whole set's 1; check_plugin 2 (its docstring, and the plugin the
+# line names); check_muse_approval 1 (the approval names the plugin that carries the guard); claude_entries 12 and
+# codex_entries 16, each with its 2 blank lines (every synthesis plugin a listing shows, the whole set from any
+# marketplace and each collection from the collections', a folder marketplace's plugin read in place), claude_entry and
+# codex_entry 9 fewer (each now the whole set's entry of those); muse_entry 1 (another plugin's record is none of this
+# one's); guard_entry 14 with its 2 blank lines (the whole set or the core; both, or a collection without the core, a
+# fault); harness_checks 6 (each harness's guard entry, Codex's collections listing, Muse's core and its approvals);
+# run_checks 2 (the core's listings started beside the others). synthesis/review.py 1: Muse's approval step names the
+# core where collections are installed. The plugin 521 more beyond the core's. skills/synthesis-onboarding/scripts/
+# setup.py 339: the usage line 1; SEEN 1 and muse_record 1, plugin_entry 3 (what the whole set's listing shows of the
+# collections, kept); install_plugin 3 and install_muse 3, no_second_guard 8 with its 2 blank lines (the whole set never
+# beside the core); codex_user_hooks 1 (the guard's plugin keys its switches); the section's header comment with its
+# blank lines 11; collections_builder 7; then, each with its 2 blank lines, collections_folder 3, collections_record 2,
+# _listed 2, chosen_collections 10 (an unknown name refused with every name), recorded_collections 4, collections_wanted
+# 15, built_collections 21 (built and checked before anything changes), unguarded 7 (setup's own read of the guard in
+# the core), place_collections 32 (written whole or not at all, the folder put back on a failed swap), _parsed 6,
+# holdings 16, _marketplace 13, install_collections 48 (the core first in each harness, the whole set kept where it is,
+# the line), _muse_collection_steps 15, remove_collections 17, and guard_plugin 7 beside setup_plugins; setup_plugins 17
+# (the folder and the record, then each harness's collections, the Codex option against the guard's plugin); main 16
+# (the option, checked first, and the build before the runtime); _uninstall 15 (the collections out, the core last, the
+# runtime kept while a core stays, the folder and the record removed). workspace.py 112, for an organization's skills
+# written once in ~/.agents/skills with Claude Code's entry a relative link to that copy (Muse warned once for each
+# skill it found in both folders): install_org_skills 8 (its docstring 5 more; the dated backup folder 1; its loop 2
+# more: each skill's two places, what an earlier setup recorded writing there and the line from the two steps below 4,
+# and the copies an interrupted run left aside 10, in place of the old loop over both folders' 12; the ledger written
+# only when it changed, in its line); _one_copy 17, _claude_entry 36, _remove 5, _matches 8, _keep 10 and _link 16,
+# each with its 2 blank lines.
+# skills/synthesis-skills-manager/scripts/build_collections.py 70, the core carrying the whole set's guard: the module
+# docstring 4, the runtime's install rule imported behind the one-line refusal a script gives without it 8, the hooks'
+# paths 1; described 2 (the guard sentence); guard_paths 12 and outside 4, each with its 2 blank lines; manifests 2 (the
+# core's Muse hooks); sources 12 (the guard's files, their modes and the whole set's Muse hooks); build 6 (the guard
+# carried verbatim in the core); verify 15 (the guard held to the whole set's bytes, its missing files named, the core's
+# Muse hooks compared, a core script's reach into a carried skill's scripts allowed).
+CORE_BUDGET = 26473
+PLUGIN_BUDGET = 53799
 
 
 def _lines(files):
