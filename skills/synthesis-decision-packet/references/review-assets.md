@@ -10,6 +10,14 @@ to the canonical spec digest: revision, delivery format, destinations,
 attachments, titles, descriptions, content and byte digests. Any change starts a
 new persistence generation and invalidates the old returned summary.
 
+Contents:
+- Row contract: `revision`, `delivery`, `review_assets`
+- Text and Markdown
+- The reading path: baselines, HTML messages and reference material
+- Binary assets
+- Unavailable material
+- Authority and operational boundaries
+
 ## Row contract
 
 A row with `review_assets` must also have:
