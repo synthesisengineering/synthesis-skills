@@ -15,6 +15,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers 
   weaker and something better on both models: Opus 98% (153 of 156) against 97% (152 of 156), blind comparison won 39
   to 30 with 15 ties, seven rules won; Sonnet 97% (152 of 156) against 97% (151 of 156), won 35 to 33 with 16 ties,
   five rules won.
+- **A workspace's own critical words are read.** The deadline sweep read `critical_words` (the words that flag an
+  untagged deadline as possibly critical) and `ledger_closed_words` only at the top of `config.json`, while 5.27.1
+  moved each workspace's settings into its own file, so words written there on the principal's approval were
+  silently ignored and the workspace kept the ten built-in words (reported by an operations seat). Both lists are
+  now read from the workspace's settings, or `defaults` for every workspace; a list left at the top of `config.json`
+  is refused by name, never ignored. Tests first.
 
 ## [5.28.1] - 2026-11-19
 
