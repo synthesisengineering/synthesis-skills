@@ -27,6 +27,7 @@ that sentence word for word.
 | 2.8.2 | 2.9.0 | How |
 |---|---|---|
 | Frontmatter: name, description, license, `depends_on`, author, source, format, category | Frontmatter | Kept. The description is unchanged: it already leads with the key use case, and the evaluation harness cannot test a new one (W1) |
+| Frontmatter `version: "2.8.2"` | `version: "2.9.0"` | Bumped: a minor version, since every binding rule keeps its number and meaning and no script interface changes. No script prints the skill's version and the skill keeps no release notes of its own, so this map and preserved.md are the record of the change |
 | Title | Title | Kept |
 | Opening paragraph, first two sentences: AI collaborators start every session with zero context; a single context file grows without bound because it mixes information with different lifecycles | references/tiers-and-templates.md, The Problem | Merged: The Problem says both in nearly the same words, and background stays out of SKILL.md (W19) |
 | Opening paragraph, third sentence: "This skill splits a project's memory into three tiers, each with its own budget and update rule, and verifies them with a doctor." | Opening paragraph | Reworded: "Keeps a project's memory in three tiers of records, each with a budget and update rule, checked by a doctor" (format rule 2) |
