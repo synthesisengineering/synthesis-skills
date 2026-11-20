@@ -274,8 +274,15 @@ def assign(briefs: list, packs: list, folder: Path, day: date) -> list:
 def judge(args, read, prefs: dict) -> dict:
     guardian = prefs.get("calendar_guardian") if isinstance(prefs.get("calendar_guardian"), dict) else {}
     holds = guardian.get("holds") if isinstance(guardian.get("holds"), dict) else {}
-    hold, markers = str(holds.get("title") or "Hold"), [str(m) for m in guardian.get("personal_markers") or [] if str(m).strip()]
-    addresses = [str(a).strip().lower() for a in prefs.get("principal_addresses") or [] if str(a).strip()]
+    found, marks = prefs.get("principal_addresses") or [], guardian.get("personal_markers") or []
+    if not (isinstance(found, list) and isinstance(marks, list) and all(isinstance(x, str) for x in [*found, *marks])):
+        stop("the preferences' principal_addresses and calendar_guardian.personal_markers must each be a list of strings")
+    worded = [m for m in marks if m.strip() and not re.search(r"[^\w\s]", m)]
+    if worded:  # a word would hide every meeting whose title carries it, as slot_check.py refuses it too
+        stop(f"calendar_guardian.personal_markers holds {worded[0]!r}, a plain word a meeting's title might carry: a "
+             "marker is a tag the principal puts on their own blocks, such as #reserved")
+    hold, markers = str(holds.get("title") or "Hold"), [m for m in marks if m.strip()]
+    addresses = [a.strip().lower() for a in found if a.strip()]
     try:
         zone = ZoneInfo(str(prefs["timezone"])) if prefs.get("timezone") else datetime.now().astimezone().tzinfo
         now = datetime.fromisoformat(args.now) if args.now else datetime.now(zone)
