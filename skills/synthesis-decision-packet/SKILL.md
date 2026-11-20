@@ -26,7 +26,7 @@ These rules protect the principal's decisions and their record, so they hold aga
 4. **Save choices locally, keyed to the exact spec and item.** A change anywhere in the spec starts fresh choices, so an old click cannot silently acquire a new meaning.
 5. **Take the answers as the summary the packet generates,** pasted back, so the principal never composes the structure; their own wording (a chat reply, meeting notes) is read as text, not recorded.
 6. **File the spec, the page and the returned rulings in the owning project's `resources/artifacts/` (`build_packet.py --file-into`, `record_rulings.py --file-into`), never only as a chat artifact,** since only the folder reaches other agents and later sessions.
-7. **Put in a packet only decisions that belong to the principal.** Execute a choice the request or constraints settle and resolve a technical choice in delegated work yourself; a row is for a choice that would materially change the outcome and that their instructions and goals leave open, or one only they can make. Any other row hands back work already given, unless they explicitly asked to review it.
+7. **Put in a packet only decisions that belong to the principal, and only five or more of the same shape, each with your recommendation.** Execute a choice the request or constraints settle and resolve a technical choice in delegated work yourself; a row is for a choice that would materially change the outcome and that their instructions and goals leave open, or one only they can make. Any other row hands back work already given, unless they explicitly asked to review it. When a request meets a limit in When NOT to use it, even a request for a packet, say which limit and collect the decisions the way it names.
 8. **Write every packet for a stranger (the reader contract).** Name the reader in `audience`; give each row a plain label (an internal ID only as a chip), context saying what the thing is in the reader's words, `impact` both ways (what happens if they take your recommendation and if they don't), options labeled by what pressing them does (never a bare Yes or No) and a one-clause gloss for each term of art; build every packet for a principal with `--strict-reader`, which refuses a missing `audience` or `impact` and bare labels. Rows in project-internal language collect no decisions.
 9. **Generate every packet from its spec's data array with `build_packet.py`; never hand-author rows or hand-edit generator output.** To change a word, edit the spec and rebuild: hand-written rows drift, and `synthesis doctor`'s *decision packets* check flags a page whose integrity marker is missing or disagrees with its spec.
 10. **Show disagreement and prior positions with exact sources; never converge first.** Give each side in `disagreement` with who holds it and the principal's earlier words in `prior_position` with their source, and recommend against your own prior work where that is true: converging shows a false consensus, and a one-sided packet loses trust.
@@ -38,7 +38,6 @@ These rules protect the principal's decisions and their record, so they hold aga
 
 ## Contents
 
-- When NOT to use it: below; read it first.
 - [authoring.md](references/authoring.md): rules 1 to 6 in full, prior positions, content requirements, the reader contract, blind rows, the reading path. Read it before writing a spec.
 - [filing-and-authority.md](references/filing-and-authority.md): every command and what it prints; filing, recording, authority, carrying forward. Read it to build, record or replace a packet.
 - [enforcement.md](references/enforcement.md): the integrity marker, the generator's refusals, the two fixtures. Read it when a build is refused, the doctor flags a page, or before changing the generator.
@@ -49,16 +48,13 @@ These rules protect the principal's decisions and their record, so they hold aga
 
 ## When NOT to use it
 
-- **Fewer than about five decisions.** Just ask in chat. The generator refuses below five without
-  `--allow-small`.
+- **Fewer than about five decisions.** Just ask in chat.
 - **The decisions are not parallel in shape.** A packet of unlike questions is a form, and a form
   is worse than a conversation.
 - **You have no recommendation per item.** Then the packet is a questionnaire and *your analysis
-  is not finished*. Do the analysis. The generator refuses a row that recommends nothing,
-  unless it is blind.
+  is not finished*. Do the analysis.
 
 - **A deadline whose miss cannot be undone.** It is never one row among many: it leads the day
-  plan in its own section (synthesis-daily-rituals) and closes only on evidence. The generator
-  refuses a row tagged `critical`.
+  plan in its own section (synthesis-daily-rituals) and closes only on evidence.
 
 The failure mode of a good pattern is over-application. These four limits are the skill.
