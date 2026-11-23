@@ -199,6 +199,8 @@ SCHEMAS = {
 }
 # Messages' Recently Deleted (macOS 13 on) moves a message's chat link here; older stores lack the table.
 OPTIONAL = {"imessage-v1": {"chat_recoverable_message_join": {"chat_id", "message_id"}}}
+AV_ACTIVITY_COLUMNS = {"item_type", "is_sent", "destination_caller_id", "message_summary_info",
+                       "payload_data", "subject"}
 QUERIES = {
     "imessage-v1": """select m.ROWID,m.guid,m.date,m.is_from_me,h.id,m.associated_message_type,m.cache_has_attachments,
         (select count(*) from chat_message_join j where j.message_id=m.ROWID),
@@ -217,7 +219,31 @@ QUERIES = {
         from chat_recoverable_message_join r left join chat c on c.ROWID=r.chat_id where r.message_id=?""",
     "attached": """select a.mime_type from message_attachment_join j join attachment a on a.ROWID=j.attachment_id
         where j.message_id=? order by a.ROWID limit 8""",
+    "self_av_activity": """select m.message_summary_info from message m where m.ROWID=?
+        and m.item_type=6 and m.is_from_me=1 and m.is_sent=0 and m.destination_caller_id=?
+        and m.text is null and m.attributedBody is null and m.balloon_bundle_id is null
+        and m.payload_data is null and m.subject is null
+        and typeof(m.message_summary_info)='blob' and length(m.message_summary_info) between 40 and 256
+        and not exists (select 1 from message_attachment_join j where j.message_id=m.ROWID)""",
 }
+
+
+def _is_self_av_activity(db, rowid, chat) -> bool:
+    """Recognize a self-addressed audio/video activity record with only mode metadata."""
+    found = db.execute(QUERIES["self_av_activity"], (rowid, chat)).fetchone()
+    if found is None:
+        return False
+    metadata = found[0]
+    # The binary plist trailer declares an object count independently of its byte length.
+    object_count = int.from_bytes(metadata[-24:-16], "big")
+    if not metadata.startswith(b"bplist00") or not 1 <= object_count <= 16:
+        return False
+    try:
+        info = plistlib.loads(metadata)
+    except (plistlib.InvalidFileException, TypeError):
+        return False
+    return (isinstance(info, dict) and info.keys() == {"conversationAVMode"}
+            and type(info["conversationAVMode"]) is int and info["conversationAVMode"] == 0)
 
 
 def _marker(db, rowid, balloon):
@@ -325,6 +351,9 @@ def read_page(page) -> dict:
                 raise Refused("missing/ambiguous table schema")
             if not columns <= {r[1] for r in db.execute('pragma table_info("' + table + '")')}:
                 raise Refused("unsupported schema columns")
+        av_activity_schema = imessage and AV_ACTIVITY_COLUMNS <= {
+            row[1] for row in db.execute('pragma table_info("message")')
+        }
         table, key, date_column = ("message", "ROWID", "date") if imessage else ("ZWAMESSAGE", "Z_PK", "ZMESSAGEDATE")
         if db.execute(f"select 1 from {table} where typeof({date_column}) not in ('integer','real') limit 1").fetchone():
             raise Refused("date schema contains unclassifiable rows")
@@ -380,6 +409,10 @@ def read_page(page) -> dict:
                 continue
             if (ntext or 0) > MAX_BODY or (nbody or 0) > MAX_BODY or len(guid.encode()) > 8192 or len(chat.encode()) > 8192:
                 gaps.append({"row": rowid, "reason": "body or pointer byte bound"})
+                continue
+            if av_activity_schema and members == 1 and ntext is None and nbody is None and _is_self_av_activity(db, rowid, chat):
+                marked.append({"row": rowid, "marker": "[audio/video activity]"})
+                skips["audio-video-activity"] += 1
                 continue
             if imessage:
                 text, body, balloon = db.execute("select text,attributedBody,balloon_bundle_id from message where ROWID=?",

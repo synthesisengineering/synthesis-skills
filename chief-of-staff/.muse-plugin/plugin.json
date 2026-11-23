@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "synthesis-skills-chief-of-staff",
   "displayName": "Synthesis: chief of staff",
-  "version": "5.31.0",
+  "version": "5.31.1",
   "description": "The work of a chief of staff and an executive assistant: calendar and meetings, correspondence and its send rules, Slack, inbox, local messages and message exports, the daily rituals, absences and catching up after them, quick answers, and keeping your Macs and their repositories in step. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. The core carries synthesis's guard, so every collection comes with it: the four hooks that hold sends, drafts and deploys for your approval and refuse destructive commands, and the runtime they run, with its board, approval codes and the rituals' records. Claude Code runs the hooks once installed; Codex and Muse once you approve them. The whole set, synthesis-skills, holds every skill in one plugin: https://github.com/synthesisengineering/synthesis-skills",
   "compat": {
     "source": "native",

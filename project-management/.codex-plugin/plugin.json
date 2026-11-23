@@ -1,6 +1,6 @@
 {
   "name": "synthesis-skills-project-management",
-  "version": "5.31.0",
+  "version": "5.31.1",
   "description": "Project work that outlasts a session: resuming a project in any harness, waiting on a bounded event, running a delegated task to the end, adversarial review rounds, keeping Claude Code, Codex and Muse in step, and capturing what a session learned into a knowledge base and publishing that knowledge base. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. The core carries synthesis's guard, so every collection comes with it: the four hooks that hold sends, drafts and deploys for your approval and refuse destructive commands, and the runtime they run, with its board, approval codes and the rituals' records. Claude Code runs the hooks once installed; Codex and Muse once you approve them. The whole set, synthesis-skills, holds every skill in one plugin: https://github.com/synthesisengineering/synthesis-skills",
   "author": {
     "name": "Rajiv Pant",

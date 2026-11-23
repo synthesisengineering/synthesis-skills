@@ -163,7 +163,7 @@ tree into the repository's own objects from memory: `tree <id> branch collection
 (with `--dry-run`, `checked branch collections: ...; nothing written`). It reads files with
 `build_directory_package.py`'s code, reads the runtime only where the whole set has hooks to
 carry, and runs on Python 3.9. CI runs the same checks on every pull request, in
-[tests/test_skills_manager_collections.py](https://github.com/synthesisengineering/synthesis-skills/blob/v5.31.0/skills/synthesis-skills-manager/tests/test_skills_manager_collections.py).
+[tests/test_skills_manager_collections.py](https://github.com/synthesisengineering/synthesis-skills/blob/v5.31.1/skills/synthesis-skills-manager/tests/test_skills_manager_collections.py).
 
 ## What fails the check
 

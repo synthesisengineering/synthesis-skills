@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "name": "synthesis-skills-engineering",
   "displayName": "Synthesis: engineering",
-  "version": "5.31.0",
+  "version": "5.31.1",
   "description": "Planning, reviewing and shipping code: code planning and architecture decisions, pre-merge gates, code audits, pull request review and triage, codebase reviews, integrating contributions, Bitbucket, the commit check, and setting up local and hosted models as technical help. It builds on the core collection: Claude Code installs the core with it, and in Codex and Muse you install both. The core carries synthesis's guard, so every collection comes with it: the four hooks that hold sends, drafts and deploys for your approval and refuse destructive commands, and the runtime they run, with its board, approval codes and the rituals' records. Claude Code runs the hooks once installed; Codex and Muse once you approve them. The whole set, synthesis-skills, holds every skill in one plugin: https://github.com/synthesisengineering/synthesis-skills",
   "compat": {
     "source": "native",

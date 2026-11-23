@@ -34,7 +34,7 @@ A checkpoint, decision or grant the user gives governs within its scope; these r
 
 - Which path: below. Read it first.
 - [references/process.md](references/process.md): Inputs and Steps 1 to 4 (analyze, generate approaches in a template, evaluate and select, implement), with the diagnosis method. Read it for a real choice between approaches or a defect.
-- [Decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.31.0/skills/synthesis-thinking-framework/references/decision-ownership.md), in synthesis-thinking-framework: the whole contract rule 1 applies, of which rules 1 to 3 and 6 state the rows code work meets; it adds decision records and reopened premises. Read it when writing a decision record or reopening a settled choice.
+- [Decision ownership contract](https://github.com/synthesisengineering/synthesis-skills/blob/v5.31.1/skills/synthesis-thinking-framework/references/decision-ownership.md), in synthesis-thinking-framework: the whole contract rule 1 applies, of which rules 1 to 3 and 6 state the rows code work meets; it adds decision records and reopened premises. Read it when writing a decision record or reopening a settled choice.
 - [references/coverage-map.md](references/coverage-map.md): where each rule of 2.0.0, and of 1.1.1, lives now. Read it to check a rewrite.
 - [references/preserved.md](references/preserved.md): the 2.0.0 text replaced in 2.1.0, word for word, with reasons. Read it only to review a rewrite.
 

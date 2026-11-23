@@ -1,6 +1,6 @@
 {
   "name": "synthesis-skills-core",
-  "version": "5.31.0",
+  "version": "5.31.1",
   "description": "The ground every synthesis collection stands on: thinking and grounding discipline, verification before done, project records that survive compaction and restarts, decision packets and action sheets, the skill router, the skills that install synthesis and keep skill copies true to their source, and editing a knowledge base in the Open Knowledge Format, which each new workspace starts with. The core carries synthesis's guard, so every collection comes with it: the four hooks that hold sends, drafts and deploys for your approval and refuse destructive commands, and the runtime they run, with its board, approval codes and the rituals' records. Claude Code runs the hooks once installed; Codex and Muse once you approve them. The whole set, synthesis-skills, holds every skill in one plugin: https://github.com/synthesisengineering/synthesis-skills",
   "author": {
     "name": "Rajiv Pant",
