@@ -4,6 +4,11 @@ All notable changes to Synthesis Skills are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/). Version numbers follow [Semantic Versioning](https://semver.org/).
 
+## [5.31.1] - 2026-11-23
+
+- The local Messages reader recognizes one-to-one audio/video activity that carries only mode
+  metadata, so those records no longer interrupt a sweep or historical rescan.
+
 ## [5.31.0] - 2026-11-20
 
 - **Install only the collections a person picks, guard included** (BACKLOG C8, the principal's ruling of 2026-11-20).

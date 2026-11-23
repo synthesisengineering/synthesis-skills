@@ -3121,8 +3121,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # imported, 1 fewer; BUILD 1; collections 7 (its docstring 3; the clone's build_collections.py --tree run in a process
 # of its own, its line read for the tree and the branch, a refusal and a failure each named, 4 more than the build run
 # in this process took).
+# The plugin adds 33 lines in local_messaging.py for bodyless Messages activity. The optional column list takes
+# 2 lines and schema detection takes 3. The row query takes 6 lines to require mode metadata and rule out message
+# content and attachments. Metadata validation takes 18 lines, including two blank lines. The read loop takes
+# 4 lines to count only verified one-to-one activity in coverage.
 CORE_BUDGET = 26754
-PLUGIN_BUDGET = 54603
+PLUGIN_BUDGET = 54636
 
 
 def _lines(files):
