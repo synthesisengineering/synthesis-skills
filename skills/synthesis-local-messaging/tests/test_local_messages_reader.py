@@ -348,6 +348,51 @@ def test_a_row_whose_text_is_genuinely_unreadable_still_holds_the_window(tmp_pat
     assert coverage["gaps"][0]["reason"] == UNDECODED and coverage["marked"] == []
 
 
+
+@pytest.mark.parametrize(
+    "caller, summary, attachments, group, recognized",
+    [
+        ("+15551234567", {"conversationAVMode": 0}, [], False, True),
+        ("+15551234567", {"conversationAVMode": True}, [], False, False),
+        ("+15551234567", {"conversationAVMode": 0, "other": 1}, [], False, False),
+        ("+15557654321", {"conversationAVMode": 0}, [], False, False),
+        ("+15551234567", {"conversationAVMode": 0}, ["image/png"], False, False),
+        ("+15551234567", {"conversationAVMode": 0}, [], True, False),
+    ],
+    ids=["activity", "boolean-mode", "additional-fields", "different-caller", "attachment", "group"],
+)
+def test_bodyless_self_addressed_av_activity(tmp_path, need_sandbox, caller, summary, attachments, group, recognized):
+    path, db = imessage(tmp_path / "source")
+    event = add(db, None, None, mine=1, media=0, attachments=attachments)
+    db.executescript("""
+        alter table message add column item_type integer;
+        alter table message add column is_sent integer;
+        alter table message add column destination_caller_id text;
+        alter table message add column message_summary_info blob;
+        alter table message add column payload_data blob;
+        alter table message add column subject text;
+        update chat set chat_identifier='+15551234567' where rowid=1;
+    """)
+    db.execute("update message set item_type=6,is_sent=0,destination_caller_id=?,message_summary_info=? where rowid=?",
+               (caller, plistlib.dumps(summary, fmt=plistlib.FMT_BINARY), event))
+    if group:
+        second_handle = db.execute("insert into handle values (?)", ("+15557654321",)).lastrowid
+        db.execute("insert into chat_handle_join values (1, ?)", (second_handle,))
+    db.commit()
+    db.close()
+    result = run(path, tmp_path)
+    coverage = result["coverage"]
+    assert result["notes"] == []
+    assert coverage["complete"] is recognized
+    if recognized:
+        assert coverage["gaps"] == []
+        assert coverage["marked"] == [{"row": event, "marker": "[audio/video activity]"}]
+        assert coverage["skipped"] == {"audio-video-activity": 1}
+    else:
+        assert coverage["gaps"] == [{"row": event, "reason": "missing/oversized attributed body"}]
+        assert coverage["marked"] == []
+
+
 # --- a by-hand review the principal approves closes exactly the gaps it names -----------------
 
 
